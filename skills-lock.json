@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "skills": {
+    "SQLite Database Expert": {
+      "source": "martinholovsky/claude-skills-generator",
+      "sourceType": "github",
+      "skillPath": "skills/sqlite/SKILL.md",
+      "computedHash": "515e1971f145631025485c6dbf83c62bb7ee0fabc805d0e2bd07ac2aac7f24d8"
+    },
+    "cmake": {
+      "source": "mohitmishra786/low-level-dev-skills",
+      "sourceType": "github",
+      "skillPath": "skills/build-systems/cmake/SKILL.md",
+      "computedHash": "934820a54d2e3a0be75b3b5cd219ff55a4f4e48904a324014e5c1cd6186844c2"
+    },
+    "cpp-coding-standards": {
+      "source": "affaan-m/everything-claude-code",
+      "sourceType": "github",
+      "skillPath": "skills/cpp-coding-standards/SKILL.md",
+      "computedHash": "49fb3ca5b7e76c39907b757dedd905c881d9318157e98a52836cdc818a805135"
+    },
+    "cpp-testing": {
+      "source": "affaan-m/everything-claude-code",
+      "sourceType": "github",
+      "skillPath": "skills/cpp-testing/SKILL.md",
+      "computedHash": "a3acbe4b9af496d09e8184c086177f250cb271540e9b38d56233290745b0eede"
+    },
+    "find-skills": {
+      "source": "vercel-labs/skills",
+      "sourceType": "github",
+      "skillPath": "skills/find-skills/SKILL.md",
+      "computedHash": "781bd6d3f9b19f8c9af6b53d8d0e4876d0183841b565db34ca7092ffa412d111"
+    },
+    "grill-me": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/grill-me/SKILL.md",
+      "computedHash": "67e31b63e6e9e454cc2f51cd85b9cf1396ee46379a87c07a1450f33c47c1276a"
+    },
+    "qt-cpp-docs": {
+      "source": "theqtcompanyrnd/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/qt-cpp-docs/SKILL.md",
+      "computedHash": "bc9cec1d27c9d4e33ae802220cc3e5bd65cc78823e552ededd8549835e737607"
+    },
+    "qt-cpp-review": {
+      "source": "theqtcompanyrnd/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/qt-cpp-review/SKILL.md",
+      "computedHash": "75462b081c131f4ac32797163ad664db0d886034f9dd205f302750ea4943c606"
+    },
+    "remotion-best-practices": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion/SKILL.md",
+      "computedHash": "664bd31140897056bd575ef57a15f22f517bd576c6b81df429c1f4ed6453e312"
+    },
+    "systematic-debugging": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/systematic-debugging/SKILL.md",
+      "computedHash": "792a368e074981d7e3138edb439e138489b2ac247cd1e5739fab52af680fb17b"
+    },
+    "test-driven-development": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/test-driven-development/SKILL.md",
+      "computedHash": "eee144aea35d783296d178017e9fe843c6d16cc8b240e106f5e50910f6caf329"
+    }
+  }
+}

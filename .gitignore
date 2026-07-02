@@ -1,0 +1,9 @@
+# Artefactos de build
+build/
+.cache/
+
+# Logs de la aplicación
+*.log
+
+# Overrides locales de CMake
+CMakeUserPresets.json
