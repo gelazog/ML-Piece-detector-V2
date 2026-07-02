@@ -5,5 +5,5 @@ add_library(pci_ui STATIC
 target_include_directories(pci_ui PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(pci_ui
   PUBLIC Qt6::Widgets pci_camera
-  PRIVATE Qt6::Concurrent pci_core project_warnings
+  PRIVATE Qt6::Concurrent pci_core pci_vision project_warnings
 )

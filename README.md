@@ -9,8 +9,8 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
 
 | Fase | Contenido | Estado |
 |---|---|---|
-| 1 | Esqueleto + módulo de cámara (detección, selección, vista en vivo) | En curso |
-| 2 | `vision/`: contorno, centroide, Position Fixture | Pendiente |
+| 1 | Esqueleto + módulo de cámara (detección, selección, vista en vivo) | ✅ Completada |
+| 2 | `vision/`: contorno, centroide, Position Fixture | ✅ Completada |
 | 3 | `ml/`: embeddings ONNX (EfficientNet-Lite0) | Pendiente |
 | 4 | `database/`: esquema SQLite | Pendiente |
 | 5 | `inspection_editor/`: canvas + herramientas de medición | Pendiente |
@@ -45,3 +45,24 @@ El ejecutable queda en `build/release/pc_inspector.exe` (necesita
 - **Cámara física requerida para la vista en vivo**: los tests unitarios cubren
   la lógica sin hardware (conversión de frames, FPS, `Result`); la captura real
   se verifica manualmente.
+
+## Fase 2 — Módulo `vision/`
+
+Segmentación por Otsu con polaridad automática, contorno mayor con centroide
+por momentos, orientación por momentos centrales (ambigüedad de 180° resuelta
+con el momento de tercer orden) y Position Fixture con `normalizePiece()` →
+recorte canónico 256×256 sin fondo, listo para embeddings. En la UI, el
+checkbox "Mostrar análisis" superpone contorno/centroide/eje en vivo (máximo
+un análisis en vuelo; nunca bloquea la UI).
+
+Limitaciones conocidas:
+
+- **Requiere fondo contrastante y uniforme** (Otsu global); iluminación muy
+  irregular degradará la segmentación.
+- **Orientación inestable en piezas casi circulares o con simetría de
+  rotación** — inherente al método de momentos; irrelevante para la
+  comparación por embeddings de la fase 3.
+- **La pieza debe estar completa dentro del encuadre**; si toca el borde el
+  recorte normalizado puede recortarse.
+- El overlay se verificó con imágenes sintéticas (31 tests); con cámara real
+  queda pendiente de prueba manual del usuario.

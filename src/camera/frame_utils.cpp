@@ -24,4 +24,25 @@ QImage matToQImage(const cv::Mat& mat) {
     }
 }
 
+cv::Mat qImageToMat(const QImage& image) {
+    if (image.isNull()) {
+        return {};
+    }
+
+    switch (image.format()) {
+        case QImage::Format_BGR888:
+            return cv::Mat(image.height(), image.width(), CV_8UC3,
+                           const_cast<uchar*>(image.constBits()),
+                           static_cast<std::size_t>(image.bytesPerLine()))
+                .clone();
+        case QImage::Format_Grayscale8:
+            return cv::Mat(image.height(), image.width(), CV_8UC1,
+                           const_cast<uchar*>(image.constBits()),
+                           static_cast<std::size_t>(image.bytesPerLine()))
+                .clone();
+        default:
+            return qImageToMat(image.convertToFormat(QImage::Format_BGR888));
+    }
+}
+
 }  // namespace pci::camera

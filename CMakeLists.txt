@@ -20,6 +20,7 @@ find_package(OpenCV REQUIRED COMPONENTS core imgproc videoio)
 
 add_subdirectory(src/core)
 add_subdirectory(src/camera)
+add_subdirectory(src/vision)
 add_subdirectory(src/ui)
 
 add_executable(pc_inspector src/main.cpp)

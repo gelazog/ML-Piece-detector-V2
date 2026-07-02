@@ -1,5 +1,6 @@
 #include "ui/main_window.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -9,10 +10,38 @@
 #include <QtConcurrent/QtConcurrent>
 
 #include "camera/camera_enumerator.h"
+#include "camera/frame_utils.h"
 #include "core/logging.h"
 #include "ui/video_widget.h"
+#include "vision/pipeline.h"
 
 namespace pci::ui {
+
+namespace {
+
+// Corre en un hilo del pool de QtConcurrent; solo toca datos propios.
+AnalysisOverlay buildOverlay(const QImage& frame) {
+    AnalysisOverlay overlay;
+    overlay.frameSize = frame.size();
+
+    const auto analysis = vision::analyzeFrame(camera::qImageToMat(frame));
+    if (!analysis.isOk()) {
+        overlay.error = QString::fromStdString(analysis.error().message);
+        return overlay;
+    }
+
+    overlay.valid = true;
+    overlay.contour.reserve(static_cast<qsizetype>(analysis.value().contour.points.size()));
+    for (const cv::Point& p : analysis.value().contour.points) {
+        overlay.contour << QPointF(p.x, p.y);
+    }
+    overlay.centroid = QPointF(analysis.value().fixture.origin.x,
+                               analysis.value().fixture.origin.y);
+    overlay.angleDeg = analysis.value().fixture.angleDeg;
+    return overlay;
+}
+
+}  // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle(tr("PC Inspector — Demo de inspección visual"));
@@ -34,6 +63,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     startStopButton_ = new QPushButton(tr("Iniciar"), central);
     controlsLayout->addWidget(startStopButton_);
 
+    analysisCheck_ = new QCheckBox(tr("Mostrar análisis"), central);
+    controlsLayout->addWidget(analysisCheck_);
+
     rootLayout->addLayout(controlsLayout);
 
     video_ = new VideoWidget(central);
@@ -46,8 +78,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     connect(refreshButton_, &QPushButton::clicked, this, &MainWindow::refreshCameras);
     connect(startStopButton_, &QPushButton::clicked, this, &MainWindow::onStartStopClicked);
+    connect(analysisCheck_, &QCheckBox::toggled, this, &MainWindow::onAnalysisToggled);
     connect(&enumerationWatcher_, &QFutureWatcher<std::vector<camera::CameraInfo>>::finished,
             this, &MainWindow::onCamerasEnumerated);
+    connect(&analysisWatcher_, &QFutureWatcher<AnalysisOverlay>::finished, this,
+            &MainWindow::onAnalysisFinished);
 
     connect(&controller_, &camera::CameraController::frameReady, this, &MainWindow::onFrame);
     connect(&controller_, &camera::CameraController::statsUpdated, this, &MainWindow::onStats);
@@ -61,6 +96,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 MainWindow::~MainWindow() {
     controller_.stop();
     enumerationWatcher_.waitForFinished();
+    analysisWatcher_.waitForFinished();
 }
 
 void MainWindow::refreshCameras() {
@@ -121,6 +157,10 @@ void MainWindow::onStartStopClicked() {
 
 void MainWindow::onFrame(const QImage& frame) {
     video_->setFrame(frame);
+    if (streaming_ && analysisCheck_->isChecked()) {
+        pendingAnalysisFrame_ = frame;
+        maybeStartAnalysis();
+    }
 }
 
 void MainWindow::onStats(double fps, int width, int height) {
@@ -142,7 +182,33 @@ void MainWindow::onStreamStopped() {
     cameraCombo_->setEnabled(true);
     refreshButton_->setEnabled(true);
     statsLabel_->clear();
+    pendingAnalysisFrame_ = QImage();
     video_->clear();
+}
+
+void MainWindow::onAnalysisToggled(bool enabled) {
+    if (!enabled) {
+        pendingAnalysisFrame_ = QImage();
+        video_->clearOverlay();
+    }
+}
+
+void MainWindow::onAnalysisFinished() {
+    if (streaming_ && analysisCheck_->isChecked()) {
+        video_->setOverlay(analysisWatcher_.result());
+        maybeStartAnalysis();
+    }
+}
+
+// Como máximo un análisis en vuelo; si la visión va más lenta que la cámara,
+// se procesan solo los frames más recientes (se descartan los intermedios).
+void MainWindow::maybeStartAnalysis() {
+    if (analysisWatcher_.isRunning() || pendingAnalysisFrame_.isNull()) {
+        return;
+    }
+    const QImage frame = pendingAnalysisFrame_;
+    pendingAnalysisFrame_ = QImage();
+    analysisWatcher_.setFuture(QtConcurrent::run(buildOverlay, frame));
 }
 
 void MainWindow::setControlsEnabled(bool enabled) {

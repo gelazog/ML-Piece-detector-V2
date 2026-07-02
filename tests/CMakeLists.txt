@@ -12,9 +12,10 @@ add_executable(pci_tests
   test_fps_counter.cpp
   test_frame_utils.cpp
   test_result.cpp
+  test_vision.cpp
 )
 target_link_libraries(pci_tests
-  PRIVATE pci_camera pci_core GTest::gtest_main ${OpenCV_LIBS} project_warnings
+  PRIVATE pci_camera pci_core pci_vision GTest::gtest_main ${OpenCV_LIBS} project_warnings
 )
 
 include(GoogleTest)
