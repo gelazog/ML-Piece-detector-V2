@@ -2,6 +2,9 @@
 build/
 .cache/
 
+# Modelos ONNX (los descarga run.ps1)
+models/
+
 # Logs de la aplicación
 *.log
 

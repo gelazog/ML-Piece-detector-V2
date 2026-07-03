@@ -11,20 +11,30 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $root = $PSScriptRoot
 $msys = 'C:\msys64'
-$mingwBin = Join-Path $msys 'mingw64\bin'
+$ucrtBin = Join-Path $msys 'ucrt64\bin'
 $bash = Join-Path $msys 'usr\bin\bash.exe'
 $exe = Join-Path $root 'build\release\pc_inspector.exe'
 
-# Requisitos de compilación y ejecución (MSYS2/MinGW64, todo precompilado).
+# Requisitos de compilación y ejecución (MSYS2/UCRT64, todo precompilado).
+# onnx aporta la librería C++ con la que se prepara el modelo de embeddings.
 $packages = @(
-    'mingw-w64-x86_64-gcc',
-    'mingw-w64-x86_64-cmake',
-    'mingw-w64-x86_64-ninja',
-    'mingw-w64-x86_64-qt6-base',
-    'mingw-w64-x86_64-opencv'
+    'mingw-w64-ucrt-x86_64-gcc',
+    'mingw-w64-ucrt-x86_64-cmake',
+    'mingw-w64-ucrt-x86_64-ninja',
+    'mingw-w64-ucrt-x86_64-qt6-base',
+    'mingw-w64-ucrt-x86_64-opencv',
+    'mingw-w64-ucrt-x86_64-onnxruntime',
+    'mingw-w64-ucrt-x86_64-protobuf'
 )
+
+# Modelo de embeddings (EfficientNet-Lite4 del zoo oficial de ONNX; ver README).
+$modelsDir = Join-Path $root 'models'
+$rawModel = Join-Path $modelsDir 'efficientnet-lite4-11.onnx'
+$model = Join-Path $modelsDir 'embedding_model.onnx'
+$modelUrl = 'https://github.com/onnx/models/raw/main/validated/vision/classification/efficientnet-lite4/model/efficientnet-lite4-11.onnx'
 
 function Write-Step([string]$message) { Write-Host "==> $message" -ForegroundColor Cyan }
 function Write-Ok([string]$message) { Write-Host "    $message" -ForegroundColor Green }
@@ -63,7 +73,7 @@ if ($missing.Count -gt 0) {
 }
 
 # --- 3. Compilar ---
-$env:PATH = "$mingwBin;$env:PATH"
+$env:PATH = "$ucrtBin;$env:PATH"
 if ($Rebuild -or -not (Test-Path $exe)) {
     Write-Step 'Configurando y compilando (Release)...'
     Push-Location $root
@@ -80,10 +90,30 @@ if ($Rebuild -or -not (Test-Path $exe)) {
     Write-Ok "Binario ya compilado: $exe (usa -Rebuild para forzar)"
 }
 
-# --- 4. Ejecutar ---
+# --- 4. Modelo de embeddings ---
+if (-not (Test-Path $model)) {
+    if (-not (Test-Path $modelsDir)) { New-Item -ItemType Directory $modelsDir | Out-Null }
+    if (-not (Test-Path $rawModel)) {
+        Write-Step 'Descargando modelo ONNX (~49 MB)...'
+        Invoke-WebRequest -Uri $modelUrl -OutFile $rawModel -UseBasicParsing
+    }
+    Write-Step 'Preparando modelo de embeddings (recorte del clasificador)...'
+    $prepareTool = Join-Path $root 'build\release\prepare_model.exe'
+    if (Test-Path $prepareTool) {
+        & $prepareTool $rawModel $model
+    }
+    if (-not (Test-Path $model)) {
+        Write-Host '    Aviso: no se pudo recortar; se usará el modelo completo (softmax).' -ForegroundColor Yellow
+        Copy-Item $rawModel $model
+    }
+} else {
+    Write-Ok 'Modelo de embeddings presente.'
+}
+
+# --- 5. Ejecutar ---
 if (-not $NoRun) {
     Write-Step 'Lanzando PC Inspector...'
-    # El PATH con mingw64\bin es necesario para las DLL de Qt/OpenCV.
+    # El PATH con ucrt64\bin es necesario para las DLL de Qt/OpenCV/onnxruntime.
     Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe)
     Write-Ok 'Aplicación lanzada.'
 }

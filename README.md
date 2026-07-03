@@ -11,25 +11,31 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
 |---|---|---|
 | 1 | Esqueleto + módulo de cámara (detección, selección, vista en vivo) | ✅ Completada |
 | 2 | `vision/`: contorno, centroide, Position Fixture | ✅ Completada |
-| 3 | `ml/`: embeddings ONNX (EfficientNet-Lite0) | Pendiente |
+| 3 | `ml/`: embeddings ONNX (EfficientNet-Lite) | ✅ Completada |
 | 4 | `database/`: esquema SQLite | Pendiente |
 | 5 | `inspection_editor/`: canvas + herramientas de medición | Pendiente |
 | 6 | Motor de inspección completo | Pendiente |
 
-## Compilar (Windows, MSYS2/MinGW64)
+## Compilar y ejecutar (Windows)
 
-Requisitos: MSYS2 en `C:\msys64` con `mingw-w64-x86_64-{gcc,cmake,ninja,qt6-base,opencv}`.
+Lo más simple: `.\run.ps1` (o doble clic en `run.bat`) — verifica MSYS2 y los
+paquetes (los instala si faltan), descarga y prepara el modelo de embeddings,
+compila si hace falta y lanza la app.
+
+A mano (entorno **UCRT64** de MSYS2 en `C:\msys64` con
+`mingw-w64-ucrt-x86_64-{gcc,cmake,ninja,qt6-base,opencv,onnxruntime,protobuf}`):
 
 ```powershell
-$env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
+$env:PATH = "C:\msys64\ucrt64\bin;$env:PATH"
 cmake --preset mingw-release
 cmake --build --preset mingw-release
 ctest --preset mingw-release
 ```
 
 El ejecutable queda en `build/release/pc_inspector.exe` (necesita
-`C:\msys64\mingw64\bin` en el PATH para las DLL de Qt/OpenCV, o empaquetar con
-`windeployqt6` más adelante).
+`C:\msys64\ucrt64\bin` en el PATH para las DLL de Qt/OpenCV; `onnxruntime.dll`
+se copia junto al binario automáticamente porque System32 trae otra
+incompatible de Windows ML y gana al PATH).
 
 ## Fase 1 — Limitaciones conocidas
 
@@ -66,3 +72,29 @@ Limitaciones conocidas:
   recorte normalizado puede recortarse.
 - El overlay se verificó con imágenes sintéticas (31 tests); con cámara real
   queda pendiente de prueba manual del usuario.
+
+## Fase 3 — Módulo `ml/` (embeddings)
+
+`EmbeddingExtractor` envuelve ONNX Runtime C++ (sesión única, entrada NHWC/NCHW
+autodetectada, normalización EfficientNet-Lite `(x-127)/128`, salida
+L2-normalizada). `ReferenceBuilder` implementa Welford: media/desviación por
+dimensión y estadística de similitud en O(dim) por muestra — la misma pieza
+sirve para el registro inicial y para el aprendizaje incremental de la fase 6.
+
+**Modelo**: el prompt pedía EfficientNet-Lite0, pero no existe un ONNX
+confiable publicado de Lite0; se usa **EfficientNet-Lite4 del zoo oficial de
+ONNX** (49 MB, misma familia y preprocesado). `run.ps1` lo descarga y
+`prepare_model` (herramienta C++ compilada con el proyecto) le recorta el
+clasificador para exponer los features del GAP: **embedding de 1280 dims**
+en lugar del softmax de 1000 clases. Extracción medida: <220 ms con carga de
+sesión incluida; la inferencia pura queda muy por debajo.
+
+Limitaciones conocidas:
+
+- **Toolchain migrado a UCRT64** (mingw64 no tiene onnxruntime precompilado);
+  el entorno mingw64 anterior puede desinstalarse a mano si se desea liberar
+  ~2 GB.
+- Python aparece en `C:\msys64` solo como dependencia interna del paquete
+  onnxruntime de MSYS2 — la aplicación no lo usa ni lo necesita en ejecución.
+- El test de integración del extractor se salta (`GTEST_SKIP`) si el modelo no
+  está descargado; `run.ps1` lo descarga automáticamente.
