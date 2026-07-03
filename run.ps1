@@ -27,7 +27,8 @@ $packages = @(
     'mingw-w64-ucrt-x86_64-qt6-base',
     'mingw-w64-ucrt-x86_64-opencv',
     'mingw-w64-ucrt-x86_64-onnxruntime',
-    'mingw-w64-ucrt-x86_64-protobuf'
+    'mingw-w64-ucrt-x86_64-protobuf',
+    'mingw-w64-ucrt-x86_64-sqlite3'
 )
 
 # Modelo de embeddings (EfficientNet-Lite4 del zoo oficial de ONNX; ver README).

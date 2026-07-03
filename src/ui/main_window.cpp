@@ -12,6 +12,7 @@
 #include "camera/camera_enumerator.h"
 #include "camera/frame_utils.h"
 #include "core/logging.h"
+#include "repositories/settings_repository.h"
 #include "ui/video_widget.h"
 #include "vision/pipeline.h"
 
@@ -43,7 +44,12 @@ AnalysisOverlay buildOverlay(const QImage& frame) {
 
 }  // namespace
 
-MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
+namespace {
+const char* const kSettingCameraIndex = "camera_index";
+}
+
+MainWindow::MainWindow(repositories::SettingsRepository* settings, QWidget* parent)
+    : QMainWindow(parent), settings_(settings) {
     setWindowTitle(tr("PC Inspector — Demo de inspección visual"));
     resize(900, 600);
 
@@ -128,6 +134,20 @@ void MainWindow::onCamerasEnumerated() {
         cameraCombo_->addItem(QString::fromStdString(cam.name) +
                               QStringLiteral(" (%1x%2)").arg(cam.width).arg(cam.height));
     }
+
+    // Restaurar la última cámara elegida por el usuario (si sigue conectada).
+    if (settings_ != nullptr) {
+        const auto saved = settings_->getInt(kSettingCameraIndex, -1);
+        if (saved.isOk() && saved.value() >= 0) {
+            for (std::size_t i = 0; i < cameras_.size(); ++i) {
+                if (cameras_[i].index == saved.value()) {
+                    cameraCombo_->setCurrentIndex(static_cast<int>(i));
+                    break;
+                }
+            }
+        }
+    }
+
     statusBar()->showMessage(tr("%n cámara(s) detectada(s)", nullptr,
                                 static_cast<int>(cameras_.size())));
     setControlsEnabled(true);
@@ -144,6 +164,13 @@ void MainWindow::onStartStopClicked() {
     const int comboIndex = cameraCombo_->currentIndex();
     if (comboIndex < 0 || comboIndex >= static_cast<int>(cameras_.size())) {
         return;
+    }
+
+    if (settings_ != nullptr) {
+        if (auto saved = settings_->setInt(kSettingCameraIndex, cameras_[comboIndex].index);
+            !saved.isOk()) {
+            core::logWarning("No se pudo guardar la cámara elegida: " + saved.error().message);
+        }
     }
 
     streaming_ = true;

@@ -12,7 +12,7 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
 | 1 | Esqueleto + módulo de cámara (detección, selección, vista en vivo) | ✅ Completada |
 | 2 | `vision/`: contorno, centroide, Position Fixture | ✅ Completada |
 | 3 | `ml/`: embeddings ONNX (EfficientNet-Lite) | ✅ Completada |
-| 4 | `database/`: esquema SQLite | Pendiente |
+| 4 | `database/`: esquema SQLite | ✅ Completada |
 | 5 | `inspection_editor/`: canvas + herramientas de medición | Pendiente |
 | 6 | Motor de inspección completo | Pendiente |
 
@@ -98,3 +98,24 @@ Limitaciones conocidas:
   onnxruntime de MSYS2 — la aplicación no lo usa ni lo necesita en ejecución.
 - El test de integración del extractor se salta (`GTEST_SKIP`) si el modelo no
   está descargado; `run.ps1` lo descarga automáticamente.
+
+## Fase 4 — Módulo `database/` + `repositories/`
+
+SQLite vía API C con wrapper RAII propio (`Db`/`Statement`, todo `Result<T>`,
+sin excepciones cruzando la frontera). Esquema v1 completo con las 9 tablas
+del prompt, migraciones por `PRAGMA user_version`, foreign keys, modo WAL y
+`busy_timeout`. Las referencias de embeddings (`Embeddings`) se **versionan
+por pieza y nunca se borran**: el aprendizaje incremental inserta una versión
+nueva. `repositories/` es el puente domain↔database: `PieceRepository`
+(roundtrip exacto de `ml::Reference` como BLOB float32) y
+`SettingsRepository` (la cámara elegida se guarda y restaura al abrir).
+
+Limitaciones conocidas:
+
+- La BD vive junto al ejecutable (`pc_inspector.db`, demo portable); si no se
+  puede abrir o migrar, la app sigue funcionando sin persistencia y lo deja en
+  el log (nunca crash).
+- BLOBs float32 en orden nativo little-endian: la BD no es portable a
+  arquitecturas big-endian (irrelevante para x86/x64).
+- Los repositorios de herramientas e inspecciones llegan con las fases 5/6
+  que los consumen; el esquema ya los soporta.

@@ -14,6 +14,10 @@ class QComboBox;
 class QLabel;
 class QPushButton;
 
+namespace pci::repositories {
+class SettingsRepository;
+}
+
 namespace pci::ui {
 
 class VideoWidget;
@@ -22,7 +26,10 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget* parent = nullptr);
+    // settings puede ser nullptr: la app funciona sin persistencia si la BD
+    // no pudo abrirse (error ya loggeado por quien la abrió).
+    explicit MainWindow(repositories::SettingsRepository* settings = nullptr,
+                        QWidget* parent = nullptr);
     ~MainWindow() override;
 
 private slots:
@@ -47,6 +54,7 @@ private:
     VideoWidget* video_ = nullptr;
     QLabel* statsLabel_ = nullptr;
 
+    repositories::SettingsRepository* settings_ = nullptr;
     camera::CameraController controller_;
     QFutureWatcher<std::vector<camera::CameraInfo>> enumerationWatcher_;
     QFutureWatcher<AnalysisOverlay> analysisWatcher_;
