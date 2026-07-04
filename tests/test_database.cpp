@@ -9,9 +9,11 @@
 #include "database/db.h"
 #include "database/schema.h"
 #include "database/statement.h"
+#include "inspection_editor/tools/tool_geometry.h"
 #include "ml/reference.h"
 #include "repositories/piece_repository.h"
 #include "repositories/settings_repository.h"
+#include "repositories/tool_repository.h"
 
 using namespace pci;
 
@@ -182,6 +184,74 @@ TEST_F(DatabaseTest, RejectsInvalidReference) {
 
     ml::Reference empty;
     EXPECT_FALSE(pieces.saveReference(pieceId.value(), empty).isOk());
+}
+
+// --- ToolRepository ---
+
+TEST_F(DatabaseTest, ToolCrudRoundTrip) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    repositories::ToolRepository tools(db);
+
+    const auto pieceId = pieces.createPiece("Pieza con herramientas");
+    ASSERT_TRUE(pieceId.isOk());
+
+    inspection::ToolConfig caliper;
+    caliper.type = inspection::ToolType::Caliper;
+    caliper.name = "Ancho brazo";
+    caliper.geometryJson = inspection::toJson(
+        inspection::ToolGeometry(inspection::CaliperGeometry{{0, 0}, {40, 0}, 6.0F}));
+    caliper.toleranceMin = 35.0;
+    caliper.toleranceMax = 45.0;
+
+    const auto savedId = tools.save(pieceId.value(), caliper);
+    ASSERT_TRUE(savedId.isOk()) << savedId.error().message;
+
+    auto listed = tools.listForPiece(pieceId.value());
+    ASSERT_TRUE(listed.isOk());
+    ASSERT_EQ(listed.value().size(), 1U);
+    EXPECT_EQ(listed.value()[0].name, "Ancho brazo");
+    EXPECT_EQ(listed.value()[0].type, inspection::ToolType::Caliper);
+    EXPECT_DOUBLE_EQ(listed.value()[0].toleranceMax, 45.0);
+
+    // La geometría sobrevive el roundtrip por la BD.
+    const auto geometry = inspection::geometryFromJson(inspection::ToolType::Caliper,
+                                                       listed.value()[0].geometryJson);
+    ASSERT_TRUE(geometry.isOk());
+    EXPECT_FLOAT_EQ(std::get<inspection::CaliperGeometry>(geometry.value()).p1.x, 40.0F);
+
+    // Update.
+    auto updated = listed.value()[0];
+    updated.name = "Ancho brazo v2";
+    updated.toleranceMax = 50.0;
+    ASSERT_TRUE(tools.save(pieceId.value(), updated).isOk());
+    listed = tools.listForPiece(pieceId.value());
+    ASSERT_TRUE(listed.isOk());
+    ASSERT_EQ(listed.value().size(), 1U);
+    EXPECT_EQ(listed.value()[0].name, "Ancho brazo v2");
+
+    // Delete.
+    ASSERT_TRUE(tools.remove(listed.value()[0].id).isOk());
+    listed = tools.listForPiece(pieceId.value());
+    ASSERT_TRUE(listed.isOk());
+    EXPECT_TRUE(listed.value().empty());
+}
+
+TEST_F(DatabaseTest, ToolSaveRejectsInvalid) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    repositories::ToolRepository tools(db);
+    const auto pieceId = pieces.createPiece("Pieza");
+    ASSERT_TRUE(pieceId.isOk());
+
+    inspection::ToolConfig noName;
+    noName.geometryJson = "{}";
+    EXPECT_FALSE(tools.save(pieceId.value(), noName).isOk());
+
+    inspection::ToolConfig noGeometry;
+    noGeometry.name = "sin geometría";
+    noGeometry.geometryJson.clear();
+    EXPECT_FALSE(tools.save(pieceId.value(), noGeometry).isOk());
 }
 
 // --- SettingsRepository ---

@@ -32,6 +32,7 @@ add_subdirectory(src/camera)
 add_subdirectory(src/vision)
 add_subdirectory(src/ml)
 add_subdirectory(src/database)
+add_subdirectory(src/inspection_editor)
 add_subdirectory(src/repositories)
 add_subdirectory(src/ui)
 

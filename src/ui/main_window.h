@@ -8,15 +8,12 @@
 #include "camera/camera_controller.h"
 #include "camera/camera_info.h"
 #include "ui/analysis_overlay.h"
+#include "ui/app_repositories.h"
 
 class QCheckBox;
 class QComboBox;
 class QLabel;
 class QPushButton;
-
-namespace pci::repositories {
-class SettingsRepository;
-}
 
 namespace pci::ui {
 
@@ -26,10 +23,9 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 
 public:
-    // settings puede ser nullptr: la app funciona sin persistencia si la BD
-    // no pudo abrirse (error ya loggeado por quien la abrió).
-    explicit MainWindow(repositories::SettingsRepository* settings = nullptr,
-                        QWidget* parent = nullptr);
+    // Los repositorios pueden venir vacíos: la app funciona sin persistencia
+    // si la BD no pudo abrirse (error ya loggeado por quien la abrió).
+    explicit MainWindow(AppRepositories repositories = {}, QWidget* parent = nullptr);
     ~MainWindow() override;
 
 private slots:
@@ -42,6 +38,7 @@ private slots:
     void onStreamStopped();
     void onAnalysisToggled(bool enabled);
     void onAnalysisFinished();
+    void onOpenEditorClicked();
 
 private:
     void setControlsEnabled(bool enabled);
@@ -50,11 +47,13 @@ private:
     QComboBox* cameraCombo_ = nullptr;
     QPushButton* refreshButton_ = nullptr;
     QPushButton* startStopButton_ = nullptr;
+    QPushButton* editorButton_ = nullptr;
     QCheckBox* analysisCheck_ = nullptr;
     VideoWidget* video_ = nullptr;
     QLabel* statsLabel_ = nullptr;
 
-    repositories::SettingsRepository* settings_ = nullptr;
+    AppRepositories repos_;
+    QImage lastFrame_;
     camera::CameraController controller_;
     QFutureWatcher<std::vector<camera::CameraInfo>> enumerationWatcher_;
     QFutureWatcher<AnalysisOverlay> analysisWatcher_;

@@ -13,7 +13,7 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
 | 2 | `vision/`: contorno, centroide, Position Fixture | ✅ Completada |
 | 3 | `ml/`: embeddings ONNX (EfficientNet-Lite) | ✅ Completada |
 | 4 | `database/`: esquema SQLite | ✅ Completada |
-| 5 | `inspection_editor/`: canvas + herramientas de medición | Pendiente |
+| 5 | `inspection_editor/`: canvas + herramientas de medición | ✅ Completada |
 | 6 | Motor de inspección completo | Pendiente |
 
 ## Compilar y ejecutar (Windows)
@@ -119,3 +119,32 @@ Limitaciones conocidas:
   arquitecturas big-endian (irrelevante para x86/x64).
 - Los repositorios de herramientas e inspecciones llegan con las fases 5/6
   que los consumen; el esquema ya los soporta.
+
+## Fase 5 — `inspection_editor/` (editor de plantilla)
+
+Editor estilo VisionMaster: botón **"Plantilla…"** en la ventana principal
+(usa el último frame de la cámara o una imagen desde archivo —
+`sample_images/pieza_demo.png` sirve para probar sin cámara). Las 5
+herramientas se dibujan por arrastre, se seleccionan/mueven con el mouse, y
+**"Probar sobre esta imagen"** las ejecuta al instante mostrando OK/NG y el
+valor medido para ajustar tolerancias.
+
+- **Caliper** (distancia entre 2 bordes), **Círculo** (diámetro + redondez por
+  ajuste de mínimos cuadrados sobre 36 rayos), **Punto-Línea** (distancia
+  perpendicular), **Borde liso / Edge Flaw** (desviación máxima respecto a la
+  recta ajustada) y **Blob** (conteo por área mínima y polaridad).
+- La geometría se guarda **en coordenadas del fixture** (tabla
+  `InspectionTools`): si la pieza llega rotada, las herramientas se mueven con
+  ella (verificado por test: misma medida ±1.5 px con la pieza a 20° y 125°).
+- La detección de bordes usa perfil promediado + gradiente + refinamiento
+  subpíxel parabólico (precisión típica ±1 px en sintético).
+
+Limitaciones conocidas:
+
+- Canvas demo: crear, seleccionar, mover y eliminar — sin handles de
+  redimensionado ni undo (recrear la herramienta si se quiere otro tamaño).
+- El editor trabaja sobre la pieza "demo" auto-creada; el registro completo de
+  piezas con captura guiada llega en la fase 6.
+- Medidas en píxeles (sin calibración mm, como define el prompt para el demo).
+- La interacción del editor (mouse) se verificó compilando y abriendo la app;
+  el flujo visual completo queda para prueba manual del usuario.

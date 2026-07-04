@@ -11,42 +11,14 @@
 #include "vision/position_fixture.h"
 #include "vision/segmentation.h"
 
+#include "test_helpers.h"
+
 using namespace pci::vision;
+using pci::testhelpers::drawLPiece;
+using pci::testhelpers::kPi;
+using pci::testhelpers::lPieceArea;
 
 namespace {
-
-constexpr double kPi = 3.14159265358979323846;
-
-// Pieza en "L" (asimétrica, orientación no ambigua) dibujada a un ángulo y
-// posición conocidos. El polígono se centra en su centroide analítico (1.5, 1)
-// para que el centroide rasterizado coincida con `center`.
-cv::Mat drawLPiece(cv::Size size, cv::Point2f center, double angleDeg, float scale,
-                   uchar pieceValue, uchar backgroundValue) {
-    cv::Mat image(size, CV_8UC1, cv::Scalar(backgroundValue));
-
-    const std::vector<cv::Point2f> base = {{0.0F, 0.0F}, {4.0F, 0.0F}, {4.0F, 1.0F},
-                                           {1.0F, 1.0F}, {1.0F, 3.0F}, {0.0F, 3.0F}};
-    const cv::Point2f centroid(1.5F, 1.0F);
-    const double rad = angleDeg * kPi / 180.0;
-    const float c = static_cast<float>(std::cos(rad));
-    const float s = static_cast<float>(std::sin(rad));
-
-    std::vector<cv::Point> polygon;
-    polygon.reserve(base.size());
-    for (const auto& p : base) {
-        const cv::Point2f q = (p - centroid) * scale;
-        polygon.emplace_back(cvRound(center.x + q.x * c - q.y * s),
-                             cvRound(center.y + q.x * s + q.y * c));
-    }
-
-    const std::vector<std::vector<cv::Point>> polygons{polygon};
-    cv::fillPoly(image, polygons, cv::Scalar(pieceValue));
-    return image;
-}
-
-double lPieceArea(float scale) {
-    return 6.0 * static_cast<double>(scale) * static_cast<double>(scale);
-}
 
 double angleDiff(double a, double b) {
     double d = a - b;

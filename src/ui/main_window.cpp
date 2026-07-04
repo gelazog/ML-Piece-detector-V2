@@ -2,8 +2,10 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QFileDialog>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QStatusBar>
 #include <QVBoxLayout>
@@ -12,6 +14,8 @@
 #include "camera/camera_enumerator.h"
 #include "camera/frame_utils.h"
 #include "core/logging.h"
+#include "inspection_editor/editor_window.h"
+#include "repositories/piece_repository.h"
 #include "repositories/settings_repository.h"
 #include "ui/video_widget.h"
 #include "vision/pipeline.h"
@@ -48,8 +52,8 @@ namespace {
 const char* const kSettingCameraIndex = "camera_index";
 }
 
-MainWindow::MainWindow(repositories::SettingsRepository* settings, QWidget* parent)
-    : QMainWindow(parent), settings_(settings) {
+MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
+    : QMainWindow(parent), repos_(repositories) {
     setWindowTitle(tr("PC Inspector — Demo de inspección visual"));
     resize(900, 600);
 
@@ -72,6 +76,11 @@ MainWindow::MainWindow(repositories::SettingsRepository* settings, QWidget* pare
     analysisCheck_ = new QCheckBox(tr("Mostrar análisis"), central);
     controlsLayout->addWidget(analysisCheck_);
 
+    editorButton_ = new QPushButton(tr("Plantilla…"), central);
+    editorButton_->setToolTip(
+        tr("Editor de herramientas de medición (usa el último frame o una imagen)"));
+    controlsLayout->addWidget(editorButton_);
+
     rootLayout->addLayout(controlsLayout);
 
     video_ = new VideoWidget(central);
@@ -84,6 +93,7 @@ MainWindow::MainWindow(repositories::SettingsRepository* settings, QWidget* pare
 
     connect(refreshButton_, &QPushButton::clicked, this, &MainWindow::refreshCameras);
     connect(startStopButton_, &QPushButton::clicked, this, &MainWindow::onStartStopClicked);
+    connect(editorButton_, &QPushButton::clicked, this, &MainWindow::onOpenEditorClicked);
     connect(analysisCheck_, &QCheckBox::toggled, this, &MainWindow::onAnalysisToggled);
     connect(&enumerationWatcher_, &QFutureWatcher<std::vector<camera::CameraInfo>>::finished,
             this, &MainWindow::onCamerasEnumerated);
@@ -136,8 +146,8 @@ void MainWindow::onCamerasEnumerated() {
     }
 
     // Restaurar la última cámara elegida por el usuario (si sigue conectada).
-    if (settings_ != nullptr) {
-        const auto saved = settings_->getInt(kSettingCameraIndex, -1);
+    if (repos_.settings != nullptr) {
+        const auto saved = repos_.settings->getInt(kSettingCameraIndex, -1);
         if (saved.isOk() && saved.value() >= 0) {
             for (std::size_t i = 0; i < cameras_.size(); ++i) {
                 if (cameras_[i].index == saved.value()) {
@@ -166,8 +176,9 @@ void MainWindow::onStartStopClicked() {
         return;
     }
 
-    if (settings_ != nullptr) {
-        if (auto saved = settings_->setInt(kSettingCameraIndex, cameras_[comboIndex].index);
+    if (repos_.settings != nullptr) {
+        if (auto saved =
+                repos_.settings->setInt(kSettingCameraIndex, cameras_[comboIndex].index);
             !saved.isOk()) {
             core::logWarning("No se pudo guardar la cámara elegida: " + saved.error().message);
         }
@@ -184,6 +195,7 @@ void MainWindow::onStartStopClicked() {
 
 void MainWindow::onFrame(const QImage& frame) {
     video_->setFrame(frame);
+    lastFrame_ = frame;
     if (streaming_ && analysisCheck_->isChecked()) {
         pendingAnalysisFrame_ = frame;
         maybeStartAnalysis();
@@ -236,6 +248,54 @@ void MainWindow::maybeStartAnalysis() {
     const QImage frame = pendingAnalysisFrame_;
     pendingAnalysisFrame_ = QImage();
     analysisWatcher_.setFuture(QtConcurrent::run(buildOverlay, frame));
+}
+
+// Abre el editor de plantilla con el último frame de la cámara o, si no hay,
+// con una imagen elegida por el usuario (permite probar el editor sin cámara).
+void MainWindow::onOpenEditorClicked() {
+    QImage reference = lastFrame_;
+    if (reference.isNull()) {
+        const QString path = QFileDialog::getOpenFileName(
+            this, tr("Elegir imagen de referencia"), QString(),
+            tr("Imágenes (*.png *.jpg *.jpeg *.bmp)"));
+        if (path.isEmpty()) {
+            return;
+        }
+        reference = QImage(path);
+        if (reference.isNull()) {
+            QMessageBox::warning(this, tr("Imagen inválida"),
+                                 tr("No se pudo cargar la imagen."));
+            return;
+        }
+        reference = reference.convertToFormat(QImage::Format_BGR888);
+    }
+
+    const auto analysis = vision::analyzeFrame(camera::qImageToMat(reference));
+    if (!analysis.isOk()) {
+        QMessageBox::warning(this, tr("Sin pieza detectada"),
+                             tr("No se pudo analizar la imagen: %1")
+                                 .arg(QString::fromStdString(analysis.error().message)));
+        return;
+    }
+
+    // Pieza "demo" hasta que la fase 6 traiga el registro completo de piezas.
+    std::int64_t pieceId = -1;
+    if (repos_.pieces != nullptr) {
+        if (auto created = repos_.pieces->createPiece("demo"); created.isOk()) {
+            pieceId = created.value();
+        } else if (auto pieces = repos_.pieces->listPieces(); pieces.isOk()) {
+            for (const auto& piece : pieces.value()) {
+                if (piece.name == "demo") {
+                    pieceId = piece.id;
+                    break;
+                }
+            }
+        }
+    }
+
+    inspection::EditorWindow editor(reference, analysis.value().fixture, pieceId,
+                                    pieceId >= 0 ? repos_.tools : nullptr, this);
+    editor.exec();
 }
 
 void MainWindow::setControlsEnabled(bool enabled) {
