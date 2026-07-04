@@ -14,7 +14,7 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
 | 3 | `ml/`: embeddings ONNX (EfficientNet-Lite) | ✅ Completada |
 | 4 | `database/`: esquema SQLite | ✅ Completada |
 | 5 | `inspection_editor/`: canvas + herramientas de medición | ✅ Completada |
-| 6 | Motor de inspección completo | Pendiente |
+| 6 | Motor de inspección completo | ✅ Completada |
 
 ## Compilar y ejecutar (Windows)
 
@@ -148,3 +148,30 @@ Limitaciones conocidas:
 - Medidas en píxeles (sin calibración mm, como define el prompt para el demo).
 - La interacción del editor (mouse) se verificó compilando y abriendo la app;
   el flujo visual completo queda para prueba manual del usuario.
+
+## Fase 6 — Motor de inspección completo
+
+El círculo cerrado: **"Registrar pieza…"** abre el registro guiado (captura
+manual/automática desde cámara o imágenes desde archivo; cada captura se
+valida — nitidez, exposición, saturación, pieza completa y dentro del marco —
+y se rechaza con su motivo). **"Inspeccionar"** corre en un hilo de trabajo:
+similitud de embeddings contra la referencia + herramientas geométricas sobre
+la imagen original → veredicto combinado OK/NG con banner, imagen anotada,
+tabla por herramienta, y persistencia (historial + miniatura + estadísticas
+del día en la barra de estado). Tras un OK, **"Actualizar referencia"**
+ejecuta el aprendizaje incremental: nueva versión de la referencia (Welford,
+O(dim)), las anteriores nunca se borran.
+
+Arquitectura: `domain/` (veredicto y criterios de calidad, sin Qt ni OpenCV)
+y `engine/` (orquestador). El extractor de embeddings se inyecta como función:
+los tests end-to-end corren con embeddings sintéticos sin el modelo ONNX, y
+sin modelo la app degrada a inspección solo geométrica (avisado, nunca crash).
+
+Limitaciones conocidas:
+
+- El umbral de anomalía es `simMean − max(3σ, 0.02)` sobre similitud coseno;
+  con referencias de pocas muestras conviene registrar las 30 recomendadas.
+- El registro necesita el modelo ONNX (la referencia SON embeddings); sin
+  modelo el botón lo explica.
+- Flujos de cámara en vivo verificados solo con imágenes sintéticas/archivo en
+  esta PC (sin cámara detectable); pendiente de prueba manual con hardware.

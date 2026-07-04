@@ -15,8 +15,11 @@
 #include "camera/frame_utils.h"
 #include "core/logging.h"
 #include "inspection_editor/editor_window.h"
+#include "repositories/inspection_repository.h"
 #include "repositories/piece_repository.h"
 #include "repositories/settings_repository.h"
+#include "ui/inspection_result_dialog.h"
+#include "ui/registration_wizard.h"
 #include "ui/video_widget.h"
 #include "vision/pipeline.h"
 
@@ -76,12 +79,31 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     analysisCheck_ = new QCheckBox(tr("Mostrar análisis"), central);
     controlsLayout->addWidget(analysisCheck_);
 
+    rootLayout->addLayout(controlsLayout);
+
+    // Segunda fila: flujo de inspección (pieza, registro, plantilla, inspección).
+    auto* inspectionLayout = new QHBoxLayout();
+    inspectionLayout->addWidget(new QLabel(tr("Pieza:"), central));
+
+    pieceCombo_ = new QComboBox(central);
+    pieceCombo_->setMinimumWidth(180);
+    inspectionLayout->addWidget(pieceCombo_, 1);
+
+    registerButton_ = new QPushButton(tr("Registrar pieza…"), central);
+    registerButton_->setToolTip(tr("Registro guiado con capturas validadas"));
+    inspectionLayout->addWidget(registerButton_);
+
     editorButton_ = new QPushButton(tr("Plantilla…"), central);
     editorButton_->setToolTip(
         tr("Editor de herramientas de medición (usa el último frame o una imagen)"));
-    controlsLayout->addWidget(editorButton_);
+    inspectionLayout->addWidget(editorButton_);
 
-    rootLayout->addLayout(controlsLayout);
+    inspectButton_ = new QPushButton(tr("Inspeccionar"), central);
+    inspectButton_->setToolTip(
+        tr("Inspecciona el último frame (o una imagen) contra la pieza elegida"));
+    inspectionLayout->addWidget(inspectButton_);
+
+    rootLayout->addLayout(inspectionLayout);
 
     video_ = new VideoWidget(central);
     rootLayout->addWidget(video_, 1);
@@ -93,7 +115,12 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
 
     connect(refreshButton_, &QPushButton::clicked, this, &MainWindow::refreshCameras);
     connect(startStopButton_, &QPushButton::clicked, this, &MainWindow::onStartStopClicked);
+    connect(registerButton_, &QPushButton::clicked, this, &MainWindow::onRegisterClicked);
     connect(editorButton_, &QPushButton::clicked, this, &MainWindow::onOpenEditorClicked);
+    connect(inspectButton_, &QPushButton::clicked, this, &MainWindow::onInspectClicked);
+    connect(&inspectionWatcher_,
+            &QFutureWatcher<core::Result<engine::InspectionEngine::Outcome>>::finished, this,
+            &MainWindow::onInspectionFinished);
     connect(analysisCheck_, &QCheckBox::toggled, this, &MainWindow::onAnalysisToggled);
     connect(&enumerationWatcher_, &QFutureWatcher<std::vector<camera::CameraInfo>>::finished,
             this, &MainWindow::onCamerasEnumerated);
@@ -107,12 +134,14 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(&controller_, &camera::CameraController::stopped, this, &MainWindow::onStreamStopped);
 
     refreshCameras();
+    loadPieceList();
 }
 
 MainWindow::~MainWindow() {
     controller_.stop();
     enumerationWatcher_.waitForFinished();
     analysisWatcher_.waitForFinished();
+    inspectionWatcher_.waitForFinished();
 }
 
 void MainWindow::refreshCameras() {
@@ -250,24 +279,78 @@ void MainWindow::maybeStartAnalysis() {
     analysisWatcher_.setFuture(QtConcurrent::run(buildOverlay, frame));
 }
 
-// Abre el editor de plantilla con el último frame de la cámara o, si no hay,
-// con una imagen elegida por el usuario (permite probar el editor sin cámara).
+// Último frame de la cámara o imagen elegida por el usuario (los flujos
+// completos deben poder probarse en equipos sin cámara).
+QImage MainWindow::frameOrFile() {
+    if (!lastFrame_.isNull()) {
+        return lastFrame_;
+    }
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Elegir imagen"), QString(), tr("Imágenes (*.png *.jpg *.jpeg *.bmp)"));
+    if (path.isEmpty()) {
+        return {};
+    }
+    QImage image(path);
+    if (image.isNull()) {
+        QMessageBox::warning(this, tr("Imagen inválida"), tr("No se pudo cargar la imagen."));
+        return {};
+    }
+    return image.convertToFormat(QImage::Format_BGR888);
+}
+
+void MainWindow::loadPieceList(std::int64_t selectId) {
+    pieceCombo_->clear();
+    if (repos_.pieces == nullptr) {
+        pieceCombo_->addItem(tr("BD no disponible"));
+        pieceCombo_->setEnabled(false);
+        return;
+    }
+    auto pieces = repos_.pieces->listPieces();
+    if (!pieces.isOk()) {
+        core::logWarning("No se pudieron listar las piezas: " + pieces.error().message);
+        return;
+    }
+    for (const auto& piece : pieces.value()) {
+        pieceCombo_->addItem(QString::fromStdString(piece.name),
+                             QVariant::fromValue<qlonglong>(piece.id));
+        if (piece.id == selectId) {
+            pieceCombo_->setCurrentIndex(pieceCombo_->count() - 1);
+        }
+    }
+    if (pieceCombo_->count() == 0) {
+        pieceCombo_->addItem(tr("(sin piezas registradas)"));
+    }
+}
+
+std::int64_t MainWindow::selectedPieceId() const {
+    const QVariant data = pieceCombo_->currentData();
+    return data.isValid() ? data.toLongLong() : -1;
+}
+
+void MainWindow::onRegisterClicked() {
+    if (repos_.pieces == nullptr) {
+        QMessageBox::warning(this, tr("BD no disponible"),
+                             tr("No se puede registrar sin base de datos."));
+        return;
+    }
+    if (!repos_.embedFn) {
+        QMessageBox::warning(
+            this, tr("Modelo no disponible"),
+            tr("El registro necesita el modelo de embeddings. Ejecuta run.ps1 para "
+               "descargarlo y prepararlo."));
+        return;
+    }
+
+    RegistrationWizard wizard(&controller_, repos_.embedFn, repos_.pieces, this);
+    if (wizard.exec() == QDialog::Accepted) {
+        loadPieceList(wizard.createdPieceId());
+    }
+}
+
 void MainWindow::onOpenEditorClicked() {
-    QImage reference = lastFrame_;
+    const QImage reference = frameOrFile();
     if (reference.isNull()) {
-        const QString path = QFileDialog::getOpenFileName(
-            this, tr("Elegir imagen de referencia"), QString(),
-            tr("Imágenes (*.png *.jpg *.jpeg *.bmp)"));
-        if (path.isEmpty()) {
-            return;
-        }
-        reference = QImage(path);
-        if (reference.isNull()) {
-            QMessageBox::warning(this, tr("Imagen inválida"),
-                                 tr("No se pudo cargar la imagen."));
-            return;
-        }
-        reference = reference.convertToFormat(QImage::Format_BGR888);
+        return;
     }
 
     const auto analysis = vision::analyzeFrame(camera::qImageToMat(reference));
@@ -278,11 +361,12 @@ void MainWindow::onOpenEditorClicked() {
         return;
     }
 
-    // Pieza "demo" hasta que la fase 6 traiga el registro completo de piezas.
-    std::int64_t pieceId = -1;
-    if (repos_.pieces != nullptr) {
+    // Con pieza seleccionada se edita su plantilla; sin piezas, una "demo".
+    std::int64_t pieceId = selectedPieceId();
+    if (pieceId < 0 && repos_.pieces != nullptr) {
         if (auto created = repos_.pieces->createPiece("demo"); created.isOk()) {
             pieceId = created.value();
+            loadPieceList(pieceId);
         } else if (auto pieces = repos_.pieces->listPieces(); pieces.isOk()) {
             for (const auto& piece : pieces.value()) {
                 if (piece.name == "demo") {
@@ -296,6 +380,61 @@ void MainWindow::onOpenEditorClicked() {
     inspection::EditorWindow editor(reference, analysis.value().fixture, pieceId,
                                     pieceId >= 0 ? repos_.tools : nullptr, this);
     editor.exec();
+}
+
+void MainWindow::onInspectClicked() {
+    if (repos_.engine == nullptr) {
+        QMessageBox::warning(this, tr("Motor no disponible"),
+                             tr("La inspección necesita la base de datos."));
+        return;
+    }
+    const std::int64_t pieceId = selectedPieceId();
+    if (pieceId < 0) {
+        QMessageBox::information(this, tr("Sin pieza"),
+                                 tr("Registra o selecciona una pieza primero."));
+        return;
+    }
+    if (inspectionWatcher_.isRunning()) {
+        return;
+    }
+
+    const QImage frame = frameOrFile();
+    if (frame.isNull()) {
+        return;
+    }
+
+    inspectedFrame_ = frame;
+    inspectButton_->setEnabled(false);
+    statusBar()->showMessage(tr("Inspeccionando…"));
+    auto* engine = repos_.engine;
+    inspectionWatcher_.setFuture(QtConcurrent::run([engine, frame, pieceId] {
+        return engine->inspect(camera::qImageToMat(frame), pieceId);
+    }));
+}
+
+void MainWindow::onInspectionFinished() {
+    inspectButton_->setEnabled(true);
+    const auto result = inspectionWatcher_.result();
+    if (!result.isOk()) {
+        statusBar()->showMessage(tr("Inspección fallida"));
+        QMessageBox::warning(this, tr("Inspección fallida"),
+                             QString::fromStdString(result.error().message));
+        return;
+    }
+
+    const std::int64_t pieceId = selectedPieceId();
+    if (repos_.inspections != nullptr) {
+        if (auto stats = repos_.inspections->todayStats(pieceId); stats.isOk()) {
+            statusBar()->showMessage(tr("Hoy: %1 inspecciones — %2 OK / %3 NG")
+                                         .arg(stats.value().total)
+                                         .arg(stats.value().okCount)
+                                         .arg(stats.value().ngCount));
+        }
+    }
+
+    InspectionResultDialog dialog(inspectedFrame_, result.value(), repos_.engine, pieceId,
+                                  this);
+    dialog.exec();
 }
 
 void MainWindow::setControlsEnabled(bool enabled) {

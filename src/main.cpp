@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QFileInfo>
 
 #include <exception>
 #include <memory>
@@ -7,6 +8,9 @@
 #include "core/logging.h"
 #include "database/db.h"
 #include "database/schema.h"
+#include "engine/inspection_engine.h"
+#include "ml/embedding_extractor.h"
+#include "repositories/inspection_repository.h"
 #include "repositories/piece_repository.h"
 #include "repositories/settings_repository.h"
 #include "repositories/tool_repository.h"
@@ -28,6 +32,7 @@ int main(int argc, char* argv[]) {
     std::optional<pci::repositories::SettingsRepository> settings;
     std::optional<pci::repositories::PieceRepository> pieces;
     std::optional<pci::repositories::ToolRepository> tools;
+    std::optional<pci::repositories::InspectionRepository> inspections;
     {
         auto opened = pci::database::Db::open(
             (appDir + QStringLiteral("/pc_inspector.db")).toStdString());
@@ -37,6 +42,7 @@ int main(int argc, char* argv[]) {
                 settings.emplace(*db);
                 pieces.emplace(*db);
                 tools.emplace(*db);
+                inspections.emplace(*db);
             } else {
                 pci::core::logError("Migración de BD fallida: " + migrated.error().message);
                 db.reset();
@@ -46,10 +52,48 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // Modelo de embeddings: junto al exe o en models/ del proyecto. Si falta,
+    // la app degrada a solo herramientas geométricas (avisado en el log).
+    std::unique_ptr<pci::ml::EmbeddingExtractor> extractor;
+    for (const QString& candidate :
+         {appDir + QStringLiteral("/models/embedding_model.onnx"),
+          appDir + QStringLiteral("/../../models/embedding_model.onnx")}) {
+        if (!QFileInfo::exists(candidate)) {
+            continue;
+        }
+        auto created = pci::ml::EmbeddingExtractor::create(
+            QFileInfo(candidate).absoluteFilePath().toStdString());
+        if (created.isOk()) {
+            extractor = std::move(created.value());
+            break;
+        }
+        pci::core::logError(created.error().message);
+    }
+    if (extractor == nullptr) {
+        pci::core::logWarning(
+            "Modelo de embeddings no disponible: inspección solo con herramientas "
+            "(ejecuta run.ps1 para descargarlo)");
+    }
+
+    pci::engine::EmbedFn embedFn;
+    if (extractor != nullptr) {
+        // El extractor no es thread-safe; los diálogos modales garantizan un
+        // solo flujo (registro o inspección) a la vez.
+        embedFn = [&extractor](const cv::Mat& image) { return extractor->extract(image); };
+    }
+
+    std::optional<pci::engine::InspectionEngine> engine;
+    if (pieces.has_value() && tools.has_value() && inspections.has_value()) {
+        engine.emplace(embedFn, pieces.value(), tools.value(), inspections.value());
+    }
+
     pci::ui::AppRepositories repositories;
     repositories.settings = settings.has_value() ? &settings.value() : nullptr;
     repositories.pieces = pieces.has_value() ? &pieces.value() : nullptr;
     repositories.tools = tools.has_value() ? &tools.value() : nullptr;
+    repositories.inspections = inspections.has_value() ? &inspections.value() : nullptr;
+    repositories.engine = engine.has_value() ? &engine.value() : nullptr;
+    repositories.embedFn = embedFn;
 
     try {
         pci::ui::MainWindow window(repositories);
