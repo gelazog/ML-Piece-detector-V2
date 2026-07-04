@@ -16,6 +16,38 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
 | 5 | `inspection_editor/`: canvas + herramientas de medición | ✅ Completada |
 | 6 | Motor de inspección completo | ✅ Completada |
 
+## Flujo de la demo
+
+1. **Setup** (una sola vez): `.\run.ps1` (o doble clic en `run.bat`). El
+   script verifica MSYS2 + 8 paquetes (los instala si faltan), descarga y
+   prepara el modelo de embeddings, compila y lanza la app. Si algo no puede
+   instalarse solo, **dice exactamente qué falta y cómo resolverlo a mano**.
+   Variantes: `-NoRun` (solo preparar), `-Rebuild` (recompilar), `-Test`
+   (correr los 87 tests).
+2. **Cámara**: elige una del combo (se detectan solas) y pulsa **Iniciar**
+   para la vista en vivo. La elegida queda guardada para la próxima vez.
+   *Sin cámara, todos los pasos siguientes aceptan imágenes desde archivo*
+   (`sample_images/pieza_demo.png` sirve para probar).
+3. **Registrar pieza…**: ponle nombre, coloca la pieza sobre fondo
+   contrastante y captura 30 fotos (botón **Capturar**, o marca **Captura
+   automática** y deja que las tome sola; o **Agregar imágenes…** desde
+   archivos). Cada captura se valida — nitidez, exposición, pieza completa —
+   y los rechazos explican el motivo. Al finalizar se guarda la referencia
+   estadística de embeddings (v1).
+4. **Plantilla…**: dibuja herramientas de medición sobre la imagen de
+   referencia arrastrando el mouse (Caliper, Círculo, Punto-Línea, Borde
+   liso, Blob), pulsa **Probar sobre esta imagen** para ver los valores
+   medidos, ajusta las tolerancias min/max con esos valores y **Guardar
+   plantilla**. Las herramientas quedan ancladas a la pieza: la siguen si
+   llega rotada.
+5. **Inspeccionar**: con la pieza seleccionada, captura o elige una imagen.
+   Verás el banner **OK/NG**, la similitud de apariencia vs su umbral, la
+   imagen anotada y la tabla por herramienta. La barra de estado acumula las
+   estadísticas del día.
+6. **Aprender**: si la inspección fue OK, el botón **Actualizar referencia**
+   incorpora ese embedding como una versión nueva de la referencia (las
+   anteriores nunca se borran) — eso es el aprendizaje incremental.
+
 ## Compilar y ejecutar (Windows)
 
 Lo más simple: `.\run.ps1` (o doble clic en `run.bat`) — verifica MSYS2 y los

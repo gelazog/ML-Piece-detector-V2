@@ -1,13 +1,16 @@
 ﻿# run.ps1 — Verifica los requisitos de PC Inspector, instala lo que falte,
-# compila si hace falta y lanza la aplicación.
+# compila si hace falta y lanza la aplicación. Si algo no puede instalarse
+# automáticamente, dice exactamente qué falta y cómo resolverlo a mano.
 #
 # Uso:
 #   .\run.ps1            verifica + compila si falta + ejecuta
 #   .\run.ps1 -Rebuild   fuerza reconfigurar y recompilar
 #   .\run.ps1 -NoRun     solo verifica/instala/compila, sin lanzar la app
+#   .\run.ps1 -Test      además corre la suite de tests (ctest)
 param(
     [switch]$Rebuild,
-    [switch]$NoRun
+    [switch]$NoRun,
+    [switch]$Test
 )
 
 $ErrorActionPreference = 'Stop'
@@ -19,7 +22,7 @@ $bash = Join-Path $msys 'usr\bin\bash.exe'
 $exe = Join-Path $root 'build\release\pc_inspector.exe'
 
 # Requisitos de compilación y ejecución (MSYS2/UCRT64, todo precompilado).
-# onnx aporta la librería C++ con la que se prepara el modelo de embeddings.
+# protobuf aporta el protoc con el que se prepara el modelo de embeddings.
 $packages = @(
     'mingw-w64-ucrt-x86_64-gcc',
     'mingw-w64-ucrt-x86_64-cmake',
@@ -39,17 +42,38 @@ $modelUrl = 'https://github.com/onnx/models/raw/main/validated/vision/classifica
 
 function Write-Step([string]$message) { Write-Host "==> $message" -ForegroundColor Cyan }
 function Write-Ok([string]$message) { Write-Host "    $message" -ForegroundColor Green }
+function Write-Warn([string]$message) { Write-Host "    $message" -ForegroundColor Yellow }
+
+# Corta la ejecución explicando qué falta y cómo resolverlo a mano.
+function Stop-Missing([string]$what, [string[]]$howTo) {
+    Write-Host ''
+    Write-Host "X FALTA: $what" -ForegroundColor Red
+    Write-Host '  Cómo resolverlo manualmente:' -ForegroundColor Red
+    foreach ($line in $howTo) {
+        Write-Host "    $line"
+    }
+    Write-Host ''
+    exit 1
+}
 
 # --- 1. MSYS2 ---
 if (-not (Test-Path $bash)) {
-    Write-Step 'MSYS2 no encontrado: instalando con winget (puede tardar unos minutos)...'
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     if ($null -eq $winget) {
-        throw 'winget no está disponible. Instala MSYS2 manualmente desde https://www.msys2.org y vuelve a ejecutar.'
+        Stop-Missing 'MSYS2 (y no hay winget para instalarlo automáticamente)' @(
+            '1. Descarga el instalador desde https://www.msys2.org',
+            "2. Instálalo en la ruta por defecto ($msys)",
+            '3. Vuelve a ejecutar .\run.ps1'
+        )
     }
+    Write-Step 'MSYS2 no encontrado: instalando con winget (puede tardar unos minutos)...'
     winget install --id MSYS2.MSYS2 --accept-source-agreements --accept-package-agreements --disable-interactivity --silent
     if (-not (Test-Path $bash)) {
-        throw "La instalación de MSYS2 no dejó $msys. Revisa la salida de winget."
+        Stop-Missing 'MSYS2 (winget no lo dejó instalado)' @(
+            '1. Revisa la salida de winget de arriba',
+            '2. O instálalo manualmente desde https://www.msys2.org en C:\msys64',
+            '3. Vuelve a ejecutar .\run.ps1'
+        )
     }
     Write-Step 'Actualizando la base de MSYS2...'
     & $bash -lc 'pacman -Syu --noconfirm'
@@ -68,7 +92,15 @@ $missing = @($packages | Where-Object { $installed -notcontains $_ })
 if ($missing.Count -gt 0) {
     Write-Step "Instalando paquetes faltantes: $($missing -join ', ')"
     & $bash -lc "pacman -S --noconfirm --needed $($missing -join ' ')"
-    if ($LASTEXITCODE -ne 0) { throw 'pacman falló instalando los paquetes.' }
+    if ($LASTEXITCODE -ne 0) {
+        Stop-Missing "paquetes de MSYS2: $($missing -join ', ')" @(
+            '1. Abre la terminal "MSYS2 UCRT64" (C:\msys64\ucrt64.exe)',
+            "2. Ejecuta:  pacman -S --needed $($missing -join ' ')",
+            '   (si pacman dice que la BD está bloqueada y no hay otro pacman',
+            '    corriendo, borra C:\msys64\var\lib\pacman\db.lck)',
+            '3. Vuelve a ejecutar .\run.ps1'
+        )
+    }
 } else {
     Write-Ok "Los $($packages.Count) paquetes requeridos están instalados."
 }
@@ -80,9 +112,20 @@ if ($Rebuild -or -not (Test-Path $exe)) {
     Push-Location $root
     try {
         cmake --preset mingw-release
-        if ($LASTEXITCODE -ne 0) { throw 'Falló la configuración de CMake.' }
+        if ($LASTEXITCODE -ne 0) {
+            Stop-Missing 'configuración de CMake (falló)' @(
+                '1. Revisa los errores de CMake de arriba',
+                '2. Si cambiaste de toolchain, borra la carpeta build\ y reintenta',
+                '3. Manualmente: $env:PATH = "C:\msys64\ucrt64\bin;$env:PATH"; cmake --preset mingw-release'
+            )
+        }
         cmake --build --preset mingw-release
-        if ($LASTEXITCODE -ne 0) { throw 'Falló la compilación.' }
+        if ($LASTEXITCODE -ne 0) {
+            Stop-Missing 'compilación (falló)' @(
+                '1. Revisa los errores del compilador de arriba',
+                '2. Manualmente: $env:PATH = "C:\msys64\ucrt64\bin;$env:PATH"; cmake --build --preset mingw-release'
+            )
+        }
     } finally {
         Pop-Location
     }
@@ -91,30 +134,62 @@ if ($Rebuild -or -not (Test-Path $exe)) {
     Write-Ok "Binario ya compilado: $exe (usa -Rebuild para forzar)"
 }
 
-# --- 4. Modelo de embeddings ---
+# --- 4. Modelo de embeddings (opcional: sin él la app inspecciona solo con
+#        herramientas geométricas, sin comparación de apariencia) ---
 if (-not (Test-Path $model)) {
     if (-not (Test-Path $modelsDir)) { New-Item -ItemType Directory $modelsDir | Out-Null }
-    if (-not (Test-Path $rawModel)) {
+    $downloadOk = Test-Path $rawModel
+    if (-not $downloadOk) {
         Write-Step 'Descargando modelo ONNX (~49 MB)...'
-        Invoke-WebRequest -Uri $modelUrl -OutFile $rawModel -UseBasicParsing
+        try {
+            Invoke-WebRequest -Uri $modelUrl -OutFile $rawModel -UseBasicParsing
+            $downloadOk = $true
+        } catch {
+            Write-Warn 'No se pudo descargar el modelo (¿sin internet?). La app funcionará'
+            Write-Warn 'sin comparación de apariencia. Para habilitarla después:'
+            Write-Warn "  1. Descarga: $modelUrl"
+            Write-Warn "  2. Guárdalo como: $rawModel"
+            Write-Warn '  3. Vuelve a ejecutar .\run.ps1'
+        }
     }
-    Write-Step 'Preparando modelo de embeddings (recorte del clasificador)...'
-    $prepareTool = Join-Path $root 'build\release\prepare_model.exe'
-    if (Test-Path $prepareTool) {
-        & $prepareTool $rawModel $model
-    }
-    if (-not (Test-Path $model)) {
-        Write-Host '    Aviso: no se pudo recortar; se usará el modelo completo (softmax).' -ForegroundColor Yellow
-        Copy-Item $rawModel $model
+    if ($downloadOk) {
+        Write-Step 'Preparando modelo de embeddings (recorte del clasificador)...'
+        $prepareTool = Join-Path $root 'build\release\prepare_model.exe'
+        if (Test-Path $prepareTool) {
+            & $prepareTool $rawModel $model
+        }
+        if (-not (Test-Path $model)) {
+            Write-Warn 'No se pudo recortar; se usará el modelo completo (softmax).'
+            Copy-Item $rawModel $model
+        }
     }
 } else {
     Write-Ok 'Modelo de embeddings presente.'
 }
 
-# --- 5. Ejecutar ---
+# --- 5. Tests (opcional) ---
+if ($Test) {
+    Write-Step 'Ejecutando la suite de tests...'
+    Push-Location $root
+    try {
+        ctest --preset mingw-release
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host 'X Hay tests fallando: revisa la salida de arriba.' -ForegroundColor Red
+            exit 1
+        }
+    } finally {
+        Pop-Location
+    }
+    Write-Ok 'Todos los tests pasaron.'
+}
+
+# --- 6. Ejecutar ---
 if (-not $NoRun) {
     Write-Step 'Lanzando PC Inspector...'
     # El PATH con ucrt64\bin es necesario para las DLL de Qt/OpenCV/onnxruntime.
     Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe)
     Write-Ok 'Aplicación lanzada.'
 }
+
+Write-Host ''
+Write-Ok 'Todo listo.'
