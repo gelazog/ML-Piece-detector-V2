@@ -24,10 +24,13 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    instalarse solo, **dice exactamente qué falta y cómo resolverlo a mano**.
    Variantes: `-NoRun` (solo preparar), `-Rebuild` (recompilar), `-Test`
    (correr los 87 tests).
-2. **Cámara**: elige una del combo (se detectan solas) y pulsa **Iniciar**
-   para la vista en vivo. La elegida queda guardada para la próxima vez.
-   *Sin cámara, todos los pasos siguientes aceptan imágenes desde archivo*
-   (`sample_images/pieza_demo.png` sirve para probar).
+2. **Cámara**: elige una del combo (se detectan solas, probando MSMF y
+   DirectShow) y pulsa **Iniciar** para la vista en vivo. Con **"Detectar
+   pieza (contorno)"** activo (por defecto), el contorno de la pieza, su
+   centro y su eje se dibujan sobre el video en tiempo real. La cámara
+   elegida queda guardada para la próxima vez. *Sin cámara, todos los pasos
+   siguientes aceptan imágenes desde archivo* (`sample_images/pieza_demo.png`
+   sirve para probar).
 3. **Registrar pieza…**: ponle nombre, coloca la pieza sobre fondo
    contrastante y captura 30 fotos (botón **Capturar**, o marca **Captura
    automática** y deja que las tome sola; o **Agregar imágenes…** desde
@@ -72,11 +75,12 @@ incompatible de Windows ML y gana al PATH).
 ## Fase 1 — Limitaciones conocidas
 
 - **Nombres de cámara genéricos**: OpenCV no expone el nombre real del
-  dispositivo, se muestra "Cámara 0/1/…". Resolver requeriría llamar a Media
-  Foundation directamente (posible mejora futura).
-- **Sondeo de cámaras lento**: enumerar por índice con `CAP_MSMF` tarda
-  cientos de ms por índice; se hace en un hilo de trabajo con la UI en estado
-  "Buscando cámaras…" y se corta tras 2 índices vacíos consecutivos.
+  dispositivo, se muestra "Cámara 0 (DirectShow)/…". Resolver requeriría
+  llamar a Media Foundation directamente (posible mejora futura).
+- **Sondeo multi-backend**: cada índice se prueba con MSMF y después con
+  DirectShow (hay drivers, como muchas cámaras integradas, que MSMF no abre).
+  El backend que funcionó queda guardado y es el que usa la captura. El
+  sondeo corre en un hilo de trabajo y se corta tras 2 índices vacíos.
 - **Sin control de backpressure explícito**: si la UI fuera más lenta que la
   cámara los frames encolados crecerían; en la práctica el repintado
   coalescido de Qt lo evita a resoluciones de webcam.

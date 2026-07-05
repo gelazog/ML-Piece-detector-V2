@@ -76,7 +76,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     startStopButton_ = new QPushButton(tr("Iniciar"), central);
     controlsLayout->addWidget(startStopButton_);
 
-    analysisCheck_ = new QCheckBox(tr("Mostrar análisis"), central);
+    analysisCheck_ = new QCheckBox(tr("Detectar pieza (contorno)"), central);
+    // Activo por defecto: el contorno de la pieza se dibuja sobre el video
+    // en vivo apenas inicia la transmisión.
+    analysisCheck_->setChecked(true);
     controlsLayout->addWidget(analysisCheck_);
 
     rootLayout->addLayout(controlsLayout);
@@ -219,7 +222,7 @@ void MainWindow::onStartStopClicked() {
     refreshButton_->setEnabled(false);
     statusBar()->showMessage(tr("Transmitiendo desde %1")
                                  .arg(QString::fromStdString(cameras_[comboIndex].name)));
-    controller_.start(cameras_[comboIndex].index);
+    controller_.start(cameras_[comboIndex]);
 }
 
 void MainWindow::onFrame(const QImage& frame) {

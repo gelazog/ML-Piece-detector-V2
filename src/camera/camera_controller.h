@@ -6,6 +6,8 @@
 #include <atomic>
 #include <thread>
 
+#include "camera/camera_info.h"
+
 namespace pci::camera {
 
 // Captura frames en su propio hilo y entrega copias QImage al hilo de UI por
@@ -20,7 +22,8 @@ public:
 
     [[nodiscard]] bool isRunning() const { return running_.load(); }
 
-    void start(int cameraIndex);
+    // Abre la cámara con el backend con el que fue detectada.
+    void start(const CameraInfo& camera);
     void stop();
 
 signals:
@@ -30,7 +33,7 @@ signals:
     void stopped();
 
 private:
-    void captureLoop(int cameraIndex);
+    void captureLoop(CameraInfo camera);
 
     std::thread worker_;
     std::atomic<bool> running_{false};
