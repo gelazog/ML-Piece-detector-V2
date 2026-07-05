@@ -1,13 +1,17 @@
 #include "ui/main_window.h"
 
+#include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFileDialog>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
 #include <QMessageBox>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QStatusBar>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <QtConcurrent/QtConcurrent>
 
@@ -18,14 +22,18 @@
 #include "repositories/inspection_repository.h"
 #include "repositories/piece_repository.h"
 #include "repositories/settings_repository.h"
+#include "repositories/tool_repository.h"
 #include "ui/inspection_result_dialog.h"
 #include "ui/registration_wizard.h"
-#include "ui/video_widget.h"
 #include "vision/pipeline.h"
 
 namespace pci::ui {
 
 namespace {
+
+const char* const kSettingCameraIndex = "camera_index";
+constexpr int kCaptureTarget = 30;
+constexpr int kCaptureMinimum = 5;
 
 // Corre en un hilo del pool de QtConcurrent; solo toca datos propios.
 AnalysisOverlay buildOverlay(const QImage& frame) {
@@ -49,66 +57,109 @@ AnalysisOverlay buildOverlay(const QImage& frame) {
     return overlay;
 }
 
-}  // namespace
-
-namespace {
-const char* const kSettingCameraIndex = "camera_index";
+QString toolTypeLabel(inspection::ToolType type) {
+    switch (type) {
+        case inspection::ToolType::Caliper: return QStringLiteral("Caliper");
+        case inspection::ToolType::Circle: return QStringLiteral("Círculo");
+        case inspection::ToolType::PointToLine: return QStringLiteral("Punto-Línea");
+        case inspection::ToolType::EdgeFlaw: return QStringLiteral("Borde liso");
+        case inspection::ToolType::Blob: return QStringLiteral("Blob");
+    }
+    return QStringLiteral("?");
 }
+
+}  // namespace
 
 MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     : QMainWindow(parent), repos_(repositories) {
     setWindowTitle(tr("PC Inspector — Demo de inspección visual"));
-    resize(900, 600);
+    resize(1100, 760);
 
     auto* central = new QWidget(this);
     auto* rootLayout = new QVBoxLayout(central);
 
-    auto* controlsLayout = new QHBoxLayout();
-    controlsLayout->addWidget(new QLabel(tr("Cámara:"), central));
-
+    // --- Fila 1: cámara ---
+    auto* cameraLayout = new QHBoxLayout();
+    cameraLayout->addWidget(new QLabel(tr("Cámara:"), central));
     cameraCombo_ = new QComboBox(central);
     cameraCombo_->setMinimumWidth(200);
-    controlsLayout->addWidget(cameraCombo_, 1);
-
+    cameraLayout->addWidget(cameraCombo_, 1);
     refreshButton_ = new QPushButton(tr("Actualizar"), central);
-    controlsLayout->addWidget(refreshButton_);
-
+    cameraLayout->addWidget(refreshButton_);
     startStopButton_ = new QPushButton(tr("Iniciar"), central);
-    controlsLayout->addWidget(startStopButton_);
-
+    cameraLayout->addWidget(startStopButton_);
     analysisCheck_ = new QCheckBox(tr("Detectar pieza (contorno)"), central);
-    // Activo por defecto: el contorno de la pieza se dibuja sobre el video
-    // en vivo apenas inicia la transmisión.
     analysisCheck_->setChecked(true);
-    controlsLayout->addWidget(analysisCheck_);
+    cameraLayout->addWidget(analysisCheck_);
+    rootLayout->addLayout(cameraLayout);
 
-    rootLayout->addLayout(controlsLayout);
-
-    // Segunda fila: flujo de inspección (pieza, registro, plantilla, inspección).
-    auto* inspectionLayout = new QHBoxLayout();
-    inspectionLayout->addWidget(new QLabel(tr("Pieza:"), central));
-
+    // --- Fila 2: pieza y flujo ---
+    auto* pieceLayout = new QHBoxLayout();
+    pieceLayout->addWidget(new QLabel(tr("Pieza:"), central));
     pieceCombo_ = new QComboBox(central);
-    pieceCombo_->setMinimumWidth(180);
-    inspectionLayout->addWidget(pieceCombo_, 1);
+    pieceCombo_->setMinimumWidth(160);
+    pieceLayout->addWidget(pieceCombo_, 1);
 
-    registerButton_ = new QPushButton(tr("Registrar pieza…"), central);
-    registerButton_->setToolTip(tr("Registro guiado con capturas validadas"));
-    inspectionLayout->addWidget(registerButton_);
+    registerLiveButton_ = new QPushButton(tr("Registrar y activar"), central);
+    registerLiveButton_->setToolTip(
+        tr("Captura automáticamente %1 referencias de la pieza en el video, guarda las "
+           "herramientas dibujadas y arranca la auto-inspección")
+            .arg(kCaptureTarget));
+    pieceLayout->addWidget(registerLiveButton_);
+
+    autoInspectButton_ = new QPushButton(tr("Auto-inspección"), central);
+    autoInspectButton_->setCheckable(true);
+    autoInspectButton_->setToolTip(
+        tr("Inspecciona continuamente el video contra la pieza seleccionada"));
+    pieceLayout->addWidget(autoInspectButton_);
+
+    registerWizardButton_ = new QPushButton(tr("Registrar (asistente)…"), central);
+    registerWizardButton_->setToolTip(tr("Registro paso a paso; admite imágenes de archivo"));
+    pieceLayout->addWidget(registerWizardButton_);
 
     editorButton_ = new QPushButton(tr("Plantilla…"), central);
-    editorButton_->setToolTip(
-        tr("Editor de herramientas de medición (usa el último frame o una imagen)"));
-    inspectionLayout->addWidget(editorButton_);
+    editorButton_->setToolTip(tr("Editor sobre imagen fija: ajustar tolerancias y geometrías"));
+    pieceLayout->addWidget(editorButton_);
 
     inspectButton_ = new QPushButton(tr("Inspeccionar"), central);
-    inspectButton_->setToolTip(
-        tr("Inspecciona el último frame (o una imagen) contra la pieza elegida"));
-    inspectionLayout->addWidget(inspectButton_);
+    inspectButton_->setToolTip(tr("Inspección única con reporte detallado"));
+    pieceLayout->addWidget(inspectButton_);
+    rootLayout->addLayout(pieceLayout);
 
-    rootLayout->addLayout(inspectionLayout);
+    // --- Fila 3: herramientas para dibujar sobre el video en vivo ---
+    auto* toolsLayout = new QHBoxLayout();
+    toolsLayout->addWidget(new QLabel(tr("Dibujar:"), central));
+    toolModeGroup_ = new QButtonGroup(this);
+    toolModeGroup_->setExclusive(true);
+    auto addMode = [this, central, toolsLayout](const QString& text, int id) {
+        auto* button = new QToolButton(central);
+        button->setText(text);
+        button->setCheckable(true);
+        toolModeGroup_->addButton(button, id);
+        toolsLayout->addWidget(button);
+        return button;
+    };
+    addMode(tr("Mover/Elegir"), -1)->setChecked(true);
+    for (const auto type :
+         {inspection::ToolType::Caliper, inspection::ToolType::Circle,
+          inspection::ToolType::PointToLine, inspection::ToolType::EdgeFlaw,
+          inspection::ToolType::Blob}) {
+        addMode(toolTypeLabel(type), static_cast<int>(type));
+    }
+    deleteToolButton_ = new QPushButton(tr("Borrar herramienta"), central);
+    toolsLayout->addWidget(deleteToolButton_);
+    toolsLayout->addStretch(1);
+    rootLayout->addLayout(toolsLayout);
 
-    video_ = new VideoWidget(central);
+    // Banner de veredicto para la auto-inspección.
+    verdictBanner_ = new QLabel(central);
+    verdictBanner_->setAlignment(Qt::AlignCenter);
+    verdictBanner_->setMinimumHeight(36);
+    verdictBanner_->setVisible(false);
+    rootLayout->addWidget(verdictBanner_);
+
+    video_ = new inspection::EditorCanvas(central);
+    video_->setTools(&liveTools_);
     rootLayout->addWidget(video_, 1);
 
     setCentralWidget(central);
@@ -118,13 +169,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
 
     connect(refreshButton_, &QPushButton::clicked, this, &MainWindow::refreshCameras);
     connect(startStopButton_, &QPushButton::clicked, this, &MainWindow::onStartStopClicked);
-    connect(registerButton_, &QPushButton::clicked, this, &MainWindow::onRegisterClicked);
-    connect(editorButton_, &QPushButton::clicked, this, &MainWindow::onOpenEditorClicked);
-    connect(inspectButton_, &QPushButton::clicked, this, &MainWindow::onInspectClicked);
-    connect(&inspectionWatcher_,
-            &QFutureWatcher<core::Result<engine::InspectionEngine::Outcome>>::finished, this,
-            &MainWindow::onInspectionFinished);
-    connect(analysisCheck_, &QCheckBox::toggled, this, &MainWindow::onAnalysisToggled);
+    connect(analysisCheck_, &QCheckBox::toggled, video_,
+            &inspection::EditorCanvas::setLiveContourVisible);
     connect(&enumerationWatcher_, &QFutureWatcher<std::vector<camera::CameraInfo>>::finished,
             this, &MainWindow::onCamerasEnumerated);
     connect(&analysisWatcher_, &QFutureWatcher<AnalysisOverlay>::finished, this,
@@ -136,16 +182,49 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             &MainWindow::onCameraError);
     connect(&controller_, &camera::CameraController::stopped, this, &MainWindow::onStreamStopped);
 
+    connect(toolModeGroup_, &QButtonGroup::idClicked, this, &MainWindow::onToolModeChanged);
+    connect(video_, &inspection::EditorCanvas::toolCreated, this,
+            &MainWindow::onLiveToolCreated);
+    connect(deleteToolButton_, &QPushButton::clicked, this, &MainWindow::onDeleteToolClicked);
+    connect(pieceCombo_, &QComboBox::currentIndexChanged, this,
+            &MainWindow::onPieceSelectionChanged);
+
+    connect(registerLiveButton_, &QPushButton::clicked, this,
+            &MainWindow::onRegisterLiveClicked);
+    connect(&captureTimer_, &QTimer::timeout, this, &MainWindow::onCaptureTick);
+    connect(&captureWatcher_,
+            &QFutureWatcher<
+                core::Result<engine::RegistrationSession::SampleFeedback>>::finished,
+            this, &MainWindow::onCaptureProcessed);
+    connect(autoInspectButton_, &QPushButton::toggled, this, &MainWindow::onAutoToggled);
+    connect(&autoTimer_, &QTimer::timeout, this, &MainWindow::onAutoTick);
+
+    connect(registerWizardButton_, &QPushButton::clicked, this,
+            &MainWindow::onRegisterWizardClicked);
+    connect(editorButton_, &QPushButton::clicked, this, &MainWindow::onOpenEditorClicked);
+    connect(inspectButton_, &QPushButton::clicked, this, &MainWindow::onInspectClicked);
+    connect(&inspectionWatcher_,
+            &QFutureWatcher<core::Result<engine::InspectionEngine::Outcome>>::finished, this,
+            &MainWindow::onInspectionFinished);
+
+    captureTimer_.setInterval(350);
+    autoTimer_.setInterval(1000);
+
     refreshCameras();
     loadPieceList();
 }
 
 MainWindow::~MainWindow() {
+    autoTimer_.stop();
+    captureTimer_.stop();
     controller_.stop();
     enumerationWatcher_.waitForFinished();
     analysisWatcher_.waitForFinished();
     inspectionWatcher_.waitForFinished();
+    captureWatcher_.waitForFinished();
 }
+
+// --- Cámara y análisis -----------------------------------------------------
 
 void MainWindow::refreshCameras() {
     if (enumerationWatcher_.isRunning()) {
@@ -228,10 +307,34 @@ void MainWindow::onStartStopClicked() {
 void MainWindow::onFrame(const QImage& frame) {
     video_->setFrame(frame);
     lastFrame_ = frame;
-    if (streaming_ && analysisCheck_->isChecked()) {
+    if (streaming_) {
+        // El análisis corre siempre: da el fixture que ancla el dibujo en vivo.
         pendingAnalysisFrame_ = frame;
         maybeStartAnalysis();
     }
+}
+
+void MainWindow::onAnalysisFinished() {
+    const AnalysisOverlay overlay = analysisWatcher_.result();
+    if (streaming_) {
+        const QString status = overlay.valid
+                                   ? tr("Pieza: %1°").arg(overlay.angleDeg, 0, 'f', 1)
+                                   : overlay.error;
+        video_->setLivePiece(overlay.valid, overlay.contour, overlay.centroid,
+                             overlay.angleDeg, status);
+        maybeStartAnalysis();
+    }
+}
+
+// Como máximo un análisis en vuelo; si la visión va más lenta que la cámara,
+// se procesan solo los frames más recientes (se descartan los intermedios).
+void MainWindow::maybeStartAnalysis() {
+    if (analysisWatcher_.isRunning() || pendingAnalysisFrame_.isNull()) {
+        return;
+    }
+    const QImage frame = pendingAnalysisFrame_;
+    pendingAnalysisFrame_ = QImage();
+    analysisWatcher_.setFuture(QtConcurrent::run(buildOverlay, frame));
 }
 
 void MainWindow::onStats(double fps, int width, int height) {
@@ -248,39 +351,311 @@ void MainWindow::onCameraError(const QString& message) {
 
 void MainWindow::onStreamStopped() {
     streaming_ = false;
+    autoInspectButton_->setChecked(false);
+    stopLiveCapture();
     startStopButton_->setText(tr("Iniciar"));
     startStopButton_->setEnabled(!cameras_.empty());
     cameraCombo_->setEnabled(true);
     refreshButton_->setEnabled(true);
     statsLabel_->clear();
     pendingAnalysisFrame_ = QImage();
-    video_->clear();
+    lastFrame_ = QImage();
+    video_->clearLive();
 }
 
-void MainWindow::onAnalysisToggled(bool enabled) {
-    if (!enabled) {
-        pendingAnalysisFrame_ = QImage();
-        video_->clearOverlay();
-    }
+void MainWindow::setControlsEnabled(bool enabled) {
+    cameraCombo_->setEnabled(enabled);
+    refreshButton_->setEnabled(enabled);
+    startStopButton_->setEnabled(enabled && !cameras_.empty());
 }
 
-void MainWindow::onAnalysisFinished() {
-    if (streaming_ && analysisCheck_->isChecked()) {
-        video_->setOverlay(analysisWatcher_.result());
-        maybeStartAnalysis();
-    }
+// --- Herramientas dibujadas sobre el video ---------------------------------
+
+void MainWindow::onToolModeChanged(int id) {
+    video_->setCreateType(id < 0 ? std::nullopt
+                                 : std::optional<inspection::ToolType>(
+                                       static_cast<inspection::ToolType>(id)));
 }
 
-// Como máximo un análisis en vuelo; si la visión va más lenta que la cámara,
-// se procesan solo los frames más recientes (se descartan los intermedios).
-void MainWindow::maybeStartAnalysis() {
-    if (analysisWatcher_.isRunning() || pendingAnalysisFrame_.isNull()) {
+void MainWindow::onLiveToolCreated(const inspection::ToolGeometry& geometry) {
+    inspection::EditedTool tool;
+    tool.geometry = geometry;
+    tool.config.type = inspection::typeOf(geometry);
+    ++toolNameCounter_;
+    tool.config.name = (toolTypeLabel(tool.config.type) +
+                        QStringLiteral(" %1").arg(toolNameCounter_))
+                           .toStdString();
+    // Tolerancias abiertas por defecto: se afinan en Plantilla… tras "Probar".
+    tool.config.toleranceMin = 0.0;
+    tool.config.toleranceMax = 100000.0;
+    liveTools_.push_back(std::move(tool));
+
+    video_->clearResults();
+    video_->setSelectedIndex(static_cast<int>(liveTools_.size()) - 1);
+    statusBar()->showMessage(
+        tr("%1 creada — ajusta tolerancias en Plantilla… cuando registres la pieza")
+            .arg(QString::fromStdString(liveTools_.back().config.name)));
+}
+
+void MainWindow::onDeleteToolClicked() {
+    const int index = video_->selectedIndex();
+    if (index < 0 || index >= static_cast<int>(liveTools_.size())) {
         return;
     }
-    const QImage frame = pendingAnalysisFrame_;
-    pendingAnalysisFrame_ = QImage();
-    analysisWatcher_.setFuture(QtConcurrent::run(buildOverlay, frame));
+    const auto& tool = liveTools_[static_cast<std::size_t>(index)];
+    if (tool.config.id >= 0 && repos_.tools != nullptr) {
+        if (auto removed = repos_.tools->remove(tool.config.id); !removed.isOk()) {
+            statusBar()->showMessage(QString::fromStdString(removed.error().message));
+            return;
+        }
+    }
+    liveTools_.erase(liveTools_.begin() + index);
+    video_->setSelectedIndex(-1);
+    video_->clearResults();
 }
+
+void MainWindow::onPieceSelectionChanged(int index) {
+    Q_UNUSED(index);
+    autoInspectButton_->setChecked(false);
+    loadToolsForSelectedPiece();
+}
+
+void MainWindow::loadToolsForSelectedPiece() {
+    liveTools_.clear();
+    video_->setSelectedIndex(-1);
+    video_->clearResults();
+
+    const std::int64_t pieceId = selectedPieceId();
+    if (pieceId < 0 || repos_.tools == nullptr) {
+        video_->update();
+        return;
+    }
+    auto listed = repos_.tools->listForPiece(pieceId);
+    if (!listed.isOk()) {
+        core::logWarning("No se pudieron cargar las herramientas: " + listed.error().message);
+        return;
+    }
+    for (auto& config : listed.value()) {
+        auto geometry = inspection::geometryFromJson(config.type, config.geometryJson);
+        if (!geometry.isOk()) {
+            core::logWarning("Herramienta '" + config.name +
+                             "' con geometría corrupta: " + geometry.error().message);
+            continue;
+        }
+        inspection::EditedTool tool;
+        tool.config = std::move(config);
+        tool.geometry = std::move(geometry.value());
+        liveTools_.push_back(std::move(tool));
+    }
+    video_->update();
+}
+
+// --- Registro en vivo -------------------------------------------------------
+
+void MainWindow::onRegisterLiveClicked() {
+    if (!streaming_ || lastFrame_.isNull()) {
+        QMessageBox::information(this, tr("Sin video"),
+                                 tr("Inicia la cámara primero (o usa el asistente para "
+                                    "registrar desde imágenes)."));
+        return;
+    }
+    if (repos_.pieces == nullptr || !repos_.embedFn) {
+        QMessageBox::warning(this, tr("No disponible"),
+                             tr("El registro necesita la base de datos y el modelo de "
+                                "embeddings (ejecuta run.ps1)."));
+        return;
+    }
+
+    const QString name = QInputDialog::getText(this, tr("Registrar pieza"),
+                                               tr("Nombre de la pieza:"));
+    if (name.trimmed().isEmpty()) {
+        return;
+    }
+    pendingPieceName_ = name.trimmed();
+
+    liveSession_ = std::make_shared<engine::RegistrationSession>(repos_.embedFn,
+                                                                 kCaptureTarget,
+                                                                 kCaptureMinimum);
+    captureProgress_ = new QProgressDialog(
+        tr("Capturando referencias de '%1'…\nMantén la pieza a la vista.")
+            .arg(pendingPieceName_),
+        tr("Cancelar"), 0, kCaptureTarget, this);
+    captureProgress_->setWindowModality(Qt::WindowModal);
+    captureProgress_->setMinimumDuration(0);
+    captureProgress_->setValue(0);
+    connect(captureProgress_, &QProgressDialog::canceled, this,
+            &MainWindow::onCaptureCanceled);
+
+    captureTimer_.start();
+}
+
+void MainWindow::onCaptureTick() {
+    if (captureWatcher_.isRunning() || lastFrame_.isNull() || liveSession_ == nullptr) {
+        return;
+    }
+    // shared_ptr capturado: la sesión sobrevive aunque el usuario cancele
+    // mientras un frame sigue procesándose en el pool.
+    auto session = liveSession_;
+    const QImage frame = lastFrame_;
+    captureWatcher_.setFuture(QtConcurrent::run(
+        [session, frame] { return session->addFrame(camera::qImageToMat(frame)); }));
+}
+
+void MainWindow::onCaptureProcessed() {
+    if (liveSession_ == nullptr || captureProgress_ == nullptr) {
+        return;  // registro cancelado mientras se procesaba un frame
+    }
+    const auto result = captureWatcher_.result();
+    if (!result.isOk()) {
+        stopLiveCapture();
+        QMessageBox::warning(this, tr("Registro fallido"),
+                             QString::fromStdString(result.error().message));
+        return;
+    }
+
+    const auto& feedback = result.value();
+    captureProgress_->setValue(feedback.count);
+    if (!feedback.accepted) {
+        captureProgress_->setLabelText(
+            tr("Capturando referencias de '%1'…\nRechazada: %2")
+                .arg(pendingPieceName_, QString::fromStdString(feedback.reason)));
+    } else {
+        captureProgress_->setLabelText(tr("Capturando referencias de '%1'…\n%2 de %3")
+                                           .arg(pendingPieceName_)
+                                           .arg(feedback.count)
+                                           .arg(kCaptureTarget));
+    }
+
+    if (feedback.count >= kCaptureTarget) {
+        finishLiveRegistration();
+    }
+}
+
+void MainWindow::onCaptureCanceled() {
+    stopLiveCapture();
+    statusBar()->showMessage(tr("Registro cancelado."));
+}
+
+void MainWindow::stopLiveCapture() {
+    captureTimer_.stop();
+    liveSession_.reset();
+    if (captureProgress_ != nullptr) {
+        captureProgress_->deleteLater();
+        captureProgress_ = nullptr;
+    }
+}
+
+void MainWindow::finishLiveRegistration() {
+    captureTimer_.stop();
+    auto session = liveSession_;
+
+    auto reference = session->finish();
+    if (!reference.isOk()) {
+        stopLiveCapture();
+        QMessageBox::warning(this, tr("Registro incompleto"),
+                             QString::fromStdString(reference.error().message));
+        return;
+    }
+    auto pieceId = repos_.pieces->createPiece(pendingPieceName_.toStdString());
+    if (!pieceId.isOk()) {
+        stopLiveCapture();
+        QMessageBox::warning(this, tr("No se pudo crear la pieza"),
+                             QString::fromStdString(pieceId.error().message));
+        return;
+    }
+    if (auto saved = repos_.pieces->saveReference(pieceId.value(), reference.value());
+        !saved.isOk()) {
+        stopLiveCapture();
+        QMessageBox::warning(this, tr("No se pudo guardar la referencia"),
+                             QString::fromStdString(saved.error().message));
+        return;
+    }
+
+    // Persistir las herramientas dibujadas sobre el video.
+    int toolErrors = 0;
+    if (repos_.tools != nullptr) {
+        for (auto& tool : liveTools_) {
+            tool.config.geometryJson = inspection::toJson(tool.geometry);
+            if (auto saved = repos_.tools->save(pieceId.value(), tool.config);
+                saved.isOk()) {
+                tool.config.id = saved.value();
+            } else {
+                ++toolErrors;
+                core::logError(saved.error().message);
+            }
+        }
+    }
+
+    stopLiveCapture();
+    // Seleccionar la pieza nueva sin recargar las herramientas recién guardadas.
+    {
+        QSignalBlocker blocker(pieceCombo_);
+        loadPieceList(pieceId.value());
+    }
+
+    statusBar()->showMessage(
+        toolErrors == 0
+            ? tr("'%1' registrada con %2 herramienta(s). Auto-inspección activa.")
+                  .arg(pendingPieceName_)
+                  .arg(liveTools_.size())
+            : tr("'%1' registrada, pero %2 herramienta(s) no se guardaron (ver log).")
+                  .arg(pendingPieceName_)
+                  .arg(toolErrors));
+
+    autoInspectButton_->setChecked(true);
+}
+
+// --- Auto-inspección ---------------------------------------------------------
+
+void MainWindow::onAutoToggled(bool enabled) {
+    if (enabled) {
+        if (repos_.engine == nullptr || selectedPieceId() < 0 || !streaming_) {
+            QMessageBox::information(
+                this, tr("Auto-inspección"),
+                tr("Necesitas video en vivo y una pieza registrada seleccionada."));
+            autoInspectButton_->setChecked(false);
+            return;
+        }
+        verdictBanner_->setStyleSheet(
+            QStringLiteral("background:#444; color:white; font-size:16px; font-weight:bold;"));
+        verdictBanner_->setText(tr("Auto-inspección en marcha…"));
+        verdictBanner_->setVisible(true);
+        autoTimer_.start();
+    } else {
+        autoTimer_.stop();
+        verdictBanner_->setVisible(false);
+        video_->clearResults();
+    }
+}
+
+void MainWindow::onAutoTick() {
+    if (inspectionWatcher_.isRunning() || lastFrame_.isNull()) {
+        return;
+    }
+    const std::int64_t pieceId = selectedPieceId();
+    if (pieceId < 0) {
+        autoInspectButton_->setChecked(false);
+        return;
+    }
+    inspectedFrame_ = lastFrame_;
+    auto* engine = repos_.engine;
+    const QImage frame = inspectedFrame_;
+    inspectionWatcher_.setFuture(QtConcurrent::run(
+        [engine, frame, pieceId] { return engine->inspect(camera::qImageToMat(frame), pieceId); }));
+}
+
+void MainWindow::showLiveVerdict(const engine::InspectionEngine::Outcome& outcome) {
+    verdictBanner_->setStyleSheet(
+        outcome.verdict.ok
+            ? QStringLiteral(
+                  "background:#1e6f2f; color:white; font-size:16px; font-weight:bold;")
+            : QStringLiteral(
+                  "background:#8f1f1f; color:white; font-size:16px; font-weight:bold;"));
+    verdictBanner_->setText(QString::fromStdString(outcome.verdict.summary));
+    video_->setResults(outcome.toolResults);
+}
+
+// --- Flujos con diálogo -------------------------------------------------------
 
 // Último frame de la cámara o imagen elegida por el usuario (los flujos
 // completos deben poder probarse en equipos sin cámara).
@@ -330,7 +705,7 @@ std::int64_t MainWindow::selectedPieceId() const {
     return data.isValid() ? data.toLongLong() : -1;
 }
 
-void MainWindow::onRegisterClicked() {
+void MainWindow::onRegisterWizardClicked() {
     if (repos_.pieces == nullptr) {
         QMessageBox::warning(this, tr("BD no disponible"),
                              tr("No se puede registrar sin base de datos."));
@@ -383,6 +758,8 @@ void MainWindow::onOpenEditorClicked() {
     inspection::EditorWindow editor(reference, analysis.value().fixture, pieceId,
                                     pieceId >= 0 ? repos_.tools : nullptr, this);
     editor.exec();
+    // Reflejar en el video los cambios hechos en el editor.
+    loadToolsForSelectedPiece();
 }
 
 void MainWindow::onInspectClicked() {
@@ -418,10 +795,18 @@ void MainWindow::onInspectClicked() {
 void MainWindow::onInspectionFinished() {
     inspectButton_->setEnabled(true);
     const auto result = inspectionWatcher_.result();
+    const bool autoMode = autoInspectButton_->isChecked();
+
     if (!result.isOk()) {
-        statusBar()->showMessage(tr("Inspección fallida"));
-        QMessageBox::warning(this, tr("Inspección fallida"),
-                             QString::fromStdString(result.error().message));
+        if (autoMode) {
+            verdictBanner_->setStyleSheet(QStringLiteral(
+                "background:#444; color:#ffb066; font-size:16px; font-weight:bold;"));
+            verdictBanner_->setText(QString::fromStdString(result.error().message));
+        } else {
+            statusBar()->showMessage(tr("Inspección fallida"));
+            QMessageBox::warning(this, tr("Inspección fallida"),
+                                 QString::fromStdString(result.error().message));
+        }
         return;
     }
 
@@ -435,15 +820,14 @@ void MainWindow::onInspectionFinished() {
         }
     }
 
+    if (autoMode) {
+        showLiveVerdict(result.value());
+        return;
+    }
+
     InspectionResultDialog dialog(inspectedFrame_, result.value(), repos_.engine, pieceId,
                                   this);
     dialog.exec();
-}
-
-void MainWindow::setControlsEnabled(bool enabled) {
-    cameraCombo_->setEnabled(enabled);
-    refreshButton_->setEnabled(enabled);
-    startStopButton_->setEnabled(enabled && !cameras_.empty());
 }
 
 }  // namespace pci::ui

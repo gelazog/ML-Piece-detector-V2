@@ -73,6 +73,43 @@ QSize EditorCanvas::sizeHint() const {
 void EditorCanvas::setScene(const QImage& image, const vision::Fixture& fixture) {
     image_ = image;
     fixture_ = fixture;
+    liveMode_ = false;
+    hasFixture_ = true;
+    pieceVisible_ = true;
+    update();
+}
+
+void EditorCanvas::setFrame(const QImage& frame) {
+    image_ = frame;
+    liveMode_ = true;
+    update();
+}
+
+void EditorCanvas::setLivePiece(bool found, const QPolygonF& contour, const QPointF& centroid,
+                                double angleDeg, const QString& statusText) {
+    liveMode_ = true;
+    pieceVisible_ = found;
+    liveStatus_ = statusText;
+    if (found) {
+        fixture_.origin = {static_cast<float>(centroid.x()), static_cast<float>(centroid.y())};
+        fixture_.angleDeg = angleDeg;
+        hasFixture_ = true;
+        liveContour_ = contour;
+        liveCentroid_ = centroid;
+    }
+    update();
+}
+
+void EditorCanvas::setLiveContourVisible(bool visible) {
+    showLiveContour_ = visible;
+    update();
+}
+
+void EditorCanvas::clearLive() {
+    image_ = QImage();
+    pieceVisible_ = false;
+    liveStatus_.clear();
+    results_.clear();
     update();
 }
 
@@ -179,8 +216,14 @@ int EditorCanvas::hitTest(const cv::Point2f& p) const {
     return best;
 }
 
+// En vivo solo se puede dibujar/editar con la pieza detectada en el frame
+// actual: la geometría se guarda relativa a su fixture.
+bool EditorCanvas::interactive() const {
+    return !image_.isNull() && hasFixture_ && (!liveMode_ || pieceVisible_);
+}
+
 void EditorCanvas::mousePressEvent(QMouseEvent* event) {
-    if (event->button() != Qt::LeftButton || image_.isNull()) {
+    if (event->button() != Qt::LeftButton || !interactive()) {
         return;
     }
     const cv::Point2f p = widgetToImage(event->position());
@@ -383,6 +426,49 @@ void EditorCanvas::paintCreationPreview(QPainter& painter) const {
     }
 }
 
+void EditorCanvas::paintLiveOverlay(QPainter& painter) const {
+    if (!liveMode_) {
+        return;
+    }
+
+    if (pieceVisible_ && showLiveContour_ && !liveContour_.isEmpty()) {
+        painter.save();
+        const QRectF target = targetRect();
+        painter.translate(target.topLeft());
+        painter.scale(target.width() / image_.width(), target.height() / image_.height());
+
+        QPen contourPen(QColor(0, 220, 0));
+        contourPen.setWidthF(2.0);
+        contourPen.setCosmetic(true);
+        painter.setPen(contourPen);
+        painter.drawPolygon(liveContour_);
+
+        QPen axisPen(QColor(0, 200, 255));
+        axisPen.setWidthF(2.0);
+        axisPen.setCosmetic(true);
+        painter.setPen(axisPen);
+        const double rad = fixture_.angleDeg * 3.14159265358979323846 / 180.0;
+        const double len = image_.width() * 0.12;
+        painter.drawLine(liveCentroid_,
+                         liveCentroid_ + QPointF(std::cos(rad) * len, std::sin(rad) * len));
+
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(255, 60, 60));
+        painter.drawEllipse(liveCentroid_, 4.0, 4.0);
+        painter.restore();
+    }
+
+    if (!liveStatus_.isEmpty()) {
+        const QRectF target = targetRect();
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(0, 0, 0, 160));
+        const QRectF textRect(target.left() + 8, target.top() + 8, 280, 24);
+        painter.drawRect(textRect);
+        painter.setPen(pieceVisible_ ? QColor(0, 220, 0) : QColor(255, 150, 100));
+        painter.drawText(textRect.adjusted(6, 0, 0, 0), Qt::AlignVCenter, liveStatus_);
+    }
+}
+
 void EditorCanvas::paintEvent(QPaintEvent* event) {
     Q_UNUSED(event);
     QPainter painter(this);
@@ -390,13 +476,16 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
 
     if (image_.isNull()) {
         painter.setPen(Qt::gray);
-        painter.drawText(rect(), Qt::AlignCenter, tr("Sin imagen de referencia"));
+        painter.drawText(rect(), Qt::AlignCenter,
+                         liveMode_ ? tr("Sin señal") : tr("Sin imagen de referencia"));
         return;
     }
 
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
     painter.drawImage(targetRect(), image_);
+
+    paintLiveOverlay(painter);
 
     if (tools_ != nullptr) {
         for (int i = 0; i < static_cast<int>(tools_->size()); ++i) {

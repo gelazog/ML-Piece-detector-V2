@@ -21,9 +21,12 @@ struct EditedTool {
     bool deleted = false;
 };
 
-// Canvas del editor: pinta la imagen de referencia (aspect-fit) y las
-// herramientas encima; crea por arrastre, selecciona por clic y mueve
-// arrastrando la selección. Alcance demo: sin handles de redimensionado.
+// Canvas del editor: pinta la imagen (aspect-fit) y las herramientas encima;
+// crea por arrastre, selecciona por clic y mueve arrastrando la selección.
+// Funciona en dos modos: imagen fija (diálogo del editor, setScene) o video
+// en vivo (ventana principal, setFrame + setLivePiece): en vivo el fixture se
+// actualiza con cada análisis y las herramientas siguen a la pieza en tiempo
+// real. Alcance demo: sin handles de redimensionado.
 class EditorCanvas : public QWidget {
     Q_OBJECT
 
@@ -37,6 +40,16 @@ public:
     void clearResults();
     void setSelectedIndex(int index);
     [[nodiscard]] int selectedIndex() const { return selected_; }
+
+    // --- modo vivo ---
+    void setFrame(const QImage& frame);  // solo la imagen; conserva el fixture
+    // Actualiza el fixture con el análisis del frame y el overlay de la pieza.
+    // Si found es false se conserva el último fixture (las herramientas no
+    // saltan) pero se bloquea el dibujo hasta volver a detectar la pieza.
+    void setLivePiece(bool found, const QPolygonF& contour, const QPointF& centroid,
+                      double angleDeg, const QString& statusText);
+    void setLiveContourVisible(bool visible);
+    void clearLive();  // fin de la transmisión: "Sin señal"
 
     [[nodiscard]] QSize sizeHint() const override;
 
@@ -61,6 +74,8 @@ private:
     void paintTool(QPainter& painter, const EditedTool& tool, bool selected) const;
     void paintResults(QPainter& painter) const;
     void paintCreationPreview(QPainter& painter) const;
+    void paintLiveOverlay(QPainter& painter) const;
+    [[nodiscard]] bool interactive() const;
 
     QImage image_;
     vision::Fixture fixture_;
@@ -73,6 +88,15 @@ private:
     bool moving_ = false;
     cv::Point2f dragStart_;
     cv::Point2f dragCurrent_;
+
+    // Estado del modo vivo.
+    bool liveMode_ = false;
+    bool hasFixture_ = false;
+    bool pieceVisible_ = false;
+    bool showLiveContour_ = true;
+    QPolygonF liveContour_;
+    QPointF liveCentroid_;
+    QString liveStatus_;
 };
 
 }  // namespace pci::inspection

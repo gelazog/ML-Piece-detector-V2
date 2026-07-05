@@ -31,25 +31,29 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    elegida queda guardada para la próxima vez. *Sin cámara, todos los pasos
    siguientes aceptan imágenes desde archivo* (`sample_images/pieza_demo.png`
    sirve para probar).
-3. **Registrar pieza…**: ponle nombre, coloca la pieza sobre fondo
-   contrastante y captura 30 fotos (botón **Capturar**, o marca **Captura
-   automática** y deja que las tome sola; o **Agregar imágenes…** desde
-   archivos). Cada captura se valida — nitidez, exposición, pieza completa —
-   y los rechazos explican el motivo. Al finalizar se guarda la referencia
-   estadística de embeddings (v1).
-4. **Plantilla…**: dibuja herramientas de medición sobre la imagen de
-   referencia arrastrando el mouse (Caliper, Círculo, Punto-Línea, Borde
-   liso, Blob), pulsa **Probar sobre esta imagen** para ver los valores
-   medidos, ajusta las tolerancias min/max con esos valores y **Guardar
-   plantilla**. Las herramientas quedan ancladas a la pieza: la siguen si
-   llega rotada.
-5. **Inspeccionar**: con la pieza seleccionada, captura o elige una imagen.
-   Verás el banner **OK/NG**, la similitud de apariencia vs su umbral, la
-   imagen anotada y la tabla por herramienta. La barra de estado acumula las
-   estadísticas del día.
-6. **Aprender**: si la inspección fue OK, el botón **Actualizar referencia**
-   incorpora ese embedding como una versión nueva de la referencia (las
-   anteriores nunca se borran) — eso es el aprendizaje incremental.
+3. **Dibujar sobre el video en vivo**: con la pieza detectada, elige una
+   herramienta en la fila **Dibujar** (Caliper, Círculo, Punto-Línea, Borde
+   liso, Blob) y traza directamente sobre el video arrastrando el mouse — en
+   tiempo real y anclado a la pieza: si la mueves o la giras, las
+   herramientas la siguen. **Mover/Elegir** permite seleccionar y arrastrar;
+   **Borrar herramienta** elimina la seleccionada.
+4. **Registrar y activar**: un solo botón — pide el nombre, captura
+   automáticamente 30 referencias válidas del video (cada frame se valida:
+   nitidez, exposición, pieza completa; los rechazos muestran el motivo en el
+   progreso), guarda la referencia de embeddings v1 **y las herramientas
+   dibujadas**, y arranca la auto-inspección.
+5. **Auto-inspección**: el botón queda activo y la app inspecciona el video
+   continuamente (~1/s): banner **OK/NG** en vivo, resultados por herramienta
+   dibujados sobre el video y estadísticas del día en la barra de estado.
+   Todo queda en el historial. Se puede prender/apagar cuando quieras con la
+   pieza seleccionada.
+6. **Afinar y aprender**: **Plantilla…** abre el editor sobre imagen fija
+   para ajustar tolerancias con "Probar sobre esta imagen" (los valores
+   medidos te dicen qué rangos poner). **Inspeccionar** hace una inspección
+   única con reporte detallado y, si fue OK, **Actualizar referencia**
+   incorpora ese embedding como versión nueva (las anteriores nunca se
+   borran) — el aprendizaje incremental. **Registrar (asistente)…** sigue
+   disponible para registrar desde imágenes de archivo sin cámara.
 
 ## Compilar y ejecutar (Windows)
 
