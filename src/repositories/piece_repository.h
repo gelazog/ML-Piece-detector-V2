@@ -1,12 +1,14 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "core/result.h"
 #include "database/db.h"
 #include "ml/reference.h"
+#include "vision/orientation_anchor.h"
 
 namespace pci::repositories {
 
@@ -37,6 +39,11 @@ public:
                                      const std::vector<unsigned char>& jpeg);
     // Vacío si la pieza no tiene miniatura guardada.
     core::Result<std::vector<unsigned char>> loadThumbnail(std::int64_t pieceId);
+
+    // Rasgo distintivo de orientación (nullopt si la pieza no tiene uno).
+    core::Result<void> saveAnchor(std::int64_t pieceId,
+                                  const vision::OrientationAnchor& anchor);
+    core::Result<std::optional<vision::OrientationAnchor>> loadAnchor(std::int64_t pieceId);
 
     core::Result<int> saveReference(std::int64_t pieceId, const ml::Reference& reference);
     core::Result<StoredReference> loadLatestReference(std::int64_t pieceId);

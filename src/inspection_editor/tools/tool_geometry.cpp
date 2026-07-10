@@ -127,6 +127,15 @@ public:
         return core::Result<double>::ok(static_cast<double>(node.real()));
     }
 
+    // Clave opcional (campos añadidos después de la v1 del formato).
+    double numberOr(const char* key, double fallback) {
+        const cv::FileNode node = fs_[key];
+        if (node.empty() || (!node.isReal() && !node.isInt())) {
+            return fallback;
+        }
+        return static_cast<double>(node.real());
+    }
+
 private:
     cv::FileStorage fs_;
 };
@@ -145,7 +154,7 @@ std::string toJson(const ToolGeometry& geometry) {
             } else if constexpr (std::is_same_v<T, CircleGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "cx" << g.center.x << "cy" << g.center.y << "r" << g.radius << "band"
-                       << g.searchBand;
+                       << g.searchBand << "rays" << g.rayCount;
                 });
             } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
@@ -196,6 +205,8 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
                 g.radius = static_cast<float>(r.value());
                 g.searchBand = static_cast<float>(band.value());
+                // "rays" llegó después: los JSON viejos usan el valor por defecto.
+                g.rayCount = static_cast<int>(reader.numberOr("rays", g.rayCount));
                 return ResultT::ok(g);
             }
             case ToolType::PointToLine: {

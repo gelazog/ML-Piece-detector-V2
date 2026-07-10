@@ -16,6 +16,7 @@
 #include "inspection_editor/canvas/editor_canvas.h"
 #include "ui/analysis_overlay.h"
 #include "ui/app_repositories.h"
+#include "vision/orientation_anchor.h"
 
 class QButtonGroup;
 class QCheckBox;
@@ -52,6 +53,8 @@ private slots:
     void onToolModeChanged(int id);
     void onLiveToolCreated(const pci::inspection::ToolGeometry& geometry);
     void onDeleteToolClicked();
+    void onAnchorButtonToggled(bool enabled);
+    void onAnchorPicked(const cv::Point2f& imagePoint);
     void onPieceSelectionChanged(int index);
     // Registro en vivo y auto-inspección.
     void onRegisterLiveClicked();
@@ -92,6 +95,7 @@ private:
     // Fila 3: herramientas para dibujar sobre el video.
     QButtonGroup* toolModeGroup_ = nullptr;
     QPushButton* deleteToolButton_ = nullptr;
+    QPushButton* anchorButton_ = nullptr;  // marcar el rasgo distintivo
 
     QLabel* verdictBanner_ = nullptr;
     inspection::EditorCanvas* video_ = nullptr;
@@ -119,6 +123,7 @@ private:
     QString pendingPieceName_;
     std::int64_t pendingPieceId_ = -1;  // >= 0: nueva versión de pieza existente
     std::optional<vision::Fixture> liveFixture_;
+    std::optional<vision::OrientationAnchor> currentAnchor_;
     QImage referenceThumb_;
     int toolNameCounter_ = 0;
     bool streaming_ = false;

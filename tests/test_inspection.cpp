@@ -46,10 +46,17 @@ TEST(ToolGeometry, JsonRoundTripAllTypes) {
     EXPECT_FLOAT_EQ(c.p1.y, 25.5F);
     EXPECT_FLOAT_EQ(c.bandWidth, 8.0F);
 
-    const CircleGeometry circle{{50.0F, 60.0F}, 42.0F, 9.0F};
+    const CircleGeometry circle{{50.0F, 60.0F}, 42.0F, 9.0F, 72};
     auto circleBack = geometryFromJson(ToolType::Circle, toJson(ToolGeometry(circle)));
     ASSERT_TRUE(circleBack.isOk());
     EXPECT_FLOAT_EQ(std::get<CircleGeometry>(circleBack.value()).radius, 42.0F);
+    EXPECT_EQ(std::get<CircleGeometry>(circleBack.value()).rayCount, 72);
+
+    // JSON de la versión anterior (sin "rays"): usa el valor por defecto.
+    auto legacy = geometryFromJson(ToolType::Circle,
+                                   R"({"cx":50.0,"cy":60.0,"r":42.0,"band":9.0})");
+    ASSERT_TRUE(legacy.isOk());
+    EXPECT_EQ(std::get<CircleGeometry>(legacy.value()).rayCount, 36);
 
     const PointToLineGeometry p2l{{0, 0}, {100, 0}, {50, 10}, {50, 90}};
     auto p2lBack = geometryFromJson(ToolType::PointToLine, toJson(ToolGeometry(p2l)));

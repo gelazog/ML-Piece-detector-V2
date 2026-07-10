@@ -84,6 +84,10 @@ std::string Statement::columnText(int index) const {
     return text != nullptr ? reinterpret_cast<const char*>(text) : "";
 }
 
+bool Statement::columnIsNull(int index) const {
+    return sqlite3_column_type(stmt_, index) == SQLITE_NULL;
+}
+
 std::vector<unsigned char> Statement::columnBlob(int index) const {
     const void* data = sqlite3_column_blob(stmt_, index);
     const int size = sqlite3_column_bytes(stmt_, index);

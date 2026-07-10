@@ -124,6 +124,18 @@ void EditorCanvas::setCreateType(std::optional<ToolType> type) {
     setCursor(type.has_value() ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
+void EditorCanvas::setPickMode(bool enabled) {
+    pickMode_ = enabled;
+    setCursor(enabled ? Qt::PointingHandCursor
+                      : (createType_.has_value() ? Qt::CrossCursor : Qt::ArrowCursor));
+}
+
+void EditorCanvas::setAnchorMarker(bool visible, const cv::Point2f& piecePoint) {
+    anchorVisible_ = visible;
+    anchorPiecePoint_ = piecePoint;
+    update();
+}
+
 void EditorCanvas::setResults(const std::vector<ToolRunResult>& results) {
     results_ = results;
     update();
@@ -229,6 +241,12 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
     const cv::Point2f p = widgetToImage(event->position());
     dragStart_ = p;
     dragCurrent_ = p;
+
+    if (pickMode_) {
+        setPickMode(false);
+        emit pointPicked(p);
+        return;
+    }
 
     if (createType_.has_value()) {
         creating_ = true;
@@ -486,6 +504,21 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
     painter.drawImage(targetRect(), image_);
 
     paintLiveOverlay(painter);
+
+    // Marcador del rasgo distintivo (rombo magenta anclado a la pieza).
+    if (anchorVisible_ && hasFixture_) {
+        const QPointF p = imageToWidget(toImg(anchorPiecePoint_));
+        QPen pen(QColor(255, 0, 255));
+        pen.setWidthF(2.0);
+        pen.setCosmetic(true);
+        painter.setPen(pen);
+        painter.setBrush(Qt::NoBrush);
+        QPolygonF diamond;
+        diamond << p + QPointF(0, -8) << p + QPointF(8, 0) << p + QPointF(0, 8)
+                << p + QPointF(-8, 0);
+        painter.drawPolygon(diamond);
+        painter.drawEllipse(p, 1.5, 1.5);
+    }
 
     if (tools_ != nullptr) {
         for (int i = 0; i < static_cast<int>(tools_->size()); ++i) {

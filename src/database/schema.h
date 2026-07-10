@@ -11,6 +11,7 @@ namespace pci::database {
 core::Result<void> migrate(Db& db);
 
 // Versión de esquema que esta build entiende.
-inline constexpr int kSchemaVersion = 1;
+// v2: rasgo distintivo de orientación (anchor_*) en Pieces.
+inline constexpr int kSchemaVersion = 2;
 
 }  // namespace pci::database

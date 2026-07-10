@@ -148,6 +148,33 @@ TEST_F(DatabaseTest, RejectsDuplicateWithFriendlyMessage) {
     EXPECT_FALSE(pieces.nameExists("Pieza Y").value());
 }
 
+TEST_F(DatabaseTest, AnchorRoundTrip) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+
+    const auto pieceId = pieces.createPiece("Con rasgo");
+    ASSERT_TRUE(pieceId.isOk());
+
+    // Sin rasgo guardado: nullopt, no error.
+    auto none = pieces.loadAnchor(pieceId.value());
+    ASSERT_TRUE(none.isOk());
+    EXPECT_FALSE(none.value().has_value());
+
+    vision::OrientationAnchor anchor;
+    anchor.piecePoint = {12.5F, -30.25F};
+    anchor.intensity = 42.75;
+    ASSERT_TRUE(pieces.saveAnchor(pieceId.value(), anchor).isOk());
+
+    auto loaded = pieces.loadAnchor(pieceId.value());
+    ASSERT_TRUE(loaded.isOk());
+    ASSERT_TRUE(loaded.value().has_value());
+    EXPECT_FLOAT_EQ(loaded.value()->piecePoint.x, 12.5F);
+    EXPECT_FLOAT_EQ(loaded.value()->piecePoint.y, -30.25F);
+    EXPECT_DOUBLE_EQ(loaded.value()->intensity, 42.75);
+
+    EXPECT_FALSE(pieces.loadAnchor(9999).isOk());
+}
+
 TEST_F(DatabaseTest, ThumbnailRoundTrip) {
     auto& db = openAndMigrate();
     repositories::PieceRepository pieces(db);

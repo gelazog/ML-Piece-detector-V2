@@ -41,6 +41,13 @@ public:
     void setSelectedIndex(int index);
     [[nodiscard]] int selectedIndex() const { return selected_; }
 
+    // --- selección de rasgo distintivo ---
+    // Con el modo activo, el siguiente clic sobre la pieza emite pointPicked
+    // (coords de imagen) y el modo se desactiva solo.
+    void setPickMode(bool enabled);
+    // Marcador del rasgo (rombo magenta) anclado a la pieza.
+    void setAnchorMarker(bool visible, const cv::Point2f& piecePoint = {});
+
     // --- modo vivo ---
     void setFrame(const QImage& frame);  // solo la imagen; conserva el fixture
     // Actualiza el fixture con el análisis del frame y el overlay de la pieza.
@@ -57,6 +64,7 @@ signals:
     void toolCreated(const pci::inspection::ToolGeometry& geometry);
     void selectionChanged(int index);
     void toolModified();
+    void pointPicked(const cv::Point2f& imagePoint);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -97,6 +105,11 @@ private:
     QPolygonF liveContour_;
     QPointF liveCentroid_;
     QString liveStatus_;
+
+    // Rasgo distintivo.
+    bool pickMode_ = false;
+    bool anchorVisible_ = false;
+    cv::Point2f anchorPiecePoint_;
 };
 
 }  // namespace pci::inspection

@@ -35,6 +35,7 @@ public:
     [[nodiscard]] double columnDouble(int index) const;
     [[nodiscard]] std::string columnText(int index) const;
     [[nodiscard]] std::vector<unsigned char> columnBlob(int index) const;
+    [[nodiscard]] bool columnIsNull(int index) const;
 
 private:
     core::Result<void> checkBind(int code) const;

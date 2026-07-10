@@ -24,6 +24,7 @@ struct CircleGeometry {
     cv::Point2f center;
     float radius = 50.0F;
     float searchBand = 12.0F;  // banda radial de búsqueda del borde
+    int rayCount = 36;         // puntos de escaneo alrededor del círculo
 };
 
 struct PointToLineGeometry {

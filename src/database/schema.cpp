@@ -103,6 +103,22 @@ CREATE INDEX IF NOT EXISTS idx_tools_piece ON InspectionTools(piece_id);
 CREATE INDEX IF NOT EXISTS idx_history_piece ON InspectionHistory(piece_id, started_at);
 )sql";
 
+// v2: rasgo distintivo (punto en coords de pieza + intensidad esperada) que
+// resuelve la ambigüedad de 180° en piezas simétricas.
+const char* const kMigrationV2 = R"sql(
+ALTER TABLE Pieces ADD COLUMN anchor_x REAL;
+ALTER TABLE Pieces ADD COLUMN anchor_y REAL;
+ALTER TABLE Pieces ADD COLUMN anchor_intensity REAL;
+)sql";
+
+const char* migrationFor(int targetVersion) {
+    switch (targetVersion) {
+        case 1: return kSchemaV1;
+        case 2: return kMigrationV2;
+    }
+    return nullptr;
+}
+
 }  // namespace
 
 core::Result<void> migrate(Db& db) {
@@ -114,7 +130,7 @@ core::Result<void> migrate(Db& db) {
     if (!row.isOk() || !row.value()) {
         return core::Result<void>::err("No se pudo leer la versión del esquema");
     }
-    const auto version = stmt.value().columnInt(0);
+    const auto version = static_cast<int>(stmt.value().columnInt(0));
 
     if (version == kSchemaVersion) {
         return core::Result<void>::ok();
@@ -127,12 +143,25 @@ core::Result<void> migrate(Db& db) {
 
     core::logInfo("Migrando esquema de BD de v" + std::to_string(version) + " a v" +
                   std::to_string(kSchemaVersion));
-    return db.transaction([&db]() -> core::Result<void> {
-        if (auto ddl = db.exec(kSchemaV1); !ddl.isOk()) {
-            return ddl;
+    // Migraciones secuenciales, cada paso en su propia transacción: una BD
+    // vieja se actualiza escalón por escalón sin perder datos.
+    for (int target = version + 1; target <= kSchemaVersion; ++target) {
+        const char* ddl = migrationFor(target);
+        if (ddl == nullptr) {
+            return core::Result<void>::err("Migración desconocida a v" +
+                                           std::to_string(target));
         }
-        return db.exec("PRAGMA user_version = " + std::to_string(kSchemaVersion) + ";");
-    });
+        auto applied = db.transaction([&db, ddl, target]() -> core::Result<void> {
+            if (auto result = db.exec(ddl); !result.isOk()) {
+                return result;
+            }
+            return db.exec("PRAGMA user_version = " + std::to_string(target) + ";");
+        });
+        if (!applied.isOk()) {
+            return applied;
+        }
+    }
+    return core::Result<void>::ok();
 }
 
 }  // namespace pci::database

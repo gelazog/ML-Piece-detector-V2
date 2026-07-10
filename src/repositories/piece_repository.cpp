@@ -119,6 +119,56 @@ core::Result<std::vector<PieceInfo>> PieceRepository::listPieces() {
     return ResultT::ok(std::move(pieces));
 }
 
+core::Result<void> PieceRepository::saveAnchor(std::int64_t pieceId,
+                                               const vision::OrientationAnchor& anchor) {
+    auto stmt = db_.prepare(
+        "UPDATE Pieces SET anchor_x = ?, anchor_y = ?, anchor_intensity = ? WHERE id = ?;");
+    if (!stmt.isOk()) {
+        return core::Result<void>::err(stmt.error().message);
+    }
+    auto& s = stmt.value();
+    if (auto b = s.bindDouble(1, anchor.piecePoint.x); !b.isOk()) return b;
+    if (auto b = s.bindDouble(2, anchor.piecePoint.y); !b.isOk()) return b;
+    if (auto b = s.bindDouble(3, anchor.intensity); !b.isOk()) return b;
+    if (auto b = s.bindInt(4, pieceId); !b.isOk()) return b;
+    auto step = s.step();
+    if (!step.isOk()) {
+        return core::Result<void>::err(step.error().message);
+    }
+    return core::Result<void>::ok();
+}
+
+core::Result<std::optional<vision::OrientationAnchor>> PieceRepository::loadAnchor(
+    std::int64_t pieceId) {
+    using ResultT = core::Result<std::optional<vision::OrientationAnchor>>;
+
+    auto stmt = db_.prepare(
+        "SELECT anchor_x, anchor_y, anchor_intensity FROM Pieces WHERE id = ?;");
+    if (!stmt.isOk()) {
+        return ResultT::err(stmt.error().message);
+    }
+    if (auto bind = stmt.value().bindInt(1, pieceId); !bind.isOk()) {
+        return ResultT::err(bind.error().message);
+    }
+    auto row = stmt.value().step();
+    if (!row.isOk()) {
+        return ResultT::err(row.error().message);
+    }
+    if (!row.value()) {
+        return ResultT::err("La pieza " + std::to_string(pieceId) + " no existe");
+    }
+
+    auto& s = stmt.value();
+    if (s.columnIsNull(0) || s.columnIsNull(1) || s.columnIsNull(2)) {
+        return ResultT::ok(std::nullopt);
+    }
+    vision::OrientationAnchor anchor;
+    anchor.piecePoint = {static_cast<float>(s.columnDouble(0)),
+                         static_cast<float>(s.columnDouble(1))};
+    anchor.intensity = s.columnDouble(2);
+    return ResultT::ok(anchor);
+}
+
 core::Result<int> PieceRepository::saveReference(std::int64_t pieceId,
                                                  const ml::Reference& reference) {
     using ResultT = core::Result<int>;

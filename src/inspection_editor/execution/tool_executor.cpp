@@ -68,10 +68,10 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
     ToolRunResult result = baseResult(config);
     const cv::Point2f center = toImg(fixture, g.center);
 
-    constexpr int kRays = 36;
+    const int rays = std::clamp(g.rayCount, 8, 360);
     std::vector<cv::Point2f> points;
-    for (int k = 0; k < kRays; ++k) {
-        const double theta = 2.0 * kPi * k / kRays;
+    for (int k = 0; k < rays; ++k) {
+        const double theta = 2.0 * kPi * k / rays;
         const cv::Point2f dir(static_cast<float>(std::cos(theta)),
                               static_cast<float>(std::sin(theta)));
         const cv::Point2f from = center + dir * (g.radius - g.searchBand);
@@ -82,9 +82,9 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
         }
     }
 
-    if (points.size() < kRays * 6 / 10) {
+    if (static_cast<int>(points.size()) < rays * 6 / 10) {
         result.detail = "Borde circular insuficiente (" + std::to_string(points.size()) +
-                        "/" + std::to_string(kRays) + " rayos)";
+                        "/" + std::to_string(rays) + " rayos)";
         return result;
     }
 

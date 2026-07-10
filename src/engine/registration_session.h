@@ -2,12 +2,14 @@
 
 #include <opencv2/core.hpp>
 
+#include <optional>
 #include <string>
 
 #include "core/result.h"
 #include "domain/capture_quality.h"
 #include "engine/embed_fn.h"
 #include "ml/reference.h"
+#include "vision/orientation_anchor.h"
 
 namespace pci::engine {
 
@@ -17,7 +19,10 @@ namespace pci::engine {
 class RegistrationSession {
 public:
     // embedFn debe ser válida: el registro ES la referencia de embeddings.
-    RegistrationSession(EmbedFn embedFn, int targetCount = 30, int minimumCount = 5);
+    // anchor (opcional): rasgo distintivo que fija la orientación de todas
+    // las capturas — imprescindible para piezas simétricas.
+    RegistrationSession(EmbedFn embedFn, int targetCount = 30, int minimumCount = 5,
+                        std::optional<vision::OrientationAnchor> anchor = std::nullopt);
 
     struct SampleFeedback {
         bool accepted = false;
@@ -41,6 +46,7 @@ private:
     EmbedFn embedFn_;
     int targetCount_;
     int minimumCount_;
+    std::optional<vision::OrientationAnchor> anchor_;
     ml::ReferenceBuilder builder_;
     cv::Mat firstNormalized_;
 };

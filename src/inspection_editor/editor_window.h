@@ -15,6 +15,7 @@ class QLabel;
 class QLineEdit;
 class QListWidget;
 class QPushButton;
+class QSpinBox;
 
 namespace pci::repositories {
 class ToolRepository;
@@ -57,6 +58,8 @@ private:
     QLineEdit* nameEdit_ = nullptr;
     QDoubleSpinBox* tolMin_ = nullptr;
     QDoubleSpinBox* tolMax_ = nullptr;
+    QLabel* paramLabel_ = nullptr;   // parámetro de muestreo según el tipo
+    QSpinBox* paramSpin_ = nullptr;  // (banda, rayos, escaneos, área mínima)
     QPushButton* deleteButton_ = nullptr;
     QLabel* statusLabel_ = nullptr;
 

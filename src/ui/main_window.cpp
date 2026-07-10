@@ -26,6 +26,7 @@
 #include "ui/inspection_result_dialog.h"
 #include "ui/registration_wizard.h"
 #include "vision/pipeline.h"
+#include "vision/position_fixture.h"
 
 namespace pci::ui {
 
@@ -36,14 +37,24 @@ constexpr int kCaptureTarget = 30;
 constexpr int kCaptureMinimum = 5;
 
 // Corre en un hilo del pool de QtConcurrent; solo toca datos propios.
-AnalysisOverlay buildOverlay(const QImage& frame) {
+// El ancla (si la pieza tiene rasgo distintivo) fija la orientación del
+// fixture aunque la pieza sea simétrica o llegue girada 180°.
+AnalysisOverlay buildOverlay(const QImage& frame,
+                             std::optional<vision::OrientationAnchor> anchor) {
     AnalysisOverlay overlay;
     overlay.frameSize = frame.size();
 
-    const auto analysis = vision::analyzeFrame(camera::qImageToMat(frame));
+    const cv::Mat image = camera::qImageToMat(frame);
+    auto analysis = vision::analyzeFrame(image);
     if (!analysis.isOk()) {
         overlay.error = QString::fromStdString(analysis.error().message);
         return overlay;
+    }
+    if (anchor.has_value()) {
+        if (auto applied = vision::applyAnchor(image, *anchor, analysis.value());
+            !applied.isOk()) {
+            core::logWarning(applied.error().message);
+        }
     }
 
     overlay.valid = true;
@@ -157,6 +168,14 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     deleteToolButton_ = new QPushButton(tr("Borrar herramienta"), central);
     deleteToolButton_->setToolTip(tr("Elimina la herramienta seleccionada (Mover/Elegir)"));
     toolsLayout->addWidget(deleteToolButton_);
+
+    anchorButton_ = new QPushButton(tr("Rasgo distintivo"), central);
+    anchorButton_->setCheckable(true);
+    anchorButton_->setToolTip(
+        tr("Marca un punto visualmente único de la pieza (un agujero, una marca, una\n"
+           "esquina oscura). Con él la orientación queda fija aunque la pieza sea\n"
+           "simétrica: se detecta igual en cualquier rotación, incluso girada 180°."));
+    toolsLayout->addWidget(anchorButton_);
     toolsLayout->addStretch(1);
     rootLayout->addLayout(toolsLayout);
 
@@ -220,6 +239,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(video_, &inspection::EditorCanvas::toolCreated, this,
             &MainWindow::onLiveToolCreated);
     connect(deleteToolButton_, &QPushButton::clicked, this, &MainWindow::onDeleteToolClicked);
+    connect(anchorButton_, &QPushButton::toggled, this, &MainWindow::onAnchorButtonToggled);
+    connect(video_, &inspection::EditorCanvas::pointPicked, this,
+            &MainWindow::onAnchorPicked);
     connect(pieceCombo_, &QComboBox::currentIndexChanged, this,
             &MainWindow::onPieceSelectionChanged);
 
@@ -380,7 +402,9 @@ void MainWindow::maybeStartAnalysis() {
     }
     const QImage frame = pendingAnalysisFrame_;
     pendingAnalysisFrame_ = QImage();
-    analysisWatcher_.setFuture(QtConcurrent::run(buildOverlay, frame));
+    const auto anchor = currentAnchor_;
+    analysisWatcher_.setFuture(
+        QtConcurrent::run([frame, anchor] { return buildOverlay(frame, anchor); }));
 }
 
 void MainWindow::onStats(double fps, int width, int height) {
@@ -492,10 +516,66 @@ void MainWindow::onDeleteToolClicked() {
     video_->clearResults();
 }
 
+// Marcar el rasgo distintivo: el siguiente clic sobre la pieza en el video
+// define el punto; se guarda de inmediato si hay una pieza seleccionada.
+void MainWindow::onAnchorButtonToggled(bool enabled) {
+    if (!enabled) {
+        video_->setPickMode(false);
+        return;
+    }
+    if (!streaming_ || !liveFixture_.has_value()) {
+        statusBar()->showMessage(
+            tr("Para marcar el rasgo necesitas video en vivo con la pieza detectada."));
+        anchorButton_->setChecked(false);
+        return;
+    }
+    video_->setPickMode(true);
+    statusBar()->showMessage(
+        tr("Haz clic sobre un punto único de la pieza (agujero, marca, esquina oscura)…"));
+}
+
+void MainWindow::onAnchorPicked(const cv::Point2f& imagePoint) {
+    anchorButton_->setChecked(false);
+    if (!liveFixture_.has_value() || lastFrame_.isNull()) {
+        return;
+    }
+
+    vision::OrientationAnchor anchor;
+    anchor.piecePoint = vision::toPieceCoords(*liveFixture_, imagePoint);
+    anchor.intensity = vision::sampleIntensity(camera::qImageToMat(lastFrame_), imagePoint);
+    currentAnchor_ = anchor;
+    video_->setAnchorMarker(true, anchor.piecePoint);
+
+    const std::int64_t pieceId = selectedPieceId();
+    if (pieceId >= 0 && repos_.pieces != nullptr) {
+        if (auto saved = repos_.pieces->saveAnchor(pieceId, anchor); saved.isOk()) {
+            statusBar()->showMessage(
+                tr("Rasgo distintivo guardado: la pieza se detectará en cualquier rotación."));
+        } else {
+            statusBar()->showMessage(QString::fromStdString(saved.error().message));
+        }
+    } else {
+        statusBar()->showMessage(
+            tr("Rasgo marcado — se guardará con la pieza al registrar."));
+    }
+}
+
 void MainWindow::onPieceSelectionChanged(int index) {
     Q_UNUSED(index);
     autoInspectButton_->setChecked(false);
     loadToolsForSelectedPiece();
+
+    // Rasgo distintivo de la pieza seleccionada.
+    currentAnchor_.reset();
+    video_->setAnchorMarker(false);
+    if (const std::int64_t pieceId = selectedPieceId();
+        pieceId >= 0 && repos_.pieces != nullptr) {
+        if (auto anchor = repos_.pieces->loadAnchor(pieceId);
+            anchor.isOk() && anchor.value().has_value()) {
+            currentAnchor_ = anchor.value();
+            video_->setAnchorMarker(true, currentAnchor_->piecePoint);
+        }
+    }
 
     // Miniatura de la pieza registrada para el panel de comparación.
     referenceThumb_ = QImage();
@@ -614,9 +694,10 @@ void MainWindow::onRegisterLiveClicked() {
     }
     pendingPieceName_ = name;
 
-    liveSession_ = std::make_shared<engine::RegistrationSession>(repos_.embedFn,
-                                                                 kCaptureTarget,
-                                                                 kCaptureMinimum);
+    // El rasgo distintivo marcado (si hay) fija la orientación de las 30
+    // capturas de referencia y se guarda con la pieza.
+    liveSession_ = std::make_shared<engine::RegistrationSession>(
+        repos_.embedFn, kCaptureTarget, kCaptureMinimum, currentAnchor_);
     captureProgress_ = new QProgressDialog(
         tr("Capturando referencias de '%1'…\nMantén la pieza a la vista.")
             .arg(pendingPieceName_),
@@ -724,6 +805,15 @@ void MainWindow::finishLiveRegistration() {
     if (!thumbnail.empty()) {
         if (auto saved = repos_.pieces->saveThumbnail(pieceId, thumbnail); !saved.isOk()) {
             core::logWarning("No se pudo guardar la miniatura: " + saved.error().message);
+        }
+    }
+
+    // Rasgo distintivo elegido durante la sesión.
+    if (currentAnchor_.has_value()) {
+        if (auto saved = repos_.pieces->saveAnchor(pieceId, *currentAnchor_);
+            !saved.isOk()) {
+            core::logWarning("No se pudo guardar el rasgo distintivo: " +
+                             saved.error().message);
         }
     }
 

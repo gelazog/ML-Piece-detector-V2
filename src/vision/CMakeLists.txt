@@ -1,6 +1,7 @@
 add_library(pci_vision STATIC
   contour_analysis.cpp
   orientation.cpp
+  orientation_anchor.cpp
   pipeline.cpp
   position_fixture.cpp
   quality_metrics.cpp

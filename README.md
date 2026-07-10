@@ -44,6 +44,18 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    - *Punto-Línea*: línea de referencia → distancia perpendicular del borde.
    - *Borde liso*: línea sobre un borde recto → desviación máxima (muescas).
    - *Blob*: rectángulo sobre una zona → conteo de manchas/agujeros.
+
+   La **cantidad de puntos de muestreo** de cada herramienta es editable en
+   **Plantilla…** (campo "Puntos"): banda del Caliper, rayos del Círculo,
+   escaneos del Borde liso y área mínima del Blob.
+
+   **Rasgo distintivo** (piezas simétricas o para robustez extra): con el
+   botón *Rasgo distintivo*, haz clic sobre un punto visualmente único de la
+   pieza (un agujero, una marca, una esquina oscura — rombo magenta). Ese
+   rasgo fija la orientación del fixture: la pieza se detecta igual **en
+   cualquier rotación, incluso girada 180°**, cosa que los momentos por sí
+   solos no distinguen en piezas simétricas. Se guarda con la pieza y aplica
+   al registro, al video en vivo y a la inspección.
 4. **Registrar y activar**: un solo botón — pide el nombre **validando
    duplicados al instante** (si la pieza ya existe ofrece guardar como nueva
    versión de su referencia o renombrar), captura automáticamente 30

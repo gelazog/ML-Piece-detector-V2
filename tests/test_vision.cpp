@@ -7,6 +7,7 @@
 
 #include "vision/contour_analysis.h"
 #include "vision/orientation.h"
+#include "vision/orientation_anchor.h"
 #include "vision/pipeline.h"
 #include "vision/position_fixture.h"
 #include "vision/segmentation.h"
@@ -178,6 +179,89 @@ TEST(Pipeline, NormalizationIsRotationInvariant) {
 
 TEST(Pipeline, FailsOnEmptyImage) {
     EXPECT_FALSE(analyzeFrame(cv::Mat()).isOk());
+}
+
+// --- Rasgo distintivo de orientación ---
+
+namespace {
+
+// Rectángulo (180°-simétrico: los momentos no distinguen la orientación) con
+// un punto oscuro cerca de un extremo como rasgo distintivo.
+cv::Mat drawRectWithDot(cv::Point2f center, double angleDeg, cv::Point2f& dotImage) {
+    cv::Mat image(480, 640, CV_8UC1, cv::Scalar(220));
+    const cv::RotatedRect rect(center, cv::Size2f(200.0F, 80.0F),
+                               static_cast<float>(angleDeg));
+    cv::Point2f corners[4];
+    rect.points(corners);
+    std::vector<cv::Point> polygon;
+    for (const auto& c : corners) {
+        polygon.emplace_back(cvRound(c.x), cvRound(c.y));
+    }
+    cv::fillConvexPoly(image, polygon, cv::Scalar(90));
+
+    // Punto muy oscuro a +70 px del centro a lo largo del eje mayor.
+    const double rad = angleDeg * kPi / 180.0;
+    dotImage = center + cv::Point2f(static_cast<float>(std::cos(rad) * 70.0),
+                                    static_cast<float>(std::sin(rad) * 70.0));
+    cv::circle(image, cv::Point(cvRound(dotImage.x), cvRound(dotImage.y)), 8,
+               cv::Scalar(10), cv::FILLED);
+    return image;
+}
+
+}  // namespace
+
+TEST(OrientationAnchor, SymmetricPieceDetectedInAnyRotation) {
+    // Registro: rectángulo a 10° con su rasgo (el punto oscuro).
+    cv::Point2f dotA;
+    const cv::Mat imageA = drawRectWithDot({300.0F, 240.0F}, 10.0, dotA);
+    auto analysisA = analyzeFrame(imageA);
+    ASSERT_TRUE(analysisA.isOk());
+
+    OrientationAnchor anchor;
+    anchor.piecePoint = toPieceCoords(analysisA.value().fixture, dotA);
+    anchor.intensity = sampleIntensity(imageA, dotA);
+    ASSERT_TRUE(applyAnchor(imageA, anchor, analysisA.value()).isOk());
+
+    // La misma pieza girada 180° (y desplazada): sin ancla los momentos no
+    // pueden distinguirla; con ancla el recorte normalizado debe coincidir.
+    cv::Point2f dotB;
+    const cv::Mat imageB = drawRectWithDot({330.0F, 220.0F}, 190.0, dotB);
+    auto analysisB = analyzeFrame(imageB);
+    ASSERT_TRUE(analysisB.isOk());
+    ASSERT_TRUE(applyAnchor(imageB, anchor, analysisB.value()).isOk());
+
+    // El rasgo debe quedar en el mismo lugar en coordenadas de pieza…
+    const cv::Point2f dotBPiece = toPieceCoords(analysisB.value().fixture, dotB);
+    EXPECT_NEAR(dotBPiece.x, anchor.piecePoint.x, 4.0F);
+    EXPECT_NEAR(dotBPiece.y, anchor.piecePoint.y, 4.0F);
+
+    // …y los recortes normalizados deben solaparse casi por completo.
+    cv::Mat maskA;
+    cv::Mat maskB;
+    cv::threshold(analysisA.value().normalized, maskA, 0.0, 255.0, cv::THRESH_BINARY);
+    cv::threshold(analysisB.value().normalized, maskB, 0.0, 255.0, cv::THRESH_BINARY);
+    EXPECT_GT(maskIoU(maskA, maskB), 0.90);
+}
+
+TEST(OrientationAnchor, ResolveKeepsCorrectFixture) {
+    cv::Point2f dot;
+    const cv::Mat image = drawRectWithDot({300.0F, 240.0F}, 10.0, dot);
+    const auto analysis = analyzeFrame(image);
+    ASSERT_TRUE(analysis.isOk());
+
+    OrientationAnchor anchor;
+    anchor.piecePoint = toPieceCoords(analysis.value().fixture, dot);
+    anchor.intensity = sampleIntensity(image, dot);
+
+    // Con el fixture correcto no debe girar nada.
+    const Fixture resolved = resolveWithAnchor(image, analysis.value().fixture, anchor);
+    EXPECT_NEAR(resolved.angleDeg, analysis.value().fixture.angleDeg, 1e-9);
+
+    // Con el fixture girado 180° a mano, debe volver al correcto.
+    Fixture flipped = analysis.value().fixture;
+    flipped.angleDeg += flipped.angleDeg >= 0.0 ? -180.0 : 180.0;
+    const Fixture back = resolveWithAnchor(image, flipped, anchor);
+    EXPECT_NEAR(back.angleDeg, analysis.value().fixture.angleDeg, 1e-6);
 }
 
 TEST(Pipeline, FailsOnUniformImage) {

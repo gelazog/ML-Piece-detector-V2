@@ -8,6 +8,7 @@
 
 #include "core/logging.h"
 #include "ml/reference.h"
+#include "vision/orientation_anchor.h"
 #include "vision/pipeline.h"
 
 namespace pci::engine {
@@ -37,6 +38,17 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
     auto analysis = vision::analyzeFrame(frameBgr);
     if (!analysis.isOk()) {
         return ResultT::err("No se pudo analizar el frame: " + analysis.error().message);
+    }
+
+    // Rasgo distintivo de la pieza (si tiene): fija la orientación aunque la
+    // pieza sea simétrica o llegue girada 180°.
+    if (auto anchor = pieces_.loadAnchor(pieceId); anchor.isOk() && anchor.value()) {
+        if (auto applied =
+                vision::applyAnchor(frameBgr, *anchor.value(), analysis.value());
+            !applied.isOk()) {
+            core::logWarning("No se pudo aplicar el rasgo distintivo: " +
+                             applied.error().message);
+        }
     }
 
     Outcome outcome;

@@ -9,8 +9,12 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+#include <type_traits>
+#include <variant>
 
 #include "camera/frame_utils.h"
 #include "core/logging.h"
@@ -98,6 +102,16 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     tolMax_->setRange(0.0, 100000.0);
     tolMax_->setDecimals(2);
     form->addRow(tr("Tolerancia máx:"), tolMax_);
+    paramLabel_ = new QLabel(tr("Puntos:"), this);
+    paramSpin_ = new QSpinBox(this);
+    paramSpin_->setRange(1, 1000);
+    paramSpin_->setToolTip(
+        tr("Cantidad de puntos de muestreo de la herramienta:\n"
+           "Caliper: grosor de banda promediada (px)\n"
+           "Círculo: rayos de búsqueda del borde\n"
+           "Borde liso: escaneos perpendiculares\n"
+           "Blob: área mínima de cada mancha (px²)"));
+    form->addRow(paramLabel_, paramSpin_);
     sideLayout->addLayout(form);
 
     deleteButton_ = new QPushButton(tr("Eliminar herramienta"), this);
@@ -130,6 +144,7 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     connect(nameEdit_, &QLineEdit::editingFinished, this, &EditorWindow::onPanelEdited);
     connect(tolMin_, &QDoubleSpinBox::valueChanged, this, &EditorWindow::onPanelEdited);
     connect(tolMax_, &QDoubleSpinBox::valueChanged, this, &EditorWindow::onPanelEdited);
+    connect(paramSpin_, &QSpinBox::valueChanged, this, &EditorWindow::onPanelEdited);
     connect(deleteButton_, &QPushButton::clicked, this, &EditorWindow::onDeleteClicked);
     connect(testButton, &QPushButton::clicked, this, &EditorWindow::onTestClicked);
     connect(saveButton, &QPushButton::clicked, this, &EditorWindow::onSaveClicked);
@@ -197,11 +212,38 @@ void EditorWindow::syncPanelFromSelection() {
     tolMin_->setEnabled(hasSelection);
     tolMax_->setEnabled(hasSelection);
     deleteButton_->setEnabled(hasSelection);
+    paramSpin_->setEnabled(false);
+    paramLabel_->setText(tr("Puntos:"));
     if (hasSelection) {
         const auto& tool = tools_[static_cast<std::size_t>(index)];
         nameEdit_->setText(QString::fromStdString(tool.config.name));
         tolMin_->setValue(tool.config.toleranceMin);
         tolMax_->setValue(tool.config.toleranceMax);
+
+        // Parámetro de muestreo según el tipo de herramienta.
+        std::visit(
+            [this](const auto& g) {
+                using T = std::decay_t<decltype(g)>;
+                if constexpr (std::is_same_v<T, CaliperGeometry>) {
+                    paramLabel_->setText(tr("Banda (px):"));
+                    paramSpin_->setValue(static_cast<int>(g.bandWidth));
+                    paramSpin_->setEnabled(true);
+                } else if constexpr (std::is_same_v<T, CircleGeometry>) {
+                    paramLabel_->setText(tr("Rayos:"));
+                    paramSpin_->setValue(g.rayCount);
+                    paramSpin_->setEnabled(true);
+                } else if constexpr (std::is_same_v<T, EdgeFlawGeometry>) {
+                    paramLabel_->setText(tr("Escaneos:"));
+                    paramSpin_->setValue(g.scanCount);
+                    paramSpin_->setEnabled(true);
+                } else if constexpr (std::is_same_v<T, BlobGeometry>) {
+                    paramLabel_->setText(tr("Área mín (px²):"));
+                    paramSpin_->setValue(static_cast<int>(g.minArea));
+                    paramSpin_->setEnabled(true);
+                }
+                // PointToLine no tiene parámetro de muestreo editable.
+            },
+            tool.geometry);
     } else {
         nameEdit_->clear();
     }
@@ -275,6 +317,24 @@ void EditorWindow::onPanelEdited() {
     }
     tool.config.toleranceMin = tolMin_->value();
     tool.config.toleranceMax = tolMax_->value();
+    if (paramSpin_->isEnabled()) {
+        const int value = paramSpin_->value();
+        std::visit(
+            [value](auto& g) {
+                using T = std::decay_t<decltype(g)>;
+                if constexpr (std::is_same_v<T, CaliperGeometry>) {
+                    g.bandWidth = static_cast<float>(value);
+                } else if constexpr (std::is_same_v<T, CircleGeometry>) {
+                    g.rayCount = value;
+                } else if constexpr (std::is_same_v<T, EdgeFlawGeometry>) {
+                    g.scanCount = value;
+                } else if constexpr (std::is_same_v<T, BlobGeometry>) {
+                    g.minArea = static_cast<float>(value);
+                }
+            },
+            tool.geometry);
+        canvas_->update();
+    }
     refreshList();
 }
 
