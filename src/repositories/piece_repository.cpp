@@ -25,10 +25,72 @@ core::Result<std::int64_t> PieceRepository::createPiece(const std::string& name)
         return ResultT::err(bind.error().message);
     }
     if (auto step = stmt.value().step(); !step.isOk()) {
+        // Traducir el error críptico de SQLite a algo accionable.
+        if (step.error().message.find("UNIQUE") != std::string::npos) {
+            return ResultT::err("Ya existe una pieza llamada '" + name +
+                                "': elige otro nombre");
+        }
         return ResultT::err("No se pudo crear la pieza '" + name +
                             "': " + step.error().message);
     }
     return ResultT::ok(db_.lastInsertId());
+}
+
+core::Result<bool> PieceRepository::nameExists(const std::string& name) {
+    using ResultT = core::Result<bool>;
+
+    auto stmt = db_.prepare("SELECT 1 FROM Pieces WHERE name = ? LIMIT 1;");
+    if (!stmt.isOk()) {
+        return ResultT::err(stmt.error().message);
+    }
+    if (auto bind = stmt.value().bindText(1, name); !bind.isOk()) {
+        return ResultT::err(bind.error().message);
+    }
+    auto row = stmt.value().step();
+    if (!row.isOk()) {
+        return ResultT::err(row.error().message);
+    }
+    return ResultT::ok(row.value());
+}
+
+core::Result<void> PieceRepository::saveThumbnail(std::int64_t pieceId,
+                                                  const std::vector<unsigned char>& jpeg) {
+    auto stmt = db_.prepare("UPDATE Pieces SET thumbnail = ? WHERE id = ?;");
+    if (!stmt.isOk()) {
+        return core::Result<void>::err(stmt.error().message);
+    }
+    if (auto bind = stmt.value().bindBlob(1, jpeg); !bind.isOk()) {
+        return bind;
+    }
+    if (auto bind = stmt.value().bindInt(2, pieceId); !bind.isOk()) {
+        return bind;
+    }
+    auto step = stmt.value().step();
+    if (!step.isOk()) {
+        return core::Result<void>::err(step.error().message);
+    }
+    return core::Result<void>::ok();
+}
+
+core::Result<std::vector<unsigned char>> PieceRepository::loadThumbnail(
+    std::int64_t pieceId) {
+    using ResultT = core::Result<std::vector<unsigned char>>;
+
+    auto stmt = db_.prepare("SELECT thumbnail FROM Pieces WHERE id = ?;");
+    if (!stmt.isOk()) {
+        return ResultT::err(stmt.error().message);
+    }
+    if (auto bind = stmt.value().bindInt(1, pieceId); !bind.isOk()) {
+        return ResultT::err(bind.error().message);
+    }
+    auto row = stmt.value().step();
+    if (!row.isOk()) {
+        return ResultT::err(row.error().message);
+    }
+    if (!row.value()) {
+        return ResultT::err("La pieza " + std::to_string(pieceId) + " no existe");
+    }
+    return ResultT::ok(stmt.value().columnBlob(0));
 }
 
 core::Result<std::vector<PieceInfo>> PieceRepository::listPieces() {

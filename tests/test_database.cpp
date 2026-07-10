@@ -133,13 +133,41 @@ TEST_F(DatabaseTest, CreatesAndListsPieces) {
     EXPECT_FALSE(list.value()[0].createdAt.empty());
 }
 
-TEST_F(DatabaseTest, RejectsDuplicateAndEmptyNames) {
+TEST_F(DatabaseTest, RejectsDuplicateWithFriendlyMessage) {
     auto& db = openAndMigrate();
     repositories::PieceRepository pieces(db);
 
     ASSERT_TRUE(pieces.createPiece("Pieza X").isOk());
-    EXPECT_FALSE(pieces.createPiece("Pieza X").isOk());
+    const auto duplicate = pieces.createPiece("Pieza X");
+    ASSERT_FALSE(duplicate.isOk());
+    // Mensaje accionable, no el error críptico de SQLite.
+    EXPECT_NE(duplicate.error().message.find("Ya existe"), std::string::npos);
     EXPECT_FALSE(pieces.createPiece("").isOk());
+
+    EXPECT_TRUE(pieces.nameExists("Pieza X").value());
+    EXPECT_FALSE(pieces.nameExists("Pieza Y").value());
+}
+
+TEST_F(DatabaseTest, ThumbnailRoundTrip) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+
+    const auto pieceId = pieces.createPiece("Con miniatura");
+    ASSERT_TRUE(pieceId.isOk());
+
+    // Sin miniatura guardada: blob vacío, no error.
+    auto empty = pieces.loadThumbnail(pieceId.value());
+    ASSERT_TRUE(empty.isOk());
+    EXPECT_TRUE(empty.value().empty());
+
+    const std::vector<unsigned char> jpeg{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10};
+    ASSERT_TRUE(pieces.saveThumbnail(pieceId.value(), jpeg).isOk());
+
+    auto loaded = pieces.loadThumbnail(pieceId.value());
+    ASSERT_TRUE(loaded.isOk());
+    EXPECT_EQ(loaded.value(), jpeg);
+
+    EXPECT_FALSE(pieces.loadThumbnail(9999).isOk());
 }
 
 TEST_F(DatabaseTest, ReferenceVersioningNeverDeletes) {

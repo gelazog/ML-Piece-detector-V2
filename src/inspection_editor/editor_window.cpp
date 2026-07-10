@@ -55,6 +55,12 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
         button->setCheckable(true);
         button->setToolButtonStyle(Qt::ToolButtonTextOnly);
         button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        if (id >= 0) {
+            button->setToolTip(
+                QString::fromUtf8(toolTypeDescription(static_cast<ToolType>(id))));
+        } else {
+            button->setToolTip(tr("Clic para seleccionar; arrastra para mover."));
+        }
         modeGroup_->addButton(button, id);
         modesLayout->addWidget(button);
         return button;
@@ -209,9 +215,30 @@ void EditorWindow::onToolCreated(const ToolGeometry& geometry) {
     ++nameCounter_;
     tool.config.name =
         (typeLabel(tool.config.type) + QStringLiteral(" %1").arg(nameCounter_)).toStdString();
-    // Tolerancias por defecto amplias: el usuario las ajusta tras "Probar".
+    tool.config.geometryJson = toJson(geometry);
     tool.config.toleranceMin = 0.0;
     tool.config.toleranceMax = 100000.0;
+
+    // Medir de inmediato sobre la imagen de referencia y sugerir tolerancias:
+    // la pieza buena define su propio rango de aceptación.
+    const auto measured =
+        runTool(camera::qImageToMat(reference_), fixture_, tool.config);
+    if (measured.isOk() && (measured.value().ok || measured.value().measured > 0.0)) {
+        suggestTolerances(tool.config.type, measured.value().measured,
+                          tool.config.toleranceMin, tool.config.toleranceMax);
+        statusLabel_->setText(tr("%1 midió %2 — tolerancias sugeridas [%3, %4]; "
+                                 "ajústalas si hace falta y Guardar")
+                                  .arg(QString::fromStdString(tool.config.name))
+                                  .arg(measured.value().measured, 0, 'f', 1)
+                                  .arg(tool.config.toleranceMin, 0, 'f', 1)
+                                  .arg(tool.config.toleranceMax, 0, 'f', 1));
+    } else {
+        statusLabel_->setText(
+            tr("%1 creada, pero no midió sobre esta imagen (%2) — ajusta su posición")
+                .arg(QString::fromStdString(tool.config.name),
+                     QString::fromStdString(measured.isOk() ? measured.value().detail
+                                                            : measured.error().message)));
+    }
     tools_.push_back(std::move(tool));
 
     canvas_->clearResults();

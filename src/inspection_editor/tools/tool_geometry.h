@@ -58,4 +58,14 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
 
 ToolType typeOf(const ToolGeometry& geometry);
 
+// Descripción de uso para tooltips/ayuda (UTF-8, en español): qué mide la
+// herramienta y cómo dibujarla.
+const char* toolTypeDescription(ToolType type);
+
+// Tolerancias sugeridas a partir de una primera medición sobre la pieza
+// buena: banda de ±10% para distancias/diámetros, conteo exacto para blobs y
+// techo holgado para la desviación de borde.
+void suggestTolerances(ToolType type, double measured, double& toleranceMin,
+                       double& toleranceMax);
+
 }  // namespace pci::inspection

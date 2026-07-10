@@ -32,16 +32,27 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    siguientes aceptan imágenes desde archivo* (`sample_images/pieza_demo.png`
    sirve para probar).
 3. **Dibujar sobre el video en vivo**: con la pieza detectada, elige una
-   herramienta en la fila **Dibujar** (Caliper, Círculo, Punto-Línea, Borde
-   liso, Blob) y traza directamente sobre el video arrastrando el mouse — en
-   tiempo real y anclado a la pieza: si la mueves o la giras, las
-   herramientas la siguen. **Mover/Elegir** permite seleccionar y arrastrar;
-   **Borrar herramienta** elimina la seleccionada.
-4. **Registrar y activar**: un solo botón — pide el nombre, captura
-   automáticamente 30 referencias válidas del video (cada frame se valida:
-   nitidez, exposición, pieza completa; los rechazos muestran el motivo en el
-   progreso), guarda la referencia de embeddings v1 **y las herramientas
-   dibujadas**, y arranca la auto-inspección.
+   herramienta en la fila **Dibujar** (cada botón explica en su tooltip qué
+   mide y cómo trazarla) y dibuja directamente sobre el video arrastrando el
+   mouse — en tiempo real y anclado a la pieza: si la mueves o la giras, las
+   herramientas la siguen. Al soltar, **la herramienta mide la pieza actual y
+   se auto-sugiere sus tolerancias** (±10 % para distancias, conteo exacto
+   para blobs). **Mover/Elegir** selecciona y arrastra; **Borrar
+   herramienta** elimina la seleccionada.
+   - *Caliper*: línea que cruce los dos bordes a medir → distancia entre ellos.
+   - *Círculo*: arrastra del centro al borde → diámetro y redondez.
+   - *Punto-Línea*: línea de referencia → distancia perpendicular del borde.
+   - *Borde liso*: línea sobre un borde recto → desviación máxima (muescas).
+   - *Blob*: rectángulo sobre una zona → conteo de manchas/agujeros.
+4. **Registrar y activar**: un solo botón — pide el nombre **validando
+   duplicados al instante** (si la pieza ya existe ofrece guardar como nueva
+   versión de su referencia o renombrar), captura automáticamente 30
+   referencias válidas del video (cada frame se valida: nitidez, exposición,
+   pieza completa; los rechazos muestran el motivo en el progreso), guarda la
+   referencia de embeddings, la miniatura **y las herramientas dibujadas**, y
+   arranca la auto-inspección. El panel derecho muestra desde entonces la
+   **comparación en vivo: pieza registrada vs pieza actual** (recortes
+   normalizados) con la similitud y su umbral durante la auto-inspección.
 5. **Auto-inspección**: el botón queda activo y la app inspecciona el video
    continuamente (~1/s): banner **OK/NG** en vivo, resultados por herramienta
    dibujados sobre el video y estadísticas del día en la barra de estado.

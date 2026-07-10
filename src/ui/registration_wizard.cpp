@@ -12,6 +12,8 @@
 
 #include "camera/camera_controller.h"
 #include "camera/frame_utils.h"
+#include "core/logging.h"
+#include "engine/inspection_engine.h"
 #include "repositories/piece_repository.h"
 #include "ui/video_widget.h"
 
@@ -227,8 +229,12 @@ void RegistrationWizard::onFinishClicked() {
 
     auto pieceId = pieces_->createPiece(name.toStdString());
     if (!pieceId.isOk()) {
+        // Mensaje ya amigable ("Ya existe una pieza llamada…"): dejar al
+        // usuario corregir el nombre sin perder las capturas.
         QMessageBox::warning(this, tr("No se pudo crear la pieza"),
                              QString::fromStdString(pieceId.error().message));
+        nameEdit_->setFocus();
+        nameEdit_->selectAll();
         return;
     }
     auto saved = pieces_->saveReference(pieceId.value(), reference.value());
@@ -236,6 +242,14 @@ void RegistrationWizard::onFinishClicked() {
         QMessageBox::warning(this, tr("No se pudo guardar la referencia"),
                              QString::fromStdString(saved.error().message));
         return;
+    }
+    const auto thumbnail = engine::encodeThumbnailJpeg(session_->firstNormalized(), 256);
+    if (!thumbnail.empty()) {
+        if (auto savedThumb = pieces_->saveThumbnail(pieceId.value(), thumbnail);
+            !savedThumb.isOk()) {
+            pci::core::logWarning("No se pudo guardar la miniatura: " +
+                                  savedThumb.error().message);
+        }
     }
 
     createdPieceId_ = pieceId.value();

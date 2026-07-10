@@ -54,6 +54,7 @@ AnalysisOverlay buildOverlay(const QImage& frame) {
     overlay.centroid = QPointF(analysis.value().fixture.origin.x,
                                analysis.value().fixture.origin.y);
     overlay.angleDeg = analysis.value().fixture.angleDeg;
+    overlay.normalized = camera::matToQImage(analysis.value().normalized);
     return overlay;
 }
 
@@ -139,14 +140,22 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         toolsLayout->addWidget(button);
         return button;
     };
-    addMode(tr("Mover/Elegir"), -1)->setChecked(true);
+    auto* selectMode = addMode(tr("Mover/Elegir"), -1);
+    selectMode->setChecked(true);
+    selectMode->setToolTip(
+        tr("Clic para seleccionar una herramienta dibujada; arrástrala para moverla."));
     for (const auto type :
          {inspection::ToolType::Caliper, inspection::ToolType::Circle,
           inspection::ToolType::PointToLine, inspection::ToolType::EdgeFlaw,
           inspection::ToolType::Blob}) {
-        addMode(toolTypeLabel(type), static_cast<int>(type));
+        auto* button = addMode(toolTypeLabel(type), static_cast<int>(type));
+        button->setToolTip(
+            QString::fromUtf8(inspection::toolTypeDescription(type)) +
+            tr("\n\nAl dibujarla se mide la pieza actual y las tolerancias se "
+               "sugieren solas."));
     }
     deleteToolButton_ = new QPushButton(tr("Borrar herramienta"), central);
+    deleteToolButton_->setToolTip(tr("Elimina la herramienta seleccionada (Mover/Elegir)"));
     toolsLayout->addWidget(deleteToolButton_);
     toolsLayout->addStretch(1);
     rootLayout->addLayout(toolsLayout);
@@ -158,9 +167,34 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     verdictBanner_->setVisible(false);
     rootLayout->addWidget(verdictBanner_);
 
+    // Video (canvas de edición) + panel de comparación registrada vs actual.
+    auto* viewLayout = new QHBoxLayout();
     video_ = new inspection::EditorCanvas(central);
     video_->setTools(&liveTools_);
-    rootLayout->addWidget(video_, 1);
+    viewLayout->addWidget(video_, 1);
+
+    auto* compareLayout = new QVBoxLayout();
+    auto makeThumb = [central]() {
+        auto* label = new QLabel(central);
+        label->setFixedSize(170, 170);
+        label->setAlignment(Qt::AlignCenter);
+        label->setStyleSheet(
+            QStringLiteral("background:#1a1a1a; color:#888; border:1px solid #444;"));
+        label->setText(QStringLiteral("—"));
+        return label;
+    };
+    compareLayout->addWidget(new QLabel(tr("Pieza registrada:"), central));
+    refThumbLabel_ = makeThumb();
+    compareLayout->addWidget(refThumbLabel_);
+    compareLayout->addWidget(new QLabel(tr("Pieza actual:"), central));
+    currentThumbLabel_ = makeThumb();
+    compareLayout->addWidget(currentThumbLabel_);
+    similarityLabel_ = new QLabel(central);
+    similarityLabel_->setWordWrap(true);
+    compareLayout->addWidget(similarityLabel_);
+    compareLayout->addStretch(1);
+    viewLayout->addLayout(compareLayout);
+    rootLayout->addLayout(viewLayout, 1);
 
     setCentralWidget(central);
 
@@ -322,6 +356,18 @@ void MainWindow::onAnalysisFinished() {
                                    : overlay.error;
         video_->setLivePiece(overlay.valid, overlay.contour, overlay.centroid,
                              overlay.angleDeg, status);
+        if (overlay.valid) {
+            liveFixture_ = vision::Fixture{
+                {static_cast<float>(overlay.centroid.x()),
+                 static_cast<float>(overlay.centroid.y())},
+                overlay.angleDeg};
+            currentThumbLabel_->setPixmap(QPixmap::fromImage(overlay.normalized)
+                                              .scaled(currentThumbLabel_->size(),
+                                                      Qt::KeepAspectRatio,
+                                                      Qt::SmoothTransformation));
+        } else {
+            liveFixture_.reset();
+        }
         maybeStartAnalysis();
     }
 }
@@ -372,9 +418,16 @@ void MainWindow::setControlsEnabled(bool enabled) {
 // --- Herramientas dibujadas sobre el video ---------------------------------
 
 void MainWindow::onToolModeChanged(int id) {
-    video_->setCreateType(id < 0 ? std::nullopt
-                                 : std::optional<inspection::ToolType>(
-                                       static_cast<inspection::ToolType>(id)));
+    if (id < 0) {
+        video_->setCreateType(std::nullopt);
+        statusBar()->showMessage(tr("Modo mover: clic para seleccionar, arrastra para mover."));
+        return;
+    }
+    const auto type = static_cast<inspection::ToolType>(id);
+    video_->setCreateType(type);
+    // La primera línea de la descripción como guía inmediata.
+    const QString description = QString::fromUtf8(inspection::toolTypeDescription(type));
+    statusBar()->showMessage(description.section(QLatin1Char('\n'), 0, 1));
 }
 
 void MainWindow::onLiveToolCreated(const inspection::ToolGeometry& geometry) {
@@ -385,16 +438,41 @@ void MainWindow::onLiveToolCreated(const inspection::ToolGeometry& geometry) {
     tool.config.name = (toolTypeLabel(tool.config.type) +
                         QStringLiteral(" %1").arg(toolNameCounter_))
                            .toStdString();
-    // Tolerancias abiertas por defecto: se afinan en Plantilla… tras "Probar".
+    tool.config.geometryJson = inspection::toJson(geometry);
     tool.config.toleranceMin = 0.0;
     tool.config.toleranceMax = 100000.0;
+
+    // Medir la pieza actual de inmediato y sugerir tolerancias alrededor de
+    // ese valor: la pieza buena define su propio rango de aceptación.
+    QString hint;
+    if (liveFixture_.has_value() && !lastFrame_.isNull()) {
+        const auto result =
+            inspection::runTool(camera::qImageToMat(lastFrame_), *liveFixture_, tool.config);
+        if (result.isOk() && !result.value().detail.empty() &&
+            (result.value().ok || result.value().measured > 0.0)) {
+            inspection::suggestTolerances(tool.config.type, result.value().measured,
+                                          tool.config.toleranceMin,
+                                          tool.config.toleranceMax);
+            hint = tr("%1 — midió %2; tolerancias sugeridas [%3, %4]")
+                       .arg(QString::fromStdString(tool.config.name))
+                       .arg(result.value().measured, 0, 'f', 1)
+                       .arg(tool.config.toleranceMin, 0, 'f', 1)
+                       .arg(tool.config.toleranceMax, 0, 'f', 1);
+        } else {
+            hint = tr("%1 creada, pero no midió en este frame (%2) — ajusta su posición")
+                       .arg(QString::fromStdString(tool.config.name),
+                            QString::fromStdString(result.isOk() ? result.value().detail
+                                                                 : result.error().message));
+        }
+    }
     liveTools_.push_back(std::move(tool));
 
     video_->clearResults();
     video_->setSelectedIndex(static_cast<int>(liveTools_.size()) - 1);
-    statusBar()->showMessage(
-        tr("%1 creada — ajusta tolerancias en Plantilla… cuando registres la pieza")
-            .arg(QString::fromStdString(liveTools_.back().config.name)));
+    statusBar()->showMessage(hint.isEmpty()
+                                 ? tr("%1 creada").arg(QString::fromStdString(
+                                       liveTools_.back().config.name))
+                                 : hint);
 }
 
 void MainWindow::onDeleteToolClicked() {
@@ -418,6 +496,28 @@ void MainWindow::onPieceSelectionChanged(int index) {
     Q_UNUSED(index);
     autoInspectButton_->setChecked(false);
     loadToolsForSelectedPiece();
+
+    // Miniatura de la pieza registrada para el panel de comparación.
+    referenceThumb_ = QImage();
+    refThumbLabel_->setPixmap(QPixmap());
+    refThumbLabel_->setText(QStringLiteral("—"));
+    similarityLabel_->clear();
+    const std::int64_t pieceId = selectedPieceId();
+    if (pieceId >= 0 && repos_.pieces != nullptr) {
+        if (auto thumb = repos_.pieces->loadThumbnail(pieceId);
+            thumb.isOk() && !thumb.value().empty()) {
+            referenceThumb_ = QImage::fromData(thumb.value().data(),
+                                               static_cast<int>(thumb.value().size()));
+            if (!referenceThumb_.isNull()) {
+                refThumbLabel_->setPixmap(QPixmap::fromImage(referenceThumb_)
+                                              .scaled(refThumbLabel_->size(),
+                                                      Qt::KeepAspectRatio,
+                                                      Qt::SmoothTransformation));
+            }
+        } else {
+            refThumbLabel_->setText(tr("Sin miniatura\n(regístrala de nuevo\npara generarla)"));
+        }
+    }
 }
 
 void MainWindow::loadToolsForSelectedPiece() {
@@ -466,12 +566,53 @@ void MainWindow::onRegisterLiveClicked() {
         return;
     }
 
-    const QString name = QInputDialog::getText(this, tr("Registrar pieza"),
-                                               tr("Nombre de la pieza:"));
-    if (name.trimmed().isEmpty()) {
-        return;
+    // Pedir el nombre validando duplicados ANTES de capturar nada: si ya
+    // existe se ofrece guardar como nueva versión de esa pieza o renombrar.
+    pendingPieceId_ = -1;
+    QString name;
+    while (true) {
+        name = QInputDialog::getText(this, tr("Registrar pieza"), tr("Nombre de la pieza:"),
+                                     QLineEdit::Normal, name)
+                   .trimmed();
+        if (name.isEmpty()) {
+            return;
+        }
+        const auto exists = repos_.pieces->nameExists(name.toStdString());
+        if (!exists.isOk()) {
+            QMessageBox::warning(this, tr("Error"),
+                                 QString::fromStdString(exists.error().message));
+            return;
+        }
+        if (!exists.value()) {
+            break;  // nombre libre
+        }
+
+        QMessageBox question(QMessageBox::Question, tr("La pieza ya existe"),
+                             tr("Ya existe una pieza llamada '%1'.\n\n¿Qué quieres hacer?")
+                                 .arg(name),
+                             QMessageBox::NoButton, this);
+        auto* newVersion =
+            question.addButton(tr("Guardar como nueva versión"), QMessageBox::AcceptRole);
+        question.addButton(tr("Elegir otro nombre"), QMessageBox::ActionRole);
+        auto* cancel = question.addButton(QMessageBox::Cancel);
+        question.exec();
+        if (question.clickedButton() == cancel) {
+            return;
+        }
+        if (question.clickedButton() == newVersion) {
+            if (auto pieces = repos_.pieces->listPieces(); pieces.isOk()) {
+                for (const auto& piece : pieces.value()) {
+                    if (piece.name == name.toStdString()) {
+                        pendingPieceId_ = piece.id;
+                        break;
+                    }
+                }
+            }
+            break;
+        }
+        // "Elegir otro nombre": vuelve a preguntar conservando el texto.
     }
-    pendingPieceName_ = name.trimmed();
+    pendingPieceName_ = name;
 
     liveSession_ = std::make_shared<engine::RegistrationSession>(repos_.embedFn,
                                                                  kCaptureTarget,
@@ -556,19 +697,34 @@ void MainWindow::finishLiveRegistration() {
                              QString::fromStdString(reference.error().message));
         return;
     }
-    auto pieceId = repos_.pieces->createPiece(pendingPieceName_.toStdString());
-    if (!pieceId.isOk()) {
-        stopLiveCapture();
-        QMessageBox::warning(this, tr("No se pudo crear la pieza"),
-                             QString::fromStdString(pieceId.error().message));
-        return;
+
+    // Pieza nueva, o nueva versión de una existente (elegido al pedir nombre).
+    std::int64_t pieceId = pendingPieceId_;
+    if (pieceId < 0) {
+        auto created = repos_.pieces->createPiece(pendingPieceName_.toStdString());
+        if (!created.isOk()) {
+            stopLiveCapture();
+            QMessageBox::warning(this, tr("No se pudo crear la pieza"),
+                                 QString::fromStdString(created.error().message));
+            return;
+        }
+        pieceId = created.value();
     }
-    if (auto saved = repos_.pieces->saveReference(pieceId.value(), reference.value());
-        !saved.isOk()) {
+
+    const auto savedVersion = repos_.pieces->saveReference(pieceId, reference.value());
+    if (!savedVersion.isOk()) {
         stopLiveCapture();
         QMessageBox::warning(this, tr("No se pudo guardar la referencia"),
-                             QString::fromStdString(saved.error().message));
+                             QString::fromStdString(savedVersion.error().message));
         return;
+    }
+
+    // Miniatura del recorte normalizado: alimenta el panel "Pieza registrada".
+    const auto thumbnail = engine::encodeThumbnailJpeg(session->firstNormalized(), 256);
+    if (!thumbnail.empty()) {
+        if (auto saved = repos_.pieces->saveThumbnail(pieceId, thumbnail); !saved.isOk()) {
+            core::logWarning("No se pudo guardar la miniatura: " + saved.error().message);
+        }
     }
 
     // Persistir las herramientas dibujadas sobre el video.
@@ -576,8 +732,7 @@ void MainWindow::finishLiveRegistration() {
     if (repos_.tools != nullptr) {
         for (auto& tool : liveTools_) {
             tool.config.geometryJson = inspection::toJson(tool.geometry);
-            if (auto saved = repos_.tools->save(pieceId.value(), tool.config);
-                saved.isOk()) {
+            if (auto saved = repos_.tools->save(pieceId, tool.config); saved.isOk()) {
                 tool.config.id = saved.value();
             } else {
                 ++toolErrors;
@@ -587,16 +742,25 @@ void MainWindow::finishLiveRegistration() {
     }
 
     stopLiveCapture();
-    // Seleccionar la pieza nueva sin recargar las herramientas recién guardadas.
+    // Seleccionar la pieza sin recargar las herramientas recién guardadas,
+    // pero sí refrescar la miniatura de referencia del panel.
     {
         QSignalBlocker blocker(pieceCombo_);
-        loadPieceList(pieceId.value());
+        loadPieceList(pieceId);
+    }
+    referenceThumb_ = QImage::fromData(thumbnail.data(), static_cast<int>(thumbnail.size()));
+    if (!referenceThumb_.isNull()) {
+        refThumbLabel_->setPixmap(QPixmap::fromImage(referenceThumb_)
+                                      .scaled(refThumbLabel_->size(), Qt::KeepAspectRatio,
+                                              Qt::SmoothTransformation));
     }
 
     statusBar()->showMessage(
         toolErrors == 0
-            ? tr("'%1' registrada con %2 herramienta(s). Auto-inspección activa.")
+            ? tr("'%1' registrada (referencia v%2) con %3 herramienta(s). "
+                 "Auto-inspección activa.")
                   .arg(pendingPieceName_)
+                  .arg(savedVersion.value())
                   .arg(liveTools_.size())
             : tr("'%1' registrada, pero %2 herramienta(s) no se guardaron (ver log).")
                   .arg(pendingPieceName_)
@@ -653,6 +817,15 @@ void MainWindow::showLiveVerdict(const engine::InspectionEngine::Outcome& outcom
                   "background:#8f1f1f; color:white; font-size:16px; font-weight:bold;"));
     verdictBanner_->setText(QString::fromStdString(outcome.verdict.summary));
     video_->setResults(outcome.toolResults);
+
+    if (outcome.verdict.embedding.evaluated) {
+        similarityLabel_->setText(tr("Similitud: %1\nUmbral: %2")
+                                      .arg(outcome.verdict.embedding.similarity, 0, 'f', 4)
+                                      .arg(outcome.verdict.embedding.threshold, 0, 'f', 4));
+    } else {
+        similarityLabel_->setText(
+            QString::fromStdString(outcome.verdict.embedding.note));
+    }
 }
 
 // --- Flujos con diálogo -------------------------------------------------------
@@ -826,7 +999,7 @@ void MainWindow::onInspectionFinished() {
     }
 
     InspectionResultDialog dialog(inspectedFrame_, result.value(), repos_.engine, pieceId,
-                                  this);
+                                  referenceThumb_, this);
     dialog.exec();
 }
 

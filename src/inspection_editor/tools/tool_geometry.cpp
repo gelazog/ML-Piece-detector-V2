@@ -2,6 +2,7 @@
 
 #include <opencv2/core.hpp>
 
+#include <algorithm>
 #include <functional>
 #include <type_traits>
 
@@ -26,6 +27,58 @@ core::Result<ToolType> toolTypeFromName(const std::string& name) {
         }
     }
     return core::Result<ToolType>::err("Tipo de herramienta desconocido: '" + name + "'");
+}
+
+const char* toolTypeDescription(ToolType type) {
+    switch (type) {
+        case ToolType::Caliper:
+            return "Caliper — mide la distancia entre dos bordes (px).\n"
+                   "Dibuja una línea que CRUCE perpendicularmente los dos bordes a medir\n"
+                   "(p. ej. de lado a lado del ancho de un brazo o una ranura).";
+        case ToolType::Circle:
+            return "Círculo — mide el diámetro y la redondez de un contorno circular.\n"
+                   "Arrastra desde el CENTRO del círculo (o agujero) hasta su borde;\n"
+                   "el borde se busca en una banda alrededor de ese radio.";
+        case ToolType::PointToLine:
+            return "Punto-Línea — mide la distancia perpendicular de un borde a una\n"
+                   "línea de referencia. Dibuja la línea de referencia; el escaneo que\n"
+                   "localiza el borde queda perpendicular en su punto medio\n"
+                   "(muévelo con Mover/Elegir si hace falta).";
+        case ToolType::EdgeFlaw:
+            return "Borde liso — detecta irregularidades (muescas, rebabas, golpes) en\n"
+                   "un borde que debería ser recto. Dibuja una línea SOBRE el borde a\n"
+                   "vigilar; se mide la desviación máxima respecto a la recta ideal.";
+        case ToolType::Blob:
+            return "Blob — cuenta manchas, agujeros o elementos dentro de una región.\n"
+                   "Arrastra un rectángulo sobre la zona a vigilar; por defecto busca\n"
+                   "elementos oscuros sobre fondo claro (área mínima 20 px²).";
+    }
+    return "";
+}
+
+void suggestTolerances(ToolType type, double measured, double& toleranceMin,
+                       double& toleranceMax) {
+    switch (type) {
+        case ToolType::Blob:
+            // Conteo: se exige exactamente lo que hay en la pieza buena.
+            toleranceMin = measured;
+            toleranceMax = measured;
+            return;
+        case ToolType::EdgeFlaw:
+            // Desviación: la pieza buena define el piso; techo holgado.
+            toleranceMin = 0.0;
+            toleranceMax = std::max(measured * 1.5, 2.0);
+            return;
+        case ToolType::Caliper:
+        case ToolType::Circle:
+        case ToolType::PointToLine: {
+            // Banda de ±10% con un mínimo de ±2 px para medidas pequeñas.
+            const double band = std::max(measured * 0.10, 2.0);
+            toleranceMin = std::max(0.0, measured - band);
+            toleranceMax = measured + band;
+            return;
+        }
+    }
 }
 
 ToolType typeOf(const ToolGeometry& geometry) {

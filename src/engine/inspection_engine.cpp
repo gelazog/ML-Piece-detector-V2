@@ -12,6 +12,17 @@
 
 namespace pci::engine {
 
+std::vector<unsigned char> encodeThumbnailJpeg(const cv::Mat& image, int size, int quality) {
+    if (image.empty() || size <= 0) {
+        return {};
+    }
+    cv::Mat small;
+    cv::resize(image, small, cv::Size(size, size), 0.0, 0.0, cv::INTER_AREA);
+    std::vector<unsigned char> jpeg;
+    cv::imencode(".jpg", small, jpeg, {cv::IMWRITE_JPEG_QUALITY, quality});
+    return jpeg;
+}
+
 InspectionEngine::InspectionEngine(EmbedFn embedFn, repositories::PieceRepository& pieces,
                                    repositories::ToolRepository& tools,
                                    repositories::InspectionRepository& history,
@@ -80,14 +91,8 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
 
     // 4. Historial + estadísticas (fallo de BD = avisado, nunca oculta el
     //    veredicto ni tumba la inspección).
-    std::vector<unsigned char> thumbnail;
-    if (!outcome.analysis.normalized.empty()) {
-        cv::Mat small;
-        cv::resize(outcome.analysis.normalized, small,
-                   cv::Size(options_.thumbnailSize, options_.thumbnailSize), 0.0, 0.0,
-                   cv::INTER_AREA);
-        cv::imencode(".jpg", small, thumbnail, {cv::IMWRITE_JPEG_QUALITY, 80});
-    }
+    const std::vector<unsigned char> thumbnail =
+        encodeThumbnailJpeg(outcome.analysis.normalized, options_.thumbnailSize);
     auto saved = history_.saveInspection(pieceId, outcome.referenceVersion, outcome.verdict,
                                          outcome.toolResults, thumbnail);
     if (saved.isOk()) {

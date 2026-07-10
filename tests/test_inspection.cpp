@@ -248,6 +248,29 @@ TEST(FixtureAnchoring, CaliperMeasuresSameOnRotatedPiece) {
     EXPECT_NEAR(resultB.value().measured, resultA.value().measured, 1.5);
 }
 
+// --- Tolerancias sugeridas ---
+
+TEST(SuggestTolerances, BandsPerToolType) {
+    double lo = -1.0;
+    double hi = -1.0;
+
+    suggestTolerances(ToolType::Caliper, 40.0, lo, hi);
+    EXPECT_DOUBLE_EQ(lo, 36.0);  // ±10%
+    EXPECT_DOUBLE_EQ(hi, 44.0);
+
+    suggestTolerances(ToolType::Circle, 10.0, lo, hi);
+    EXPECT_DOUBLE_EQ(lo, 8.0);  // banda mínima de ±2 px
+    EXPECT_DOUBLE_EQ(hi, 12.0);
+
+    suggestTolerances(ToolType::Blob, 3.0, lo, hi);
+    EXPECT_DOUBLE_EQ(lo, 3.0);  // conteo exacto
+    EXPECT_DOUBLE_EQ(hi, 3.0);
+
+    suggestTolerances(ToolType::EdgeFlaw, 0.5, lo, hi);
+    EXPECT_DOUBLE_EQ(lo, 0.0);
+    EXPECT_DOUBLE_EQ(hi, 2.0);  // techo mínimo de 2 px
+}
+
 // --- runTools: errores por herramienta controlados ---
 
 TEST(RunTools, CorruptToolBecomesNgNotCrash) {

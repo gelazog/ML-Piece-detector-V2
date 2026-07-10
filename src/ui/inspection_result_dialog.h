@@ -20,9 +20,11 @@ class InspectionResultDialog : public QDialog {
     Q_OBJECT
 
 public:
+    // referenceThumb: miniatura de la pieza registrada (puede ser nula) para
+    // la comparación visual contra el recorte de la pieza inspeccionada.
     InspectionResultDialog(const QImage& frame, engine::InspectionEngine::Outcome outcome,
                            engine::InspectionEngine* engine, std::int64_t pieceId,
-                           QWidget* parent = nullptr);
+                           const QImage& referenceThumb = {}, QWidget* parent = nullptr);
 
 private slots:
     void onLearnClicked();

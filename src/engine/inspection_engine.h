@@ -21,6 +21,10 @@ struct EngineOptions {
     int thumbnailSize = 96;  // miniatura JPEG guardada en el historial
 };
 
+// Miniatura JPEG cuadrada de una imagen (BGR o gris); vacía si la imagen lo es.
+std::vector<unsigned char> encodeThumbnailJpeg(const cv::Mat& image, int size = 128,
+                                               int quality = 80);
+
 // Inspección completa de un frame contra una pieza registrada: apariencia por
 // embeddings + herramientas geométricas + persistencia de historial. También
 // ejecuta el aprendizaje incremental (nueva versión de referencia).

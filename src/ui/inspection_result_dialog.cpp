@@ -10,6 +10,7 @@
 
 #include <utility>
 
+#include "camera/frame_utils.h"
 #include "ui/video_widget.h"
 
 namespace pci::ui {
@@ -17,7 +18,8 @@ namespace pci::ui {
 InspectionResultDialog::InspectionResultDialog(const QImage& frame,
                                                engine::InspectionEngine::Outcome outcome,
                                                engine::InspectionEngine* engine,
-                                               std::int64_t pieceId, QWidget* parent)
+                                               std::int64_t pieceId,
+                                               const QImage& referenceThumb, QWidget* parent)
     : QDialog(parent), outcome_(std::move(outcome)), engine_(engine), pieceId_(pieceId) {
     setWindowTitle(tr("Resultado de inspección"));
     resize(1000, 680);
@@ -43,6 +45,31 @@ InspectionResultDialog::InspectionResultDialog(const QImage& frame,
     contentLayout->addWidget(view, 3);
 
     auto* sideLayout = new QVBoxLayout();
+
+    // Comparación visual: pieza registrada vs recorte de la pieza actual.
+    auto* compareLayout = new QHBoxLayout();
+    auto addThumb = [this, compareLayout](const QString& caption, const QImage& image) {
+        auto* column = new QVBoxLayout();
+        column->addWidget(new QLabel(caption, this));
+        auto* thumb = new QLabel(this);
+        thumb->setFixedSize(130, 130);
+        thumb->setAlignment(Qt::AlignCenter);
+        thumb->setStyleSheet(
+            QStringLiteral("background:#1a1a1a; color:#888; border:1px solid #444;"));
+        if (image.isNull()) {
+            thumb->setText(QStringLiteral("—"));
+        } else {
+            thumb->setPixmap(QPixmap::fromImage(image).scaled(
+                thumb->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        }
+        column->addWidget(thumb);
+        compareLayout->addLayout(column);
+    };
+    addThumb(tr("Registrada"), referenceThumb);
+    addThumb(tr("Actual"), camera::matToQImage(outcome_.analysis.normalized));
+    compareLayout->addStretch(1);
+    sideLayout->addLayout(compareLayout);
+
     if (outcome_.verdict.embedding.evaluated) {
         auto* similarity = new QLabel(
             tr("Similitud de apariencia: %1 (umbral %2)")

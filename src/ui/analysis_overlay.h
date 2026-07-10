@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QImage>
 #include <QPointF>
 #include <QPolygonF>
 #include <QSize>
@@ -16,6 +17,9 @@ struct AnalysisOverlay {
     double angleDeg = 0.0;
     QSize frameSize;
     QString error;
+    // Recorte canónico orientado de la pieza (256x256): alimenta el panel de
+    // comparación "registrada vs actual".
+    QImage normalized;
 };
 
 }  // namespace pci::ui

@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "camera/camera_controller.h"
@@ -95,6 +96,10 @@ private:
     QLabel* verdictBanner_ = nullptr;
     inspection::EditorCanvas* video_ = nullptr;
     QLabel* statsLabel_ = nullptr;
+    // Panel de comparación: pieza registrada vs pieza actual.
+    QLabel* refThumbLabel_ = nullptr;
+    QLabel* currentThumbLabel_ = nullptr;
+    QLabel* similarityLabel_ = nullptr;
 
     AppRepositories repos_;
     QImage lastFrame_;
@@ -112,6 +117,9 @@ private:
     QTimer captureTimer_;
     QTimer autoTimer_;
     QString pendingPieceName_;
+    std::int64_t pendingPieceId_ = -1;  // >= 0: nueva versión de pieza existente
+    std::optional<vision::Fixture> liveFixture_;
+    QImage referenceThumb_;
     int toolNameCounter_ = 0;
     bool streaming_ = false;
 };
