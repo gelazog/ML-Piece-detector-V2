@@ -20,6 +20,9 @@ public:
     core::Result<void> setInt(const std::string& key, int value);
     core::Result<int> getInt(const std::string& key, int defaultValue = 0);
 
+    core::Result<void> setDouble(const std::string& key, double value);
+    core::Result<double> getDouble(const std::string& key, double defaultValue = 0.0);
+
 private:
     database::Db& db_;
 };

@@ -65,4 +65,25 @@ core::Result<int> SettingsRepository::getInt(const std::string& key, int default
     return core::Result<int>::ok(static_cast<int>(value));
 }
 
+core::Result<void> SettingsRepository::setDouble(const std::string& key, double value) {
+    return setString(key, std::to_string(value));
+}
+
+core::Result<double> SettingsRepository::getDouble(const std::string& key,
+                                                   double defaultValue) {
+    auto text = getString(key, "");
+    if (!text.isOk()) {
+        return core::Result<double>::err(text.error().message);
+    }
+    if (text.value().empty()) {
+        return core::Result<double>::ok(defaultValue);
+    }
+    char* end = nullptr;
+    const double value = std::strtod(text.value().c_str(), &end);
+    if (end == text.value().c_str()) {
+        return core::Result<double>::ok(defaultValue);
+    }
+    return core::Result<double>::ok(value);
+}
+
 }  // namespace pci::repositories

@@ -11,6 +11,7 @@
 
 #include "camera/camera_controller.h"
 #include "camera/camera_info.h"
+#include "domain/calibration.h"
 #include "engine/inspection_engine.h"
 #include "engine/registration_session.h"
 #include "inspection_editor/canvas/editor_canvas.h"
@@ -68,10 +69,12 @@ private slots:
     void onOpenEditorClicked();
     void onInspectClicked();
     void onInspectionFinished();
+    void onCalibrateClicked();
 
 private:
     void setControlsEnabled(bool enabled);
     void maybeStartAnalysis();
+    void updateCalibrationLabel();
     void loadPieceList(std::int64_t selectId = -1);
     void loadToolsForSelectedPiece();
     void finishLiveRegistration();
@@ -84,7 +87,9 @@ private:
     QComboBox* cameraCombo_ = nullptr;
     QPushButton* refreshButton_ = nullptr;
     QPushButton* startStopButton_ = nullptr;
+    QPushButton* calibrateButton_ = nullptr;
     QCheckBox* analysisCheck_ = nullptr;
+    QLabel* calibLabel_ = nullptr;  // estado de la escala en la barra inferior
     // Fila 2: pieza y flujo.
     QComboBox* pieceCombo_ = nullptr;
     QPushButton* registerLiveButton_ = nullptr;
@@ -124,6 +129,7 @@ private:
     std::int64_t pendingPieceId_ = -1;  // >= 0: nueva versión de pieza existente
     std::optional<vision::Fixture> liveFixture_;
     std::optional<vision::OrientationAnchor> currentAnchor_;
+    domain::ScaleCalibration calibration_;
     QImage referenceThumb_;
     int toolNameCounter_ = 0;
     bool streaming_ = false;

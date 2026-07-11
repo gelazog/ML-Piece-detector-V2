@@ -326,4 +326,9 @@ TEST_F(DatabaseTest, SettingsSetGetOverwriteAndDefaults) {
     ASSERT_TRUE(settings.setString("modo", "estricto").isOk());
     EXPECT_EQ(settings.getString("modo").value(), "estricto");
     EXPECT_EQ(settings.getString("inexistente", "def").value(), "def");
+
+    // Dobles (calibración de escala).
+    EXPECT_DOUBLE_EQ(settings.getDouble("calib_mm_per_px", 0.0).value(), 0.0);
+    ASSERT_TRUE(settings.setDouble("calib_mm_per_px", 0.253).isOk());
+    EXPECT_NEAR(settings.getDouble("calib_mm_per_px", 0.0).value(), 0.253, 1e-9);
 }

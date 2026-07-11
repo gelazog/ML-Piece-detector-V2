@@ -5,6 +5,7 @@
 
 #include <cstdint>
 
+#include "domain/calibration.h"
 #include "engine/inspection_engine.h"
 
 class QLabel;
@@ -24,7 +25,9 @@ public:
     // la comparación visual contra el recorte de la pieza inspeccionada.
     InspectionResultDialog(const QImage& frame, engine::InspectionEngine::Outcome outcome,
                            engine::InspectionEngine* engine, std::int64_t pieceId,
-                           const QImage& referenceThumb = {}, QWidget* parent = nullptr);
+                           const QImage& referenceThumb = {},
+                           domain::ScaleCalibration calibration = {},
+                           QWidget* parent = nullptr);
 
 private slots:
     void onLearnClicked();

@@ -15,11 +15,10 @@
 
 namespace pci::ui {
 
-InspectionResultDialog::InspectionResultDialog(const QImage& frame,
-                                               engine::InspectionEngine::Outcome outcome,
-                                               engine::InspectionEngine* engine,
-                                               std::int64_t pieceId,
-                                               const QImage& referenceThumb, QWidget* parent)
+InspectionResultDialog::InspectionResultDialog(
+    const QImage& frame, engine::InspectionEngine::Outcome outcome,
+    engine::InspectionEngine* engine, std::int64_t pieceId, const QImage& referenceThumb,
+    domain::ScaleCalibration calibration, QWidget* parent)
     : QDialog(parent), outcome_(std::move(outcome)), engine_(engine), pieceId_(pieceId) {
     setWindowTitle(tr("Resultado de inspección"));
     resize(1000, 680);
@@ -85,8 +84,9 @@ InspectionResultDialog::InspectionResultDialog(const QImage& frame,
             this));
     }
 
-    auto* table = new QTableWidget(static_cast<int>(outcome_.toolResults.size()), 3, this);
-    table->setHorizontalHeaderLabels({tr("Herramienta"), tr("Estado"), tr("Detalle")});
+    auto* table = new QTableWidget(static_cast<int>(outcome_.toolResults.size()), 4, this);
+    table->setHorizontalHeaderLabels(
+        {tr("Herramienta"), tr("Medida"), tr("Estado"), tr("Detalle")});
     table->horizontalHeader()->setStretchLastSection(true);
     table->verticalHeader()->setVisible(false);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -94,12 +94,17 @@ InspectionResultDialog::InspectionResultDialog(const QImage& frame,
         const auto& result = outcome_.toolResults[static_cast<std::size_t>(row)];
         table->setItem(row, 0,
                        new QTableWidgetItem(QString::fromStdString(result.name)));
+        const QString measure =
+            result.type == inspection::ToolType::Blob
+                ? QString::number(result.measured, 'f', 0)
+                : QString::fromStdString(calibration.formatLength(result.measured));
+        table->setItem(row, 1, new QTableWidgetItem(measure));
         auto* state = new QTableWidgetItem(result.ok ? QStringLiteral("OK")
                                                      : QStringLiteral("NG"));
         state->setForeground(result.ok ? QBrush(QColor(0, 170, 0))
                                        : QBrush(QColor(220, 40, 40)));
-        table->setItem(row, 1, state);
-        table->setItem(row, 2,
+        table->setItem(row, 2, state);
+        table->setItem(row, 3,
                        new QTableWidgetItem(QString::fromStdString(result.detail)));
     }
     sideLayout->addWidget(table, 1);

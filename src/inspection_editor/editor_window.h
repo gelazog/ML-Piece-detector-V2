@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "domain/calibration.h"
 #include "inspection_editor/canvas/editor_canvas.h"
 #include "vision/types.h"
 
@@ -31,10 +32,10 @@ class EditorWindow : public QDialog {
 
 public:
     // repo puede ser nullptr (BD no disponible): el editor funciona pero el
-    // botón Guardar queda deshabilitado.
+    // botón Guardar queda deshabilitado. calibration inválida = medidas en px.
     EditorWindow(const QImage& reference, const vision::Fixture& fixture,
                  std::int64_t pieceId, repositories::ToolRepository* repo,
-                 QWidget* parent = nullptr);
+                 domain::ScaleCalibration calibration = {}, QWidget* parent = nullptr);
 
 private slots:
     void onToolCreated(const pci::inspection::ToolGeometry& geometry);
@@ -67,6 +68,7 @@ private:
     vision::Fixture fixture_;
     std::int64_t pieceId_ = -1;
     repositories::ToolRepository* repo_ = nullptr;
+    domain::ScaleCalibration calibration_;
 
     std::vector<EditedTool> tools_;
     int nameCounter_ = 0;

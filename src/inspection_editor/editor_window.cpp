@@ -40,9 +40,9 @@ QString typeLabel(ToolType type) {
 
 EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixture,
                            std::int64_t pieceId, repositories::ToolRepository* repo,
-                           QWidget* parent)
+                           domain::ScaleCalibration calibration, QWidget* parent)
     : QDialog(parent), reference_(reference), fixture_(fixture), pieceId_(pieceId),
-      repo_(repo) {
+      repo_(repo), calibration_(calibration) {
     setWindowTitle(tr("Editor de plantilla de inspección"));
     resize(1100, 700);
 
@@ -112,6 +112,14 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
            "Borde liso: escaneos perpendiculares\n"
            "Blob: área mínima de cada mancha (px²)"));
     form->addRow(paramLabel_, paramSpin_);
+    if (calibration_.valid()) {
+        auto* scaleHint = new QLabel(
+            tr("Escala calibrada: 1 px ≈ %1 mm (tolerancias en px)")
+                .arg(calibration_.mmPerPixel, 0, 'f', 4),
+            this);
+        scaleHint->setWordWrap(true);
+        form->addRow(scaleHint);
+    }
     sideLayout->addLayout(form);
 
     deleteButton_ = new QPushButton(tr("Eliminar herramienta"), this);
@@ -370,9 +378,13 @@ void EditorWindow::onTestClicked() {
 
     QStringList lines;
     for (const auto& result : results) {
-        lines << QStringLiteral("%1 [%2] %3")
+        const QString measure =
+            result.type == ToolType::Blob
+                ? QString::number(result.measured, 'f', 0)
+                : QString::fromStdString(calibration_.formatLength(result.measured));
+        lines << QStringLiteral("%1 [%2] %3 — %4")
                      .arg(QString::fromStdString(result.name),
-                          result.ok ? QStringLiteral("OK") : QStringLiteral("NG"),
+                          result.ok ? QStringLiteral("OK") : QStringLiteral("NG"), measure,
                           QString::fromStdString(result.detail));
     }
     statusLabel_->setText(lines.isEmpty() ? tr("No hay herramientas que probar")

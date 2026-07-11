@@ -23,6 +23,7 @@
 #include "repositories/piece_repository.h"
 #include "repositories/settings_repository.h"
 #include "repositories/tool_repository.h"
+#include "ui/calibration_dialog.h"
 #include "ui/inspection_result_dialog.h"
 #include "ui/registration_wizard.h"
 #include "vision/pipeline.h"
@@ -100,6 +101,12 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     cameraLayout->addWidget(refreshButton_);
     startStopButton_ = new QPushButton(tr("Iniciar"), central);
     cameraLayout->addWidget(startStopButton_);
+    calibrateButton_ = new QPushButton(tr("Calibrar mm…"), central);
+    calibrateButton_->setToolTip(
+        tr("Calibra la escala px → mm: dos clics sobre una distancia conocida, o\n"
+           "la distancia de la cámara a la superficie + su FOV. Con la escala\n"
+           "calibrada todas las medidas se muestran también en milímetros."));
+    cameraLayout->addWidget(calibrateButton_);
     analysisCheck_ = new QCheckBox(tr("Detectar pieza (contorno)"), central);
     analysisCheck_->setChecked(true);
     cameraLayout->addWidget(analysisCheck_);
@@ -217,6 +224,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
 
     setCentralWidget(central);
 
+    calibLabel_ = new QLabel(this);
+    statusBar()->addPermanentWidget(calibLabel_);
     statsLabel_ = new QLabel(this);
     statusBar()->addPermanentWidget(statsLabel_);
 
@@ -255,6 +264,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(autoInspectButton_, &QPushButton::toggled, this, &MainWindow::onAutoToggled);
     connect(&autoTimer_, &QTimer::timeout, this, &MainWindow::onAutoTick);
 
+    connect(calibrateButton_, &QPushButton::clicked, this, &MainWindow::onCalibrateClicked);
     connect(registerWizardButton_, &QPushButton::clicked, this,
             &MainWindow::onRegisterWizardClicked);
     connect(editorButton_, &QPushButton::clicked, this, &MainWindow::onOpenEditorClicked);
@@ -266,8 +276,48 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     captureTimer_.setInterval(350);
     autoTimer_.setInterval(1000);
 
+    // Calibración de escala persistida.
+    if (repos_.settings != nullptr) {
+        calibration_.mmPerPixel =
+            repos_.settings->getDouble("calib_mm_per_px", 0.0).value();
+        calibration_.cameraDistanceMm =
+            repos_.settings->getDouble("calib_camera_dist_mm", 0.0).value();
+        calibration_.horizontalFovDeg =
+            repos_.settings->getDouble("calib_fov_deg", 60.0).value();
+    }
+    updateCalibrationLabel();
+
     refreshCameras();
     loadPieceList();
+}
+
+void MainWindow::updateCalibrationLabel() {
+    calibLabel_->setText(
+        calibration_.valid()
+            ? tr("Escala: %1 mm/px · cámara ~%2 mm")
+                  .arg(calibration_.mmPerPixel, 0, 'f', 4)
+                  .arg(calibration_.cameraDistanceMm, 0, 'f', 0)
+            : tr("Sin calibrar (medidas en px)"));
+}
+
+void MainWindow::onCalibrateClicked() {
+    const QImage snapshot = frameOrFile();
+    if (snapshot.isNull()) {
+        return;
+    }
+    CalibrationDialog dialog(snapshot, calibration_, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    calibration_ = dialog.calibration();
+    updateCalibrationLabel();
+    if (repos_.settings != nullptr) {
+        repos_.settings->setDouble("calib_mm_per_px", calibration_.mmPerPixel);
+        repos_.settings->setDouble("calib_camera_dist_mm", calibration_.cameraDistanceMm);
+        repos_.settings->setDouble("calib_fov_deg", calibration_.horizontalFovDeg);
+    }
+    statusBar()->showMessage(
+        tr("Escala calibrada: las medidas ahora se muestran también en mm."));
 }
 
 MainWindow::~MainWindow() {
@@ -477,9 +527,13 @@ void MainWindow::onLiveToolCreated(const inspection::ToolGeometry& geometry) {
             inspection::suggestTolerances(tool.config.type, result.value().measured,
                                           tool.config.toleranceMin,
                                           tool.config.toleranceMax);
-            hint = tr("%1 — midió %2; tolerancias sugeridas [%3, %4]")
-                       .arg(QString::fromStdString(tool.config.name))
-                       .arg(result.value().measured, 0, 'f', 1)
+            const QString measure =
+                tool.config.type == inspection::ToolType::Blob
+                    ? QString::number(result.value().measured, 'f', 0)
+                    : QString::fromStdString(
+                          calibration_.formatLength(result.value().measured));
+            hint = tr("%1 — midió %2; tolerancias sugeridas [%3, %4] px")
+                       .arg(QString::fromStdString(tool.config.name), measure)
                        .arg(tool.config.toleranceMin, 0, 'f', 1)
                        .arg(tool.config.toleranceMax, 0, 'f', 1);
         } else {
@@ -1019,7 +1073,8 @@ void MainWindow::onOpenEditorClicked() {
     }
 
     inspection::EditorWindow editor(reference, analysis.value().fixture, pieceId,
-                                    pieceId >= 0 ? repos_.tools : nullptr, this);
+                                    pieceId >= 0 ? repos_.tools : nullptr, calibration_,
+                                    this);
     editor.exec();
     // Reflejar en el video los cambios hechos en el editor.
     loadToolsForSelectedPiece();
@@ -1089,7 +1144,7 @@ void MainWindow::onInspectionFinished() {
     }
 
     InspectionResultDialog dialog(inspectedFrame_, result.value(), repos_.engine, pieceId,
-                                  referenceThumb_, this);
+                                  referenceThumb_, calibration_, this);
     dialog.exec();
 }
 

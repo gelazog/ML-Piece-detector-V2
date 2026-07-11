@@ -1,4 +1,5 @@
 add_library(pci_ui STATIC
+  calibration_dialog.cpp
   inspection_result_dialog.cpp
   main_window.cpp
   registration_wizard.cpp

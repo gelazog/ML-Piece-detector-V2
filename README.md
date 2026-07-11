@@ -49,6 +49,16 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    **Plantilla…** (campo "Puntos"): banda del Caliper, rayos del Círculo,
    escaneos del Borde liso y área mínima del Blob.
 
+   **Calibración a milímetros** (botón *Calibrar mm…*): dos métodos —
+   **A)** haz dos clics sobre una distancia real conocida (una regla, el
+   diámetro de una moneda) y escribe los mm: la escala se calcula y además se
+   **estima la distancia de la cámara a la superficie**; **B)** escribe la
+   distancia cámara→superficie y el FOV horizontal de tu cámara (webcams:
+   55–70°) y la escala sale del modelo pinhole. Con la escala calibrada,
+   todas las medidas se muestran en mm además de px (al dibujar, en Probar y
+   en los reportes de inspección). La escala queda guardada y vale mientras
+   la cámara no cambie de altura; las tolerancias internas siguen en px.
+
    **Rasgo distintivo** (piezas simétricas o para robustez extra): con el
    botón *Rasgo distintivo*, haz clic sobre un punto visualmente único de la
    pieza (un agujero, una marca, una esquina oscura — rombo magenta). Ese
