@@ -8,6 +8,7 @@
 
 #include "domain/calibration.h"
 #include "inspection_editor/canvas/editor_canvas.h"
+#include "inspection_editor/tools/undo_stack.h"
 #include "vision/types.h"
 
 class QButtonGroup;
@@ -50,6 +51,8 @@ private:
     void loadExistingTools();
     void refreshList();
     void syncPanelFromSelection();
+    void commitUndoState();
+    void applyUndoRedo(bool redo);
     [[nodiscard]] int listRowToToolIndex(int row) const;
     [[nodiscard]] std::vector<ToolConfig> activeConfigs() const;
 
@@ -71,6 +74,8 @@ private:
     domain::ScaleCalibration calibration_;
 
     std::vector<EditedTool> tools_;
+    std::vector<EditedTool> stableTools_;
+    UndoStack<std::vector<EditedTool>> undoStack_;
     int nameCounter_ = 0;
     bool syncing_ = false;  // evita bucles señal<->panel
 };

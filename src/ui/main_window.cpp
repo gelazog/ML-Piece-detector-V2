@@ -1,5 +1,6 @@
 #include "ui/main_window.h"
 
+#include <QAction>
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
@@ -184,6 +185,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
            "simétrica: se detecta igual en cualquier rotación, incluso girada 180°."));
     toolsLayout->addWidget(anchorButton_);
     toolsLayout->addStretch(1);
+    auto* shortcutsButton = new QPushButton(tr("Atajos (F1)"), central);
+    shortcutsButton->setToolTip(tr("Guía de atajos de teclado — también puedes cambiarlos"));
+    connect(shortcutsButton, &QPushButton::clicked, this, &MainWindow::onShowShortcuts);
+    toolsLayout->addWidget(shortcutsButton);
     rootLayout->addLayout(toolsLayout);
 
     // Banner de veredicto para la auto-inspección.
@@ -247,6 +252,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(toolModeGroup_, &QButtonGroup::idClicked, this, &MainWindow::onToolModeChanged);
     connect(video_, &inspection::EditorCanvas::toolCreated, this,
             &MainWindow::onLiveToolCreated);
+    connect(video_, &inspection::EditorCanvas::toolModified, this,
+            &MainWindow::onLiveToolModified);
     connect(deleteToolButton_, &QPushButton::clicked, this, &MainWindow::onDeleteToolClicked);
     connect(anchorButton_, &QPushButton::toggled, this, &MainWindow::onAnchorButtonToggled);
     connect(video_, &inspection::EditorCanvas::pointPicked, this,
@@ -286,9 +293,121 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             repos_.settings->getDouble("calib_fov_deg", 60.0).value();
     }
     updateCalibrationLabel();
+    buildShortcuts();
 
     refreshCameras();
     loadPieceList();
+}
+
+// Acciones con atajo configurable: el valor por defecto puede sobreescribirse
+// desde la guía (F1) y persiste en Settings ("key_<id>").
+void MainWindow::buildShortcuts() {
+    auto addShortcut = [this](const QString& id, const QString& description,
+                              const QKeySequence& defaultKey, auto slot) {
+        auto* action = new QAction(description, this);
+        QKeySequence key = defaultKey;
+        if (repos_.settings != nullptr) {
+            const auto saved =
+                repos_.settings->getString(("key_" + id).toStdString(), std::string());
+            if (saved.isOk() && !saved.value().empty()) {
+                key = QKeySequence(QString::fromStdString(saved.value()));
+            }
+        }
+        action->setShortcut(key);
+        connect(action, &QAction::triggered, this, slot);
+        addAction(action);
+        shortcuts_.push_back({id, description, defaultKey, action});
+    };
+
+    addShortcut("undo", tr("Deshacer (herramientas dibujadas)"), QKeySequence::Undo,
+                &MainWindow::onUndo);
+    addShortcut("redo", tr("Rehacer"), QKeySequence::Redo, &MainWindow::onRedo);
+    addShortcut("delete_tool", tr("Borrar la herramienta seleccionada"),
+                QKeySequence(Qt::Key_Delete), &MainWindow::onDeleteToolClicked);
+    addShortcut("select_mode", tr("Modo Mover/Elegir (cancela dibujo y rasgo)"),
+                QKeySequence(Qt::Key_Escape), [this] {
+                    anchorButton_->setChecked(false);
+                    if (auto* button = toolModeGroup_->button(-1)) {
+                        button->click();
+                    }
+                });
+
+    const struct {
+        const char* id;
+        inspection::ToolType type;
+        Qt::Key key;
+    } toolKeys[] = {
+        {"tool_caliper", inspection::ToolType::Caliper, Qt::Key_1},
+        {"tool_circle", inspection::ToolType::Circle, Qt::Key_2},
+        {"tool_point_line", inspection::ToolType::PointToLine, Qt::Key_3},
+        {"tool_edge", inspection::ToolType::EdgeFlaw, Qt::Key_4},
+        {"tool_blob", inspection::ToolType::Blob, Qt::Key_5},
+    };
+    for (const auto& entry : toolKeys) {
+        const int id = static_cast<int>(entry.type);
+        addShortcut(QString::fromLatin1(entry.id),
+                    tr("Dibujar %1").arg(toolTypeLabel(entry.type)), QKeySequence(entry.key),
+                    [this, id] {
+                        if (auto* button = toolModeGroup_->button(id)) {
+                            button->click();
+                        }
+                    });
+    }
+
+    addShortcut("camera_toggle", tr("Iniciar/Detener cámara"), QKeySequence(Qt::Key_V),
+                [this] {
+                    if (startStopButton_->isEnabled()) {
+                        onStartStopClicked();
+                    }
+                });
+    addShortcut("register_live", tr("Registrar y activar"), QKeySequence(Qt::Key_R),
+                &MainWindow::onRegisterLiveClicked);
+    addShortcut("auto_inspect", tr("Auto-inspección (alternar)"), QKeySequence(Qt::Key_A),
+                [this] { autoInspectButton_->toggle(); });
+    addShortcut("inspect_once", tr("Inspeccionar una vez"), QKeySequence(Qt::Key_I),
+                &MainWindow::onInspectClicked);
+    addShortcut("template_editor", tr("Abrir Plantilla…"), QKeySequence(Qt::Key_P),
+                &MainWindow::onOpenEditorClicked);
+    addShortcut("calibrate", tr("Calibrar mm…"), QKeySequence(Qt::Key_C),
+                &MainWindow::onCalibrateClicked);
+    addShortcut("anchor", tr("Marcar rasgo distintivo"), QKeySequence(Qt::Key_D),
+                [this] { anchorButton_->toggle(); });
+    addShortcut("shortcuts_help", tr("Guía de atajos"), QKeySequence(Qt::Key_F1),
+                &MainWindow::onShowShortcuts);
+}
+
+void MainWindow::onShowShortcuts() {
+    ShortcutsDialog dialog(&shortcuts_, repos_.settings, this);
+    dialog.exec();
+}
+
+// --- Deshacer / rehacer sobre las herramientas dibujadas ---
+
+void MainWindow::commitUndoState() {
+    undoStack_.push(stableTools_);
+    stableTools_ = liveTools_;
+}
+
+void MainWindow::restoreTools(std::vector<inspection::EditedTool> tools) {
+    liveTools_ = std::move(tools);
+    stableTools_ = liveTools_;
+    video_->setSelectedIndex(-1);
+    video_->clearResults();
+    video_->update();
+}
+
+void MainWindow::onUndo() {
+    if (auto previous = undoStack_.undo(liveTools_)) {
+        restoreTools(std::move(*previous));
+        statusBar()->showMessage(tr("Deshecho."));
+    }
+}
+
+void MainWindow::onRedo() {
+    if (auto next = undoStack_.redo(liveTools_)) {
+        restoreTools(std::move(*next));
+        statusBar()->showMessage(tr("Rehecho."));
+    }
 }
 
 void MainWindow::updateCalibrationLabel() {
@@ -544,6 +663,7 @@ void MainWindow::onLiveToolCreated(const inspection::ToolGeometry& geometry) {
         }
     }
     liveTools_.push_back(std::move(tool));
+    commitUndoState();
 
     video_->clearResults();
     video_->setSelectedIndex(static_cast<int>(liveTools_.size()) - 1);
@@ -553,6 +673,12 @@ void MainWindow::onLiveToolCreated(const inspection::ToolGeometry& geometry) {
                                  : hint);
 }
 
+// Un movimiento terminó (arrastre en el canvas): estado nuevo, undoable.
+void MainWindow::onLiveToolModified() {
+    video_->clearResults();
+    commitUndoState();
+}
+
 void MainWindow::onDeleteToolClicked() {
     const int index = video_->selectedIndex();
     if (index < 0 || index >= static_cast<int>(liveTools_.size())) {
@@ -560,12 +686,14 @@ void MainWindow::onDeleteToolClicked() {
     }
     const auto& tool = liveTools_[static_cast<std::size_t>(index)];
     if (tool.config.id >= 0 && repos_.tools != nullptr) {
+        // Si se deshace el borrado, el guardado reinsertará la fila.
         if (auto removed = repos_.tools->remove(tool.config.id); !removed.isOk()) {
             statusBar()->showMessage(QString::fromStdString(removed.error().message));
             return;
         }
     }
     liveTools_.erase(liveTools_.begin() + index);
+    commitUndoState();
     video_->setSelectedIndex(-1);
     video_->clearResults();
 }
@@ -681,6 +809,9 @@ void MainWindow::loadToolsForSelectedPiece() {
         tool.geometry = std::move(geometry.value());
         liveTools_.push_back(std::move(tool));
     }
+    // Cambiar de pieza reinicia el historial de deshacer.
+    undoStack_.clear();
+    stableTools_ = liveTools_;
     video_->update();
 }
 

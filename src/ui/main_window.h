@@ -13,6 +13,8 @@
 #include "camera/camera_info.h"
 #include "domain/calibration.h"
 #include "engine/inspection_engine.h"
+#include "inspection_editor/tools/undo_stack.h"
+#include "ui/shortcuts_dialog.h"
 #include "engine/registration_session.h"
 #include "inspection_editor/canvas/editor_canvas.h"
 #include "ui/analysis_overlay.h"
@@ -53,7 +55,11 @@ private slots:
     // Herramientas dibujadas sobre el video.
     void onToolModeChanged(int id);
     void onLiveToolCreated(const pci::inspection::ToolGeometry& geometry);
+    void onLiveToolModified();
     void onDeleteToolClicked();
+    void onUndo();
+    void onRedo();
+    void onShowShortcuts();
     void onAnchorButtonToggled(bool enabled);
     void onAnchorPicked(const cv::Point2f& imagePoint);
     void onPieceSelectionChanged(int index);
@@ -75,6 +81,9 @@ private:
     void setControlsEnabled(bool enabled);
     void maybeStartAnalysis();
     void updateCalibrationLabel();
+    void buildShortcuts();
+    void commitUndoState();
+    void restoreTools(std::vector<inspection::EditedTool> tools);
     void loadPieceList(std::int64_t selectId = -1);
     void loadToolsForSelectedPiece();
     void finishLiveRegistration();
@@ -121,6 +130,9 @@ private:
     QImage pendingAnalysisFrame_;
     std::vector<camera::CameraInfo> cameras_;
     std::vector<inspection::EditedTool> liveTools_;
+    std::vector<inspection::EditedTool> stableTools_;  // estado previo a la mutación en curso
+    inspection::UndoStack<std::vector<inspection::EditedTool>> undoStack_;
+    std::vector<ShortcutSpec> shortcuts_;
     std::shared_ptr<engine::RegistrationSession> liveSession_;
     QProgressDialog* captureProgress_ = nullptr;
     QTimer captureTimer_;

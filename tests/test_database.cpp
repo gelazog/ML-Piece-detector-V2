@@ -292,6 +292,32 @@ TEST_F(DatabaseTest, ToolCrudRoundTrip) {
     EXPECT_TRUE(listed.value().empty());
 }
 
+TEST_F(DatabaseTest, ToolSaveReinsertsWhenRowIsGone) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    repositories::ToolRepository tools(db);
+    const auto pieceId = pieces.createPiece("Pieza undo");
+    ASSERT_TRUE(pieceId.isOk());
+
+    // Herramienta con id de una fila que ya no existe (borrado + Ctrl+Z):
+    // guardar debe reinsertarla, no perderla en silencio.
+    inspection::ToolConfig ghost;
+    ghost.id = 12345;
+    ghost.type = inspection::ToolType::Caliper;
+    ghost.name = "Resucitada";
+    ghost.geometryJson = inspection::toJson(
+        inspection::ToolGeometry(inspection::CaliperGeometry{{0, 0}, {10, 0}, 5.0F}));
+
+    const auto saved = tools.save(pieceId.value(), ghost);
+    ASSERT_TRUE(saved.isOk()) << saved.error().message;
+    EXPECT_NE(saved.value(), 12345);
+
+    const auto listed = tools.listForPiece(pieceId.value());
+    ASSERT_TRUE(listed.isOk());
+    ASSERT_EQ(listed.value().size(), 1U);
+    EXPECT_EQ(listed.value()[0].name, "Resucitada");
+}
+
 TEST_F(DatabaseTest, ToolSaveRejectsInvalid) {
     auto& db = openAndMigrate();
     repositories::PieceRepository pieces(db);

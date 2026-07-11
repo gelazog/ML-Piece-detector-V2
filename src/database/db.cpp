@@ -92,4 +92,8 @@ std::int64_t Db::lastInsertId() const {
     return sqlite3_last_insert_rowid(db_);
 }
 
+int Db::changes() const {
+    return sqlite3_changes(db_);
+}
+
 }  // namespace pci::database

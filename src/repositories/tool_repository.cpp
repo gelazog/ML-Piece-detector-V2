@@ -58,6 +58,13 @@ core::Result<std::int64_t> ToolRepository::save(std::int64_t pieceId,
     if (auto step = s.step(); !step.isOk()) {
         return ResultT::err("No se pudo guardar la herramienta: " + step.error().message);
     }
+    if (isUpdate && db_.changes() == 0) {
+        // La fila ya no existe (p. ej. un borrado deshecho con Ctrl+Z):
+        // reinsertar en lugar de perder la herramienta en silencio.
+        inspection::ToolConfig fresh = config;
+        fresh.id = -1;
+        return save(pieceId, fresh);
+    }
     return ResultT::ok(isUpdate ? config.id : db_.lastInsertId());
 }
 

@@ -33,6 +33,8 @@ public:
     core::Result<void> transaction(const std::function<core::Result<void>()>& body);
 
     [[nodiscard]] std::int64_t lastInsertId() const;
+    // Filas afectadas por el último INSERT/UPDATE/DELETE.
+    [[nodiscard]] int changes() const;
     [[nodiscard]] sqlite3* handle() const { return db_; }
 
 private:

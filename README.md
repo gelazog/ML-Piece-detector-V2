@@ -59,6 +59,15 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    en los reportes de inspección). La escala queda guardada y vale mientras
    la cámara no cambie de altura; las tolerancias internas siguen en px.
 
+   **Atajos de teclado** (botón *Atajos (F1)* o tecla `F1`): guía completa y
+   **editable** — haz clic en el atajo y pulsa la combinación nueva; se
+   guardan en la BD. Por defecto: `Ctrl+Z`/`Ctrl+Y` deshacer/rehacer las
+   herramientas dibujadas (crear, mover, borrar — también dentro del editor),
+   `Supr` borrar la seleccionada, `Esc` volver a Mover/Elegir, `1`–`5` elegir
+   herramienta de dibujo, `V` iniciar/detener cámara, `R` registrar y
+   activar, `A` auto-inspección, `I` inspeccionar, `P` plantilla, `C`
+   calibrar, `D` rasgo distintivo.
+
    **Rasgo distintivo** (piezas simétricas o para robustez extra): con el
    botón *Rasgo distintivo*, haz clic sobre un punto visualmente único de la
    pieza (un agujero, una marca, una esquina oscura — rombo magenta). Ese

@@ -1,5 +1,6 @@
 #include "inspection_editor/editor_window.h"
 
+#include <QAction>
 #include <QButtonGroup>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
@@ -147,7 +148,10 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     });
     connect(canvas_, &EditorCanvas::toolCreated, this, &EditorWindow::onToolCreated);
     connect(canvas_, &EditorCanvas::selectionChanged, this, &EditorWindow::onCanvasSelection);
-    connect(canvas_, &EditorCanvas::toolModified, this, [this] { canvas_->clearResults(); });
+    connect(canvas_, &EditorCanvas::toolModified, this, [this] {
+        canvas_->clearResults();
+        commitUndoState();
+    });
     connect(list_, &QListWidget::currentRowChanged, this, &EditorWindow::onListRowChanged);
     connect(nameEdit_, &QLineEdit::editingFinished, this, &EditorWindow::onPanelEdited);
     connect(tolMin_, &QDoubleSpinBox::valueChanged, this, &EditorWindow::onPanelEdited);
@@ -158,8 +162,45 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     connect(saveButton, &QPushButton::clicked, this, &EditorWindow::onSaveClicked);
 
     loadExistingTools();
+    stableTools_ = tools_;
     refreshList();
     syncPanelFromSelection();
+
+    // Atajos estándar dentro del editor (fijos; los configurables viven en la
+    // ventana principal): Ctrl+Z / Ctrl+Y deshacen dibujo, movimiento,
+    // borrado y ediciones del panel; Supr borra la selección.
+    auto* undoAction = new QAction(tr("Deshacer"), this);
+    undoAction->setShortcut(QKeySequence::Undo);
+    connect(undoAction, &QAction::triggered, this, [this] { applyUndoRedo(false); });
+    addAction(undoAction);
+    auto* redoAction = new QAction(tr("Rehacer"), this);
+    redoAction->setShortcut(QKeySequence::Redo);
+    connect(redoAction, &QAction::triggered, this, [this] { applyUndoRedo(true); });
+    addAction(redoAction);
+    auto* deleteAction = new QAction(tr("Eliminar herramienta"), this);
+    deleteAction->setShortcut(QKeySequence(Qt::Key_Delete));
+    connect(deleteAction, &QAction::triggered, this, &EditorWindow::onDeleteClicked);
+    addAction(deleteAction);
+}
+
+void EditorWindow::commitUndoState() {
+    undoStack_.push(stableTools_);
+    stableTools_ = tools_;
+}
+
+void EditorWindow::applyUndoRedo(bool redo) {
+    auto state = redo ? undoStack_.redo(tools_) : undoStack_.undo(tools_);
+    if (!state.has_value()) {
+        return;
+    }
+    tools_ = std::move(*state);
+    stableTools_ = tools_;
+    canvas_->setSelectedIndex(-1);
+    canvas_->clearResults();
+    canvas_->update();
+    refreshList();
+    syncPanelFromSelection();
+    statusLabel_->setText(redo ? tr("Rehecho.") : tr("Deshecho."));
 }
 
 void EditorWindow::loadExistingTools() {
@@ -290,6 +331,7 @@ void EditorWindow::onToolCreated(const ToolGeometry& geometry) {
                                                             : measured.error().message)));
     }
     tools_.push_back(std::move(tool));
+    commitUndoState();
 
     canvas_->clearResults();
     canvas_->setSelectedIndex(static_cast<int>(tools_.size()) - 1);
@@ -343,6 +385,7 @@ void EditorWindow::onPanelEdited() {
             tool.geometry);
         canvas_->update();
     }
+    commitUndoState();
     refreshList();
 }
 
@@ -352,6 +395,7 @@ void EditorWindow::onDeleteClicked() {
         return;
     }
     tools_[static_cast<std::size_t>(index)].deleted = true;
+    commitUndoState();
     canvas_->setSelectedIndex(-1);
     canvas_->clearResults();
     refreshList();

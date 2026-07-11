@@ -7,6 +7,7 @@
 #include "inspection_editor/execution/edge_detection.h"
 #include "inspection_editor/execution/tool_executor.h"
 #include "inspection_editor/tools/tool_geometry.h"
+#include "inspection_editor/tools/undo_stack.h"
 #include "test_helpers.h"
 #include "vision/pipeline.h"
 #include "vision/position_fixture.h"
@@ -253,6 +254,53 @@ TEST(FixtureAnchoring, CaliperMeasuresSameOnRotatedPiece) {
     ASSERT_TRUE(resultB.isOk()) << resultB.error().message;
     ASSERT_TRUE(resultB.value().ok) << resultB.value().detail;
     EXPECT_NEAR(resultB.value().measured, resultA.value().measured, 1.5);
+}
+
+// --- Pila de deshacer/rehacer ---
+
+TEST(UndoStack, UndoRedoRoundTrip) {
+    UndoStack<std::vector<int>> stack;
+    std::vector<int> state{1};
+
+    EXPECT_FALSE(stack.canUndo());
+    EXPECT_FALSE(stack.undo(state).has_value());
+
+    stack.push(state);       // antes de mutar a {1,2}
+    state = {1, 2};
+    stack.push(state);       // antes de mutar a {1,2,3}
+    state = {1, 2, 3};
+
+    auto previous = stack.undo(state);
+    ASSERT_TRUE(previous.has_value());
+    EXPECT_EQ(*previous, (std::vector<int>{1, 2}));
+    state = *previous;
+
+    auto again = stack.undo(state);
+    ASSERT_TRUE(again.has_value());
+    EXPECT_EQ(*again, (std::vector<int>{1}));
+    state = *again;
+
+    auto redone = stack.redo(state);
+    ASSERT_TRUE(redone.has_value());
+    EXPECT_EQ(*redone, (std::vector<int>{1, 2}));
+    state = *redone;
+
+    // Una mutación nueva limpia el camino de rehacer.
+    stack.push(state);
+    state.push_back(9);
+    EXPECT_FALSE(stack.canRedo());
+}
+
+TEST(UndoStack, LimitDropsOldest) {
+    UndoStack<int> stack(3);
+    for (int i = 0; i < 5; ++i) {
+        stack.push(i);
+    }
+    int current = 99;
+    EXPECT_EQ(*stack.undo(current), 4);
+    EXPECT_EQ(*stack.undo(4), 3);
+    EXPECT_EQ(*stack.undo(3), 2);
+    EXPECT_FALSE(stack.undo(2).has_value());  // 0 y 1 se descartaron
 }
 
 // --- Tolerancias sugeridas ---
