@@ -16,6 +16,9 @@
 #include <QVBoxLayout>
 #include <QtConcurrent/QtConcurrent>
 
+#include <algorithm>
+#include <functional>
+
 #include "camera/camera_enumerator.h"
 #include "camera/frame_utils.h"
 #include "core/logging.h"
@@ -40,9 +43,11 @@ constexpr int kCaptureMinimum = 5;
 
 // Corre en un hilo del pool de QtConcurrent; solo toca datos propios.
 // El ancla (si la pieza tiene rasgo distintivo) fija la orientación del
-// fixture aunque la pieza sea simétrica o llegue girada 180°.
+// fixture aunque la pieza sea simétrica o llegue girada 180°. Las
+// herramientas se miden sobre cada frame: las medidas salen en vivo.
 AnalysisOverlay buildOverlay(const QImage& frame,
-                             std::optional<vision::OrientationAnchor> anchor) {
+                             std::optional<vision::OrientationAnchor> anchor,
+                             const std::vector<inspection::ToolConfig>& tools) {
     AnalysisOverlay overlay;
     overlay.frameSize = frame.size();
 
@@ -68,6 +73,9 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                                analysis.value().fixture.origin.y);
     overlay.angleDeg = analysis.value().fixture.angleDeg;
     overlay.normalized = camera::matToQImage(analysis.value().normalized);
+    if (!tools.empty()) {
+        overlay.toolResults = inspection::runTools(image, analysis.value().fixture, tools);
+    }
     return overlay;
 }
 
@@ -293,6 +301,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             repos_.settings->getDouble("calib_fov_deg", 60.0).value();
     }
     updateCalibrationLabel();
+    video_->setMmPerPixel(calibration_.mmPerPixel);
     buildShortcuts();
 
     refreshCameras();
@@ -430,6 +439,7 @@ void MainWindow::onCalibrateClicked() {
     }
     calibration_ = dialog.calibration();
     updateCalibrationLabel();
+    video_->setMmPerPixel(calibration_.mmPerPixel);
     if (repos_.settings != nullptr) {
         repos_.settings->setDouble("calib_mm_per_px", calibration_.mmPerPixel);
         repos_.settings->setDouble("calib_camera_dist_mm", calibration_.cameraDistanceMm);
@@ -545,20 +555,38 @@ void MainWindow::onAnalysisFinished() {
         const QString status = overlay.valid
                                    ? tr("Pieza: %1°").arg(overlay.angleDeg, 0, 'f', 1)
                                    : overlay.error;
-        video_->setLivePiece(overlay.valid, overlay.contour, overlay.centroid,
-                             overlay.angleDeg, status);
         if (overlay.valid) {
-            liveFixture_ = vision::Fixture{
-                {static_cast<float>(overlay.centroid.x()),
-                 static_cast<float>(overlay.centroid.y())},
-                overlay.angleDeg};
+            // Banda muerta anti-temblor: el ruido del contorno no mueve los
+            // trazos; solo los movimientos reales de la pieza los arrastran.
+            vision::Fixture candidate{{static_cast<float>(overlay.centroid.x()),
+                                       static_cast<float>(overlay.centroid.y())},
+                                      overlay.angleDeg};
+            if (liveFixture_.has_value()) {
+                const double positionDelta =
+                    cv::norm(candidate.origin - liveFixture_->origin);
+                double angleDelta = std::abs(candidate.angleDeg - liveFixture_->angleDeg);
+                if (angleDelta > 180.0) {
+                    angleDelta = std::abs(angleDelta - 360.0);
+                }
+                if (positionDelta < 2.5 && angleDelta < 1.5) {
+                    candidate = *liveFixture_;
+                }
+            }
+            liveFixture_ = candidate;
+            video_->setLivePiece(true, overlay.contour,
+                                 QPointF(candidate.origin.x, candidate.origin.y),
+                                 candidate.angleDeg, status);
             currentThumbLabel_->setPixmap(QPixmap::fromImage(overlay.normalized)
                                               .scaled(currentThumbLabel_->size(),
                                                       Qt::KeepAspectRatio,
                                                       Qt::SmoothTransformation));
         } else {
             liveFixture_.reset();
+            video_->setLivePiece(false, overlay.contour, overlay.centroid,
+                                 overlay.angleDeg, status);
         }
+        // Medidas en vivo de las herramientas dibujadas (px o mm calibrados).
+        video_->setResults(overlay.toolResults);
         maybeStartAnalysis();
     }
 }
@@ -572,8 +600,19 @@ void MainWindow::maybeStartAnalysis() {
     const QImage frame = pendingAnalysisFrame_;
     pendingAnalysisFrame_ = QImage();
     const auto anchor = currentAnchor_;
-    analysisWatcher_.setFuture(
-        QtConcurrent::run([frame, anchor] { return buildOverlay(frame, anchor); }));
+
+    // Copia de las herramientas dibujadas para medirlas sobre este frame.
+    std::vector<inspection::ToolConfig> configs;
+    configs.reserve(liveTools_.size());
+    for (const auto& tool : liveTools_) {
+        auto config = tool.config;
+        config.geometryJson = inspection::toJson(tool.geometry);
+        configs.push_back(std::move(config));
+    }
+
+    analysisWatcher_.setFuture(QtConcurrent::run([frame, anchor, configs = std::move(configs)] {
+        return buildOverlay(frame, anchor, configs);
+    }));
 }
 
 void MainWindow::onStats(double fps, int width, int height) {
@@ -680,19 +719,26 @@ void MainWindow::onLiveToolModified() {
 }
 
 void MainWindow::onDeleteToolClicked() {
-    const int index = video_->selectedIndex();
-    if (index < 0 || index >= static_cast<int>(liveTools_.size())) {
+    auto indices = video_->selectedIndices();
+    if (indices.empty()) {
         return;
     }
-    const auto& tool = liveTools_[static_cast<std::size_t>(index)];
-    if (tool.config.id >= 0 && repos_.tools != nullptr) {
-        // Si se deshace el borrado, el guardado reinsertará la fila.
-        if (auto removed = repos_.tools->remove(tool.config.id); !removed.isOk()) {
-            statusBar()->showMessage(QString::fromStdString(removed.error().message));
-            return;
+    // De mayor a menor para que los índices no se corran al borrar.
+    std::sort(indices.begin(), indices.end(), std::greater<int>());
+    for (const int index : indices) {
+        if (index < 0 || index >= static_cast<int>(liveTools_.size())) {
+            continue;
         }
+        const auto& tool = liveTools_[static_cast<std::size_t>(index)];
+        if (tool.config.id >= 0 && repos_.tools != nullptr) {
+            // Si se deshace el borrado, el guardado reinsertará la fila.
+            if (auto removed = repos_.tools->remove(tool.config.id); !removed.isOk()) {
+                statusBar()->showMessage(QString::fromStdString(removed.error().message));
+                continue;
+            }
+        }
+        liveTools_.erase(liveTools_.begin() + index);
     }
-    liveTools_.erase(liveTools_.begin() + index);
     commitUndoState();
     video_->setSelectedIndex(-1);
     video_->clearResults();
@@ -1091,7 +1137,8 @@ void MainWindow::showLiveVerdict(const engine::InspectionEngine::Outcome& outcom
             : QStringLiteral(
                   "background:#8f1f1f; color:white; font-size:16px; font-weight:bold;"));
     verdictBanner_->setText(QString::fromStdString(outcome.verdict.summary));
-    video_->setResults(outcome.toolResults);
+    // Los overlays de herramientas ya los pinta la medición en vivo de cada
+    // frame; aquí solo el veredicto y la similitud.
 
     if (outcome.verdict.embedding.evaluated) {
         similarityLabel_->setText(tr("Similitud: %1\nUmbral: %2")

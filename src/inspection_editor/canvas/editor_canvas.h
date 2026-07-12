@@ -40,6 +40,10 @@ public:
     void clearResults();
     void setSelectedIndex(int index);
     [[nodiscard]] int selectedIndex() const { return selected_; }
+    // Selección múltiple (marco de selección en modo Mover/Elegir).
+    [[nodiscard]] std::vector<int> selectedIndices() const { return multiSelected_; }
+    // Escala px->mm para las etiquetas de medida (0 = mostrar px).
+    void setMmPerPixel(double mmPerPixel);
 
     // --- selección de rasgo distintivo ---
     // Con el modo activo, el siguiente clic sobre la pieza emite pointPicked
@@ -84,6 +88,8 @@ private:
     void paintCreationPreview(QPainter& painter) const;
     void paintLiveOverlay(QPainter& painter) const;
     [[nodiscard]] bool interactive() const;
+    [[nodiscard]] bool isSelected(int index) const;
+    void finishMarquee(const cv::Point2f& releasePoint);
 
     QImage image_;
     vision::Fixture fixture_;
@@ -91,9 +97,12 @@ private:
     std::vector<ToolRunResult> results_;
     std::optional<ToolType> createType_;
     int selected_ = -1;
+    std::vector<int> multiSelected_;
+    double mmPerPixel_ = 0.0;
 
     bool creating_ = false;
     bool moving_ = false;
+    bool marquee_ = false;
     cv::Point2f dragStart_;
     cv::Point2f dragCurrent_;
 

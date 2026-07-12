@@ -1,5 +1,6 @@
 #include "inspection_editor/canvas/editor_canvas.h"
 
+#include <QFontMetrics>
 #include <QMouseEvent>
 #include <QPainter>
 
@@ -34,6 +35,25 @@ double distanceToSegment(const cv::Point2f& p, const cv::Point2f& a, const cv::P
         0.0, 1.0);
     const cv::Point2f proj = a + ab * static_cast<float>(t);
     return cv::norm(p - proj);
+}
+
+// Puntos representativos de una geometría (coords de pieza) para el marco de
+// selección múltiple.
+std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
+    return std::visit(
+        [](const auto& g) -> std::vector<cv::Point2f> {
+            using T = std::decay_t<decltype(g)>;
+            if constexpr (std::is_same_v<T, CaliperGeometry> ||
+                          std::is_same_v<T, EdgeFlawGeometry>) {
+                return {g.p0, g.p1};
+            } else if constexpr (std::is_same_v<T, CircleGeometry> ||
+                                 std::is_same_v<T, BlobGeometry>) {
+                return {g.center};
+            } else {
+                return {g.lineA, g.lineB};
+            }
+        },
+        geometry);
 }
 
 // Traslada todos los puntos de la geometría (coords de pieza).
@@ -148,7 +168,21 @@ void EditorCanvas::clearResults() {
 
 void EditorCanvas::setSelectedIndex(int index) {
     selected_ = index;
+    multiSelected_.clear();
+    if (index >= 0) {
+        multiSelected_.push_back(index);
+    }
     update();
+}
+
+void EditorCanvas::setMmPerPixel(double mmPerPixel) {
+    mmPerPixel_ = mmPerPixel;
+    update();
+}
+
+bool EditorCanvas::isSelected(int index) const {
+    return std::find(multiSelected_.begin(), multiSelected_.end(), index) !=
+           multiSelected_.end();
 }
 
 QRectF EditorCanvas::targetRect() const {
@@ -185,7 +219,7 @@ int EditorCanvas::hitTest(const cv::Point2f& p) const {
     if (tools_ == nullptr) {
         return -1;
     }
-    constexpr double kThreshold = 10.0;
+    constexpr double kThreshold = 14.0;  // zona de clic generosa
     int best = -1;
     double bestDistance = kThreshold;
 
@@ -252,28 +286,90 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
         creating_ = true;
     } else {
         const int hit = hitTest(p);
-        if (hit != selected_) {
-            selected_ = hit;
-            emit selectionChanged(selected_);
+        if (hit >= 0) {
+            // Clic sobre una herramienta ya en el grupo: se mueve el grupo
+            // completo; si no, la selección pasa a esa herramienta.
+            if (!isSelected(hit)) {
+                multiSelected_ = {hit};
+            }
+            if (hit != selected_) {
+                selected_ = hit;
+                emit selectionChanged(selected_);
+            }
+            moving_ = true;
+        } else {
+            // Clic en vacío: arrastrar dibuja un marco de selección.
+            marquee_ = true;
         }
-        moving_ = selected_ >= 0;
         update();
     }
 }
 
 void EditorCanvas::mouseMoveEvent(QMouseEvent* event) {
-    if (!creating_ && !moving_) {
+    if (!creating_ && !moving_ && !marquee_) {
         return;
     }
     const cv::Point2f p = widgetToImage(event->position());
 
-    if (moving_ && tools_ != nullptr && selected_ >= 0) {
-        // Delta en coords de pieza (la rotación del fixture se cancela sola).
+    if (moving_ && tools_ != nullptr && !multiSelected_.empty()) {
+        // Delta en coords de pieza (la rotación del fixture se cancela sola);
+        // se mueve todo el grupo seleccionado.
         const cv::Point2f delta = vision::toPieceCoords(fixture_, p) -
                                   vision::toPieceCoords(fixture_, dragCurrent_);
-        translateGeometry((*tools_)[static_cast<std::size_t>(selected_)].geometry, delta);
+        for (const int index : multiSelected_) {
+            if (index >= 0 && index < static_cast<int>(tools_->size())) {
+                translateGeometry((*tools_)[static_cast<std::size_t>(index)].geometry,
+                                  delta);
+            }
+        }
     }
     dragCurrent_ = p;
+    update();
+}
+
+// Cierre del marco de selección: quedan seleccionadas las herramientas con
+// algún punto de referencia dentro del rectángulo.
+void EditorCanvas::finishMarquee(const cv::Point2f& releasePoint) {
+    marquee_ = false;
+    if (tools_ == nullptr) {
+        return;
+    }
+
+    if (cv::norm(releasePoint - dragStart_) < 6.0) {
+        // Clic simple en vacío: deseleccionar.
+        multiSelected_.clear();
+        if (selected_ != -1) {
+            selected_ = -1;
+            emit selectionChanged(-1);
+        }
+        update();
+        return;
+    }
+
+    const float left = std::min(dragStart_.x, releasePoint.x);
+    const float right = std::max(dragStart_.x, releasePoint.x);
+    const float top = std::min(dragStart_.y, releasePoint.y);
+    const float bottom = std::max(dragStart_.y, releasePoint.y);
+
+    multiSelected_.clear();
+    for (int i = 0; i < static_cast<int>(tools_->size()); ++i) {
+        const auto& tool = (*tools_)[static_cast<std::size_t>(i)];
+        if (tool.deleted) {
+            continue;
+        }
+        for (const auto& piecePoint : referencePoints(tool.geometry)) {
+            const cv::Point2f q = toImg(piecePoint);
+            if (q.x >= left && q.x <= right && q.y >= top && q.y <= bottom) {
+                multiSelected_.push_back(i);
+                break;
+            }
+        }
+    }
+    const int primary = multiSelected_.empty() ? -1 : multiSelected_.front();
+    if (primary != selected_) {
+        selected_ = primary;
+        emit selectionChanged(selected_);
+    }
     update();
 }
 
@@ -283,6 +379,10 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
     }
     const cv::Point2f p = widgetToImage(event->position());
 
+    if (marquee_) {
+        finishMarquee(p);
+        return;
+    }
     if (moving_) {
         moving_ = false;
         emit toolModified();
@@ -419,6 +519,34 @@ void EditorCanvas::paintResults(QPainter& painter) const {
             painter.drawLine(p + QPointF(-5, 0), p + QPointF(5, 0));
             painter.drawLine(p + QPointF(0, -5), p + QPointF(0, 5));
         }
+
+        // Etiqueta con la medida junto a la herramienta (px o mm calibrados).
+        QPointF labelPos;
+        if (!result.overlaySegments.empty()) {
+            labelPos = imageToWidget(result.overlaySegments.front()[0]);
+        } else if (!result.overlayPoints.empty()) {
+            labelPos = imageToWidget(result.overlayPoints.front());
+        } else {
+            continue;
+        }
+        QString measure;
+        if (result.type == ToolType::Blob) {
+            measure = QStringLiteral("n=%1").arg(result.measured, 0, 'f', 0);
+        } else if (mmPerPixel_ > 0.0) {
+            measure = QStringLiteral("%1 mm").arg(result.measured * mmPerPixel_, 0, 'f', 2);
+        } else {
+            measure = QStringLiteral("%1 px").arg(result.measured, 0, 'f', 1);
+        }
+        const QString text =
+            QString::fromStdString(result.name) + QStringLiteral(": ") + measure;
+        const QFontMetricsF metrics(painter.font());
+        const QRectF box = metrics.boundingRect(text).adjusted(-4, -2, 4, 2)
+                               .translated(labelPos + QPointF(8, -10));
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(0, 0, 0, 170));
+        painter.drawRect(box);
+        painter.setPen(color);
+        painter.drawText(box, Qt::AlignCenter, text);
     }
 }
 
@@ -524,12 +652,23 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
         for (int i = 0; i < static_cast<int>(tools_->size()); ++i) {
             const auto& tool = (*tools_)[static_cast<std::size_t>(i)];
             if (!tool.deleted) {
-                paintTool(painter, tool, i == selected_);
+                paintTool(painter, tool, isSelected(i));
             }
         }
     }
     paintResults(painter);
     paintCreationPreview(painter);
+
+    // Marco de selección múltiple en curso.
+    if (marquee_) {
+        QPen pen(Qt::white);
+        pen.setStyle(Qt::DashLine);
+        pen.setCosmetic(true);
+        painter.setPen(pen);
+        painter.setBrush(QColor(255, 255, 255, 30));
+        painter.drawRect(QRectF(imageToWidget(dragStart_), imageToWidget(dragCurrent_))
+                             .normalized());
+    }
 }
 
 }  // namespace pci::inspection

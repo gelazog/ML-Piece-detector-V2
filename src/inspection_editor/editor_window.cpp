@@ -83,6 +83,7 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     canvas_ = new EditorCanvas(this);
     canvas_->setScene(reference_, fixture_);
     canvas_->setTools(&tools_);
+    canvas_->setMmPerPixel(calibration_.mmPerPixel);
     rootLayout->addWidget(canvas_, 1);
 
     // Panel derecho: lista + propiedades + acciones.
@@ -390,11 +391,15 @@ void EditorWindow::onPanelEdited() {
 }
 
 void EditorWindow::onDeleteClicked() {
-    const int index = canvas_->selectedIndex();
-    if (index < 0 || index >= static_cast<int>(tools_.size())) {
+    const auto indices = canvas_->selectedIndices();
+    if (indices.empty()) {
         return;
     }
-    tools_[static_cast<std::size_t>(index)].deleted = true;
+    for (const int index : indices) {
+        if (index >= 0 && index < static_cast<int>(tools_.size())) {
+            tools_[static_cast<std::size_t>(index)].deleted = true;
+        }
+    }
     commitUndoState();
     canvas_->setSelectedIndex(-1);
     canvas_->clearResults();

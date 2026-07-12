@@ -49,6 +49,16 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    **Plantilla…** (campo "Puntos"): banda del Caliper, rayos del Círculo,
    escaneos del Borde liso y área mínima del Blob.
 
+   **Las medidas salen en vivo**: cada herramienta dibujada muestra su valor
+   junto al trazo, actualizándose con cada frame (en px, o en mm si
+   calibraste), en verde si está dentro de tolerancia y en rojo si no. Los
+   trazos tienen **anti-temblor**: el ruido del contorno no los mueve — solo
+   siguen a la pieza cuando de verdad se desplaza o gira (>2.5 px / >1.5°).
+
+   **Selección múltiple**: en modo Mover/Elegir, arrastra sobre un espacio
+   vacío para dibujar un **marco de selección** — las herramientas dentro
+   quedan seleccionadas y se mueven o borran (Supr) en grupo.
+
    **Calibración a milímetros** (botón *Calibrar mm…*): dos métodos —
    **A)** haz dos clics sobre una distancia real conocida (una regla, el
    diámetro de una moneda) y escribe los mm: la escala se calcula y además se
