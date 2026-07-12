@@ -45,6 +45,13 @@ public:
     // Escala px->mm para las etiquetas de medida (0 = mostrar px).
     void setMmPerPixel(double mmPerPixel);
 
+    // --- zona de detección (ROI) ---
+    // Con el modo activo, el siguiente arrastre define el rectángulo donde se
+    // buscará el contorno automático; emite regionPicked y se desactiva solo.
+    // No requiere pieza detectada (sirve justo cuando la detección falla).
+    void setRegionPickMode(bool enabled);
+    void setDetectionRegion(bool visible, const cv::Rect& imageRect = {});
+
     // --- selección de rasgo distintivo ---
     // Con el modo activo, el siguiente clic sobre la pieza emite pointPicked
     // (coords de imagen) y el modo se desactiva solo.
@@ -69,6 +76,7 @@ signals:
     void selectionChanged(int index);
     void toolModified();
     void pointPicked(const cv::Point2f& imagePoint);
+    void regionPicked(const cv::Rect& imageRect);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -119,6 +127,12 @@ private:
     bool pickMode_ = false;
     bool anchorVisible_ = false;
     cv::Point2f anchorPiecePoint_;
+
+    // Zona de detección.
+    bool regionPick_ = false;
+    bool regionDrag_ = false;
+    bool regionVisible_ = false;
+    cv::Rect regionRect_;
 };
 
 }  // namespace pci::inspection

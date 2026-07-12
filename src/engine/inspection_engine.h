@@ -12,6 +12,7 @@
 #include "repositories/inspection_repository.h"
 #include "repositories/piece_repository.h"
 #include "repositories/tool_repository.h"
+#include "vision/pipeline.h"
 #include "vision/types.h"
 
 namespace pci::engine {
@@ -19,6 +20,7 @@ namespace pci::engine {
 struct EngineOptions {
     double kSigma = 3.0;     // banda de anomalía: simMean - max(k·σ, 0.02)
     int thumbnailSize = 96;  // miniatura JPEG guardada en el historial
+    vision::PipelineConfig pipeline;  // detección: umbral, polaridad, zona
 };
 
 // Miniatura JPEG cuadrada de una imagen (BGR o gris); vacía si la imagen lo es.
@@ -54,6 +56,12 @@ public:
     // de una inspección confirmada como correcta y guarda una versión nueva.
     core::Result<int> updateReference(std::int64_t pieceId,
                                       const std::vector<float>& embedding);
+
+    // Ajustes de detección (umbral, polaridad, zona). Llamar solo sin una
+    // inspección en vuelo (la UI garantiza un solo vuelo a la vez).
+    void setPipelineConfig(const vision::PipelineConfig& config) {
+        options_.pipeline = config;
+    }
 
 private:
     EmbedFn embedFn_;

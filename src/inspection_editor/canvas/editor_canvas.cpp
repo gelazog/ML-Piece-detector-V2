@@ -144,6 +144,19 @@ void EditorCanvas::setCreateType(std::optional<ToolType> type) {
     setCursor(type.has_value() ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
+void EditorCanvas::setRegionPickMode(bool enabled) {
+    regionPick_ = enabled;
+    regionDrag_ = false;
+    setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
+    update();
+}
+
+void EditorCanvas::setDetectionRegion(bool visible, const cv::Rect& imageRect) {
+    regionVisible_ = visible;
+    regionRect_ = imageRect;
+    update();
+}
+
 void EditorCanvas::setPickMode(bool enabled) {
     pickMode_ = enabled;
     setCursor(enabled ? Qt::PointingHandCursor
@@ -269,10 +282,24 @@ bool EditorCanvas::interactive() const {
 }
 
 void EditorCanvas::mousePressEvent(QMouseEvent* event) {
-    if (event->button() != Qt::LeftButton || !interactive()) {
+    if (event->button() != Qt::LeftButton || image_.isNull()) {
         return;
     }
-    const cv::Point2f p = widgetToImage(event->position());
+    const cv::Point2f pressPoint = widgetToImage(event->position());
+
+    // La zona de detección se define sin pieza detectada: es justo la
+    // herramienta para cuando la detección automática está fallando.
+    if (regionPick_) {
+        dragStart_ = pressPoint;
+        dragCurrent_ = pressPoint;
+        regionDrag_ = true;
+        return;
+    }
+
+    if (!interactive()) {
+        return;
+    }
+    const cv::Point2f p = pressPoint;
     dragStart_ = p;
     dragCurrent_ = p;
 
@@ -306,7 +333,7 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
 }
 
 void EditorCanvas::mouseMoveEvent(QMouseEvent* event) {
-    if (!creating_ && !moving_ && !marquee_) {
+    if (!creating_ && !moving_ && !marquee_ && !regionDrag_) {
         return;
     }
     const cv::Point2f p = widgetToImage(event->position());
@@ -378,6 +405,20 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         return;
     }
     const cv::Point2f p = widgetToImage(event->position());
+
+    if (regionDrag_) {
+        regionDrag_ = false;
+        setRegionPickMode(false);
+        const int left = cvRound(std::min(dragStart_.x, p.x));
+        const int top = cvRound(std::min(dragStart_.y, p.y));
+        const int width = cvRound(std::abs(p.x - dragStart_.x));
+        const int height = cvRound(std::abs(p.y - dragStart_.y));
+        if (width >= 20 && height >= 20) {
+            emit regionPicked(cv::Rect(left, top, width, height));
+        }
+        update();
+        return;
+    }
 
     if (marquee_) {
         finishMarquee(p);
@@ -666,6 +707,27 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
         pen.setCosmetic(true);
         painter.setPen(pen);
         painter.setBrush(QColor(255, 255, 255, 30));
+        painter.drawRect(QRectF(imageToWidget(dragStart_), imageToWidget(dragCurrent_))
+                             .normalized());
+    }
+
+    // Zona de detección: la guardada (amarillo punteado) y la que se está
+    // arrastrando ahora mismo.
+    QPen regionPen(QColor(255, 210, 0));
+    regionPen.setStyle(Qt::DashLine);
+    regionPen.setWidthF(2.0);
+    regionPen.setCosmetic(true);
+    if (regionVisible_ && regionRect_.area() > 0) {
+        painter.setPen(regionPen);
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRect(QRectF(imageToWidget({static_cast<float>(regionRect_.x),
+                                               static_cast<float>(regionRect_.y)}),
+                                imageToWidget({static_cast<float>(regionRect_.br().x),
+                                               static_cast<float>(regionRect_.br().y)})));
+    }
+    if (regionDrag_) {
+        painter.setPen(regionPen);
+        painter.setBrush(QColor(255, 210, 0, 25));
         painter.drawRect(QRectF(imageToWidget(dragStart_), imageToWidget(dragCurrent_))
                              .normalized());
     }

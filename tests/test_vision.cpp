@@ -64,6 +64,51 @@ TEST(Segmentation, EmptyImageFails) {
     EXPECT_FALSE(segmentPiece(cv::Mat()).isOk());
 }
 
+TEST(Segmentation, ManualThresholdAndForcedPolarity) {
+    // Pieza oscura (100) sobre fondo claro (200): umbral manual entre ambos.
+    const auto dark = drawLPiece({640, 480}, {320.0F, 240.0F}, 10.0, 40.0F, 100, 200);
+    SegmentationOptions options;
+    options.manualThreshold = 150;
+    options.polarity = SegmentationPolarity::DarkPiece;
+    auto mask = segmentPiece(dark, options);
+    ASSERT_TRUE(mask.isOk());
+    EXPECT_NEAR(cv::countNonZero(mask.value()), lPieceArea(40.0F), lPieceArea(40.0F) * 0.1);
+
+    // Pieza clara (200) sobre fondo oscuro (60) con polaridad forzada.
+    const auto light = drawLPiece({640, 480}, {320.0F, 240.0F}, 10.0, 40.0F, 200, 60);
+    options.manualThreshold = 130;
+    options.polarity = SegmentationPolarity::LightPiece;
+    mask = segmentPiece(light, options);
+    ASSERT_TRUE(mask.isOk());
+    EXPECT_NEAR(cv::countNonZero(mask.value()), lPieceArea(40.0F), lPieceArea(40.0F) * 0.1);
+}
+
+// La zona de detección: un distractor grande fuera de la zona no debe
+// estorbar; el contorno se busca solo dentro y se devuelve en coordenadas de
+// la imagen completa.
+TEST(Pipeline, RoiFocusesDetectionAndIgnoresOutside) {
+    cv::Mat image = drawLPiece({640, 480}, {460.0F, 240.0F}, 15.0, 35.0F, 40, 220);
+    // Distractor más grande que la pieza, a la izquierda (una "sombra").
+    cv::rectangle(image, {20, 100}, {260, 400}, cv::Scalar(30), cv::FILLED);
+
+    // Sin zona: el contorno mayor es el distractor.
+    const auto whole = analyzeFrame(image);
+    ASSERT_TRUE(whole.isOk());
+    EXPECT_LT(whole.value().fixture.origin.x, 300.0F);
+
+    // Con la zona sobre la pieza: se detecta la pieza, en coords completas.
+    PipelineConfig config;
+    config.roi = cv::Rect(300, 60, 340, 360);
+    const auto focused = analyzeFrame(image, config);
+    ASSERT_TRUE(focused.isOk()) << focused.error().message;
+    EXPECT_NEAR(focused.value().fixture.origin.x, 460.0F, 4.0F);
+    EXPECT_NEAR(focused.value().fixture.origin.y, 240.0F, 4.0F);
+    EXPECT_EQ(focused.value().mask.size(), image.size());
+    for (const auto& point : focused.value().contour.points) {
+        EXPECT_TRUE(config.roi.contains(point));
+    }
+}
+
 // --- Contorno ---
 
 TEST(ContourAnalysis, FindsCentroidAndArea) {

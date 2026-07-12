@@ -30,7 +30,7 @@ double borderMean(const cv::Mat& binary) {
 
 }  // namespace
 
-core::Result<cv::Mat> segmentPiece(const cv::Mat& image) {
+core::Result<cv::Mat> segmentPiece(const cv::Mat& image, const SegmentationOptions& options) {
     if (image.empty()) {
         return core::Result<cv::Mat>::err("Imagen vacía");
     }
@@ -49,21 +49,46 @@ core::Result<cv::Mat> segmentPiece(const cv::Mat& image) {
     }
 
     cv::Mat blurred;
-    cv::GaussianBlur(gray, blurred, cv::Size(5, 5), 0.0);
+    const int blur = options.blurKernel | 1;  // los kernels deben ser impares
+    if (blur >= 3) {
+        cv::GaussianBlur(gray, blurred, cv::Size(blur, blur), 0.0);
+    } else {
+        blurred = gray;
+    }
 
+    // Umbral: automático (Otsu) o fijo elegido por el usuario cuando la
+    // iluminación engaña al automático.
     cv::Mat binary;
-    cv::threshold(blurred, binary, 0.0, 255.0, cv::THRESH_BINARY | cv::THRESH_OTSU);
+    if (options.manualThreshold >= 0) {
+        cv::threshold(blurred, binary, static_cast<double>(options.manualThreshold), 255.0,
+                      cv::THRESH_BINARY);
+    } else {
+        cv::threshold(blurred, binary, 0.0, 255.0, cv::THRESH_BINARY | cv::THRESH_OTSU);
+    }
 
-    // El fondo domina el marco exterior: si el marco quedó blanco, la pieza
-    // quedó en negro y hay que invertir para dejar pieza = 255.
-    if (borderMean(binary) > 127.0) {
-        cv::bitwise_not(binary, binary);
+    // Polaridad: dejar pieza = 255. THRESH_BINARY marca en blanco lo claro.
+    switch (options.polarity) {
+        case SegmentationPolarity::Auto:
+            // El fondo domina el marco exterior: si quedó blanco, invertir.
+            if (borderMean(binary) > 127.0) {
+                cv::bitwise_not(binary, binary);
+            }
+            break;
+        case SegmentationPolarity::DarkPiece:
+            cv::bitwise_not(binary, binary);
+            break;
+        case SegmentationPolarity::LightPiece:
+            break;
     }
 
     // Apertura elimina ruido suelto; cierre rellena huecos pequeños de la pieza.
-    const cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
-    cv::morphologyEx(binary, binary, cv::MORPH_OPEN, kernel);
-    cv::morphologyEx(binary, binary, cv::MORPH_CLOSE, kernel);
+    const int morph = options.morphKernel | 1;
+    if (morph >= 3) {
+        const cv::Mat kernel =
+            cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(morph, morph));
+        cv::morphologyEx(binary, binary, cv::MORPH_OPEN, kernel);
+        cv::morphologyEx(binary, binary, cv::MORPH_CLOSE, kernel);
+    }
 
     return core::Result<cv::Mat>::ok(std::move(binary));
 }

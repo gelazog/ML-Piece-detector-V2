@@ -38,30 +38,37 @@ std::vector<CameraInfo> CameraEnumerator::enumerate(int maxIndex) {
     for (int i = 0; i < maxIndex && misses < kMaxConsecutiveMisses; ++i) {
         bool found = false;
         for (const auto& backend : kBackends) {
-            cv::VideoCapture capture;
+            // Blindaje total por backend: hay drivers que lanzan cualquier
+            // cosa (no solo cv::Exception) al sondearlos; un driver roto no
+            // debe tumbar la aplicación al arrancar.
             try {
+                cv::VideoCapture capture;
                 capture.open(i, backend.id);
+                if (!capture.isOpened()) {
+                    continue;
+                }
+
+                CameraInfo info;
+                info.index = i;
+                info.backend = backend.id;
+                info.name = "Cámara " + std::to_string(i) + " (" + backend.name + ")";
+                info.width = static_cast<int>(capture.get(cv::CAP_PROP_FRAME_WIDTH));
+                info.height = static_cast<int>(capture.get(cv::CAP_PROP_FRAME_HEIGHT));
+                capture.release();
+                cameras.push_back(info);
+                found = true;
+                core::logInfo("Detectada " + info.name + " (" + std::to_string(info.width) +
+                              "x" + std::to_string(info.height) + ")");
+                break;
             } catch (const cv::Exception& e) {
                 core::logWarning("Excepción de OpenCV sondeando cámara " +
                                  std::to_string(i) + " (" + backend.name + "): " + e.what());
-                continue;
+            } catch (const std::exception& e) {
+                core::logWarning(std::string("Excepción sondeando cámara: ") + e.what());
+            } catch (...) {
+                core::logWarning("Excepción desconocida sondeando cámara " +
+                                 std::to_string(i));
             }
-            if (!capture.isOpened()) {
-                continue;
-            }
-
-            CameraInfo info;
-            info.index = i;
-            info.backend = backend.id;
-            info.name = "Cámara " + std::to_string(i) + " (" + backend.name + ")";
-            info.width = static_cast<int>(capture.get(cv::CAP_PROP_FRAME_WIDTH));
-            info.height = static_cast<int>(capture.get(cv::CAP_PROP_FRAME_HEIGHT));
-            capture.release();
-            cameras.push_back(info);
-            found = true;
-            core::logInfo("Detectada " + info.name + " (" + std::to_string(info.width) +
-                          "x" + std::to_string(info.height) + ")");
-            break;
         }
         misses = found ? 0 : misses + 1;
     }

@@ -34,6 +34,7 @@ signals:
 
 private:
     void captureLoop(CameraInfo camera);
+    void captureLoopBody(CameraInfo camera);
 
     std::thread worker_;
     std::atomic<bool> running_{false};

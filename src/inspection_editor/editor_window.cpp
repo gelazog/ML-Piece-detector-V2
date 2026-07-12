@@ -19,6 +19,7 @@
 
 #include "camera/frame_utils.h"
 #include "core/logging.h"
+#include "inspection_editor/canvas/tool_icons.h"
 #include "inspection_editor/execution/tool_executor.h"
 #include "repositories/tool_repository.h"
 
@@ -58,12 +59,15 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
         auto* button = new QToolButton(this);
         button->setText(text);
         button->setCheckable(true);
-        button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        button->setIconSize(QSize(22, 22));
         button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         if (id >= 0) {
+            button->setIcon(toolIcon(static_cast<ToolType>(id)));
             button->setToolTip(
                 QString::fromUtf8(toolTypeDescription(static_cast<ToolType>(id))));
         } else {
+            button->setIcon(moveModeIcon());
             button->setToolTip(tr("Clic para seleccionar; arrastra para mover."));
         }
         modeGroup_->addButton(button, id);

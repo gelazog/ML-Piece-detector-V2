@@ -76,6 +76,9 @@ private slots:
     void onInspectClicked();
     void onInspectionFinished();
     void onCalibrateClicked();
+    void onDetectionClicked();
+    void onRoiButtonToggled(bool enabled);
+    void onRegionPicked(const cv::Rect& imageRect);
 
 private:
     void setControlsEnabled(bool enabled);
@@ -84,6 +87,8 @@ private:
     void buildShortcuts();
     void commitUndoState();
     void restoreTools(std::vector<inspection::EditedTool> tools);
+    void persistPipelineConfig();
+    void updateRoiButton();
     void loadPieceList(std::int64_t selectId = -1);
     void loadToolsForSelectedPiece();
     void finishLiveRegistration();
@@ -97,6 +102,8 @@ private:
     QPushButton* refreshButton_ = nullptr;
     QPushButton* startStopButton_ = nullptr;
     QPushButton* calibrateButton_ = nullptr;
+    QPushButton* detectionButton_ = nullptr;
+    QPushButton* roiButton_ = nullptr;
     QCheckBox* analysisCheck_ = nullptr;
     QLabel* calibLabel_ = nullptr;  // estado de la escala en la barra inferior
     // Fila 2: pieza y flujo.
@@ -142,6 +149,7 @@ private:
     std::optional<vision::Fixture> liveFixture_;
     std::optional<vision::OrientationAnchor> currentAnchor_;
     domain::ScaleCalibration calibration_;
+    vision::PipelineConfig pipelineConfig_;
     QImage referenceThumb_;
     int toolNameCounter_ = 0;
     bool streaming_ = false;

@@ -26,8 +26,10 @@
 #include "repositories/inspection_repository.h"
 #include "repositories/piece_repository.h"
 #include "repositories/settings_repository.h"
+#include "inspection_editor/canvas/tool_icons.h"
 #include "repositories/tool_repository.h"
 #include "ui/calibration_dialog.h"
+#include "ui/detection_dialog.h"
 #include "ui/inspection_result_dialog.h"
 #include "ui/registration_wizard.h"
 #include "vision/pipeline.h"
@@ -47,34 +49,49 @@ constexpr int kCaptureMinimum = 5;
 // herramientas se miden sobre cada frame: las medidas salen en vivo.
 AnalysisOverlay buildOverlay(const QImage& frame,
                              std::optional<vision::OrientationAnchor> anchor,
-                             const std::vector<inspection::ToolConfig>& tools) {
+                             const std::vector<inspection::ToolConfig>& tools,
+                             const vision::PipelineConfig& pipeline) {
     AnalysisOverlay overlay;
     overlay.frameSize = frame.size();
 
-    const cv::Mat image = camera::qImageToMat(frame);
-    auto analysis = vision::analyzeFrame(image);
-    if (!analysis.isOk()) {
-        overlay.error = QString::fromStdString(analysis.error().message);
-        return overlay;
-    }
-    if (anchor.has_value()) {
-        if (auto applied = vision::applyAnchor(image, *anchor, analysis.value());
-            !applied.isOk()) {
-            core::logWarning(applied.error().message);
+    // Blindaje total: una excepción que escape de un worker de QtConcurrent
+    // se relanza en result() y tumbaría la aplicación.
+    try {
+        const cv::Mat image = camera::qImageToMat(frame);
+        auto analysis = vision::analyzeFrame(image, pipeline);
+        if (!analysis.isOk()) {
+            overlay.error = QString::fromStdString(analysis.error().message);
+            return overlay;
         }
-    }
+        if (anchor.has_value()) {
+            if (auto applied = vision::applyAnchor(image, *anchor, analysis.value());
+                !applied.isOk()) {
+                core::logWarning(applied.error().message);
+            }
+        }
 
-    overlay.valid = true;
-    overlay.contour.reserve(static_cast<qsizetype>(analysis.value().contour.points.size()));
-    for (const cv::Point& p : analysis.value().contour.points) {
-        overlay.contour << QPointF(p.x, p.y);
-    }
-    overlay.centroid = QPointF(analysis.value().fixture.origin.x,
-                               analysis.value().fixture.origin.y);
-    overlay.angleDeg = analysis.value().fixture.angleDeg;
-    overlay.normalized = camera::matToQImage(analysis.value().normalized);
-    if (!tools.empty()) {
-        overlay.toolResults = inspection::runTools(image, analysis.value().fixture, tools);
+        overlay.valid = true;
+        overlay.contour.reserve(
+            static_cast<qsizetype>(analysis.value().contour.points.size()));
+        for (const cv::Point& p : analysis.value().contour.points) {
+            overlay.contour << QPointF(p.x, p.y);
+        }
+        overlay.centroid = QPointF(analysis.value().fixture.origin.x,
+                                   analysis.value().fixture.origin.y);
+        overlay.angleDeg = analysis.value().fixture.angleDeg;
+        overlay.normalized = camera::matToQImage(analysis.value().normalized);
+        if (!tools.empty()) {
+            overlay.toolResults =
+                inspection::runTools(image, analysis.value().fixture, tools);
+        }
+    } catch (const std::exception& e) {
+        overlay.valid = false;
+        overlay.error = QStringLiteral("Error interno de análisis");
+        core::logError(std::string("Excepción en análisis en vivo: ") + e.what());
+    } catch (...) {
+        overlay.valid = false;
+        overlay.error = QStringLiteral("Error interno de análisis");
+        core::logError("Excepción desconocida en análisis en vivo");
     }
     return overlay;
 }
@@ -116,6 +133,23 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
            "la distancia de la cámara a la superficie + su FOV. Con la escala\n"
            "calibrada todas las medidas se muestran también en milímetros."));
     cameraLayout->addWidget(calibrateButton_);
+
+    detectionButton_ = new QPushButton(tr("Detección…"), central);
+    detectionButton_->setToolTip(
+        tr("Ajustes del contorno automático contra luces y sombras: umbral manual\n"
+           "u Otsu, polaridad de la pieza, suavizado y limpieza morfológica."));
+    cameraLayout->addWidget(detectionButton_);
+
+    roiButton_ = new QPushButton(tr("Zona de detección"), central);
+    roiButton_->setCheckable(true);
+    roiButton_->setIcon(inspection::regionIcon());
+    roiButton_->setToolTip(
+        tr("Enfoca la detección en un solo lugar: arrastra un rectángulo sobre el\n"
+           "video y el contorno automático solo se buscará ahí — las sombras y\n"
+           "objetos fuera de la zona dejan de estorbar. Vuelve a pulsarlo para\n"
+           "quitar la zona."));
+    cameraLayout->addWidget(roiButton_);
+
     analysisCheck_ = new QCheckBox(tr("Detectar pieza (contorno)"), central);
     analysisCheck_->setChecked(true);
     cameraLayout->addWidget(analysisCheck_);
@@ -169,13 +203,20 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     };
     auto* selectMode = addMode(tr("Mover/Elegir"), -1);
     selectMode->setChecked(true);
+    selectMode->setIcon(inspection::moveModeIcon());
+    selectMode->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    selectMode->setIconSize(QSize(24, 24));
     selectMode->setToolTip(
-        tr("Clic para seleccionar una herramienta dibujada; arrástrala para moverla."));
+        tr("Mover/Elegir — clic para seleccionar; arrastra para mover; arrastra en\n"
+           "vacío para un marco de selección múltiple."));
     for (const auto type :
          {inspection::ToolType::Caliper, inspection::ToolType::Circle,
           inspection::ToolType::PointToLine, inspection::ToolType::EdgeFlaw,
           inspection::ToolType::Blob}) {
         auto* button = addMode(toolTypeLabel(type), static_cast<int>(type));
+        button->setIcon(inspection::toolIcon(type));
+        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        button->setIconSize(QSize(24, 24));
         button->setToolTip(
             QString::fromUtf8(inspection::toolTypeDescription(type)) +
             tr("\n\nAl dibujarla se mide la pieza actual y las tolerancias se "
@@ -186,6 +227,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     toolsLayout->addWidget(deleteToolButton_);
 
     anchorButton_ = new QPushButton(tr("Rasgo distintivo"), central);
+    anchorButton_->setIcon(inspection::anchorIcon());
     anchorButton_->setCheckable(true);
     anchorButton_->setToolTip(
         tr("Marca un punto visualmente único de la pieza (un agujero, una marca, una\n"
@@ -280,6 +322,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(&autoTimer_, &QTimer::timeout, this, &MainWindow::onAutoTick);
 
     connect(calibrateButton_, &QPushButton::clicked, this, &MainWindow::onCalibrateClicked);
+    connect(detectionButton_, &QPushButton::clicked, this, &MainWindow::onDetectionClicked);
+    connect(roiButton_, &QPushButton::toggled, this, &MainWindow::onRoiButtonToggled);
+    connect(video_, &inspection::EditorCanvas::regionPicked, this,
+            &MainWindow::onRegionPicked);
     connect(registerWizardButton_, &QPushButton::clicked, this,
             &MainWindow::onRegisterWizardClicked);
     connect(editorButton_, &QPushButton::clicked, this, &MainWindow::onOpenEditorClicked);
@@ -302,10 +348,92 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     }
     updateCalibrationLabel();
     video_->setMmPerPixel(calibration_.mmPerPixel);
+
+    // Ajustes de detección persistidos (umbral, polaridad, kernels y zona).
+    if (repos_.settings != nullptr) {
+        auto& seg = pipelineConfig_.segmentation;
+        seg.manualThreshold = repos_.settings->getInt("det_threshold", -1).value();
+        seg.polarity = static_cast<vision::SegmentationPolarity>(
+            std::clamp(repos_.settings->getInt("det_polarity", 0).value(), 0, 2));
+        seg.blurKernel = repos_.settings->getInt("det_blur", 5).value();
+        seg.morphKernel = repos_.settings->getInt("det_morph", 5).value();
+        pipelineConfig_.roi = cv::Rect(repos_.settings->getInt("det_roi_x", 0).value(),
+                                       repos_.settings->getInt("det_roi_y", 0).value(),
+                                       repos_.settings->getInt("det_roi_w", 0).value(),
+                                       repos_.settings->getInt("det_roi_h", 0).value());
+    }
+    updateRoiButton();
+
     buildShortcuts();
 
     refreshCameras();
     loadPieceList();
+}
+
+void MainWindow::persistPipelineConfig() {
+    if (repos_.settings == nullptr) {
+        return;
+    }
+    const auto& seg = pipelineConfig_.segmentation;
+    repos_.settings->setInt("det_threshold", seg.manualThreshold);
+    repos_.settings->setInt("det_polarity", static_cast<int>(seg.polarity));
+    repos_.settings->setInt("det_blur", seg.blurKernel);
+    repos_.settings->setInt("det_morph", seg.morphKernel);
+    repos_.settings->setInt("det_roi_x", pipelineConfig_.roi.x);
+    repos_.settings->setInt("det_roi_y", pipelineConfig_.roi.y);
+    repos_.settings->setInt("det_roi_w", pipelineConfig_.roi.width);
+    repos_.settings->setInt("det_roi_h", pipelineConfig_.roi.height);
+}
+
+void MainWindow::updateRoiButton() {
+    const bool hasRoi = pipelineConfig_.roi.area() > 0;
+    video_->setDetectionRegion(hasRoi, pipelineConfig_.roi);
+    QSignalBlocker blocker(roiButton_);
+    roiButton_->setChecked(false);
+    roiButton_->setText(hasRoi ? tr("Quitar zona") : tr("Zona de detección"));
+}
+
+void MainWindow::onDetectionClicked() {
+    DetectionDialog dialog(pipelineConfig_.segmentation, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    pipelineConfig_.segmentation = dialog.options();
+    persistPipelineConfig();
+    statusBar()->showMessage(
+        tr("Ajustes de detección aplicados: el contorno en vivo ya los usa."));
+}
+
+void MainWindow::onRoiButtonToggled(bool enabled) {
+    if (!enabled) {
+        video_->setRegionPickMode(false);
+        return;
+    }
+    if (pipelineConfig_.roi.area() > 0) {
+        // Segundo uso del botón: quitar la zona activa.
+        pipelineConfig_.roi = cv::Rect();
+        persistPipelineConfig();
+        updateRoiButton();
+        statusBar()->showMessage(tr("Zona de detección eliminada: se analiza todo el frame."));
+        return;
+    }
+    if (lastFrame_.isNull()) {
+        statusBar()->showMessage(tr("Inicia la cámara para dibujar la zona de detección."));
+        QSignalBlocker blocker(roiButton_);
+        roiButton_->setChecked(false);
+        return;
+    }
+    video_->setRegionPickMode(true);
+    statusBar()->showMessage(
+        tr("Arrastra un rectángulo sobre el video: la detección se limitará a esa zona."));
+}
+
+void MainWindow::onRegionPicked(const cv::Rect& imageRect) {
+    pipelineConfig_.roi = imageRect;
+    persistPipelineConfig();
+    updateRoiButton();
+    statusBar()->showMessage(
+        tr("Zona de detección activa: el contorno solo se busca dentro del recuadro."));
 }
 
 // Acciones con atajo configurable: el valor por defecto puede sobreescribirse
@@ -610,9 +738,10 @@ void MainWindow::maybeStartAnalysis() {
         configs.push_back(std::move(config));
     }
 
-    analysisWatcher_.setFuture(QtConcurrent::run([frame, anchor, configs = std::move(configs)] {
-        return buildOverlay(frame, anchor, configs);
-    }));
+    analysisWatcher_.setFuture(QtConcurrent::run(
+        [frame, anchor, configs = std::move(configs), pipeline = pipelineConfig_] {
+            return buildOverlay(frame, anchor, configs, pipeline);
+        }));
 }
 
 void MainWindow::onStats(double fps, int width, int height) {
@@ -928,7 +1057,7 @@ void MainWindow::onRegisterLiveClicked() {
     // El rasgo distintivo marcado (si hay) fija la orientación de las 30
     // capturas de referencia y se guarda con la pieza.
     liveSession_ = std::make_shared<engine::RegistrationSession>(
-        repos_.embedFn, kCaptureTarget, kCaptureMinimum, currentAnchor_);
+        repos_.embedFn, kCaptureTarget, kCaptureMinimum, currentAnchor_, pipelineConfig_);
     captureProgress_ = new QProgressDialog(
         tr("Capturando referencias de '%1'…\nMantén la pieza a la vista.")
             .arg(pendingPieceName_),
@@ -950,8 +1079,16 @@ void MainWindow::onCaptureTick() {
     // mientras un frame sigue procesándose en el pool.
     auto session = liveSession_;
     const QImage frame = lastFrame_;
-    captureWatcher_.setFuture(QtConcurrent::run(
-        [session, frame] { return session->addFrame(camera::qImageToMat(frame)); }));
+    captureWatcher_.setFuture(QtConcurrent::run([session, frame] {
+        using ResultT = core::Result<engine::RegistrationSession::SampleFeedback>;
+        try {
+            return session->addFrame(camera::qImageToMat(frame));
+        } catch (const std::exception& e) {
+            return ResultT::err(std::string("Error interno de captura: ") + e.what());
+        } catch (...) {
+            return ResultT::err("Error interno de captura");
+        }
+    }));
 }
 
 void MainWindow::onCaptureProcessed() {
@@ -1124,9 +1261,18 @@ void MainWindow::onAutoTick() {
     }
     inspectedFrame_ = lastFrame_;
     auto* engine = repos_.engine;
+    engine->setPipelineConfig(pipelineConfig_);
     const QImage frame = inspectedFrame_;
-    inspectionWatcher_.setFuture(QtConcurrent::run(
-        [engine, frame, pieceId] { return engine->inspect(camera::qImageToMat(frame), pieceId); }));
+    inspectionWatcher_.setFuture(QtConcurrent::run([engine, frame, pieceId] {
+        using ResultT = core::Result<engine::InspectionEngine::Outcome>;
+        try {
+            return engine->inspect(camera::qImageToMat(frame), pieceId);
+        } catch (const std::exception& e) {
+            return ResultT::err(std::string("Error interno de inspección: ") + e.what());
+        } catch (...) {
+            return ResultT::err("Error interno de inspección");
+        }
+    }));
 }
 
 void MainWindow::showLiveVerdict(const engine::InspectionEngine::Outcome& outcome) {
@@ -1283,8 +1429,16 @@ void MainWindow::onInspectClicked() {
     inspectButton_->setEnabled(false);
     statusBar()->showMessage(tr("Inspeccionando…"));
     auto* engine = repos_.engine;
+    engine->setPipelineConfig(pipelineConfig_);
     inspectionWatcher_.setFuture(QtConcurrent::run([engine, frame, pieceId] {
-        return engine->inspect(camera::qImageToMat(frame), pieceId);
+        using ResultT = core::Result<engine::InspectionEngine::Outcome>;
+        try {
+            return engine->inspect(camera::qImageToMat(frame), pieceId);
+        } catch (const std::exception& e) {
+            return ResultT::err(std::string("Error interno de inspección: ") + e.what());
+        } catch (...) {
+            return ResultT::err("Error interno de inspección");
+        }
     }));
 }
 

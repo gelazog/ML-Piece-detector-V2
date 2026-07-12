@@ -35,7 +35,7 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
                                                                   std::int64_t pieceId) {
     using ResultT = core::Result<Outcome>;
 
-    auto analysis = vision::analyzeFrame(frameBgr);
+    auto analysis = vision::analyzeFrame(frameBgr, options_.pipeline);
     if (!analysis.isOk()) {
         return ResultT::err("No se pudo analizar el frame: " + analysis.error().message);
     }

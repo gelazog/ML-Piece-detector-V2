@@ -37,7 +37,25 @@ void CameraController::stop() {
     }
 }
 
+// Cualquier excepción que escape de un std::thread termina el proceso: el
+// cuerpo completo va blindado para que un driver roto solo detenga el video.
 void CameraController::captureLoop(CameraInfo camera) {
+    try {
+        captureLoopBody(std::move(camera));
+    } catch (const std::exception& e) {
+        core::logError(std::string("Fallo interno de captura: ") + e.what());
+        running_ = false;
+        emit cameraError(tr("Fallo interno de la cámara (ver log)"));
+        emit stopped();
+    } catch (...) {
+        core::logError("Fallo interno de captura desconocido");
+        running_ = false;
+        emit cameraError(tr("Fallo interno de la cámara (ver log)"));
+        emit stopped();
+    }
+}
+
+void CameraController::captureLoopBody(CameraInfo camera) {
     cv::VideoCapture capture;
     try {
         capture.open(camera.index, camera.backend);

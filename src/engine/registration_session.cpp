@@ -8,9 +8,10 @@
 namespace pci::engine {
 
 RegistrationSession::RegistrationSession(EmbedFn embedFn, int targetCount, int minimumCount,
-                                         std::optional<vision::OrientationAnchor> anchor)
+                                         std::optional<vision::OrientationAnchor> anchor,
+                                         vision::PipelineConfig pipelineConfig)
     : embedFn_(std::move(embedFn)), targetCount_(targetCount), minimumCount_(minimumCount),
-      anchor_(anchor) {}
+      anchor_(anchor), pipelineConfig_(std::move(pipelineConfig)) {}
 
 core::Result<RegistrationSession::SampleFeedback> RegistrationSession::addFrame(
     const cv::Mat& frameBgr) {
@@ -21,7 +22,7 @@ core::Result<RegistrationSession::SampleFeedback> RegistrationSession::addFrame(
     }
 
     SampleFeedback feedback;
-    auto analysis = vision::analyzeFrame(frameBgr);
+    auto analysis = vision::analyzeFrame(frameBgr, pipelineConfig_);
     if (analysis.isOk() && anchor_.has_value()) {
         if (auto applied = vision::applyAnchor(frameBgr, *anchor_, analysis.value());
             !applied.isOk()) {

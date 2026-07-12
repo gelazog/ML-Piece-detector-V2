@@ -69,6 +69,15 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    en los reportes de inspección). La escala queda guardada y vale mientras
    la cámara no cambie de altura; las tolerancias internas siguen en px.
 
+   **Control de luces y sombras**: el botón **Detección…** ajusta el contorno
+   automático — umbral manual (o Otsu automático), polaridad de la pieza
+   (oscura/clara/automática), suavizado y limpieza morfológica. Y **Zona de
+   detección** enfoca el análisis en un solo lugar: arrastra un rectángulo
+   sobre el video (amarillo punteado) y el contorno solo se busca ahí —
+   sombras y objetos fuera de la zona dejan de estorbar. Ambos ajustes
+   persisten y aplican al video en vivo, al registro y a la inspección. Las
+   herramientas de dibujo ahora usan **iconos** (el tooltip explica cada una).
+
    **Atajos de teclado** (botón *Atajos (F1)* o tecla `F1`): guía completa y
    **editable** — haz clic en el atajo y pulsa la combinación nueva; se
    guardan en la BD. Por defecto: `Ctrl+Z`/`Ctrl+Y` deshacer/rehacer las

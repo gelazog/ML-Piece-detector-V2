@@ -13,6 +13,7 @@ target_link_libraries(pci_inspection
 # Editor visual (canvas + ventana): la única parte con Qt.
 add_library(pci_editor STATIC
   canvas/editor_canvas.cpp
+  canvas/tool_icons.cpp
   editor_window.cpp
 )
 target_include_directories(pci_editor PUBLIC ${CMAKE_SOURCE_DIR}/src)
