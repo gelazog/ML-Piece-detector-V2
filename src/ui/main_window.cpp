@@ -36,6 +36,7 @@
 #include "ui/inspection_result_dialog.h"
 #include "ui/piece_manager_dialog.h"
 #include "ui/registration_wizard.h"
+#include "vision/fixture_stabilizer.h"
 #include "vision/pipeline.h"
 #include "vision/position_fixture.h"
 
@@ -55,7 +56,8 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                              std::optional<vision::OrientationAnchor> anchor,
                              double orientationOffsetDeg,
                              const std::vector<inspection::ToolConfig>& tools,
-                             const vision::PipelineConfig& pipeline) {
+                             const vision::PipelineConfig& pipeline,
+                             std::optional<vision::Fixture> previousFixture) {
     AnalysisOverlay overlay;
     overlay.frameSize = frame.size();
 
@@ -78,6 +80,26 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                                                           analysis.value());
             !applied.isOk()) {
             core::logWarning(applied.error().message);
+        }
+
+        // Estabilización temporal: quieto = clavado, movimiento real =
+        // seguimiento suave, y continuidad anti-giro de 180° cuando la pieza
+        // no tiene rasgo distintivo. Trazos, medidas y overlay comparten el
+        // mismo fixture estabilizado.
+        if (previousFixture.has_value()) {
+            vision::StabilizerOptions stabilizer;
+            stabilizer.resolveFlips = !anchor.has_value();
+            bool flipped180 = false;
+            const vision::Fixture stable = vision::stabilizeFixture(
+                *previousFixture, analysis.value().fixture, stabilizer, flipped180);
+            if (flipped180) {
+                if (auto applied =
+                        vision::applyOrientationOffset(image, 180.0, analysis.value());
+                    !applied.isOk()) {
+                    core::logWarning(applied.error().message);
+                }
+            }
+            analysis.value().fixture = stable;
         }
 
         overlay.valid = true;
@@ -719,26 +741,13 @@ void MainWindow::onAnalysisFinished() {
                                    ? tr("Pieza: %1°").arg(overlay.angleDeg, 0, 'f', 1)
                                    : overlay.error;
         if (overlay.valid) {
-            // Banda muerta anti-temblor: el ruido del contorno no mueve los
-            // trazos; solo los movimientos reales de la pieza los arrastran.
-            vision::Fixture candidate{{static_cast<float>(overlay.centroid.x()),
-                                       static_cast<float>(overlay.centroid.y())},
-                                      overlay.angleDeg};
-            if (liveFixture_.has_value()) {
-                const double positionDelta =
-                    cv::norm(candidate.origin - liveFixture_->origin);
-                double angleDelta = std::abs(candidate.angleDeg - liveFixture_->angleDeg);
-                if (angleDelta > 180.0) {
-                    angleDelta = std::abs(angleDelta - 360.0);
-                }
-                if (positionDelta < 2.5 && angleDelta < 1.5) {
-                    candidate = *liveFixture_;
-                }
-            }
-            liveFixture_ = candidate;
-            video_->setLivePiece(true, overlay.contour,
-                                 QPointF(candidate.origin.x, candidate.origin.y),
-                                 candidate.angleDeg, status);
+            // El fixture llega ya estabilizado desde el worker (banda muerta,
+            // suavizado y continuidad anti-giro de 180°).
+            liveFixture_ = vision::Fixture{{static_cast<float>(overlay.centroid.x()),
+                                            static_cast<float>(overlay.centroid.y())},
+                                           overlay.angleDeg};
+            video_->setLivePiece(true, overlay.contour, overlay.centroid,
+                                 overlay.angleDeg, status);
             currentThumbLabel_->setPixmap(QPixmap::fromImage(overlay.normalized)
                                               .scaled(currentThumbLabel_->size(),
                                                       Qt::KeepAspectRatio,
@@ -775,8 +784,8 @@ void MainWindow::maybeStartAnalysis() {
 
     analysisWatcher_.setFuture(QtConcurrent::run(
         [frame, anchor, offset = currentOrientationOffset_, configs = std::move(configs),
-         pipeline = pipelineConfig_] {
-            return buildOverlay(frame, anchor, offset, configs, pipeline);
+         pipeline = pipelineConfig_, previous = liveFixture_] {
+            return buildOverlay(frame, anchor, offset, configs, pipeline, previous);
         }));
 }
 

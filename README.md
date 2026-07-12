@@ -52,8 +52,11 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    **Las medidas salen en vivo**: cada herramienta dibujada muestra su valor
    junto al trazo, actualizándose con cada frame (en px, o en mm si
    calibraste), en verde si está dentro de tolerancia y en rojo si no. Los
-   trazos tienen **anti-temblor**: el ruido del contorno no los mueve — solo
-   siguen a la pieza cuando de verdad se desplaza o gira (>2.5 px / >1.5°).
+   trazos tienen **estabilizador temporal**: quieto = clavados (banda muerta
+   anti-ruido), movimiento suave = seguimiento con suavizado exponencial (sin
+   vibración), movimiento rápido = respuesta inmediata, y **continuidad
+   anti-giro de 180°** — en piezas casi simétricas sin rasgo distintivo el
+   eje ya no da vueltas espontáneas: conserva el sentido del frame anterior.
 
    **Selección múltiple**: en modo Mover/Elegir, arrastra sobre un espacio
    vacío para dibujar un **marco de selección** — las herramientas dentro

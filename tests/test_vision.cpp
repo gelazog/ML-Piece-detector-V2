@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "vision/contour_analysis.h"
+#include "vision/fixture_stabilizer.h"
 #include "vision/orientation.h"
 #include "vision/orientation_anchor.h"
 #include "vision/pipeline.h"
@@ -224,6 +225,69 @@ TEST(Pipeline, NormalizationIsRotationInvariant) {
 
 TEST(Pipeline, FailsOnEmptyImage) {
     EXPECT_FALSE(analyzeFrame(cv::Mat()).isOk());
+}
+
+// --- Estabilizador temporal del fixture ---
+
+TEST(FixtureStabilizer, HoldsWithinDeadband) {
+    const Fixture previous{{100.0F, 100.0F}, 10.0};
+    const Fixture noisy{{101.0F, 100.8F}, 10.9};
+    bool flipped = false;
+    const Fixture result = stabilizeFixture(previous, noisy, {}, flipped);
+    EXPECT_FALSE(flipped);
+    EXPECT_FLOAT_EQ(result.origin.x, 100.0F);
+    EXPECT_DOUBLE_EQ(result.angleDeg, 10.0);
+}
+
+TEST(FixtureStabilizer, SmoothsModerateMotion) {
+    const Fixture previous{{100.0F, 100.0F}, 10.0};
+    const Fixture moved{{110.0F, 100.0F}, 10.0};
+    bool flipped = false;
+    const Fixture result = stabilizeFixture(previous, moved, {}, flipped);
+    // EMA con alpha 0.35: avanza hacia la medición sin saltar.
+    EXPECT_NEAR(result.origin.x, 103.5F, 1e-4F);
+    EXPECT_GT(result.origin.x, 100.0F);
+    EXPECT_LT(result.origin.x, 110.0F);
+}
+
+TEST(FixtureStabilizer, SnapsOnLargeMotion) {
+    const Fixture previous{{100.0F, 100.0F}, 10.0};
+    const Fixture far{{200.0F, 150.0F}, 15.0};
+    bool flipped = false;
+    const Fixture result = stabilizeFixture(previous, far, {}, flipped);
+    EXPECT_FLOAT_EQ(result.origin.x, 200.0F);
+    EXPECT_DOUBLE_EQ(result.angleDeg, 15.0);
+}
+
+TEST(FixtureStabilizer, ResolvesSpuriousFlip) {
+    // Giro espontáneo de ~180° (ruido del momento de 3er orden): se conserva
+    // el sentido anterior y se avisa para recalcular el recorte.
+    const Fixture previous{{100.0F, 100.0F}, 10.0};
+    const Fixture flippedIn{{100.5F, 100.0F}, -172.0};
+    bool flipped = false;
+    const Fixture result = stabilizeFixture(previous, flippedIn, {}, flipped);
+    EXPECT_TRUE(flipped);
+    // Candidato corregido: 8°; diff -2° -> suavizado hacia 8 desde 10.
+    EXPECT_GT(result.angleDeg, 8.0);
+    EXPECT_LT(result.angleDeg, 10.0);
+
+    // Con resolveFlips desactivado (pieza con rasgo), el giro se respeta.
+    StabilizerOptions noFlip;
+    noFlip.resolveFlips = false;
+    flipped = false;
+    const Fixture kept = stabilizeFixture(previous, flippedIn, noFlip, flipped);
+    EXPECT_FALSE(flipped);
+    EXPECT_DOUBLE_EQ(kept.angleDeg, -172.0);  // salto angular grande: snap
+}
+
+TEST(FixtureStabilizer, BlendsAcrossAngleWrap) {
+    const Fixture previous{{100.0F, 100.0F}, 179.0};
+    const Fixture measured{{106.0F, 100.0F}, -177.0};  // +4° cruzando ±180
+    bool flipped = false;
+    const Fixture result = stabilizeFixture(previous, measured, {}, flipped);
+    EXPECT_FALSE(flipped);
+    // 179 + 0.35*4 = 180.4 -> envuelto a -179.6.
+    EXPECT_NEAR(result.angleDeg, -179.6, 1e-6);
 }
 
 // --- Rasgo distintivo de orientación ---
