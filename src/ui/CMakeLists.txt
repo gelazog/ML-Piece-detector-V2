@@ -3,6 +3,7 @@ add_library(pci_ui STATIC
   detection_dialog.cpp
   inspection_result_dialog.cpp
   main_window.cpp
+  piece_manager_dialog.cpp
   registration_wizard.cpp
   shortcuts_dialog.cpp
   video_widget.cpp

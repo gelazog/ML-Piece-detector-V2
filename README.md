@@ -69,6 +69,15 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    en los reportes de inspección). La escala queda guardada y vale mientras
    la cámara no cambie de altura; las tolerancias internas siguen en px.
 
+   **Gestión de piezas** (botón *Piezas…*): renombrar, **eliminar** (con sus
+   referencias, herramientas e historial — pide confirmación) y el **ajuste
+   de orientación**: gira el sistema de coordenadas de la pieza en grados
+   (spin fino o botón +90°) para dejar el eje donde quieras; aplica al video
+   en vivo, al registro y a la inspección. El campo **Puntos** de la fila de
+   dibujo ajusta el muestreo de la herramienta seleccionada sin abrir el
+   editor (banda/rayos/escaneos/área mínima), y el editor mide
+   automáticamente al abrir: las medidas se ven siempre.
+
    **Control de luces y sombras**: el botón **Detección…** ajusta el contorno
    automático — umbral manual (o Otsu automático), polaridad de la pieza
    (oscura/clara/automática), suavizado y limpieza morfológica. Y **Zona de

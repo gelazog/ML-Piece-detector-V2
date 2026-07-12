@@ -11,6 +11,7 @@
 #include <QMessageBox>
 #include <QProgressDialog>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QStatusBar>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -18,6 +19,8 @@
 
 #include <algorithm>
 #include <functional>
+#include <type_traits>
+#include <variant>
 
 #include "camera/camera_enumerator.h"
 #include "camera/frame_utils.h"
@@ -31,6 +34,7 @@
 #include "ui/calibration_dialog.h"
 #include "ui/detection_dialog.h"
 #include "ui/inspection_result_dialog.h"
+#include "ui/piece_manager_dialog.h"
 #include "ui/registration_wizard.h"
 #include "vision/pipeline.h"
 #include "vision/position_fixture.h"
@@ -49,6 +53,7 @@ constexpr int kCaptureMinimum = 5;
 // herramientas se miden sobre cada frame: las medidas salen en vivo.
 AnalysisOverlay buildOverlay(const QImage& frame,
                              std::optional<vision::OrientationAnchor> anchor,
+                             double orientationOffsetDeg,
                              const std::vector<inspection::ToolConfig>& tools,
                              const vision::PipelineConfig& pipeline) {
     AnalysisOverlay overlay;
@@ -68,6 +73,11 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                 !applied.isOk()) {
                 core::logWarning(applied.error().message);
             }
+        }
+        if (auto applied = vision::applyOrientationOffset(image, orientationOffsetDeg,
+                                                          analysis.value());
+            !applied.isOk()) {
+            core::logWarning(applied.error().message);
         }
 
         overlay.valid = true;
@@ -175,6 +185,11 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         tr("Inspecciona continuamente el video contra la pieza seleccionada"));
     pieceLayout->addWidget(autoInspectButton_);
 
+    managePiecesButton_ = new QPushButton(tr("Piezas…"), central);
+    managePiecesButton_->setToolTip(
+        tr("Gestión de piezas: renombrar, eliminar y ajustar su orientación"));
+    pieceLayout->addWidget(managePiecesButton_);
+
     registerWizardButton_ = new QPushButton(tr("Registrar (asistente)…"), central);
     registerWizardButton_->setToolTip(tr("Registro paso a paso; admite imágenes de archivo"));
     pieceLayout->addWidget(registerWizardButton_);
@@ -234,6 +249,21 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
            "esquina oscura). Con él la orientación queda fija aunque la pieza sea\n"
            "simétrica: se detecta igual en cualquier rotación, incluso girada 180°."));
     toolsLayout->addWidget(anchorButton_);
+
+    // Parámetro de muestreo de la herramienta seleccionada, sin abrir el
+    // editor: banda del Caliper, rayos del Círculo, escaneos del Borde, área
+    // mínima del Blob.
+    liveParamLabel_ = new QLabel(tr("Puntos:"), central);
+    toolsLayout->addWidget(liveParamLabel_);
+    liveParamSpin_ = new QSpinBox(central);
+    liveParamSpin_->setRange(1, 1000);
+    liveParamSpin_->setEnabled(false);
+    liveParamSpin_->setToolTip(
+        tr("Cantidad de puntos de muestreo de la herramienta seleccionada:\n"
+           "Caliper: grosor de banda (px) · Círculo: rayos · Borde liso: escaneos\n"
+           "· Blob: área mínima (px²)"));
+    toolsLayout->addWidget(liveParamSpin_);
+
     toolsLayout->addStretch(1);
     auto* shortcutsButton = new QPushButton(tr("Atajos (F1)"), central);
     shortcutsButton->setToolTip(tr("Guía de atajos de teclado — también puedes cambiarlos"));
@@ -304,6 +334,11 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             &MainWindow::onLiveToolCreated);
     connect(video_, &inspection::EditorCanvas::toolModified, this,
             &MainWindow::onLiveToolModified);
+    connect(video_, &inspection::EditorCanvas::selectionChanged, this,
+            &MainWindow::onLiveSelectionChanged);
+    connect(liveParamSpin_, &QSpinBox::valueChanged, this, &MainWindow::onLiveParamChanged);
+    connect(managePiecesButton_, &QPushButton::clicked, this,
+            &MainWindow::onManagePiecesClicked);
     connect(deleteToolButton_, &QPushButton::clicked, this, &MainWindow::onDeleteToolClicked);
     connect(anchorButton_, &QPushButton::toggled, this, &MainWindow::onAnchorButtonToggled);
     connect(video_, &inspection::EditorCanvas::pointPicked, this,
@@ -739,8 +774,9 @@ void MainWindow::maybeStartAnalysis() {
     }
 
     analysisWatcher_.setFuture(QtConcurrent::run(
-        [frame, anchor, configs = std::move(configs), pipeline = pipelineConfig_] {
-            return buildOverlay(frame, anchor, configs, pipeline);
+        [frame, anchor, offset = currentOrientationOffset_, configs = std::move(configs),
+         pipeline = pipelineConfig_] {
+            return buildOverlay(frame, anchor, offset, configs, pipeline);
         }));
 }
 
@@ -917,13 +953,87 @@ void MainWindow::onAnchorPicked(const cv::Point2f& imagePoint) {
     }
 }
 
+// Sincroniza el spin de "Puntos" con la herramienta seleccionada en el video.
+void MainWindow::onLiveSelectionChanged(int index) {
+    liveParamSpin_->setEnabled(false);
+    liveParamLabel_->setText(tr("Puntos:"));
+    if (index < 0 || index >= static_cast<int>(liveTools_.size())) {
+        return;
+    }
+    QSignalBlocker blocker(liveParamSpin_);
+    std::visit(
+        [this](const auto& g) {
+            using T = std::decay_t<decltype(g)>;
+            if constexpr (std::is_same_v<T, inspection::CaliperGeometry>) {
+                liveParamLabel_->setText(tr("Banda (px):"));
+                liveParamSpin_->setValue(static_cast<int>(g.bandWidth));
+                liveParamSpin_->setEnabled(true);
+            } else if constexpr (std::is_same_v<T, inspection::CircleGeometry>) {
+                liveParamLabel_->setText(tr("Rayos:"));
+                liveParamSpin_->setValue(g.rayCount);
+                liveParamSpin_->setEnabled(true);
+            } else if constexpr (std::is_same_v<T, inspection::EdgeFlawGeometry>) {
+                liveParamLabel_->setText(tr("Escaneos:"));
+                liveParamSpin_->setValue(g.scanCount);
+                liveParamSpin_->setEnabled(true);
+            } else if constexpr (std::is_same_v<T, inspection::BlobGeometry>) {
+                liveParamLabel_->setText(tr("Área mín:"));
+                liveParamSpin_->setValue(static_cast<int>(g.minArea));
+                liveParamSpin_->setEnabled(true);
+            }
+            // Punto-Línea no tiene parámetro de muestreo editable.
+        },
+        liveTools_[static_cast<std::size_t>(index)].geometry);
+}
+
+void MainWindow::onLiveParamChanged(int value) {
+    const int index = video_->selectedIndex();
+    if (!liveParamSpin_->isEnabled() || index < 0 ||
+        index >= static_cast<int>(liveTools_.size())) {
+        return;
+    }
+    std::visit(
+        [value](auto& g) {
+            using T = std::decay_t<decltype(g)>;
+            if constexpr (std::is_same_v<T, inspection::CaliperGeometry>) {
+                g.bandWidth = static_cast<float>(value);
+            } else if constexpr (std::is_same_v<T, inspection::CircleGeometry>) {
+                g.rayCount = value;
+            } else if constexpr (std::is_same_v<T, inspection::EdgeFlawGeometry>) {
+                g.scanCount = value;
+            } else if constexpr (std::is_same_v<T, inspection::BlobGeometry>) {
+                g.minArea = static_cast<float>(value);
+            }
+        },
+        liveTools_[static_cast<std::size_t>(index)].geometry);
+    commitUndoState();
+    video_->update();
+}
+
+void MainWindow::onManagePiecesClicked() {
+    if (repos_.pieces == nullptr) {
+        QMessageBox::warning(this, tr("BD no disponible"),
+                             tr("La gestión de piezas necesita la base de datos."));
+        return;
+    }
+    const std::int64_t previous = selectedPieceId();
+    PieceManagerDialog dialog(repos_.pieces, repos_.tools, this);
+    dialog.exec();
+    if (dialog.changed()) {
+        autoInspectButton_->setChecked(false);
+        loadPieceList(previous);
+        onPieceSelectionChanged(pieceCombo_->currentIndex());
+    }
+}
+
 void MainWindow::onPieceSelectionChanged(int index) {
     Q_UNUSED(index);
     autoInspectButton_->setChecked(false);
     loadToolsForSelectedPiece();
 
-    // Rasgo distintivo de la pieza seleccionada.
+    // Rasgo distintivo y ajuste de orientación de la pieza seleccionada.
     currentAnchor_.reset();
+    currentOrientationOffset_ = 0.0;
     video_->setAnchorMarker(false);
     if (const std::int64_t pieceId = selectedPieceId();
         pieceId >= 0 && repos_.pieces != nullptr) {
@@ -931,6 +1041,9 @@ void MainWindow::onPieceSelectionChanged(int index) {
             anchor.isOk() && anchor.value().has_value()) {
             currentAnchor_ = anchor.value();
             video_->setAnchorMarker(true, currentAnchor_->piecePoint);
+        }
+        if (auto offset = repos_.pieces->loadOrientationOffset(pieceId); offset.isOk()) {
+            currentOrientationOffset_ = offset.value();
         }
     }
 
@@ -1057,7 +1170,8 @@ void MainWindow::onRegisterLiveClicked() {
     // El rasgo distintivo marcado (si hay) fija la orientación de las 30
     // capturas de referencia y se guarda con la pieza.
     liveSession_ = std::make_shared<engine::RegistrationSession>(
-        repos_.embedFn, kCaptureTarget, kCaptureMinimum, currentAnchor_, pipelineConfig_);
+        repos_.embedFn, kCaptureTarget, kCaptureMinimum, currentAnchor_, pipelineConfig_,
+        currentOrientationOffset_);
     captureProgress_ = new QProgressDialog(
         tr("Capturando referencias de '%1'…\nMantén la pieza a la vista.")
             .arg(pendingPieceName_),

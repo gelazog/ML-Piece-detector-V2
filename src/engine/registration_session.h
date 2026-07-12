@@ -25,7 +25,8 @@ public:
     // pipelineConfig: mismos ajustes de detección que usará la inspección.
     RegistrationSession(EmbedFn embedFn, int targetCount = 30, int minimumCount = 5,
                         std::optional<vision::OrientationAnchor> anchor = std::nullopt,
-                        vision::PipelineConfig pipelineConfig = {});
+                        vision::PipelineConfig pipelineConfig = {},
+                        double orientationOffsetDeg = 0.0);
 
     struct SampleFeedback {
         bool accepted = false;
@@ -51,6 +52,7 @@ private:
     int minimumCount_;
     std::optional<vision::OrientationAnchor> anchor_;
     vision::PipelineConfig pipelineConfig_;
+    double orientationOffsetDeg_ = 0.0;
     ml::ReferenceBuilder builder_;
     cv::Mat firstNormalized_;
 };

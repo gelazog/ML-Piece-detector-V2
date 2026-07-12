@@ -30,4 +30,9 @@ Fixture resolveWithAnchor(const cv::Mat& image, const Fixture& fixture,
 core::Result<void> applyAnchor(const cv::Mat& image, const OrientationAnchor& anchor,
                                PieceAnalysis& analysis);
 
+// Ajuste manual de orientación: gira el fixture `offsetDeg` grados (dejando
+// el eje donde el usuario quiera) y recalcula el recorte normalizado.
+core::Result<void> applyOrientationOffset(const cv::Mat& image, double offsetDeg,
+                                          PieceAnalysis& analysis);
+
 }  // namespace pci::vision

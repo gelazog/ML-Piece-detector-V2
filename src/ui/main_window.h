@@ -27,6 +27,7 @@ class QComboBox;
 class QLabel;
 class QProgressDialog;
 class QPushButton;
+class QSpinBox;
 
 namespace pci::ui {
 
@@ -63,6 +64,9 @@ private slots:
     void onAnchorButtonToggled(bool enabled);
     void onAnchorPicked(const cv::Point2f& imagePoint);
     void onPieceSelectionChanged(int index);
+    void onManagePiecesClicked();
+    void onLiveSelectionChanged(int index);
+    void onLiveParamChanged(int value);
     // Registro en vivo y auto-inspección.
     void onRegisterLiveClicked();
     void onCaptureTick();
@@ -117,6 +121,9 @@ private:
     QButtonGroup* toolModeGroup_ = nullptr;
     QPushButton* deleteToolButton_ = nullptr;
     QPushButton* anchorButton_ = nullptr;  // marcar el rasgo distintivo
+    QLabel* liveParamLabel_ = nullptr;     // "Puntos" de la herramienta elegida
+    QSpinBox* liveParamSpin_ = nullptr;
+    QPushButton* managePiecesButton_ = nullptr;
 
     QLabel* verdictBanner_ = nullptr;
     inspection::EditorCanvas* video_ = nullptr;
@@ -148,6 +155,7 @@ private:
     std::int64_t pendingPieceId_ = -1;  // >= 0: nueva versión de pieza existente
     std::optional<vision::Fixture> liveFixture_;
     std::optional<vision::OrientationAnchor> currentAnchor_;
+    double currentOrientationOffset_ = 0.0;
     domain::ScaleCalibration calibration_;
     vision::PipelineConfig pipelineConfig_;
     QImage referenceThumb_;

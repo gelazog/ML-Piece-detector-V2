@@ -288,6 +288,25 @@ TEST(OrientationAnchor, SymmetricPieceDetectedInAnyRotation) {
     EXPECT_GT(maskIoU(maskA, maskB), 0.90);
 }
 
+TEST(OrientationAnchor, OrientationOffsetRotatesFixture) {
+    const auto image = drawLPiece({640, 480}, {320.0F, 240.0F}, 20.0, 40.0F, 40, 220);
+    auto analysis = analyzeFrame(image);
+    ASSERT_TRUE(analysis.isOk());
+    const double before = analysis.value().fixture.angleDeg;
+
+    ASSERT_TRUE(applyOrientationOffset(image, 90.0, analysis.value()).isOk());
+    double delta = analysis.value().fixture.angleDeg - before;
+    while (delta < -180.0) delta += 360.0;
+    while (delta >= 180.0) delta -= 360.0;
+    EXPECT_NEAR(delta, 90.0, 1e-9);
+    EXPECT_EQ(analysis.value().normalized.size(), cv::Size(256, 256));
+
+    // Offset cero: no toca nada.
+    const double angle = analysis.value().fixture.angleDeg;
+    ASSERT_TRUE(applyOrientationOffset(image, 0.0, analysis.value()).isOk());
+    EXPECT_DOUBLE_EQ(analysis.value().fixture.angleDeg, angle);
+}
+
 TEST(OrientationAnchor, ResolveKeepsCorrectFixture) {
     cv::Point2f dot;
     const cv::Mat image = drawRectWithDot({300.0F, 240.0F}, 10.0, dot);

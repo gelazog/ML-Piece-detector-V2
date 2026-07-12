@@ -148,6 +148,51 @@ TEST_F(DatabaseTest, RejectsDuplicateWithFriendlyMessage) {
     EXPECT_FALSE(pieces.nameExists("Pieza Y").value());
 }
 
+TEST_F(DatabaseTest, RenameAndRemovePiece) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    repositories::ToolRepository tools(db);
+
+    const auto pieceId = pieces.createPiece("Original");
+    ASSERT_TRUE(pieceId.isOk());
+    ASSERT_TRUE(pieces.createPiece("Ocupado").isOk());
+
+    // Renombrar: nombre ocupado rechazado con mensaje claro; libre funciona.
+    auto clash = pieces.renamePiece(pieceId.value(), "Ocupado");
+    ASSERT_FALSE(clash.isOk());
+    EXPECT_NE(clash.error().message.find("Ya existe"), std::string::npos);
+    ASSERT_TRUE(pieces.renamePiece(pieceId.value(), "Renombrada").isOk());
+    EXPECT_TRUE(pieces.nameExists("Renombrada").value());
+    EXPECT_FALSE(pieces.nameExists("Original").value());
+    EXPECT_FALSE(pieces.renamePiece(9999, "Nadie").isOk());
+
+    // Eliminar arrastra sus herramientas (FK en cascada).
+    inspection::ToolConfig config;
+    config.type = inspection::ToolType::Caliper;
+    config.name = "Suya";
+    config.geometryJson = inspection::toJson(
+        inspection::ToolGeometry(inspection::CaliperGeometry{{0, 0}, {10, 0}, 5.0F}));
+    ASSERT_TRUE(tools.save(pieceId.value(), config).isOk());
+
+    ASSERT_TRUE(pieces.removePiece(pieceId.value()).isOk());
+    EXPECT_FALSE(pieces.nameExists("Renombrada").value());
+    const auto orphaned = tools.listForPiece(pieceId.value());
+    ASSERT_TRUE(orphaned.isOk());
+    EXPECT_TRUE(orphaned.value().empty());
+}
+
+TEST_F(DatabaseTest, OrientationOffsetRoundTrip) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    const auto pieceId = pieces.createPiece("Con offset");
+    ASSERT_TRUE(pieceId.isOk());
+
+    EXPECT_DOUBLE_EQ(pieces.loadOrientationOffset(pieceId.value()).value(), 0.0);
+    ASSERT_TRUE(pieces.saveOrientationOffset(pieceId.value(), 90.0).isOk());
+    EXPECT_DOUBLE_EQ(pieces.loadOrientationOffset(pieceId.value()).value(), 90.0);
+    EXPECT_FALSE(pieces.loadOrientationOffset(9999).isOk());
+}
+
 TEST_F(DatabaseTest, AnchorRoundTrip) {
     auto& db = openAndMigrate();
     repositories::PieceRepository pieces(db);

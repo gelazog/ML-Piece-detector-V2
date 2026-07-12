@@ -51,6 +51,16 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
         }
     }
 
+    // Ajuste manual de orientación de la pieza (0 = usar la detectada).
+    if (auto offset = pieces_.loadOrientationOffset(pieceId); offset.isOk()) {
+        if (auto applied =
+                vision::applyOrientationOffset(frameBgr, offset.value(), analysis.value());
+            !applied.isOk()) {
+            core::logWarning("No se pudo aplicar el ajuste de orientación: " +
+                             applied.error().message);
+        }
+    }
+
     Outcome outcome;
     outcome.analysis = std::move(analysis.value());
 

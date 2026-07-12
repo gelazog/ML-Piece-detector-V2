@@ -546,6 +546,10 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
 }
 
 void EditorCanvas::paintResults(QPainter& painter) const {
+    painter.save();
+    QFont measureFont = painter.font();
+    measureFont.setBold(true);
+    painter.setFont(measureFont);
     for (const auto& result : results_) {
         const QColor color = result.ok ? QColor(0, 220, 0) : QColor(255, 70, 70);
         QPen pen(color);
@@ -589,6 +593,7 @@ void EditorCanvas::paintResults(QPainter& painter) const {
         painter.setPen(color);
         painter.drawText(box, Qt::AlignCenter, text);
     }
+    painter.restore();
 }
 
 void EditorCanvas::paintCreationPreview(QPainter& painter) const {

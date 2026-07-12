@@ -119,6 +119,76 @@ core::Result<std::vector<PieceInfo>> PieceRepository::listPieces() {
     return ResultT::ok(std::move(pieces));
 }
 
+core::Result<void> PieceRepository::renamePiece(std::int64_t pieceId,
+                                                const std::string& newName) {
+    if (newName.empty()) {
+        return core::Result<void>::err("El nombre no puede estar vacío");
+    }
+    auto stmt = db_.prepare("UPDATE Pieces SET name = ? WHERE id = ?;");
+    if (!stmt.isOk()) {
+        return core::Result<void>::err(stmt.error().message);
+    }
+    if (auto b = stmt.value().bindText(1, newName); !b.isOk()) return b;
+    if (auto b = stmt.value().bindInt(2, pieceId); !b.isOk()) return b;
+    if (auto step = stmt.value().step(); !step.isOk()) {
+        if (step.error().message.find("UNIQUE") != std::string::npos) {
+            return core::Result<void>::err("Ya existe una pieza llamada '" + newName +
+                                           "': elige otro nombre");
+        }
+        return core::Result<void>::err(step.error().message);
+    }
+    if (db_.changes() == 0) {
+        return core::Result<void>::err("La pieza " + std::to_string(pieceId) + " no existe");
+    }
+    return core::Result<void>::ok();
+}
+
+core::Result<void> PieceRepository::removePiece(std::int64_t pieceId) {
+    auto stmt = db_.prepare("DELETE FROM Pieces WHERE id = ?;");
+    if (!stmt.isOk()) {
+        return core::Result<void>::err(stmt.error().message);
+    }
+    if (auto b = stmt.value().bindInt(1, pieceId); !b.isOk()) return b;
+    if (auto step = stmt.value().step(); !step.isOk()) {
+        return core::Result<void>::err(step.error().message);
+    }
+    return core::Result<void>::ok();
+}
+
+core::Result<void> PieceRepository::saveOrientationOffset(std::int64_t pieceId,
+                                                          double offsetDeg) {
+    auto stmt = db_.prepare("UPDATE Pieces SET orientation_offset = ? WHERE id = ?;");
+    if (!stmt.isOk()) {
+        return core::Result<void>::err(stmt.error().message);
+    }
+    if (auto b = stmt.value().bindDouble(1, offsetDeg); !b.isOk()) return b;
+    if (auto b = stmt.value().bindInt(2, pieceId); !b.isOk()) return b;
+    auto step = stmt.value().step();
+    if (!step.isOk()) {
+        return core::Result<void>::err(step.error().message);
+    }
+    return core::Result<void>::ok();
+}
+
+core::Result<double> PieceRepository::loadOrientationOffset(std::int64_t pieceId) {
+    auto stmt = db_.prepare("SELECT orientation_offset FROM Pieces WHERE id = ?;");
+    if (!stmt.isOk()) {
+        return core::Result<double>::err(stmt.error().message);
+    }
+    if (auto b = stmt.value().bindInt(1, pieceId); !b.isOk()) {
+        return core::Result<double>::err(b.error().message);
+    }
+    auto row = stmt.value().step();
+    if (!row.isOk()) {
+        return core::Result<double>::err(row.error().message);
+    }
+    if (!row.value()) {
+        return core::Result<double>::err("La pieza " + std::to_string(pieceId) +
+                                         " no existe");
+    }
+    return core::Result<double>::ok(stmt.value().columnDouble(0));
+}
+
 core::Result<void> PieceRepository::saveAnchor(std::int64_t pieceId,
                                                const vision::OrientationAnchor& anchor) {
     auto stmt = db_.prepare(

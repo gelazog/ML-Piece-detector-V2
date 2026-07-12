@@ -32,6 +32,16 @@ public:
     core::Result<std::int64_t> createPiece(const std::string& name);
     core::Result<std::vector<PieceInfo>> listPieces();
     core::Result<bool> nameExists(const std::string& name);
+    core::Result<void> renamePiece(std::int64_t pieceId, const std::string& newName);
+    // Elimina la pieza y, en cascada, sus referencias, herramientas e
+    // historial de inspecciones. Irreversible.
+    core::Result<void> removePiece(std::int64_t pieceId);
+
+    // Ajuste manual de orientación en grados (0 = usar la detectada): gira el
+    // sistema de coordenadas de la pieza para dejar el eje donde el usuario
+    // quiera. Aplica en vivo, registro e inspección.
+    core::Result<void> saveOrientationOffset(std::int64_t pieceId, double offsetDeg);
+    core::Result<double> loadOrientationOffset(std::int64_t pieceId);
 
     // Miniatura JPEG de la pieza registrada (recorte normalizado), para la
     // comparación visual referencia vs pieza actual.

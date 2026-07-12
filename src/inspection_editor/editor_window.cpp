@@ -186,6 +186,12 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     deleteAction->setShortcut(QKeySequence(Qt::Key_Delete));
     connect(deleteAction, &QAction::triggered, this, &EditorWindow::onDeleteClicked);
     addAction(deleteAction);
+
+    // Con herramientas cargadas, medir de entrada: las medidas se ven sin
+    // tener que pulsar Probar.
+    if (!tools_.empty()) {
+        onTestClicked();
+    }
 }
 
 void EditorWindow::commitUndoState() {

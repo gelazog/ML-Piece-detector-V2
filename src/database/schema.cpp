@@ -111,10 +111,16 @@ ALTER TABLE Pieces ADD COLUMN anchor_y REAL;
 ALTER TABLE Pieces ADD COLUMN anchor_intensity REAL;
 )sql";
 
+// v3: ajuste manual de orientación en grados (0 = usar la detectada).
+const char* const kMigrationV3 = R"sql(
+ALTER TABLE Pieces ADD COLUMN orientation_offset REAL NOT NULL DEFAULT 0;
+)sql";
+
 const char* migrationFor(int targetVersion) {
     switch (targetVersion) {
         case 1: return kSchemaV1;
         case 2: return kMigrationV2;
+        case 3: return kMigrationV3;
     }
     return nullptr;
 }

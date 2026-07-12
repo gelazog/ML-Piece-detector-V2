@@ -12,6 +12,7 @@ core::Result<void> migrate(Db& db);
 
 // Versión de esquema que esta build entiende.
 // v2: rasgo distintivo de orientación (anchor_*) en Pieces.
-inline constexpr int kSchemaVersion = 2;
+// v3: ajuste manual de orientación (orientation_offset) en Pieces.
+inline constexpr int kSchemaVersion = 3;
 
 }  // namespace pci::database

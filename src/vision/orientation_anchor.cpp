@@ -58,6 +58,26 @@ Fixture resolveWithAnchor(const cv::Mat& image, const Fixture& fixture,
     return rotated < direct ? alternative : fixture;
 }
 
+core::Result<void> applyOrientationOffset(const cv::Mat& image, double offsetDeg,
+                                          PieceAnalysis& analysis) {
+    if (std::abs(offsetDeg) < 1e-9) {
+        return core::Result<void>::ok();
+    }
+    analysis.fixture.angleDeg += offsetDeg;
+    while (analysis.fixture.angleDeg >= 180.0) {
+        analysis.fixture.angleDeg -= 360.0;
+    }
+    while (analysis.fixture.angleDeg < -180.0) {
+        analysis.fixture.angleDeg += 360.0;
+    }
+    auto normalized = normalizePiece(image, analysis.mask, analysis.fixture);
+    if (!normalized.isOk()) {
+        return core::Result<void>::err(normalized.error().message);
+    }
+    analysis.normalized = std::move(normalized.value());
+    return core::Result<void>::ok();
+}
+
 core::Result<void> applyAnchor(const cv::Mat& image, const OrientationAnchor& anchor,
                                PieceAnalysis& analysis) {
     const Fixture resolved = resolveWithAnchor(image, analysis.fixture, anchor);
