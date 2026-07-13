@@ -49,8 +49,13 @@ struct BlobGeometry {
     bool darkBlobs = true;  // buscar manchas oscuras (o claras si false)
 };
 
+struct RulerGeometry {
+    cv::Point2f p0;  // distancia directa entre dos puntos (sin buscar bordes)
+    cv::Point2f p1;
+};
+
 using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGeometry,
-                                  EdgeFlawGeometry, BlobGeometry>;
+                                  EdgeFlawGeometry, BlobGeometry, RulerGeometry>;
 
 // (De)serialización JSON (cv::FileStorage en memoria). El tipo del JSON debe
 // coincidir con config.type al parsear.

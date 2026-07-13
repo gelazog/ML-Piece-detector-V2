@@ -26,7 +26,12 @@ std::string ScaleCalibration::formatLength(double px) const {
         return fmt(px, "px");
     }
     char buffer[64];
-    std::snprintf(buffer, sizeof(buffer), "%.2f mm (%.1f px)", toMm(px), px);
+    const double mm = toMm(px);
+    if (mm >= 100.0) {
+        std::snprintf(buffer, sizeof(buffer), "%.2f cm (%.1f px)", mm / 10.0, px);
+    } else {
+        std::snprintf(buffer, sizeof(buffer), "%.2f mm (%.1f px)", mm, px);
+    }
     return buffer;
 }
 

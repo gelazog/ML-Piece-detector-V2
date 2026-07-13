@@ -100,7 +100,7 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
                          listed.error().message);
     }
     outcome.toolResults = inspection::runTools(frameBgr, outcome.analysis.fixture,
-                                               toolConfigs);
+                                               toolConfigs, options_.mmPerPixel);
 
     std::vector<domain::ToolCheck> toolChecks;
     toolChecks.reserve(outcome.toolResults.size());

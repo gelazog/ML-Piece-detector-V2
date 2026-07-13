@@ -93,6 +93,7 @@ private:
     void restoreTools(std::vector<inspection::EditedTool> tools);
     void persistPipelineConfig();
     void updateRoiButton();
+    void rotatePieceView(double deltaDeg);
     void loadPieceList(std::int64_t selectId = -1);
     void loadToolsForSelectedPiece();
     void finishLiveRegistration();

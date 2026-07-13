@@ -96,6 +96,10 @@ TEST(Calibration, FormatLengthWithAndWithoutScale) {
     const std::string text = calibrated.formatLength(100.0);
     EXPECT_NE(text.find("25.00 mm"), std::string::npos);
     EXPECT_NE(text.find("px"), std::string::npos);
+
+    // A partir de 100 mm se muestra en cm.
+    const std::string big = calibrated.formatLength(600.0);  // 150 mm
+    EXPECT_NE(big.find("15.00 cm"), std::string::npos);
 }
 
 // --- Criterios de calidad de captura ---

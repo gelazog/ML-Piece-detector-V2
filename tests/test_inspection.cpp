@@ -75,6 +75,14 @@ TEST(ToolGeometry, JsonRoundTripAllTypes) {
     EXPECT_FALSE(std::get<BlobGeometry>(blobBack.value()).darkBlobs);
 }
 
+TEST(ToolGeometry, RulerRoundTrip) {
+    const RulerGeometry ruler{{5.5F, 10.0F}, {65.5F, 10.0F}};
+    auto back = geometryFromJson(ToolType::Ruler, toJson(ToolGeometry(ruler)));
+    ASSERT_TRUE(back.isOk());
+    EXPECT_FLOAT_EQ(std::get<RulerGeometry>(back.value()).p0.x, 5.5F);
+    EXPECT_FLOAT_EQ(std::get<RulerGeometry>(back.value()).p1.x, 65.5F);
+}
+
 TEST(ToolGeometry, WrongTypeOrGarbageFails) {
     const CaliperGeometry caliper{{0, 0}, {10, 10}, 5.0F};
     EXPECT_FALSE(geometryFromJson(ToolType::Circle, toJson(ToolGeometry(caliper))).isOk());
@@ -217,6 +225,34 @@ TEST(Blob, CountsSpotsAboveMinArea) {
     ASSERT_TRUE(result.isOk()) << result.error().message;
     EXPECT_TRUE(result.value().ok) << result.value().detail;
     EXPECT_DOUBLE_EQ(result.value().measured, 3.0);
+}
+
+// --- Regla ---
+
+TEST(Ruler, MeasuresOwnLengthWithMmDetail) {
+    const cv::Mat gray(100, 100, CV_8UC1, cv::Scalar(128));
+    const RulerGeometry g{{10.0F, 10.0F}, {70.0F, 10.0F}};
+
+    // Sin calibración: 60 px, detalle en px.
+    auto result = runTool(gray, kIdentity, makeConfig(ToolType::Ruler, ToolGeometry(g), 55, 65));
+    ASSERT_TRUE(result.isOk()) << result.error().message;
+    EXPECT_TRUE(result.value().ok);
+    EXPECT_NEAR(result.value().measured, 60.0, 1e-6);
+    EXPECT_NE(result.value().detail.find("px"), std::string::npos);
+    EXPECT_EQ(result.value().detail.find("mm"), std::string::npos);
+
+    // Con escala 0.25 mm/px: el detalle incluye los mm.
+    result = runTool(gray, kIdentity, makeConfig(ToolType::Ruler, ToolGeometry(g), 55, 65),
+                     0.25);
+    ASSERT_TRUE(result.isOk());
+    EXPECT_NE(result.value().detail.find("15.00mm"), std::string::npos);
+
+    // Tolerancias sugeridas: banda de ±10%.
+    double lo = 0.0;
+    double hi = 0.0;
+    suggestTolerances(ToolType::Ruler, 60.0, lo, hi);
+    EXPECT_DOUBLE_EQ(lo, 54.0);
+    EXPECT_DOUBLE_EQ(hi, 66.0);
 }
 
 // --- Anclaje al fixture (el test de oro de la fase) ---

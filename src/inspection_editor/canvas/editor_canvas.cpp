@@ -20,6 +20,7 @@ QColor toolColor(ToolType type) {
         case ToolType::PointToLine: return {180, 120, 255};
         case ToolType::EdgeFlaw: return {0, 230, 120};
         case ToolType::Blob: return {255, 105, 180};
+        case ToolType::Ruler: return {255, 255, 120};
     }
     return Qt::white;
 }
@@ -44,7 +45,8 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
         [](const auto& g) -> std::vector<cv::Point2f> {
             using T = std::decay_t<decltype(g)>;
             if constexpr (std::is_same_v<T, CaliperGeometry> ||
-                          std::is_same_v<T, EdgeFlawGeometry>) {
+                          std::is_same_v<T, EdgeFlawGeometry> ||
+                          std::is_same_v<T, RulerGeometry>) {
                 return {g.p0, g.p1};
             } else if constexpr (std::is_same_v<T, CircleGeometry> ||
                                  std::is_same_v<T, BlobGeometry>) {
@@ -62,7 +64,8 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
         [&delta](auto& g) {
             using T = std::decay_t<decltype(g)>;
             if constexpr (std::is_same_v<T, CaliperGeometry> ||
-                          std::is_same_v<T, EdgeFlawGeometry>) {
+                          std::is_same_v<T, EdgeFlawGeometry> ||
+                          std::is_same_v<T, RulerGeometry>) {
                 g.p0 += delta;
                 g.p1 += delta;
             } else if constexpr (std::is_same_v<T, CircleGeometry> ||
@@ -246,7 +249,8 @@ int EditorCanvas::hitTest(const cv::Point2f& p) const {
             [&](const auto& g) {
                 using T = std::decay_t<decltype(g)>;
                 if constexpr (std::is_same_v<T, CaliperGeometry> ||
-                              std::is_same_v<T, EdgeFlawGeometry>) {
+                              std::is_same_v<T, EdgeFlawGeometry> ||
+                              std::is_same_v<T, RulerGeometry>) {
                     d = distanceToSegment(p, toImg(g.p0), toImg(g.p1));
                 } else if constexpr (std::is_same_v<T, CircleGeometry>) {
                     d = std::abs(cv::norm(p - toImg(g.center)) - g.radius);
@@ -472,6 +476,9 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         case ToolType::EdgeFlaw:
             geometry = EdgeFlawGeometry{a, b, 16.0F, 20};
             break;
+        case ToolType::Ruler:
+            geometry = RulerGeometry{a, b};
+            break;
         case ToolType::Blob: {
             BlobGeometry g;
             g.center = (a + b) / 2.0F;
@@ -498,11 +505,46 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
             using T = std::decay_t<decltype(g)>;
             if constexpr (std::is_same_v<T, CaliperGeometry> ||
                           std::is_same_v<T, EdgeFlawGeometry>) {
-                const QPointF a = imageToWidget(toImg(g.p0));
-                const QPointF b = imageToWidget(toImg(g.p1));
+                const cv::Point2f p0 = toImg(g.p0);
+                const cv::Point2f p1 = toImg(g.p1);
+                const QPointF a = imageToWidget(p0);
+                const QPointF b = imageToWidget(p1);
                 painter.drawLine(a, b);
                 painter.drawEllipse(a, 3.0, 3.0);
                 painter.drawEllipse(b, 3.0, 3.0);
+
+                // Banda de muestreo visible: al cambiar "Puntos" se ve.
+                const cv::Point2f delta = p1 - p0;
+                const float length = static_cast<float>(cv::norm(delta));
+                if (length > 1.0F) {
+                    float half = 0.0F;
+                    if constexpr (std::is_same_v<T, CaliperGeometry>) {
+                        half = g.bandWidth / 2.0F;
+                    } else {
+                        half = g.scanLength / 2.0F;
+                    }
+                    const cv::Point2f u = delta / length;
+                    const cv::Point2f n(-u.y * half, u.x * half);
+                    QPen dashed = painter.pen();
+                    dashed.setStyle(Qt::DashLine);
+                    dashed.setWidthF(1.0);
+                    painter.save();
+                    painter.setPen(dashed);
+                    painter.drawLine(imageToWidget(p0 + n), imageToWidget(p1 + n));
+                    painter.drawLine(imageToWidget(p0 - n), imageToWidget(p1 - n));
+                    painter.restore();
+                }
+                labelPos = (a + b) / 2.0;
+            } else if constexpr (std::is_same_v<T, RulerGeometry>) {
+                const QPointF a = imageToWidget(toImg(g.p0));
+                const QPointF b = imageToWidget(toImg(g.p1));
+                painter.drawLine(a, b);
+                // Topes de regla en los extremos.
+                QLineF line(a, b);
+                const QLineF normal = line.normalVector().unitVector();
+                const QPointF tick(normal.dx() * 6.0, normal.dy() * 6.0);
+                painter.drawLine(a - tick, a + tick);
+                painter.drawLine(b - tick, b + tick);
                 labelPos = (a + b) / 2.0;
             } else if constexpr (std::is_same_v<T, CircleGeometry>) {
                 const QPointF c = imageToWidget(toImg(g.center));
@@ -578,7 +620,10 @@ void EditorCanvas::paintResults(QPainter& painter) const {
         if (result.type == ToolType::Blob) {
             measure = QStringLiteral("n=%1").arg(result.measured, 0, 'f', 0);
         } else if (mmPerPixel_ > 0.0) {
-            measure = QStringLiteral("%1 mm").arg(result.measured * mmPerPixel_, 0, 'f', 2);
+            const double mm = result.measured * mmPerPixel_;
+            measure = mm >= 100.0
+                          ? QStringLiteral("%1 cm").arg(mm / 10.0, 0, 'f', 2)
+                          : QStringLiteral("%1 mm").arg(mm, 0, 'f', 2);
         } else {
             measure = QStringLiteral("%1 px").arg(result.measured, 0, 'f', 1);
         }

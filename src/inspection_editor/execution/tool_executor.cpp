@@ -23,9 +23,30 @@ cv::Point2f toImg(const Fixture& f, const cv::Point2f& p) {
     return toImageCoords(f, p);
 }
 
-std::string fmt(double value) {
-    char buffer[32];
-    std::snprintf(buffer, sizeof(buffer), "%.2f", value);
+// Longitud con unidades: px siempre; mm o cm si hay escala calibrada.
+std::string fmtLen(double px, double mmPerPixel) {
+    char buffer[64];
+    if (mmPerPixel <= 0.0) {
+        std::snprintf(buffer, sizeof(buffer), "%.1fpx", px);
+        return buffer;
+    }
+    const double mm = px * mmPerPixel;
+    if (mm >= 100.0) {
+        std::snprintf(buffer, sizeof(buffer), "%.2fcm (%.1fpx)", mm / 10.0, px);
+    } else {
+        std::snprintf(buffer, sizeof(buffer), "%.2fmm (%.1fpx)", mm, px);
+    }
+    return buffer;
+}
+
+std::string fmtArea(double px2, double mmPerPixel) {
+    char buffer[64];
+    if (mmPerPixel <= 0.0) {
+        std::snprintf(buffer, sizeof(buffer), "%.0fpx²", px2);
+        return buffer;
+    }
+    std::snprintf(buffer, sizeof(buffer), "%.1fmm² (%.0fpx²)",
+                  px2 * mmPerPixel * mmPerPixel, px2);
     return buffer;
 }
 
@@ -42,29 +63,67 @@ ToolRunResult baseResult(const ToolConfig& config) {
 }
 
 ToolRunResult runCaliper(const cv::Mat& gray, const Fixture& fixture,
-                         const ToolConfig& config, const CaliperGeometry& g) {
+                         const ToolConfig& config, const CaliperGeometry& g,
+                         double mmPerPixel) {
     ToolRunResult result = baseResult(config);
     const cv::Point2f p0 = toImg(fixture, g.p0);
     const cv::Point2f p1 = toImg(fixture, g.p1);
     result.overlaySegments.push_back({p0, p1});
 
-    const auto edges = detectEdges(gray, p0, p1, g.bandWidth, 2);
+    const auto edges = detectEdges(gray, p0, p1, g.bandWidth, 6);
     if (edges.size() < 2) {
         result.detail = "Se necesitan 2 bordes y se detectaron " +
                         std::to_string(edges.size());
         return result;
     }
 
-    result.measured = std::abs(edges[0].position - edges[1].position);
+    // Preferir un par de polaridad opuesta (subida + bajada): mide el ancho
+    // real de la pieza en vez de dos bordes del mismo lado.
+    std::size_t first = 0;
+    std::size_t second = 1;
+    double bestScore = -1.0;
+    for (std::size_t i = 0; i < edges.size(); ++i) {
+        for (std::size_t j = i + 1; j < edges.size(); ++j) {
+            if (edges[i].strength * edges[j].strength >= 0.0) {
+                continue;  // misma polaridad
+            }
+            const double score =
+                std::min(std::abs(edges[i].strength), std::abs(edges[j].strength));
+            if (score > bestScore) {
+                bestScore = score;
+                first = i;
+                second = j;
+            }
+        }
+    }
+    // Sin par opuesto (p. ej. escalón simple): caer a los dos más fuertes.
+
+    result.measured = std::abs(edges[first].position - edges[second].position);
     result.ok = withinTolerance(config, result.measured);
-    result.detail = "d=" + fmt(result.measured) + "px";
-    result.overlayPoints.push_back(edges[0].point);
-    result.overlayPoints.push_back(edges[1].point);
+    result.detail = "d=" + fmtLen(result.measured, mmPerPixel);
+    result.overlayPoints.push_back(edges[first].point);
+    result.overlayPoints.push_back(edges[second].point);
+    return result;
+}
+
+ToolRunResult runRuler(const Fixture& fixture, const ToolConfig& config,
+                       const RulerGeometry& g, double mmPerPixel) {
+    ToolRunResult result = baseResult(config);
+    const cv::Point2f p0 = toImg(fixture, g.p0);
+    const cv::Point2f p1 = toImg(fixture, g.p1);
+    result.overlaySegments.push_back({p0, p1});
+    result.overlayPoints.push_back(p0);
+    result.overlayPoints.push_back(p1);
+
+    result.measured = cv::norm(p1 - p0);
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = "L=" + fmtLen(result.measured, mmPerPixel);
     return result;
 }
 
 ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
-                        const ToolConfig& config, const CircleGeometry& g) {
+                        const ToolConfig& config, const CircleGeometry& g,
+                        double mmPerPixel) {
     ToolRunResult result = baseResult(config);
     const cv::Point2f center = toImg(fixture, g.center);
 
@@ -116,7 +175,9 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
 
     result.measured = 2.0 * r;
     result.ok = withinTolerance(config, result.measured);
-    result.detail = "D=" + fmt(result.measured) + "px, redondez=" + fmt(roundness) + "px";
+    result.detail = "D=" + fmtLen(result.measured, mmPerPixel) +
+                    ", R=" + fmtLen(r, mmPerPixel) +
+                    ", redondez=" + fmtLen(roundness, mmPerPixel);
     result.overlayPoints = std::move(points);
     result.overlayPoints.push_back(
         {static_cast<float>(cx), static_cast<float>(cy)});
@@ -124,7 +185,8 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
 }
 
 ToolRunResult runPointToLine(const cv::Mat& gray, const Fixture& fixture,
-                             const ToolConfig& config, const PointToLineGeometry& g) {
+                             const ToolConfig& config, const PointToLineGeometry& g,
+                             double mmPerPixel) {
     ToolRunResult result = baseResult(config);
     const cv::Point2f lineA = toImg(fixture, g.lineA);
     const cv::Point2f lineB = toImg(fixture, g.lineB);
@@ -151,13 +213,14 @@ ToolRunResult runPointToLine(const cv::Mat& gray, const Fixture& fixture,
                          static_cast<double>(lineDelta.y) * (p.x - lineA.x);
     result.measured = std::abs(cross) / lineLength;
     result.ok = withinTolerance(config, result.measured);
-    result.detail = "d=" + fmt(result.measured) + "px";
+    result.detail = "d=" + fmtLen(result.measured, mmPerPixel);
     result.overlayPoints.push_back(p);
     return result;
 }
 
 ToolRunResult runEdgeFlaw(const cv::Mat& gray, const Fixture& fixture,
-                          const ToolConfig& config, const EdgeFlawGeometry& g) {
+                          const ToolConfig& config, const EdgeFlawGeometry& g,
+                          double mmPerPixel) {
     ToolRunResult result = baseResult(config);
     const cv::Point2f p0 = toImg(fixture, g.p0);
     const cv::Point2f p1 = toImg(fixture, g.p1);
@@ -221,13 +284,13 @@ ToolRunResult runEdgeFlaw(const cv::Mat& gray, const Fixture& fixture,
 
     result.measured = maxDeviation;
     result.ok = withinTolerance(config, result.measured);
-    result.detail = "desv. máx=" + fmt(result.measured) + "px (" +
+    result.detail = "desv. máx=" + fmtLen(result.measured, mmPerPixel) + " (" +
                     std::to_string(ts.size()) + " escaneos)";
     return result;
 }
 
 ToolRunResult runBlob(const cv::Mat& gray, const Fixture& fixture, const ToolConfig& config,
-                      const BlobGeometry& g) {
+                      const BlobGeometry& g, double mmPerPixel) {
     ToolRunResult result = baseResult(config);
 
     // Rectángulo alineado a los ejes de la pieza -> cuadrilátero en imagen.
@@ -290,14 +353,15 @@ ToolRunResult runBlob(const cv::Mat& gray, const Fixture& fixture, const ToolCon
 
     result.measured = count;
     result.ok = withinTolerance(config, result.measured);
-    result.detail = std::to_string(count) + " blob(s), área=" + fmt(totalArea) + "px²";
+    result.detail =
+        std::to_string(count) + " blob(s), área=" + fmtArea(totalArea, mmPerPixel);
     return result;
 }
 
 }  // namespace
 
 core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture& fixture,
-                                    const ToolConfig& config) {
+                                    const ToolConfig& config, double mmPerPixel) {
     using ResultT = core::Result<ToolRunResult>;
 
     if (image.empty()) {
@@ -321,19 +385,29 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
         switch (config.type) {
             case ToolType::Caliper:
                 return ResultT::ok(runCaliper(gray, fixture, config,
-                                              std::get<CaliperGeometry>(geometry.value())));
+                                              std::get<CaliperGeometry>(geometry.value()),
+                                              mmPerPixel));
             case ToolType::Circle:
                 return ResultT::ok(runCircle(gray, fixture, config,
-                                             std::get<CircleGeometry>(geometry.value())));
+                                             std::get<CircleGeometry>(geometry.value()),
+                                             mmPerPixel));
             case ToolType::PointToLine:
-                return ResultT::ok(runPointToLine(
-                    gray, fixture, config, std::get<PointToLineGeometry>(geometry.value())));
+                return ResultT::ok(
+                    runPointToLine(gray, fixture, config,
+                                   std::get<PointToLineGeometry>(geometry.value()),
+                                   mmPerPixel));
             case ToolType::EdgeFlaw:
                 return ResultT::ok(runEdgeFlaw(gray, fixture, config,
-                                               std::get<EdgeFlawGeometry>(geometry.value())));
+                                               std::get<EdgeFlawGeometry>(geometry.value()),
+                                               mmPerPixel));
             case ToolType::Blob:
                 return ResultT::ok(runBlob(gray, fixture, config,
-                                           std::get<BlobGeometry>(geometry.value())));
+                                           std::get<BlobGeometry>(geometry.value()),
+                                           mmPerPixel));
+            case ToolType::Ruler:
+                return ResultT::ok(runRuler(fixture, config,
+                                            std::get<RulerGeometry>(geometry.value()),
+                                            mmPerPixel));
         }
         return ResultT::err("Tipo de herramienta no soportado");
     } catch (const cv::Exception& e) {
@@ -343,13 +417,14 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
 }
 
 std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture& fixture,
-                                    const std::vector<ToolConfig>& tools) {
+                                    const std::vector<ToolConfig>& tools,
+                                    double mmPerPixel) {
     std::vector<ToolRunResult> results;
     for (const auto& config : tools) {
         if (!config.enabled) {
             continue;
         }
-        auto result = runTool(image, fixture, config);
+        auto result = runTool(image, fixture, config, mmPerPixel);
         if (result.isOk()) {
             results.push_back(std::move(result.value()));
         } else {

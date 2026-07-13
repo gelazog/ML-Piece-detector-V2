@@ -15,13 +15,14 @@ const char* toolTypeName(ToolType type) {
         case ToolType::PointToLine: return "point_to_line";
         case ToolType::EdgeFlaw: return "edge_flaw";
         case ToolType::Blob: return "blob";
+        case ToolType::Ruler: return "ruler";
     }
     return "unknown";
 }
 
 core::Result<ToolType> toolTypeFromName(const std::string& name) {
     for (const ToolType type : {ToolType::Caliper, ToolType::Circle, ToolType::PointToLine,
-                                ToolType::EdgeFlaw, ToolType::Blob}) {
+                                ToolType::EdgeFlaw, ToolType::Blob, ToolType::Ruler}) {
         if (name == toolTypeName(type)) {
             return core::Result<ToolType>::ok(type);
         }
@@ -52,6 +53,10 @@ const char* toolTypeDescription(ToolType type) {
             return "Blob — cuenta manchas, agujeros o elementos dentro de una región.\n"
                    "Arrastra un rectángulo sobre la zona a vigilar; por defecto busca\n"
                    "elementos oscuros sobre fondo claro (área mínima 20 px²).";
+        case ToolType::Ruler:
+            return "Regla — distancia directa entre dos puntos fijos de la pieza\n"
+                   "(no busca bordes: mide exactamente lo que trazas). Con la escala\n"
+                   "calibrada, la medida sale en mm/cm. Ideal para medir al vuelo.";
     }
     return "";
 }
@@ -71,7 +76,8 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
             return;
         case ToolType::Caliper:
         case ToolType::Circle:
-        case ToolType::PointToLine: {
+        case ToolType::PointToLine:
+        case ToolType::Ruler: {
             // Banda de ±10% con un mínimo de ±2 px para medidas pequeñas.
             const double band = std::max(measured * 0.10, 2.0);
             toleranceMin = std::max(0.0, measured - band);
@@ -93,8 +99,10 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::PointToLine;
             } else if constexpr (std::is_same_v<T, EdgeFlawGeometry>) {
                 return ToolType::EdgeFlaw;
-            } else {
+            } else if constexpr (std::is_same_v<T, BlobGeometry>) {
                 return ToolType::Blob;
+            } else {
+                return ToolType::Ruler;
             }
         },
         geometry);
@@ -167,10 +175,14 @@ std::string toJson(const ToolGeometry& geometry) {
                     fs << "x0" << g.p0.x << "y0" << g.p0.y << "x1" << g.p1.x << "y1" << g.p1.y
                        << "scanLen" << g.scanLength << "scans" << g.scanCount;
                 });
-            } else {
+            } else if constexpr (std::is_same_v<T, BlobGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "cx" << g.center.x << "cy" << g.center.y << "w" << g.width << "h"
                        << g.height << "minArea" << g.minArea << "dark" << (g.darkBlobs ? 1 : 0);
+                });
+            } else {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "x0" << g.p0.x << "y0" << g.p0.y << "x1" << g.p1.x << "y1" << g.p1.y;
                 });
             }
         },
@@ -233,6 +245,16 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.p1 = {static_cast<float>(x1.value()), static_cast<float>(y1.value())};
                 g.scanLength = static_cast<float>(len.value());
                 g.scanCount = static_cast<int>(scans.value());
+                return ResultT::ok(g);
+            }
+            case ToolType::Ruler: {
+                RulerGeometry g;
+                auto x0 = f("x0"), y0 = f("y0"), x1 = f("x1"), y1 = f("y1");
+                for (const auto* v : {&x0, &y0, &x1, &y1}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.p0 = {static_cast<float>(x0.value()), static_cast<float>(y0.value())};
+                g.p1 = {static_cast<float>(x1.value()), static_cast<float>(y1.value())};
                 return ResultT::ok(g);
             }
             case ToolType::Blob: {

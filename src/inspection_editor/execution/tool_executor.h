@@ -29,13 +29,15 @@ struct ToolRunResult {
 // Ejecuta una herramienta sobre la imagen (BGR o gris) usando el fixture de la
 // pieza para llevar la geometría de coordenadas de pieza a imagen. Un fallo de
 // medición devuelve Result ok con ToolRunResult{ok=false, detail=motivo};
-// Result err se reserva para configuración corrupta.
+// Result err se reserva para configuración corrupta. mmPerPixel > 0 añade la
+// medida en mm/cm a los textos de detalle.
 core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture& fixture,
-                                    const ToolConfig& config);
+                                    const ToolConfig& config, double mmPerPixel = 0.0);
 
 // Ejecuta todas las herramientas habilitadas; nunca lanza. Los errores de
 // configuración se convierten en resultados NG con el motivo en detail.
 std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture& fixture,
-                                    const std::vector<ToolConfig>& tools);
+                                    const std::vector<ToolConfig>& tools,
+                                    double mmPerPixel = 0.0);
 
 }  // namespace pci::inspection

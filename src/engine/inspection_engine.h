@@ -21,6 +21,7 @@ struct EngineOptions {
     double kSigma = 3.0;     // banda de anomalía: simMean - max(k·σ, 0.02)
     int thumbnailSize = 96;  // miniatura JPEG guardada en el historial
     vision::PipelineConfig pipeline;  // detección: umbral, polaridad, zona
+    double mmPerPixel = 0.0;          // escala calibrada para los detalles
 };
 
 // Miniatura JPEG cuadrada de una imagen (BGR o gris); vacía si la imagen lo es.
@@ -62,6 +63,7 @@ public:
     void setPipelineConfig(const vision::PipelineConfig& config) {
         options_.pipeline = config;
     }
+    void setMmPerPixel(double mmPerPixel) { options_.mmPerPixel = mmPerPixel; }
 
 private:
     EmbedFn embedFn_;

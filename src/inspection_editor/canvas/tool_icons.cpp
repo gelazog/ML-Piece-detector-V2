@@ -83,6 +83,15 @@ QIcon toolIcon(ToolType type) {
                 p.drawLine(14, 21, 17, 16);
                 p.drawLine(17, 16, 24, 16);
             });
+        case ToolType::Ruler:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // Regla diagonal con marcas.
+                p.drawLine(6, 22, 22, 6);
+                p.drawLine(4, 18, 10, 24);   // tope A
+                p.drawLine(18, 2, 24, 8);    // tope B
+                p.drawLine(11, 15, 14, 18);  // marcas intermedias
+                p.drawLine(15, 11, 18, 14);
+            });
         case ToolType::Blob:
             return makeIcon([](QPainter& p, const QColor& c) {
                 QPen thin = p.pen();

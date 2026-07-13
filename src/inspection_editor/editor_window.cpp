@@ -34,6 +34,7 @@ QString typeLabel(ToolType type) {
         case ToolType::PointToLine: return QStringLiteral("Punto-Línea");
         case ToolType::EdgeFlaw: return QStringLiteral("Borde liso");
         case ToolType::Blob: return QStringLiteral("Blob");
+        case ToolType::Ruler: return QStringLiteral("Regla");
     }
     return QStringLiteral("?");
 }
@@ -80,6 +81,7 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     addMode(tr("Punto-Línea"), static_cast<int>(ToolType::PointToLine));
     addMode(tr("Borde liso"), static_cast<int>(ToolType::EdgeFlaw));
     addMode(tr("Blob"), static_cast<int>(ToolType::Blob));
+    addMode(tr("Regla"), static_cast<int>(ToolType::Ruler));
     modesLayout->addStretch(1);
     rootLayout->addLayout(modesLayout);
 
@@ -108,6 +110,8 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     tolMax_->setRange(0.0, 100000.0);
     tolMax_->setDecimals(2);
     form->addRow(tr("Tolerancia máx:"), tolMax_);
+    tolMmLabel_ = new QLabel(this);
+    form->addRow(QString(), tolMmLabel_);
     paramLabel_ = new QLabel(tr("Puntos:"), this);
     paramSpin_ = new QSpinBox(this);
     paramSpin_->setRange(1, 1000);
@@ -279,6 +283,15 @@ void EditorWindow::syncPanelFromSelection() {
         nameEdit_->setText(QString::fromStdString(tool.config.name));
         tolMin_->setValue(tool.config.toleranceMin);
         tolMax_->setValue(tool.config.toleranceMax);
+        if (calibration_.valid() && tool.config.type != ToolType::Blob) {
+            tolMmLabel_->setText(tr("= %1 – %2 mm")
+                                     .arg(calibration_.toMm(tool.config.toleranceMin), 0,
+                                          'f', 2)
+                                     .arg(calibration_.toMm(tool.config.toleranceMax), 0,
+                                          'f', 2));
+        } else {
+            tolMmLabel_->clear();
+        }
 
         // Parámetro de muestreo según el tipo de herramienta.
         std::visit(
@@ -323,8 +336,8 @@ void EditorWindow::onToolCreated(const ToolGeometry& geometry) {
 
     // Medir de inmediato sobre la imagen de referencia y sugerir tolerancias:
     // la pieza buena define su propio rango de aceptación.
-    const auto measured =
-        runTool(camera::qImageToMat(reference_), fixture_, tool.config);
+    const auto measured = runTool(camera::qImageToMat(reference_), fixture_, tool.config,
+                                  calibration_.mmPerPixel);
     if (measured.isOk() && (measured.value().ok || measured.value().measured > 0.0)) {
         suggestTolerances(tool.config.type, measured.value().measured,
                           tool.config.toleranceMin, tool.config.toleranceMax);
@@ -378,6 +391,13 @@ void EditorWindow::onPanelEdited() {
     }
     tool.config.toleranceMin = tolMin_->value();
     tool.config.toleranceMax = tolMax_->value();
+    if (calibration_.valid() && tool.config.type != ToolType::Blob) {
+        tolMmLabel_->setText(tr("= %1 – %2 mm")
+                                 .arg(calibration_.toMm(tolMin_->value()), 0, 'f', 2)
+                                 .arg(calibration_.toMm(tolMax_->value()), 0, 'f', 2));
+    } else {
+        tolMmLabel_->clear();
+    }
     if (paramSpin_->isEnabled()) {
         const int value = paramSpin_->value();
         std::visit(
@@ -432,7 +452,8 @@ std::vector<ToolConfig> EditorWindow::activeConfigs() const {
 
 void EditorWindow::onTestClicked() {
     const cv::Mat image = camera::qImageToMat(reference_);
-    const auto results = runTools(image, fixture_, activeConfigs());
+    const auto results =
+        runTools(image, fixture_, activeConfigs(), calibration_.mmPerPixel);
     canvas_->setResults(results);
 
     QStringList lines;

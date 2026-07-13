@@ -44,6 +44,16 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    - *Punto-Línea*: línea de referencia → distancia perpendicular del borde.
    - *Borde liso*: línea sobre un borde recto → desviación máxima (muescas).
    - *Blob*: rectángulo sobre una zona → conteo de manchas/agujeros.
+   - *Regla*: distancia directa entre dos puntos fijos (no busca bordes) —
+     con la escala calibrada mide en mm/cm al vuelo.
+
+   Los detalles de todas las herramientas incluyen **mm (y cm a partir de
+   10 cm)** cuando hay calibración — también el círculo (diámetro, radio y
+   redondez) y el área de los blobs (mm²). El Caliper empareja **bordes de
+   polaridad opuesta** (mide anchos reales, no dos bordes del mismo lado), y
+   la banda de muestreo del Caliper/Borde liso **se dibuja en pantalla** al
+   cambiar el campo Puntos. Bajo "Pieza actual" hay botones **⟲/⟳ 90°** para
+   girar cómo se ve la pieza (persiste con la pieza seleccionada).
 
    La **cantidad de puntos de muestreo** de cada herramienta es editable en
    **Plantilla…** (campo "Puntos"): banda del Caliper, rayos del Círculo,

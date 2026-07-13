@@ -64,6 +64,7 @@ private:
     QDoubleSpinBox* tolMax_ = nullptr;
     QLabel* paramLabel_ = nullptr;   // parámetro de muestreo según el tipo
     QSpinBox* paramSpin_ = nullptr;  // (banda, rayos, escaneos, área mínima)
+    QLabel* tolMmLabel_ = nullptr;   // equivalente en mm de las tolerancias
     QPushButton* deleteButton_ = nullptr;
     QLabel* statusLabel_ = nullptr;
 

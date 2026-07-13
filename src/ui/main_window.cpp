@@ -57,7 +57,8 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                              double orientationOffsetDeg,
                              const std::vector<inspection::ToolConfig>& tools,
                              const vision::PipelineConfig& pipeline,
-                             std::optional<vision::Fixture> previousFixture) {
+                             std::optional<vision::Fixture> previousFixture,
+                             double mmPerPixel) {
     AnalysisOverlay overlay;
     overlay.frameSize = frame.size();
 
@@ -114,7 +115,7 @@ AnalysisOverlay buildOverlay(const QImage& frame,
         overlay.normalized = camera::matToQImage(analysis.value().normalized);
         if (!tools.empty()) {
             overlay.toolResults =
-                inspection::runTools(image, analysis.value().fixture, tools);
+                inspection::runTools(image, analysis.value().fixture, tools, mmPerPixel);
         }
     } catch (const std::exception& e) {
         overlay.valid = false;
@@ -135,8 +136,19 @@ QString toolTypeLabel(inspection::ToolType type) {
         case inspection::ToolType::PointToLine: return QStringLiteral("Punto-Línea");
         case inspection::ToolType::EdgeFlaw: return QStringLiteral("Borde liso");
         case inspection::ToolType::Blob: return QStringLiteral("Blob");
+        case inspection::ToolType::Ruler: return QStringLiteral("Regla");
     }
     return QStringLiteral("?");
+}
+
+double wrapAngleDeg(double angle) {
+    while (angle >= 180.0) {
+        angle -= 360.0;
+    }
+    while (angle < -180.0) {
+        angle += 360.0;
+    }
+    return angle;
 }
 
 }  // namespace
@@ -249,7 +261,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     for (const auto type :
          {inspection::ToolType::Caliper, inspection::ToolType::Circle,
           inspection::ToolType::PointToLine, inspection::ToolType::EdgeFlaw,
-          inspection::ToolType::Blob}) {
+          inspection::ToolType::Blob, inspection::ToolType::Ruler}) {
         auto* button = addMode(toolTypeLabel(type), static_cast<int>(type));
         button->setIcon(inspection::toolIcon(type));
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -322,6 +334,22 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     compareLayout->addWidget(new QLabel(tr("Pieza actual:"), central));
     currentThumbLabel_ = makeThumb();
     compareLayout->addWidget(currentThumbLabel_);
+
+    // Rotar la vista de la pieza a gusto del usuario (gira la orientación de
+    // la pieza seleccionada; persiste y aplica en registro e inspección).
+    auto* rotateLayout = new QHBoxLayout();
+    auto* rotateLeft = new QPushButton(QStringLiteral("⟲ 90°"), central);
+    auto* rotateRight = new QPushButton(QStringLiteral("⟳ 90°"), central);
+    const QString rotateTip =
+        tr("Gira cómo se ve la pieza (su recorte normalizado). Con una pieza\n"
+           "seleccionada el giro se guarda con ella.");
+    rotateLeft->setToolTip(rotateTip);
+    rotateRight->setToolTip(rotateTip);
+    rotateLayout->addWidget(rotateLeft);
+    rotateLayout->addWidget(rotateRight);
+    compareLayout->addLayout(rotateLayout);
+    connect(rotateLeft, &QPushButton::clicked, this, [this] { rotatePieceView(-90.0); });
+    connect(rotateRight, &QPushButton::clicked, this, [this] { rotatePieceView(90.0); });
     similarityLabel_ = new QLabel(central);
     similarityLabel_->setWordWrap(true);
     compareLayout->addWidget(similarityLabel_);
@@ -586,6 +614,7 @@ void MainWindow::restoreTools(std::vector<inspection::EditedTool> tools) {
     liveTools_ = std::move(tools);
     stableTools_ = liveTools_;
     video_->setSelectedIndex(-1);
+    onLiveSelectionChanged(-1);
     video_->clearResults();
     video_->update();
 }
@@ -784,8 +813,9 @@ void MainWindow::maybeStartAnalysis() {
 
     analysisWatcher_.setFuture(QtConcurrent::run(
         [frame, anchor, offset = currentOrientationOffset_, configs = std::move(configs),
-         pipeline = pipelineConfig_, previous = liveFixture_] {
-            return buildOverlay(frame, anchor, offset, configs, pipeline, previous);
+         pipeline = pipelineConfig_, previous = liveFixture_,
+         mm = calibration_.mmPerPixel] {
+            return buildOverlay(frame, anchor, offset, configs, pipeline, previous, mm);
         }));
 }
 
@@ -853,7 +883,8 @@ void MainWindow::onLiveToolCreated(const inspection::ToolGeometry& geometry) {
     QString hint;
     if (liveFixture_.has_value() && !lastFrame_.isNull()) {
         const auto result =
-            inspection::runTool(camera::qImageToMat(lastFrame_), *liveFixture_, tool.config);
+            inspection::runTool(camera::qImageToMat(lastFrame_), *liveFixture_, tool.config,
+                                calibration_.mmPerPixel);
         if (result.isOk() && !result.value().detail.empty() &&
             (result.value().ok || result.value().measured > 0.0)) {
             inspection::suggestTolerances(tool.config.type, result.value().measured,
@@ -879,7 +910,9 @@ void MainWindow::onLiveToolCreated(const inspection::ToolGeometry& geometry) {
     commitUndoState();
 
     video_->clearResults();
-    video_->setSelectedIndex(static_cast<int>(liveTools_.size()) - 1);
+    const int newIndex = static_cast<int>(liveTools_.size()) - 1;
+    video_->setSelectedIndex(newIndex);
+    onLiveSelectionChanged(newIndex);  // sincroniza el spin de "Puntos"
     statusBar()->showMessage(hint.isEmpty()
                                  ? tr("%1 creada").arg(QString::fromStdString(
                                        liveTools_.back().config.name))
@@ -915,6 +948,7 @@ void MainWindow::onDeleteToolClicked() {
     }
     commitUndoState();
     video_->setSelectedIndex(-1);
+    onLiveSelectionChanged(-1);
     video_->clearResults();
 }
 
@@ -1017,6 +1051,26 @@ void MainWindow::onLiveParamChanged(int value) {
         liveTools_[static_cast<std::size_t>(index)].geometry);
     commitUndoState();
     video_->update();
+}
+
+void MainWindow::rotatePieceView(double deltaDeg) {
+    currentOrientationOffset_ = wrapAngleDeg(currentOrientationOffset_ + deltaDeg);
+    const std::int64_t pieceId = selectedPieceId();
+    if (pieceId >= 0 && repos_.pieces != nullptr) {
+        if (auto saved =
+                repos_.pieces->saveOrientationOffset(pieceId, currentOrientationOffset_);
+            !saved.isOk()) {
+            statusBar()->showMessage(QString::fromStdString(saved.error().message));
+            return;
+        }
+        statusBar()->showMessage(
+            tr("Orientación de la pieza girada a %1° (guardada).")
+                .arg(currentOrientationOffset_, 0, 'f', 0));
+    } else {
+        statusBar()->showMessage(
+            tr("Vista girada a %1° — se guardará con la pieza al registrar.")
+                .arg(currentOrientationOffset_, 0, 'f', 0));
+    }
 }
 
 void MainWindow::onManagePiecesClicked() {
