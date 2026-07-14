@@ -1,6 +1,7 @@
 #include "ui/main_window.h"
 
 #include <QAction>
+#include <QActionGroup>
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
@@ -8,6 +9,8 @@
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLabel>
+#include <QMenu>
+#include <QMenuBar>
 #include <QMessageBox>
 #include <QProgressDialog>
 #include <QPushButton>
@@ -167,22 +170,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     cameraCombo_ = new QComboBox(central);
     cameraCombo_->setMinimumWidth(200);
     cameraLayout->addWidget(cameraCombo_, 1);
-    refreshButton_ = new QPushButton(tr("Actualizar"), central);
-    cameraLayout->addWidget(refreshButton_);
     startStopButton_ = new QPushButton(tr("Iniciar"), central);
     cameraLayout->addWidget(startStopButton_);
-    calibrateButton_ = new QPushButton(tr("Calibrar mm…"), central);
-    calibrateButton_->setToolTip(
-        tr("Calibra la escala px → mm: dos clics sobre una distancia conocida, o\n"
-           "la distancia de la cámara a la superficie + su FOV. Con la escala\n"
-           "calibrada todas las medidas se muestran también en milímetros."));
-    cameraLayout->addWidget(calibrateButton_);
-
-    detectionButton_ = new QPushButton(tr("Detección…"), central);
-    detectionButton_->setToolTip(
-        tr("Ajustes del contorno automático contra luces y sombras: umbral manual\n"
-           "u Otsu, polaridad de la pieza, suavizado y limpieza morfológica."));
-    cameraLayout->addWidget(detectionButton_);
 
     roiButton_ = new QPushButton(tr("Zona de detección"), central);
     roiButton_->setCheckable(true);
@@ -193,21 +182,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
            "objetos fuera de la zona dejan de estorbar. Vuelve a pulsarlo para\n"
            "quitar la zona."));
     cameraLayout->addWidget(roiButton_);
-
-    cameraLayout->addWidget(new QLabel(tr("Unidad:"), central));
-    unitCombo_ = new QComboBox(central);
-    unitCombo_->addItem(tr("Auto"));  // orden = LengthUnit
-    unitCombo_->addItem(tr("mm"));
-    unitCombo_->addItem(tr("cm"));
-    unitCombo_->addItem(tr("px"));
-    unitCombo_->setToolTip(
-        tr("Unidad de las medidas. Auto: mm y cambia a cm a partir de 10 cm.\n"
-           "Requiere calibración (Calibrar mm…) para mostrar mm/cm."));
-    cameraLayout->addWidget(unitCombo_);
-
-    analysisCheck_ = new QCheckBox(tr("Detectar pieza (contorno)"), central);
-    analysisCheck_->setChecked(true);
-    cameraLayout->addWidget(analysisCheck_);
+    cameraLayout->addStretch(0);
     rootLayout->addLayout(cameraLayout);
 
     // --- Fila 2: pieza y flujo ---
@@ -242,22 +217,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         tr("Inspecciona continuamente el video contra la pieza seleccionada"));
     pieceLayout->addWidget(autoInspectButton_);
 
-    managePiecesButton_ = new QPushButton(tr("Piezas…"), central);
-    managePiecesButton_->setToolTip(
-        tr("Gestión de piezas: renombrar, eliminar y ajustar su orientación"));
-    pieceLayout->addWidget(managePiecesButton_);
-
-    registerWizardButton_ = new QPushButton(tr("Registrar (asistente)…"), central);
-    registerWizardButton_->setToolTip(tr("Registro paso a paso; admite imágenes de archivo"));
-    pieceLayout->addWidget(registerWizardButton_);
-
-    editorButton_ = new QPushButton(tr("Plantilla…"), central);
-    editorButton_->setToolTip(tr("Editor sobre imagen fija: ajustar tolerancias y geometrías"));
-    pieceLayout->addWidget(editorButton_);
-
     inspectButton_ = new QPushButton(tr("Inspeccionar"), central);
     inspectButton_->setToolTip(tr("Inspección única con reporte detallado"));
     pieceLayout->addWidget(inspectButton_);
+    pieceLayout->addStretch(0);
     rootLayout->addLayout(pieceLayout);
 
     // --- Fila 3: herramientas para dibujar sobre el video en vivo ---
@@ -387,10 +350,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     statsLabel_ = new QLabel(this);
     statusBar()->addPermanentWidget(statsLabel_);
 
-    connect(refreshButton_, &QPushButton::clicked, this, &MainWindow::refreshCameras);
     connect(startStopButton_, &QPushButton::clicked, this, &MainWindow::onStartStopClicked);
-    connect(analysisCheck_, &QCheckBox::toggled, video_,
-            &inspection::EditorCanvas::setLiveContourVisible);
     connect(&enumerationWatcher_, &QFutureWatcher<std::vector<camera::CameraInfo>>::finished,
             this, &MainWindow::onCamerasEnumerated);
     connect(&analysisWatcher_, &QFutureWatcher<AnalysisOverlay>::finished, this,
@@ -410,8 +370,6 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(video_, &inspection::EditorCanvas::selectionChanged, this,
             &MainWindow::onLiveSelectionChanged);
     connect(liveParamSpin_, &QSpinBox::valueChanged, this, &MainWindow::onLiveParamChanged);
-    connect(managePiecesButton_, &QPushButton::clicked, this,
-            &MainWindow::onManagePiecesClicked);
     connect(deleteToolButton_, &QPushButton::clicked, this, &MainWindow::onDeleteToolClicked);
     connect(anchorButton_, &QPushButton::toggled, this, &MainWindow::onAnchorButtonToggled);
     connect(video_, &inspection::EditorCanvas::pointPicked, this,
@@ -422,7 +380,6 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             &MainWindow::onTemplateChanged);
     connect(newTemplateButton_, &QPushButton::clicked, this,
             &MainWindow::onNewTemplateClicked);
-    connect(unitCombo_, &QComboBox::currentIndexChanged, this, &MainWindow::onUnitChanged);
     connect(video_, &inspection::EditorCanvas::toolRightClicked, this,
             &MainWindow::onToolRightClicked);
 
@@ -436,14 +393,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(autoInspectButton_, &QPushButton::toggled, this, &MainWindow::onAutoToggled);
     connect(&autoTimer_, &QTimer::timeout, this, &MainWindow::onAutoTick);
 
-    connect(calibrateButton_, &QPushButton::clicked, this, &MainWindow::onCalibrateClicked);
-    connect(detectionButton_, &QPushButton::clicked, this, &MainWindow::onDetectionClicked);
     connect(roiButton_, &QPushButton::toggled, this, &MainWindow::onRoiButtonToggled);
     connect(video_, &inspection::EditorCanvas::regionPicked, this,
             &MainWindow::onRegionPicked);
-    connect(registerWizardButton_, &QPushButton::clicked, this,
-            &MainWindow::onRegisterWizardClicked);
-    connect(editorButton_, &QPushButton::clicked, this, &MainWindow::onOpenEditorClicked);
     connect(inspectButton_, &QPushButton::clicked, this, &MainWindow::onInspectClicked);
     connect(&inspectionWatcher_,
             &QFutureWatcher<core::Result<engine::InspectionEngine::Outcome>>::finished, this,
@@ -479,11 +431,15 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     }
     updateRoiButton();
 
+    buildMenuBar();  // crea las acciones de menú (incluidas unidad y contorno)
+
     // Unidad de medida elegida por el operador (persistida).
     if (repos_.settings != nullptr) {
         const int unit = std::clamp(repos_.settings->getInt("length_unit", 0).value(), 0, 3);
-        QSignalBlocker blocker(unitCombo_);
-        unitCombo_->setCurrentIndex(unit);
+        const auto actions = unitGroup_->actions();
+        if (unit < actions.size()) {
+            actions[unit]->setChecked(true);
+        }
     }
     video_->setLengthUnit(currentUnit());
 
@@ -494,7 +450,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
 }
 
 inspection::LengthUnit MainWindow::currentUnit() const {
-    return static_cast<inspection::LengthUnit>(unitCombo_->currentIndex());
+    const QAction* checked = unitGroup_->checkedAction();
+    return static_cast<inspection::LengthUnit>(checked != nullptr ? checked->data().toInt()
+                                                                  : 0);
 }
 
 std::string MainWindow::activeTemplate() const {
@@ -502,11 +460,69 @@ std::string MainWindow::activeTemplate() const {
     return name.isEmpty() ? std::string("principal") : name.toStdString();
 }
 
-void MainWindow::onUnitChanged(int index) {
+void MainWindow::onUnitChanged() {
+    const inspection::LengthUnit unit = currentUnit();
     if (repos_.settings != nullptr) {
-        repos_.settings->setInt("length_unit", index);
+        repos_.settings->setInt("length_unit", static_cast<int>(unit));
     }
-    video_->setLengthUnit(currentUnit());
+    video_->setLengthUnit(unit);
+    // Elegir mm/cm sin escala no hace nada visible: avisar una vez.
+    if (unit != inspection::LengthUnit::Auto && unit != inspection::LengthUnit::Pixels &&
+        !calibration_.valid()) {
+        statusBar()->showMessage(
+            tr("Para ver medidas en mm/cm primero calibra la escala (Cámara ▸ Calibrar…)."));
+    }
+}
+
+// Barra de menú: agrupa las acciones de baja frecuencia que antes saturaban
+// las filas de botones. Las combos y botones de uso constante siguen visibles.
+void MainWindow::buildMenuBar() {
+    auto* cameraMenu = menuBar()->addMenu(tr("&Cámara"));
+    refreshAction_ = cameraMenu->addAction(tr("Actualizar cámaras"), this,
+                                           &MainWindow::refreshCameras);
+    cameraMenu->addSeparator();
+    calibrateAction_ = cameraMenu->addAction(tr("Calibrar escala (mm)…"), this,
+                                             &MainWindow::onCalibrateClicked);
+    detectionAction_ = cameraMenu->addAction(tr("Ajustes de detección…"), this,
+                                             &MainWindow::onDetectionClicked);
+
+    auto* pieceMenu = menuBar()->addMenu(tr("&Pieza"));
+    registerWizardAction_ = pieceMenu->addAction(tr("Registrar con asistente…"), this,
+                                                 &MainWindow::onRegisterWizardClicked);
+    managePiecesAction_ = pieceMenu->addAction(tr("Gestionar piezas…"), this,
+                                               &MainWindow::onManagePiecesClicked);
+
+    auto* inspectionMenu = menuBar()->addMenu(tr("&Inspección"));
+    editorAction_ = inspectionMenu->addAction(tr("Editor de plantilla…"), this,
+                                              &MainWindow::onOpenEditorClicked);
+
+    auto* viewMenu = menuBar()->addMenu(tr("&Ver"));
+    showContourAction_ = viewMenu->addAction(tr("Mostrar contorno"));
+    showContourAction_->setCheckable(true);
+    showContourAction_->setChecked(true);
+    connect(showContourAction_, &QAction::toggled, video_,
+            &inspection::EditorCanvas::setLiveContourVisible);
+    connect(showContourAction_, &QAction::toggled, this,
+            [this](bool) { maybeStartAnalysis(); });
+
+    auto* unitMenu = viewMenu->addMenu(tr("Unidad de medida"));
+    unitGroup_ = new QActionGroup(this);
+    const std::pair<QString, int> units[] = {
+        {tr("Automática (mm/cm)"), 0}, {tr("Milímetros"), 1},
+        {tr("Centímetros"), 2}, {tr("Píxeles"), 3}};
+    for (const auto& [label, value] : units) {
+        auto* action = unitMenu->addAction(label);
+        action->setCheckable(true);
+        action->setData(value);
+        unitGroup_->addAction(action);
+        if (value == 0) {
+            action->setChecked(true);
+        }
+    }
+    connect(unitGroup_, &QActionGroup::triggered, this, &MainWindow::onUnitChanged);
+
+    auto* helpMenu = menuBar()->addMenu(tr("A&yuda"));
+    helpMenu->addAction(tr("Atajos de teclado…"), this, &MainWindow::onShowShortcuts);
 }
 
 void MainWindow::persistPipelineConfig() {
@@ -618,6 +634,7 @@ void MainWindow::buildShortcuts() {
         {"tool_point_line", inspection::ToolType::PointToLine, Qt::Key_3},
         {"tool_edge", inspection::ToolType::EdgeFlaw, Qt::Key_4},
         {"tool_blob", inspection::ToolType::Blob, Qt::Key_5},
+        {"tool_ruler", inspection::ToolType::Ruler, Qt::Key_6},
     };
     for (const auto& entry : toolKeys) {
         const int id = static_cast<int>(entry.type);
@@ -749,7 +766,7 @@ void MainWindow::onCamerasEnumerated() {
     if (cameras_.empty()) {
         cameraCombo_->addItem(tr("No se encontraron cámaras"));
         statusBar()->showMessage(tr("No se detectó ninguna cámara. Conecta una y actualiza."));
-        refreshButton_->setEnabled(true);
+        refreshAction_->setEnabled(true);
         startStopButton_->setEnabled(false);
         return;
     }
@@ -801,7 +818,7 @@ void MainWindow::onStartStopClicked() {
     streaming_ = true;
     startStopButton_->setText(tr("Detener"));
     cameraCombo_->setEnabled(false);
-    refreshButton_->setEnabled(false);
+    refreshAction_->setEnabled(false);
     statusBar()->showMessage(tr("Transmitiendo desde %1")
                                  .arg(QString::fromStdString(cameras_[comboIndex].name)));
     controller_.start(cameras_[comboIndex]);
@@ -846,10 +863,20 @@ void MainWindow::onAnalysisFinished() {
     }
 }
 
+// El análisis (segmentación + herramientas) solo hace falta si hay algo que
+// mostrar o medir: contorno visible, herramientas dibujadas, auto-inspección
+// o una herramienta de dibujo seleccionada (para anclar el próximo trazo).
+// Así, apagar "Mostrar contorno" con la escena vacía ahorra CPU de verdad.
+bool MainWindow::analysisNeeded() const {
+    return streaming_ &&
+           (showContourAction_->isChecked() || !liveTools_.empty() || autoInspecting_ ||
+            toolModeGroup_->checkedId() >= 0);
+}
+
 // Como máximo un análisis en vuelo; si la visión va más lenta que la cámara,
 // se procesan solo los frames más recientes (se descartan los intermedios).
 void MainWindow::maybeStartAnalysis() {
-    if (analysisWatcher_.isRunning() || pendingAnalysisFrame_.isNull()) {
+    if (analysisWatcher_.isRunning() || pendingAnalysisFrame_.isNull() || !analysisNeeded()) {
         return;
     }
     const QImage frame = pendingAnalysisFrame_;
@@ -892,7 +919,7 @@ void MainWindow::onStreamStopped() {
     startStopButton_->setText(tr("Iniciar"));
     startStopButton_->setEnabled(!cameras_.empty());
     cameraCombo_->setEnabled(true);
-    refreshButton_->setEnabled(true);
+    refreshAction_->setEnabled(true);
     statsLabel_->clear();
     pendingAnalysisFrame_ = QImage();
     lastFrame_ = QImage();
@@ -901,7 +928,7 @@ void MainWindow::onStreamStopped() {
 
 void MainWindow::setControlsEnabled(bool enabled) {
     cameraCombo_->setEnabled(enabled);
-    refreshButton_->setEnabled(enabled);
+    refreshAction_->setEnabled(enabled);
     startStopButton_->setEnabled(enabled && !cameras_.empty());
 }
 
@@ -915,6 +942,12 @@ void MainWindow::onToolModeChanged(int id) {
     }
     const auto type = static_cast<inspection::ToolType>(id);
     video_->setCreateType(type);
+    // Elegir herramienta exige el fixture: reactiva el análisis si estaba
+    // pausado por tener el contorno oculto y la escena vacía.
+    if (!lastFrame_.isNull()) {
+        pendingAnalysisFrame_ = lastFrame_;
+        maybeStartAnalysis();
+    }
     // La primera línea de la descripción como guía inmediata.
     const QString description = QString::fromUtf8(inspection::toolTypeDescription(type));
     statusBar()->showMessage(description.section(QLatin1Char('\n'), 0, 1));

@@ -24,13 +24,19 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    instalarse solo, **dice exactamente qué falta y cómo resolverlo a mano**.
    Variantes: `-NoRun` (solo preparar), `-Rebuild` (recompilar), `-Test`
    (correr los 87 tests).
+   La ventana tiene una **barra de menú** (Cámara / Pieza / Inspección / Ver /
+   Ayuda) para las acciones de configuración, y deja en la vista solo los
+   controles de uso constante (combos de cámara/pieza/plantilla, Iniciar,
+   Registrar y activar, Auto-inspección, Inspeccionar y la paleta de dibujo).
+
 2. **Cámara**: elige una del combo (se detectan solas, probando MSMF y
-   DirectShow) y pulsa **Iniciar** para la vista en vivo. Con **"Detectar
-   pieza (contorno)"** activo (por defecto), el contorno de la pieza, su
-   centro y su eje se dibujan sobre el video en tiempo real. La cámara
-   elegida queda guardada para la próxima vez. *Sin cámara, todos los pasos
-   siguientes aceptan imágenes desde archivo* (`sample_images/pieza_demo.png`
-   sirve para probar).
+   DirectShow) y pulsa **Iniciar** para la vista en vivo. Con **Ver ▸ Mostrar
+   contorno** activo (por defecto), el contorno de la pieza, su centro y su
+   eje se dibujan sobre el video en tiempo real; al apagarlo (sin herramientas
+   ni auto-inspección) el análisis se pausa de verdad y ahorra CPU. La unidad
+   de medida se elige en **Ver ▸ Unidad**. La cámara elegida queda guardada.
+   *Sin cámara, todos los pasos siguientes aceptan imágenes desde archivo*
+   (`sample_images/pieza_demo.png` sirve para probar).
 3. **Dibujar sobre el video en vivo**: con la pieza detectada, elige una
    herramienta en la fila **Dibujar** (cada botón explica en su tooltip qué
    mide y cómo trazarla) y dibuja directamente sobre el video arrastrando el

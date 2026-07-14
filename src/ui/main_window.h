@@ -21,6 +21,8 @@
 #include "ui/app_repositories.h"
 #include "vision/orientation_anchor.h"
 
+class QAction;
+class QActionGroup;
 class QButtonGroup;
 class QCheckBox;
 class QComboBox;
@@ -83,7 +85,7 @@ private slots:
     void onDetectionClicked();
     void onRoiButtonToggled(bool enabled);
     void onRegionPicked(const cv::Rect& imageRect);
-    void onUnitChanged(int index);
+    void onUnitChanged();
     void onTemplateChanged(int index);
     void onNewTemplateClicked();
     void onToolRightClicked(int index);
@@ -91,7 +93,9 @@ private slots:
 private:
     void setControlsEnabled(bool enabled);
     void maybeStartAnalysis();
+    [[nodiscard]] bool analysisNeeded() const;
     void updateCalibrationLabel();
+    void buildMenuBar();
     void buildShortcuts();
     void commitUndoState();
     void restoreTools(std::vector<inspection::EditedTool> tools);
@@ -110,15 +114,19 @@ private:
     [[nodiscard]] std::int64_t selectedPieceId() const;
     [[nodiscard]] QImage frameOrFile();
 
-    // Fila 1: cámara.
+    // Menú y acciones de baja frecuencia (antes botones sueltos).
+    QAction* refreshAction_ = nullptr;
+    QAction* calibrateAction_ = nullptr;
+    QAction* detectionAction_ = nullptr;
+    QAction* registerWizardAction_ = nullptr;
+    QAction* managePiecesAction_ = nullptr;
+    QAction* editorAction_ = nullptr;
+    QAction* showContourAction_ = nullptr;  // Ver > Mostrar contorno (checkable)
+    QActionGroup* unitGroup_ = nullptr;     // Ver > Unidad (Auto/mm/cm/px)
+    // Fila 1: cámara (controles de uso constante).
     QComboBox* cameraCombo_ = nullptr;
-    QPushButton* refreshButton_ = nullptr;
     QPushButton* startStopButton_ = nullptr;
-    QPushButton* calibrateButton_ = nullptr;
-    QPushButton* detectionButton_ = nullptr;
     QPushButton* roiButton_ = nullptr;
-    QComboBox* unitCombo_ = nullptr;  // auto / mm / cm / px
-    QCheckBox* analysisCheck_ = nullptr;
     QLabel* calibLabel_ = nullptr;  // estado de la escala en la barra inferior
     // Fila 2: pieza y flujo.
     QComboBox* pieceCombo_ = nullptr;
@@ -126,8 +134,6 @@ private:
     QPushButton* newTemplateButton_ = nullptr;
     QPushButton* registerLiveButton_ = nullptr;
     QPushButton* autoInspectButton_ = nullptr;
-    QPushButton* registerWizardButton_ = nullptr;
-    QPushButton* editorButton_ = nullptr;
     QPushButton* inspectButton_ = nullptr;
     // Fila 3: herramientas para dibujar sobre el video.
     QButtonGroup* toolModeGroup_ = nullptr;
