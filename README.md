@@ -85,6 +85,15 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    vacío para dibujar un **marco de selección** — las herramientas dentro
    quedan seleccionadas y se mueven o borran (Supr) en grupo.
 
+   **Escala por marcador ArUco en vivo** (**Cámara ▸ Escala por marcador
+   ArUco**): imprime el marcador `sample_images/aruco_4x4_id0.png`, mide su
+   lado real con una regla y escríbelo al activar la opción. Colócalo junto a
+   la pieza (en el mismo plano): la escala px→mm se recalcula **en cada frame
+   con la homografía del marcador** y se ajusta sola si acercas o alejas la
+   cámara — no hay que recalibrar a mano. La barra de estado muestra la escala
+   viva. (Puntos a distinta altura/profundidad respecto al plano necesitan una
+   cámara de profundidad; con una sola cámara 2D no es recuperable.)
+
    **Calibración fácil desde una herramienta** (lo más rápido): traza una
    Regla (o Caliper/Círculo) sobre algo de tamaño conocido — una regla, una
    moneda —, selecciónala y pulsa **"Fijar escala con esta medida…"**;

@@ -16,7 +16,7 @@ add_library(project_warnings INTERFACE)
 target_compile_options(project_warnings INTERFACE -Wall -Wextra -Wpedantic -Werror)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Concurrent)
-find_package(OpenCV REQUIRED COMPONENTS core imgproc videoio)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc videoio objdetect)
 
 # Windows trae su propio onnxruntime.dll en System32 (Windows ML) y System32
 # precede al PATH en la búsqueda de DLLs; solo el directorio del ejecutable le

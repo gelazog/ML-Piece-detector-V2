@@ -183,6 +183,8 @@ private:
     int toolNameCounter_ = 0;
     bool streaming_ = false;
     bool autoInspecting_ = false;
+    bool arucoLiveScale_ = false;   // escala por marcador ArUco en vivo
+    double markerSizeMm_ = 30.0;    // lado real del marcador impreso
 };
 
 }  // namespace pci::ui

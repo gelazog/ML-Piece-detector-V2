@@ -5,9 +5,14 @@
 #include <cmath>
 #include <vector>
 
+#include <opencv2/objdetect/aruco_detector.hpp>
+
+#include <array>
+
 #include "vision/contour_analysis.h"
 #include "vision/fixture_stabilizer.h"
 #include "vision/orientation.h"
+#include "vision/plane_scale.h"
 #include "vision/orientation_anchor.h"
 #include "vision/pipeline.h"
 #include "vision/position_fixture.h"
@@ -227,6 +232,41 @@ TEST(Pipeline, NormalizationIsRotationInvariant) {
 
 TEST(Pipeline, FailsOnEmptyImage) {
     EXPECT_FALSE(analyzeFrame(cv::Mat()).isOk());
+}
+
+// --- Escala por marcador ArUco / homografía de plano ---
+
+TEST(PlaneScale, DetectsMarkerAndComputesScale) {
+    const auto dict = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_4X4_50);
+    cv::Mat marker;
+    cv::aruco::generateImageMarker(dict, 0, 100, marker);  // 100x100 px
+
+    // Marcador con zona blanca alrededor (necesaria para detectarlo).
+    cv::Mat image(400, 400, CV_8UC1, cv::Scalar(255));
+    marker.copyTo(image(cv::Rect(150, 150, 100, 100)));
+
+    const auto scale = detectMarkerScale(image, 30.0);  // marcador de 30 mm
+    ASSERT_TRUE(scale.has_value());
+    // Lado detectado ~100 px -> 30 mm / 100 px = 0.30 mm/px.
+    EXPECT_NEAR(scale->mmPerPixel, 0.30, 0.04);
+    EXPECT_FALSE(scale->imageToMm.empty());
+}
+
+TEST(PlaneScale, NoMarkerReturnsNullopt) {
+    const cv::Mat blank(200, 200, CV_8UC1, cv::Scalar(255));
+    EXPECT_FALSE(detectMarkerScale(blank, 30.0).has_value());
+    EXPECT_FALSE(detectMarkerScale(cv::Mat(), 30.0).has_value());
+}
+
+TEST(PlaneScale, HomographyDistanceInMm) {
+    // 100 px de imagen = 50 mm reales (0.5 mm/px), plano fronto-paralelo.
+    const std::array<cv::Point2f, 4> img = {cv::Point2f(0, 0), cv::Point2f(100, 0),
+                                            cv::Point2f(100, 100), cv::Point2f(0, 100)};
+    const std::array<cv::Point2f, 4> mm = {cv::Point2f(0, 0), cv::Point2f(50, 0),
+                                           cv::Point2f(50, 50), cv::Point2f(0, 50)};
+    const cv::Mat h = cv::getPerspectiveTransform(img.data(), mm.data());
+    EXPECT_NEAR(planeDistanceMm(h, {0, 0}, {100, 0}), 50.0, 1e-6);
+    EXPECT_NEAR(planeDistanceMm(h, {20, 20}, {60, 20}), 20.0, 1e-6);
 }
 
 // --- Anisotropía ---

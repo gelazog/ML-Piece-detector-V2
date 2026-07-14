@@ -4,6 +4,7 @@ add_library(pci_vision STATIC
   orientation.cpp
   orientation_anchor.cpp
   pipeline.cpp
+  plane_scale.cpp
   position_fixture.cpp
   quality_metrics.cpp
   segmentation.cpp

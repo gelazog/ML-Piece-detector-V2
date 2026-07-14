@@ -41,6 +41,7 @@
 #include "ui/registration_wizard.h"
 #include "vision/fixture_stabilizer.h"
 #include "vision/pipeline.h"
+#include "vision/plane_scale.h"
 #include "vision/position_fixture.h"
 
 namespace pci::ui {
@@ -62,7 +63,7 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                              const vision::PipelineConfig& pipeline,
                              std::optional<vision::Fixture> previousFixture,
                              double mmPerPixel, inspection::LengthUnit unit,
-                             bool freezePose) {
+                             bool freezePose, double arucoMarkerMm) {
     AnalysisOverlay overlay;
     overlay.frameSize = frame.size();
 
@@ -70,6 +71,18 @@ AnalysisOverlay buildOverlay(const QImage& frame,
     // se relanza en result() y tumbaría la aplicación.
     try {
         const cv::Mat image = camera::qImageToMat(frame);
+
+        // Escala por marcador ArUco en vivo: si hay marcador de tamaño
+        // conocido, la escala se recalcula este frame (se ajusta al acercar o
+        // alejar). Si no, se usa la calibración manual pasada.
+        double effMm = mmPerPixel;
+        if (arucoMarkerMm > 0.0) {
+            if (auto marker = vision::detectMarkerScale(image, arucoMarkerMm)) {
+                effMm = marker->mmPerPixel;
+                overlay.liveMmPerPixel = marker->mmPerPixel;
+            }
+        }
+        mmPerPixel = effMm;
 
         // Pose congelada (contorno oculto): las herramientas NO se mueven —
         // se miden sobre el frame actual con el fixture del último frame. Ideal
@@ -456,6 +469,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
                                        repos_.settings->getInt("det_roi_w", 0).value(),
                                        repos_.settings->getInt("det_roi_h", 0).value());
         pipelineConfig_.autoOrient = repos_.settings->getInt("track_rotation", 0).value() != 0;
+        arucoLiveScale_ = repos_.settings->getInt("aruco_live", 0).value() != 0;
+        markerSizeMm_ = repos_.settings->getDouble("aruco_marker_mm", 30.0).value();
     }
     updateRoiButton();
 
@@ -513,6 +528,38 @@ void MainWindow::buildMenuBar() {
                                              &MainWindow::onCalibrateClicked);
     detectionAction_ = cameraMenu->addAction(tr("Ajustes de detección…"), this,
                                              &MainWindow::onDetectionClicked);
+    cameraMenu->addSeparator();
+    auto* arucoAction = cameraMenu->addAction(tr("Escala por marcador ArUco (en vivo)"));
+    arucoAction->setCheckable(true);
+    arucoAction->setChecked(arucoLiveScale_);
+    arucoAction->setToolTip(
+        tr("Pon un marcador ArUco (diccionario 4x4) de tamaño conocido junto a la\n"
+           "pieza: la escala px→mm se recalcula en cada frame y se ajusta sola si\n"
+           "acercas o alejas la cámara (marcador en el mismo plano)."));
+    connect(arucoAction, &QAction::toggled, this, [this](bool on) {
+        if (on) {
+            bool ok = false;
+            const double mm = QInputDialog::getDouble(
+                this, tr("Marcador ArUco"), tr("Lado real del marcador (mm):"),
+                markerSizeMm_, 1.0, 10000.0, 1, &ok);
+            if (!ok) {
+                // Revertir sin re-disparar la señal.
+                QSignalBlocker blocker(sender());
+                qobject_cast<QAction*>(sender())->setChecked(false);
+                return;
+            }
+            markerSizeMm_ = mm;
+        }
+        arucoLiveScale_ = on;
+        if (repos_.settings != nullptr) {
+            repos_.settings->setInt("aruco_live", on ? 1 : 0);
+            repos_.settings->setDouble("aruco_marker_mm", markerSizeMm_);
+        }
+        statusBar()->showMessage(
+            on ? tr("Escala por marcador ArUco activa (lado %1 mm).").arg(markerSizeMm_, 0, 'f', 1)
+               : tr("Escala por marcador ArUco desactivada."));
+        maybeStartAnalysis();
+    });
 
     auto* pieceMenu = menuBar()->addMenu(tr("&Pieza"));
     registerWizardAction_ = pieceMenu->addAction(tr("Registrar con asistente…"), this,
@@ -902,6 +949,16 @@ void MainWindow::onAnalysisFinished() {
             video_->setLivePiece(false, overlay.contour, overlay.centroid,
                                  overlay.angleDeg, status);
         }
+        // Escala por marcador ArUco: si se detectó este frame, actualiza la
+        // escala en vivo (etiquetas y barra) sin persistir (es dinámica).
+        if (overlay.liveMmPerPixel > 0.0) {
+            calibration_.mmPerPixel = overlay.liveMmPerPixel;
+            video_->setMmPerPixel(overlay.liveMmPerPixel);
+            calibLabel_->setText(tr("Escala (ArUco): %1 mm/px")
+                                     .arg(overlay.liveMmPerPixel, 0, 'f', 4));
+        } else if (arucoLiveScale_) {
+            calibLabel_->setText(tr("Escala (ArUco): marcador no visible"));
+        }
         // Medidas en vivo de las herramientas dibujadas (px o mm calibrados).
         video_->setResults(overlay.toolResults);
         maybeStartAnalysis();
@@ -938,12 +995,13 @@ void MainWindow::maybeStartAnalysis() {
     }
 
     const bool freeze = !showContourAction_->isChecked();
+    const double markerMm = arucoLiveScale_ ? markerSizeMm_ : 0.0;
     analysisWatcher_.setFuture(QtConcurrent::run(
         [frame, anchor, offset = currentOrientationOffset_, configs = std::move(configs),
          pipeline = pipelineConfig_, previous = liveFixture_,
-         mm = calibration_.mmPerPixel, unit = currentUnit(), freeze] {
+         mm = calibration_.mmPerPixel, unit = currentUnit(), freeze, markerMm] {
             return buildOverlay(frame, anchor, offset, configs, pipeline, previous, mm, unit,
-                                freeze);
+                                freeze, markerMm);
         }));
 }
 

@@ -26,6 +26,8 @@ struct AnalysisOverlay {
     QImage normalized;
     // Medición en vivo de las herramientas dibujadas sobre este frame.
     std::vector<inspection::ToolRunResult> toolResults;
+    // Escala derivada del marcador ArUco en este frame (0 = no detectado).
+    double liveMmPerPixel = 0.0;
 };
 
 }  // namespace pci::ui
