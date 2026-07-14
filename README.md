@@ -32,11 +32,18 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
 2. **Cámara**: elige una del combo (se detectan solas, probando MSMF y
    DirectShow) y pulsa **Iniciar** para la vista en vivo. Con **Ver ▸ Mostrar
    contorno** activo (por defecto), el contorno de la pieza, su centro y su
-   eje se dibujan sobre el video en tiempo real; al apagarlo (sin herramientas
-   ni auto-inspección) el análisis se pausa de verdad y ahorra CPU. La unidad
-   de medida se elige en **Ver ▸ Unidad**. La cámara elegida queda guardada.
-   *Sin cámara, todos los pasos siguientes aceptan imágenes desde archivo*
-   (`sample_images/pieza_demo.png` sirve para probar).
+   eje se dibujan sobre el video en tiempo real; **al ocultarlo, las
+   herramientas se congelan en su sitio** (la pieza se inspecciona fija, sin
+   que nada tiemble) y el análisis se pausa si no hay nada que medir. La
+   unidad de medida se elige en **Ver ▸ Unidad**. La cámara elegida queda
+   guardada. *Sin cámara, todos los pasos siguientes aceptan imágenes desde
+   archivo* (`sample_images/pieza_demo.png` sirve para probar).
+
+   **Orientación**: por defecto la pieza se muestra **vertical** (tal como la
+   ve la cámara) — más estable y sin la inclinación arbitraria que daba el eje
+   principal. Si tus piezas llegan giradas y quieres que las herramientas las
+   sigan al rotar, activa **Ver ▸ Seguir rotación de la pieza** (ahí sí
+   aplican el rasgo distintivo y la anisotropía).
 3. **Dibujar sobre el video en vivo**: con la pieza detectada, elige una
    herramienta en la fila **Dibujar** (cada botón explica en su tooltip qué
    mide y cómo trazarla) y dibuja directamente sobre el video arrastrando el

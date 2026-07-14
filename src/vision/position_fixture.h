@@ -7,8 +7,9 @@
 
 namespace pci::vision {
 
-// Fixture = centroide de la máscara + eje principal.
-core::Result<Fixture> computeFixture(const cv::Mat& mask);
+// Fixture = centroide de la máscara + eje principal. Con autoOrient=false el
+// ángulo se deja en 0 (pieza vertical): más estable y sin inclinación espuria.
+core::Result<Fixture> computeFixture(const cv::Mat& mask, bool autoOrient = true);
 
 // Cambio de coordenadas imagen <-> pieza (rotación + traslación, sin escala).
 cv::Point2f toPieceCoords(const Fixture& fixture, const cv::Point2f& imagePoint);

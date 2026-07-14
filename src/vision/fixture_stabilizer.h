@@ -5,9 +5,9 @@
 namespace pci::vision {
 
 struct StabilizerOptions {
-    double positionDeadbandPx = 2.5;  // por debajo: la pieza se considera quieta
-    double angleDeadbandDeg = 1.5;
-    double smoothing = 0.35;          // EMA fuera de la banda muerta
+    double positionDeadbandPx = 4.0;  // por debajo: la pieza se considera quieta
+    double angleDeadbandDeg = 2.0;
+    double smoothing = 0.25;          // EMA fuera de la banda muerta
     double positionSnapPx = 40.0;     // por encima: seguir al instante, sin arrastre
     double angleSnapDeg = 25.0;
     // Continuidad anti-giro de 180°: el signo del momento de 3er orden es

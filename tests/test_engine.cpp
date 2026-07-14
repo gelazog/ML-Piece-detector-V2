@@ -65,8 +65,11 @@ protected:
         pieces_ = std::make_unique<repositories::PieceRepository>(*db_);
         tools_ = std::make_unique<repositories::ToolRepository>(*db_);
         history_ = std::make_unique<repositories::InspectionRepository>(*db_);
+        // Los tests usan piezas en distintas rotaciones: seguir la rotación.
+        engine::EngineOptions options;
+        options.pipeline.autoOrient = true;
         engine_ = std::make_unique<engine::InspectionEngine>(fakeEmbed, *pieces_, *tools_,
-                                                             *history_);
+                                                             *history_, options);
     }
 
     void TearDown() override {
@@ -83,7 +86,9 @@ protected:
     // Registra la pieza L con varias capturas sintéticas y un caliper cruzando
     // el brazo vertical. Devuelve el id de la pieza.
     std::int64_t registerLPiece() {
-        engine::RegistrationSession session(fakeEmbed, 30, 5);
+        vision::PipelineConfig cfg;
+        cfg.autoOrient = true;  // igual que el motor: piezas en varias rotaciones
+        engine::RegistrationSession session(fakeEmbed, 30, 5, std::nullopt, cfg);
         for (int i = 0; i < 8; ++i) {
             const auto frame = drawLPiece({640, 480},
                                           {300.0F + static_cast<float>(i * 3),
@@ -105,7 +110,7 @@ protected:
 
         // Caliper anclado al fixture del primer frame de referencia.
         const auto refFrame = drawLPiece({640, 480}, {300.0F, 240.0F}, 15.0, 40.0F, 40, 220);
-        const auto analysis = vision::analyzeFrame(refFrame);
+        const auto analysis = vision::analyzeFrame(refFrame, cfg);
         EXPECT_TRUE(analysis.isOk());
         inspection::CaliperGeometry g;
         g.p0 = vision::toPieceCoords(analysis.value().fixture,
@@ -270,7 +275,9 @@ TEST_F(EngineTest, IncrementalLearningCreatesNewVersion) {
 
 TEST_F(EngineTest, NoModelDegradesToToolsOnly) {
     const auto pieceId = registerLPiece();
-    engine::InspectionEngine noModel(nullptr, *pieces_, *tools_, *history_);
+    engine::EngineOptions options;
+    options.pipeline.autoOrient = true;
+    engine::InspectionEngine noModel(nullptr, *pieces_, *tools_, *history_, options);
 
     cv::Mat frame;
     cv::cvtColor(drawLPiece({640, 480}, {300.0F, 240.0F}, 15.0, 40.0F, 40, 220), frame,

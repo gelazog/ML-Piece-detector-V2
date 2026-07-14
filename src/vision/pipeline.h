@@ -12,6 +12,11 @@ struct PipelineConfig {
     double minAreaFraction = 0.005;
     double maxAreaFraction = 0.9;
     int canonicalSize = 256;
+    // Si es false, la pieza no se rota al eje principal: se deja vertical tal
+    // como la ve la cámara (recorte upright). El eje principal de los momentos
+    // es arbitrario e inestable en piezas poco alargadas, así que por defecto
+    // no se sigue la rotación (más estable y sin inclinación espuria).
+    bool autoOrient = false;
     SegmentationOptions segmentation;
     // Zona de detección: si no está vacía, el contorno automático solo se
     // busca dentro de este rectángulo (coords de imagen) — luces, sombras y

@@ -210,8 +210,10 @@ TEST(Pipeline, NormalizationIsRotationInvariant) {
     const auto imageA = drawLPiece({640, 480}, {300.0F, 240.0F}, 20.0, 40.0F, 40, 220);
     const auto imageB = drawLPiece({640, 480}, {340.0F, 200.0F}, 125.0, 40.0F, 40, 220);
 
-    const auto a = analyzeFrame(imageA);
-    const auto b = analyzeFrame(imageB);
+    PipelineConfig cfg;
+    cfg.autoOrient = true;  // invarianza a rotación requiere seguir la rotación
+    const auto a = analyzeFrame(imageA, cfg);
+    const auto b = analyzeFrame(imageB, cfg);
     ASSERT_TRUE(a.isOk());
     ASSERT_TRUE(b.isOk());
 
@@ -270,8 +272,8 @@ TEST(FixtureStabilizer, SmoothsModerateMotion) {
     const Fixture moved{{110.0F, 100.0F}, 10.0};
     bool flipped = false;
     const Fixture result = stabilizeFixture(previous, moved, {}, flipped);
-    // EMA con alpha 0.35: avanza hacia la medición sin saltar.
-    EXPECT_NEAR(result.origin.x, 103.5F, 1e-4F);
+    // EMA con alpha 0.25: avanza hacia la medición sin saltar (100 + 0.25*10).
+    EXPECT_NEAR(result.origin.x, 102.5F, 1e-4F);
     EXPECT_GT(result.origin.x, 100.0F);
     EXPECT_LT(result.origin.x, 110.0F);
 }
@@ -312,8 +314,8 @@ TEST(FixtureStabilizer, BlendsAcrossAngleWrap) {
     bool flipped = false;
     const Fixture result = stabilizeFixture(previous, measured, {}, flipped);
     EXPECT_FALSE(flipped);
-    // 179 + 0.35*4 = 180.4 -> envuelto a -179.6.
-    EXPECT_NEAR(result.angleDeg, -179.6, 1e-6);
+    // 179 + 0.25*4 = 180.0 -> envuelto a -180.0.
+    EXPECT_NEAR(result.angleDeg, -180.0, 1e-6);
 }
 
 // --- Rasgo distintivo de orientación ---
@@ -343,13 +345,19 @@ cv::Mat drawRectWithDot(cv::Point2f center, double angleDeg, cv::Point2f& dotIma
     return image;
 }
 
+PipelineConfig orientCfg() {
+    PipelineConfig cfg;
+    cfg.autoOrient = true;
+    return cfg;
+}
+
 }  // namespace
 
 TEST(OrientationAnchor, SymmetricPieceDetectedInAnyRotation) {
     // Registro: rectángulo a 10° con su rasgo (el punto oscuro).
     cv::Point2f dotA;
     const cv::Mat imageA = drawRectWithDot({300.0F, 240.0F}, 10.0, dotA);
-    auto analysisA = analyzeFrame(imageA);
+    auto analysisA = analyzeFrame(imageA, orientCfg());
     ASSERT_TRUE(analysisA.isOk());
 
     OrientationAnchor anchor;
@@ -361,7 +369,7 @@ TEST(OrientationAnchor, SymmetricPieceDetectedInAnyRotation) {
     // pueden distinguirla; con ancla el recorte normalizado debe coincidir.
     cv::Point2f dotB;
     const cv::Mat imageB = drawRectWithDot({330.0F, 220.0F}, 190.0, dotB);
-    auto analysisB = analyzeFrame(imageB);
+    auto analysisB = analyzeFrame(imageB, orientCfg());
     ASSERT_TRUE(analysisB.isOk());
     ASSERT_TRUE(applyAnchor(imageB, anchor, analysisB.value()).isOk());
 
@@ -380,7 +388,7 @@ TEST(OrientationAnchor, SymmetricPieceDetectedInAnyRotation) {
 
 TEST(OrientationAnchor, OrientationOffsetRotatesFixture) {
     const auto image = drawLPiece({640, 480}, {320.0F, 240.0F}, 20.0, 40.0F, 40, 220);
-    auto analysis = analyzeFrame(image);
+    auto analysis = analyzeFrame(image, orientCfg());
     ASSERT_TRUE(analysis.isOk());
     const double before = analysis.value().fixture.angleDeg;
 
@@ -400,7 +408,7 @@ TEST(OrientationAnchor, OrientationOffsetRotatesFixture) {
 TEST(OrientationAnchor, ResolveKeepsCorrectFixture) {
     cv::Point2f dot;
     const cv::Mat image = drawRectWithDot({300.0F, 240.0F}, 10.0, dot);
-    const auto analysis = analyzeFrame(image);
+    const auto analysis = analyzeFrame(image, orientCfg());
     ASSERT_TRUE(analysis.isOk());
 
     OrientationAnchor anchor;

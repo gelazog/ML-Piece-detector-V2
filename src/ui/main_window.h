@@ -121,8 +121,9 @@ private:
     QAction* registerWizardAction_ = nullptr;
     QAction* managePiecesAction_ = nullptr;
     QAction* editorAction_ = nullptr;
-    QAction* showContourAction_ = nullptr;  // Ver > Mostrar contorno (checkable)
-    QActionGroup* unitGroup_ = nullptr;     // Ver > Unidad (Auto/mm/cm/px)
+    QAction* showContourAction_ = nullptr;   // Ver > Mostrar contorno (checkable)
+    QAction* trackRotationAction_ = nullptr;  // Ver > Seguir rotación (checkable)
+    QActionGroup* unitGroup_ = nullptr;      // Ver > Unidad (Auto/mm/cm/px)
     // Fila 1: cámara (controles de uso constante).
     QComboBox* cameraCombo_ = nullptr;
     QPushButton* startStopButton_ = nullptr;

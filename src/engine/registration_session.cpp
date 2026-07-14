@@ -25,7 +25,7 @@ core::Result<RegistrationSession::SampleFeedback> RegistrationSession::addFrame(
 
     SampleFeedback feedback;
     auto analysis = vision::analyzeFrame(frameBgr, pipelineConfig_);
-    if (analysis.isOk() && anchor_.has_value()) {
+    if (analysis.isOk() && anchor_.has_value() && pipelineConfig_.autoOrient) {
         if (auto applied = vision::applyAnchor(frameBgr, *anchor_, analysis.value());
             !applied.isOk()) {
             return ResultT::err(applied.error().message);

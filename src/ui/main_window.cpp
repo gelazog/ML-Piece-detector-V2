@@ -61,7 +61,8 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                              const std::vector<inspection::ToolConfig>& tools,
                              const vision::PipelineConfig& pipeline,
                              std::optional<vision::Fixture> previousFixture,
-                             double mmPerPixel, inspection::LengthUnit unit) {
+                             double mmPerPixel, inspection::LengthUnit unit,
+                             bool freezePose) {
     AnalysisOverlay overlay;
     overlay.frameSize = frame.size();
 
@@ -69,12 +70,28 @@ AnalysisOverlay buildOverlay(const QImage& frame,
     // se relanza en result() y tumbaría la aplicación.
     try {
         const cv::Mat image = camera::qImageToMat(frame);
+
+        // Pose congelada (contorno oculto): las herramientas NO se mueven —
+        // se miden sobre el frame actual con el fixture del último frame. Ideal
+        // para inspeccionar una pieza fija en su jig sin que nada tiemble.
+        if (freezePose && previousFixture.has_value()) {
+            overlay.valid = true;
+            overlay.centroid = QPointF(previousFixture->origin.x, previousFixture->origin.y);
+            overlay.angleDeg = previousFixture->angleDeg;
+            if (!tools.empty()) {
+                overlay.toolResults = inspection::runTools(image, *previousFixture, tools,
+                                                           mmPerPixel, unit);
+            }
+            return overlay;
+        }
+
         auto analysis = vision::analyzeFrame(image, pipeline);
         if (!analysis.isOk()) {
             overlay.error = QString::fromStdString(analysis.error().message);
             return overlay;
         }
-        if (anchor.has_value()) {
+        // El rasgo distintivo solo tiene sentido si se sigue la rotación.
+        if (anchor.has_value() && pipeline.autoOrient) {
             if (auto applied = vision::applyAnchor(image, *anchor, analysis.value());
                 !applied.isOk()) {
                 core::logWarning(applied.error().message);
@@ -428,6 +445,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
                                        repos_.settings->getInt("det_roi_y", 0).value(),
                                        repos_.settings->getInt("det_roi_w", 0).value(),
                                        repos_.settings->getInt("det_roi_h", 0).value());
+        pipelineConfig_.autoOrient = repos_.settings->getInt("track_rotation", 0).value() != 0;
     }
     updateRoiButton();
 
@@ -500,10 +518,26 @@ void MainWindow::buildMenuBar() {
     showContourAction_ = viewMenu->addAction(tr("Mostrar contorno"));
     showContourAction_->setCheckable(true);
     showContourAction_->setChecked(true);
+    showContourAction_->setToolTip(
+        tr("Al ocultarlo, las herramientas se congelan en su sitio (la pieza se "
+           "inspecciona fija, sin que nada se mueva)."));
     connect(showContourAction_, &QAction::toggled, video_,
             &inspection::EditorCanvas::setLiveContourVisible);
     connect(showContourAction_, &QAction::toggled, this,
             [this](bool) { maybeStartAnalysis(); });
+
+    trackRotationAction_ = viewMenu->addAction(tr("Seguir rotación de la pieza"));
+    trackRotationAction_->setCheckable(true);
+    trackRotationAction_->setChecked(pipelineConfig_.autoOrient);
+    trackRotationAction_->setToolTip(
+        tr("Por defecto la pieza se muestra vertical (más estable). Actívalo solo si "
+           "la pieza llega girada y quieres que las herramientas la sigan al rotar."));
+    connect(trackRotationAction_, &QAction::toggled, this, [this](bool on) {
+        pipelineConfig_.autoOrient = on;
+        persistPipelineConfig();
+        statusBar()->showMessage(on ? tr("Siguiendo la rotación de la pieza.")
+                                    : tr("Pieza mostrada vertical (orientación fija)."));
+    });
 
     auto* unitMenu = viewMenu->addMenu(tr("Unidad de medida"));
     unitGroup_ = new QActionGroup(this);
@@ -538,6 +572,7 @@ void MainWindow::persistPipelineConfig() {
     repos_.settings->setInt("det_roi_y", pipelineConfig_.roi.y);
     repos_.settings->setInt("det_roi_w", pipelineConfig_.roi.width);
     repos_.settings->setInt("det_roi_h", pipelineConfig_.roi.height);
+    repos_.settings->setInt("track_rotation", pipelineConfig_.autoOrient ? 1 : 0);
 }
 
 void MainWindow::updateRoiButton() {
@@ -892,11 +927,13 @@ void MainWindow::maybeStartAnalysis() {
         configs.push_back(std::move(config));
     }
 
+    const bool freeze = !showContourAction_->isChecked();
     analysisWatcher_.setFuture(QtConcurrent::run(
         [frame, anchor, offset = currentOrientationOffset_, configs = std::move(configs),
          pipeline = pipelineConfig_, previous = liveFixture_,
-         mm = calibration_.mmPerPixel, unit = currentUnit()] {
-            return buildOverlay(frame, anchor, offset, configs, pipeline, previous, mm, unit);
+         mm = calibration_.mmPerPixel, unit = currentUnit(), freeze] {
+            return buildOverlay(frame, anchor, offset, configs, pipeline, previous, mm, unit,
+                                freeze);
         }));
 }
 

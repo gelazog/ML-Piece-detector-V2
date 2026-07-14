@@ -40,7 +40,7 @@ core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image, const PipelineCon
     const std::vector<std::vector<cv::Point>> fill{contour.value().points};
     cv::drawContours(cleanMask, fill, 0, cv::Scalar(255), cv::FILLED);
 
-    const auto fixture = computeFixture(cleanMask);
+    const auto fixture = computeFixture(cleanMask, config.autoOrient);
     if (!fixture.isOk()) {
         return core::Result<PieceAnalysis>::err(fixture.error().message);
     }

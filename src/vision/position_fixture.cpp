@@ -9,17 +9,25 @@
 
 namespace pci::vision {
 
-core::Result<Fixture> computeFixture(const cv::Mat& mask) {
-    const auto angle = principalAngleDeg(mask);
-    if (!angle.isOk()) {
-        return core::Result<Fixture>::err(angle.error().message);
+core::Result<Fixture> computeFixture(const cv::Mat& mask, bool autoOrient) {
+    const cv::Moments m = cv::moments(mask, true);
+    if (m.m00 <= 0.0) {
+        return core::Result<Fixture>::err("Máscara vacía: no hay pieza");
     }
 
-    const cv::Moments m = cv::moments(mask, true);
     Fixture fixture;
     fixture.origin = {static_cast<float>(m.m10 / m.m00), static_cast<float>(m.m01 / m.m00)};
-    fixture.angleDeg = angle.value();
     fixture.anisotropy = principalAnisotropy(mask);
+
+    if (autoOrient) {
+        const auto angle = principalAngleDeg(mask);
+        if (!angle.isOk()) {
+            return core::Result<Fixture>::err(angle.error().message);
+        }
+        fixture.angleDeg = angle.value();
+    } else {
+        fixture.angleDeg = 0.0;  // pieza vertical
+    }
     return core::Result<Fixture>::ok(fixture);
 }
 

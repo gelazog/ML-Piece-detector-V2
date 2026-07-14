@@ -273,8 +273,10 @@ TEST(FixtureAnchoring, CaliperMeasuresSameOnRotatedPiece) {
     // Pieza L a 20°: se define un caliper cruzando el brazo vertical
     // (1 unidad = 40 px de ancho) y se guarda en coordenadas de pieza.
     const float scale = 40.0F;
+    pci::vision::PipelineConfig cfg;
+    cfg.autoOrient = true;  // el anclaje requiere seguir la rotación de la pieza
     const auto imageA = drawLPiece({640, 480}, {300.0F, 240.0F}, 20.0, scale, 40, 220);
-    const auto analysisA = pci::vision::analyzeFrame(imageA);
+    const auto analysisA = pci::vision::analyzeFrame(imageA, cfg);
     ASSERT_TRUE(analysisA.isOk()) << analysisA.error().message;
     const Fixture fixtureA = analysisA.value().fixture;
 
@@ -295,7 +297,7 @@ TEST(FixtureAnchoring, CaliperMeasuresSameOnRotatedPiece) {
     // La misma pieza rotada a 125° y desplazada: la herramienta debe seguirla
     // y medir lo mismo sin tocar la geometría guardada.
     const auto imageB = drawLPiece({640, 480}, {340.0F, 200.0F}, 125.0, scale, 40, 220);
-    const auto analysisB = pci::vision::analyzeFrame(imageB);
+    const auto analysisB = pci::vision::analyzeFrame(imageB, cfg);
     ASSERT_TRUE(analysisB.isOk()) << analysisB.error().message;
 
     const auto resultB = runTool(imageB, analysisB.value().fixture, config);
