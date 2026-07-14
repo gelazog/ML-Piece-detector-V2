@@ -38,4 +38,26 @@ core::Result<double> principalAngleDeg(const cv::Mat& mask) {
     return core::Result<double>::ok(degrees);
 }
 
+double principalAnisotropy(const cv::Mat& mask) {
+    if (mask.empty() || mask.type() != CV_8UC1) {
+        return 0.0;
+    }
+    const cv::Moments m = cv::moments(mask, true);
+    if (m.m00 <= 0.0) {
+        return 0.0;
+    }
+    // Valores propios de la matriz de covarianza (momentos normalizados).
+    const double a = m.mu20 / m.m00;
+    const double b = m.mu11 / m.m00;
+    const double c = m.mu02 / m.m00;
+    const double common = std::sqrt((a - c) * (a - c) + 4.0 * b * b);
+    const double lambdaBig = (a + c + common) / 2.0;
+    const double lambdaSmall = (a + c - common) / 2.0;
+    if (lambdaBig <= 0.0) {
+        return 0.0;
+    }
+    // 1 - eje_menor/eje_mayor: 0 = círculo, ~1 = línea.
+    return 1.0 - std::sqrt(std::max(0.0, lambdaSmall) / lambdaBig);
+}
+
 }  // namespace pci::vision

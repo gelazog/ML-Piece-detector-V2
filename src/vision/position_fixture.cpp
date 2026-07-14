@@ -19,6 +19,7 @@ core::Result<Fixture> computeFixture(const cv::Mat& mask) {
     Fixture fixture;
     fixture.origin = {static_cast<float>(m.m10 / m.m00), static_cast<float>(m.m01 / m.m00)};
     fixture.angleDeg = angle.value();
+    fixture.anisotropy = principalAnisotropy(mask);
     return core::Result<Fixture>::ok(fixture);
 }
 

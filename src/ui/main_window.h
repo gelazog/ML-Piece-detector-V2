@@ -83,6 +83,10 @@ private slots:
     void onDetectionClicked();
     void onRoiButtonToggled(bool enabled);
     void onRegionPicked(const cv::Rect& imageRect);
+    void onUnitChanged(int index);
+    void onTemplateChanged(int index);
+    void onNewTemplateClicked();
+    void onToolRightClicked(int index);
 
 private:
     void setControlsEnabled(bool enabled);
@@ -95,7 +99,11 @@ private:
     void updateRoiButton();
     void rotatePieceView(double deltaDeg);
     void loadPieceList(std::int64_t selectId = -1);
+    void loadTemplateList(const QString& selectName = QString());
     void loadToolsForSelectedPiece();
+    void deleteToolAt(int index);
+    [[nodiscard]] inspection::LengthUnit currentUnit() const;
+    [[nodiscard]] std::string activeTemplate() const;
     void finishLiveRegistration();
     void stopLiveCapture();
     void showLiveVerdict(const engine::InspectionEngine::Outcome& outcome);
@@ -109,10 +117,13 @@ private:
     QPushButton* calibrateButton_ = nullptr;
     QPushButton* detectionButton_ = nullptr;
     QPushButton* roiButton_ = nullptr;
+    QComboBox* unitCombo_ = nullptr;  // auto / mm / cm / px
     QCheckBox* analysisCheck_ = nullptr;
     QLabel* calibLabel_ = nullptr;  // estado de la escala en la barra inferior
     // Fila 2: pieza y flujo.
     QComboBox* pieceCombo_ = nullptr;
+    QComboBox* templateCombo_ = nullptr;   // plantillas de la pieza
+    QPushButton* newTemplateButton_ = nullptr;
     QPushButton* registerLiveButton_ = nullptr;
     QPushButton* autoInspectButton_ = nullptr;
     QPushButton* registerWizardButton_ = nullptr;
@@ -162,6 +173,7 @@ private:
     QImage referenceThumb_;
     int toolNameCounter_ = 0;
     bool streaming_ = false;
+    bool autoInspecting_ = false;
 };
 
 }  // namespace pci::ui

@@ -7,8 +7,11 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QPixmap>
 #include <QPushButton>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 #include "repositories/piece_repository.h"
 #include "repositories/tool_repository.h"
@@ -26,6 +29,13 @@ PieceManagerDialog::PieceManagerDialog(repositories::PieceRepository* pieces,
     rootLayout->addWidget(list_, 1);
 
     auto* sideLayout = new QVBoxLayout();
+    thumbLabel_ = new QLabel(this);
+    thumbLabel_->setFixedSize(160, 160);
+    thumbLabel_->setAlignment(Qt::AlignCenter);
+    thumbLabel_->setStyleSheet(
+        QStringLiteral("background:#1a1a1a; color:#888; border:1px solid #444;"));
+    thumbLabel_->setText(QStringLiteral("—"));
+    sideLayout->addWidget(thumbLabel_, 0, Qt::AlignHCenter);
     infoLabel_ = new QLabel(this);
     infoLabel_->setWordWrap(true);
     sideLayout->addWidget(infoLabel_);
@@ -125,11 +135,31 @@ void PieceManagerDialog::onSelectionChanged() {
             toolCount = static_cast<int>(listed.value().size());
         }
     }
-    infoLabel_->setText(tr("Referencias: %1 versión(es)\nHerramientas: %2\n\n"
+    int templateCount = 0;
+    if (tools_ != nullptr) {
+        if (auto listed = tools_->listTemplates(pieceId); listed.isOk()) {
+            templateCount = static_cast<int>(listed.value().size());
+        }
+    }
+    infoLabel_->setText(tr("Referencias: %1 versión(es)\nHerramientas: %2\n"
+                           "Plantillas: %3\n\n"
                            "Los puntos y tolerancias de las herramientas se editan en "
                            "Plantilla… con esta pieza seleccionada.")
                             .arg(versions)
-                            .arg(toolCount));
+                            .arg(toolCount)
+                            .arg(std::max(1, templateCount)));
+
+    // Miniatura de la pieza registrada.
+    thumbLabel_->setPixmap(QPixmap());
+    thumbLabel_->setText(QStringLiteral("—"));
+    if (auto thumb = pieces_->loadThumbnail(pieceId); thumb.isOk() && !thumb.value().empty()) {
+        QImage image = QImage::fromData(thumb.value().data(),
+                                        static_cast<int>(thumb.value().size()));
+        if (!image.isNull()) {
+            thumbLabel_->setPixmap(QPixmap::fromImage(image).scaled(
+                thumbLabel_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        }
+    }
 
     syncing_ = true;
     if (auto offset = pieces_->loadOrientationOffset(pieceId); offset.isOk()) {

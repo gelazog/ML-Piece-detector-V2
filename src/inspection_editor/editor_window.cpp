@@ -43,10 +43,12 @@ QString typeLabel(ToolType type) {
 
 EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixture,
                            std::int64_t pieceId, repositories::ToolRepository* repo,
-                           domain::ScaleCalibration calibration, QWidget* parent)
+                           domain::ScaleCalibration calibration,
+                           const std::string& templateName, QWidget* parent)
     : QDialog(parent), reference_(reference), fixture_(fixture), pieceId_(pieceId),
-      repo_(repo), calibration_(calibration) {
-    setWindowTitle(tr("Editor de plantilla de inspección"));
+      repo_(repo), calibration_(calibration), templateName_(templateName) {
+    setWindowTitle(tr("Editor de plantilla '%1'")
+                       .arg(QString::fromStdString(templateName)));
     resize(1100, 700);
 
     auto* rootLayout = new QHBoxLayout(this);
@@ -222,7 +224,7 @@ void EditorWindow::loadExistingTools() {
     if (repo_ == nullptr) {
         return;
     }
-    auto listed = repo_->listForPiece(pieceId_);
+    auto listed = repo_->listForPiece(pieceId_, templateName_);
     if (!listed.isOk()) {
         statusLabel_->setText(tr("No se pudieron cargar las herramientas: %1")
                                   .arg(QString::fromStdString(listed.error().message)));
@@ -487,7 +489,7 @@ void EditorWindow::onSaveClicked() {
             continue;
         }
         tool.config.geometryJson = toJson(tool.geometry);
-        auto result = repo_->save(pieceId_, tool.config);
+        auto result = repo_->save(pieceId_, tool.config, templateName_);
         if (result.isOk()) {
             tool.config.id = result.value();
             ++saved;

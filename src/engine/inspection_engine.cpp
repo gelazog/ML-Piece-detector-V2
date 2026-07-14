@@ -93,14 +93,14 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
 
     // 2. Herramientas geométricas sobre la imagen original (sin warp).
     std::vector<inspection::ToolConfig> toolConfigs;
-    if (auto listed = tools_.listForPiece(pieceId); listed.isOk()) {
+    if (auto listed = tools_.listForPiece(pieceId, options_.templateName); listed.isOk()) {
         toolConfigs = std::move(listed.value());
     } else {
         core::logWarning("No se pudieron cargar las herramientas: " +
                          listed.error().message);
     }
-    outcome.toolResults = inspection::runTools(frameBgr, outcome.analysis.fixture,
-                                               toolConfigs, options_.mmPerPixel);
+    outcome.toolResults = inspection::runTools(
+        frameBgr, outcome.analysis.fixture, toolConfigs, options_.mmPerPixel, options_.unit);
 
     std::vector<domain::ToolCheck> toolChecks;
     toolChecks.reserve(outcome.toolResults.size());

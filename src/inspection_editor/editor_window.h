@@ -4,6 +4,7 @@
 #include <QImage>
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "domain/calibration.h"
@@ -36,7 +37,8 @@ public:
     // botón Guardar queda deshabilitado. calibration inválida = medidas en px.
     EditorWindow(const QImage& reference, const vision::Fixture& fixture,
                  std::int64_t pieceId, repositories::ToolRepository* repo,
-                 domain::ScaleCalibration calibration = {}, QWidget* parent = nullptr);
+                 domain::ScaleCalibration calibration = {},
+                 const std::string& templateName = "principal", QWidget* parent = nullptr);
 
 private slots:
     void onToolCreated(const pci::inspection::ToolGeometry& geometry);
@@ -73,6 +75,7 @@ private:
     std::int64_t pieceId_ = -1;
     repositories::ToolRepository* repo_ = nullptr;
     domain::ScaleCalibration calibration_;
+    std::string templateName_ = "principal";
 
     std::vector<EditedTool> tools_;
     std::vector<EditedTool> stableTools_;

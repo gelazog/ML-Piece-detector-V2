@@ -22,6 +22,8 @@ struct EngineOptions {
     int thumbnailSize = 96;  // miniatura JPEG guardada en el historial
     vision::PipelineConfig pipeline;  // detección: umbral, polaridad, zona
     double mmPerPixel = 0.0;          // escala calibrada para los detalles
+    inspection::LengthUnit unit = inspection::LengthUnit::Auto;
+    std::string templateName = "principal";  // plantilla de herramientas activa
 };
 
 // Miniatura JPEG cuadrada de una imagen (BGR o gris); vacía si la imagen lo es.
@@ -64,6 +66,8 @@ public:
         options_.pipeline = config;
     }
     void setMmPerPixel(double mmPerPixel) { options_.mmPerPixel = mmPerPixel; }
+    void setUnit(inspection::LengthUnit unit) { options_.unit = unit; }
+    void setTemplateName(const std::string& name) { options_.templateName = name; }
 
 private:
     EmbedFn embedFn_;

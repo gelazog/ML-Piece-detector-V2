@@ -25,6 +25,21 @@ Fixture stabilizeFixture(const Fixture& previous, const Fixture& measured,
     flipped180 = false;
 
     Fixture candidate = measured;
+
+    // Pieza demasiado redonda: su eje principal es puro ruido. Se conserva el
+    // ángulo anterior y se sigue solo la posición (el centroide sí es fiable).
+    if (candidate.anisotropy < options.minAnisotropy) {
+        candidate.angleDeg = previous.angleDeg;
+        const double posDelta = cv::norm(candidate.origin - previous.origin);
+        if (posDelta < options.positionDeadbandPx) {
+            candidate.origin = previous.origin;
+        } else if (posDelta <= options.positionSnapPx) {
+            const float alpha = static_cast<float>(options.smoothing);
+            candidate.origin = previous.origin + (candidate.origin - previous.origin) * alpha;
+        }
+        return candidate;
+    }
+
     double angleDiff = wrapDeg(candidate.angleDeg - previous.angleDeg);
     if (options.resolveFlips && std::abs(angleDiff) > 90.0) {
         candidate.angleDeg = wrapDeg(candidate.angleDeg + 180.0);

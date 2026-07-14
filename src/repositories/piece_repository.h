@@ -53,6 +53,7 @@ public:
     // Rasgo distintivo de orientación (nullopt si la pieza no tiene uno).
     core::Result<void> saveAnchor(std::int64_t pieceId,
                                   const vision::OrientationAnchor& anchor);
+    core::Result<void> clearAnchor(std::int64_t pieceId);
     core::Result<std::optional<vision::OrientationAnchor>> loadAnchor(std::int64_t pieceId);
 
     core::Result<int> saveReference(std::int64_t pieceId, const ml::Reference& reference);

@@ -363,6 +363,51 @@ TEST_F(DatabaseTest, ToolSaveReinsertsWhenRowIsGone) {
     EXPECT_EQ(listed.value()[0].name, "Resucitada");
 }
 
+TEST_F(DatabaseTest, MultipleTemplatesPerPiece) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    repositories::ToolRepository tools(db);
+    const auto pieceId = pieces.createPiece("Multi-plantilla");
+    ASSERT_TRUE(pieceId.isOk());
+
+    auto makeTool = [](const std::string& name) {
+        inspection::ToolConfig c;
+        c.type = inspection::ToolType::Ruler;
+        c.name = name;
+        c.geometryJson = inspection::toJson(
+            inspection::ToolGeometry(inspection::RulerGeometry{{0, 0}, {10, 0}}));
+        return c;
+    };
+
+    ASSERT_TRUE(tools.save(pieceId.value(), makeTool("A"), "principal").isOk());
+    ASSERT_TRUE(tools.save(pieceId.value(), makeTool("B"), "cara-2").isOk());
+    ASSERT_TRUE(tools.save(pieceId.value(), makeTool("C"), "cara-2").isOk());
+
+    // Cada plantilla lista solo sus herramientas.
+    EXPECT_EQ(tools.listForPiece(pieceId.value(), "principal").value().size(), 1U);
+    EXPECT_EQ(tools.listForPiece(pieceId.value(), "cara-2").value().size(), 2U);
+
+    auto templates = tools.listTemplates(pieceId.value());
+    ASSERT_TRUE(templates.isOk());
+    EXPECT_EQ(templates.value(), (std::vector<std::string>{"cara-2", "principal"}));
+}
+
+TEST_F(DatabaseTest, ClearAnchorRemovesIt) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    const auto pieceId = pieces.createPiece("Con y sin rasgo");
+    ASSERT_TRUE(pieceId.isOk());
+
+    vision::OrientationAnchor anchor;
+    anchor.piecePoint = {5.0F, 5.0F};
+    anchor.intensity = 30.0;
+    ASSERT_TRUE(pieces.saveAnchor(pieceId.value(), anchor).isOk());
+    ASSERT_TRUE(pieces.loadAnchor(pieceId.value()).value().has_value());
+
+    ASSERT_TRUE(pieces.clearAnchor(pieceId.value()).isOk());
+    EXPECT_FALSE(pieces.loadAnchor(pieceId.value()).value().has_value());
+}
+
 TEST_F(DatabaseTest, ToolSaveRejectsInvalid) {
     auto& db = openAndMigrate();
     repositories::PieceRepository pieces(db);

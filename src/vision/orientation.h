@@ -14,4 +14,10 @@ namespace pci::vision {
 // de rotación perfecta — irrelevante para comparación por embeddings.
 core::Result<double> principalAngleDeg(const cv::Mat& mask);
 
+// Anisotropía de la máscara en [0,1] a partir de los momentos centrales de
+// segundo orden: 0 = distribución circular (el eje principal no está
+// definido), 1 = alargada como una línea. Sirve para saber cuándo confiar en
+// el ángulo del eje principal.
+double principalAnisotropy(const cv::Mat& mask);
+
 }  // namespace pci::vision

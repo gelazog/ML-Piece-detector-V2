@@ -15,8 +15,13 @@ public:
     explicit ToolRepository(database::Db& db) : db_(db) {}
 
     // Inserta si config.id < 0; actualiza en caso contrario. Devuelve el id.
-    core::Result<std::int64_t> save(std::int64_t pieceId, const inspection::ToolConfig& config);
-    core::Result<std::vector<inspection::ToolConfig>> listForPiece(std::int64_t pieceId);
+    // templateName agrupa herramientas: una pieza puede tener varias
+    // plantillas y se inspecciona con la activa.
+    core::Result<std::int64_t> save(std::int64_t pieceId, const inspection::ToolConfig& config,
+                                    const std::string& templateName = "principal");
+    core::Result<std::vector<inspection::ToolConfig>> listForPiece(
+        std::int64_t pieceId, const std::string& templateName = "principal");
+    core::Result<std::vector<std::string>> listTemplates(std::int64_t pieceId);
     core::Result<void> remove(std::int64_t toolId);
 
 private:

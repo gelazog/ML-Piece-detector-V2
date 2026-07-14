@@ -201,6 +201,20 @@ bool EditorCanvas::isSelected(int index) const {
            multiSelected_.end();
 }
 
+void EditorCanvas::setLengthUnit(LengthUnit unit) {
+    unit_ = unit;
+    update();
+}
+
+void EditorCanvas::setEditingLocked(bool locked) {
+    editingLocked_ = locked;
+    if (locked) {
+        createType_.reset();
+        setCursor(Qt::ArrowCursor);
+    }
+    update();
+}
+
 QRectF EditorCanvas::targetRect() const {
     if (image_.isNull()) {
         return {};
@@ -286,10 +300,29 @@ bool EditorCanvas::interactive() const {
 }
 
 void EditorCanvas::mousePressEvent(QMouseEvent* event) {
-    if (event->button() != Qt::LeftButton || image_.isNull()) {
+    if (image_.isNull()) {
         return;
     }
     const cv::Point2f pressPoint = widgetToImage(event->position());
+
+    // Clic derecho sobre una herramienta: borrado rápido (aunque la edición
+    // esté bloqueada por inspección, borrar sigue permitido salvo bloqueo).
+    if (event->button() == Qt::RightButton) {
+        if (!editingLocked_) {
+            const int hit = hitTest(pressPoint);
+            if (hit >= 0) {
+                emit toolRightClicked(hit);
+            }
+        }
+        return;
+    }
+    if (event->button() != Qt::LeftButton) {
+        return;
+    }
+    // En inspección no se dibuja ni se mueve: solo se lee la pieza.
+    if (editingLocked_ && !regionPick_ && !pickMode_) {
+        return;
+    }
 
     // La zona de detección se define sin pieza detectada: es justo la
     // herramienta para cuando la detección automática está fallando.
@@ -619,11 +652,12 @@ void EditorCanvas::paintResults(QPainter& painter) const {
         QString measure;
         if (result.type == ToolType::Blob) {
             measure = QStringLiteral("n=%1").arg(result.measured, 0, 'f', 0);
-        } else if (mmPerPixel_ > 0.0) {
+        } else if (mmPerPixel_ > 0.0 && unit_ != LengthUnit::Pixels) {
             const double mm = result.measured * mmPerPixel_;
-            measure = mm >= 100.0
-                          ? QStringLiteral("%1 cm").arg(mm / 10.0, 0, 'f', 2)
-                          : QStringLiteral("%1 mm").arg(mm, 0, 'f', 2);
+            const bool useCm = unit_ == LengthUnit::Centimeters ||
+                               (unit_ == LengthUnit::Auto && mm >= 100.0);
+            measure = useCm ? QStringLiteral("%1 cm").arg(mm / 10.0, 0, 'f', 2)
+                            : QStringLiteral("%1 mm").arg(mm, 0, 'f', 2);
         } else {
             measure = QStringLiteral("%1 px").arg(result.measured, 0, 'f', 1);
         }

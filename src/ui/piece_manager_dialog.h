@@ -44,6 +44,7 @@ private:
     repositories::PieceRepository* pieces_;
     repositories::ToolRepository* tools_;
     QListWidget* list_ = nullptr;
+    QLabel* thumbLabel_ = nullptr;
     QLabel* infoLabel_ = nullptr;
     QPushButton* renameButton_ = nullptr;
     QPushButton* deleteButton_ = nullptr;

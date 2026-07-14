@@ -247,6 +247,18 @@ TEST(Ruler, MeasuresOwnLengthWithMmDetail) {
     ASSERT_TRUE(result.isOk());
     EXPECT_NE(result.value().detail.find("15.00mm"), std::string::npos);
 
+    // Unidad forzada a cm: 60 px * 0.25 = 15 mm = 1.5 cm.
+    result = runTool(gray, kIdentity, makeConfig(ToolType::Ruler, ToolGeometry(g), 55, 65),
+                     0.25, LengthUnit::Centimeters);
+    ASSERT_TRUE(result.isOk());
+    EXPECT_NE(result.value().detail.find("1.50cm"), std::string::npos);
+
+    // Unidad forzada a px: sin mm aunque haya escala.
+    result = runTool(gray, kIdentity, makeConfig(ToolType::Ruler, ToolGeometry(g), 55, 65),
+                     0.25, LengthUnit::Pixels);
+    ASSERT_TRUE(result.isOk());
+    EXPECT_EQ(result.value().detail.find("mm"), std::string::npos);
+
     // Tolerancias sugeridas: banda de ±10%.
     double lo = 0.0;
     double hi = 0.0;

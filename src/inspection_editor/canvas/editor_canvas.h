@@ -44,6 +44,9 @@ public:
     [[nodiscard]] std::vector<int> selectedIndices() const { return multiSelected_; }
     // Escala px->mm para las etiquetas de medida (0 = mostrar px).
     void setMmPerPixel(double mmPerPixel);
+    void setLengthUnit(LengthUnit unit);
+    // En inspección: bloquea dibujar/mover/seleccionar (solo se lee la pieza).
+    void setEditingLocked(bool locked);
 
     // --- zona de detección (ROI) ---
     // Con el modo activo, el siguiente arrastre define el rectángulo donde se
@@ -77,6 +80,7 @@ signals:
     void toolModified();
     void pointPicked(const cv::Point2f& imagePoint);
     void regionPicked(const cv::Rect& imageRect);
+    void toolRightClicked(int index);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -107,6 +111,8 @@ private:
     int selected_ = -1;
     std::vector<int> multiSelected_;
     double mmPerPixel_ = 0.0;
+    LengthUnit unit_ = LengthUnit::Auto;
+    bool editingLocked_ = false;
 
     bool creating_ = false;
     bool moving_ = false;

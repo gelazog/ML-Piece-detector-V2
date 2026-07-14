@@ -20,6 +20,11 @@ struct PieceContour {
 struct Fixture {
     cv::Point2f origin{0.0F, 0.0F};
     double angleDeg = 0.0;  // ángulo del eje principal en coords de imagen (y hacia abajo)
+    // Anisotropía [0,1]: 0 = pieza redonda (eje principal indefinido, el
+    // ángulo no es de fiar), 1 = muy alargada (eje bien definido). El
+    // estabilizador la usa para no perseguir el ruido angular de piezas
+    // casi circulares.
+    double anisotropy = 1.0;
 };
 
 struct PieceAnalysis {

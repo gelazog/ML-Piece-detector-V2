@@ -58,7 +58,7 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                              const std::vector<inspection::ToolConfig>& tools,
                              const vision::PipelineConfig& pipeline,
                              std::optional<vision::Fixture> previousFixture,
-                             double mmPerPixel) {
+                             double mmPerPixel, inspection::LengthUnit unit) {
     AnalysisOverlay overlay;
     overlay.frameSize = frame.size();
 
@@ -115,7 +115,7 @@ AnalysisOverlay buildOverlay(const QImage& frame,
         overlay.normalized = camera::matToQImage(analysis.value().normalized);
         if (!tools.empty()) {
             overlay.toolResults =
-                inspection::runTools(image, analysis.value().fixture, tools, mmPerPixel);
+                inspection::runTools(image, analysis.value().fixture, tools, mmPerPixel, unit);
         }
     } catch (const std::exception& e) {
         overlay.valid = false;
@@ -194,6 +194,17 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
            "quitar la zona."));
     cameraLayout->addWidget(roiButton_);
 
+    cameraLayout->addWidget(new QLabel(tr("Unidad:"), central));
+    unitCombo_ = new QComboBox(central);
+    unitCombo_->addItem(tr("Auto"));  // orden = LengthUnit
+    unitCombo_->addItem(tr("mm"));
+    unitCombo_->addItem(tr("cm"));
+    unitCombo_->addItem(tr("px"));
+    unitCombo_->setToolTip(
+        tr("Unidad de las medidas. Auto: mm y cambia a cm a partir de 10 cm.\n"
+           "Requiere calibración (Calibrar mm…) para mostrar mm/cm."));
+    cameraLayout->addWidget(unitCombo_);
+
     analysisCheck_ = new QCheckBox(tr("Detectar pieza (contorno)"), central);
     analysisCheck_->setChecked(true);
     cameraLayout->addWidget(analysisCheck_);
@@ -203,8 +214,20 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     auto* pieceLayout = new QHBoxLayout();
     pieceLayout->addWidget(new QLabel(tr("Pieza:"), central));
     pieceCombo_ = new QComboBox(central);
-    pieceCombo_->setMinimumWidth(160);
+    pieceCombo_->setMinimumWidth(140);
     pieceLayout->addWidget(pieceCombo_, 1);
+
+    pieceLayout->addWidget(new QLabel(tr("Plantilla:"), central));
+    templateCombo_ = new QComboBox(central);
+    templateCombo_->setMinimumWidth(110);
+    templateCombo_->setToolTip(
+        tr("Una pieza puede tener varias plantillas de herramientas; se inspecciona "
+           "con la activa."));
+    pieceLayout->addWidget(templateCombo_);
+    newTemplateButton_ = new QPushButton(tr("+"), central);
+    newTemplateButton_->setToolTip(tr("Crear una plantilla nueva para esta pieza"));
+    newTemplateButton_->setMaximumWidth(32);
+    pieceLayout->addWidget(newTemplateButton_);
 
     registerLiveButton_ = new QPushButton(tr("Registrar y activar"), central);
     registerLiveButton_->setToolTip(
@@ -395,6 +418,13 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             &MainWindow::onAnchorPicked);
     connect(pieceCombo_, &QComboBox::currentIndexChanged, this,
             &MainWindow::onPieceSelectionChanged);
+    connect(templateCombo_, &QComboBox::currentIndexChanged, this,
+            &MainWindow::onTemplateChanged);
+    connect(newTemplateButton_, &QPushButton::clicked, this,
+            &MainWindow::onNewTemplateClicked);
+    connect(unitCombo_, &QComboBox::currentIndexChanged, this, &MainWindow::onUnitChanged);
+    connect(video_, &inspection::EditorCanvas::toolRightClicked, this,
+            &MainWindow::onToolRightClicked);
 
     connect(registerLiveButton_, &QPushButton::clicked, this,
             &MainWindow::onRegisterLiveClicked);
@@ -449,10 +479,34 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     }
     updateRoiButton();
 
+    // Unidad de medida elegida por el operador (persistida).
+    if (repos_.settings != nullptr) {
+        const int unit = std::clamp(repos_.settings->getInt("length_unit", 0).value(), 0, 3);
+        QSignalBlocker blocker(unitCombo_);
+        unitCombo_->setCurrentIndex(unit);
+    }
+    video_->setLengthUnit(currentUnit());
+
     buildShortcuts();
 
     refreshCameras();
     loadPieceList();
+}
+
+inspection::LengthUnit MainWindow::currentUnit() const {
+    return static_cast<inspection::LengthUnit>(unitCombo_->currentIndex());
+}
+
+std::string MainWindow::activeTemplate() const {
+    const QString name = templateCombo_->currentText();
+    return name.isEmpty() ? std::string("principal") : name.toStdString();
+}
+
+void MainWindow::onUnitChanged(int index) {
+    if (repos_.settings != nullptr) {
+        repos_.settings->setInt("length_unit", index);
+    }
+    video_->setLengthUnit(currentUnit());
 }
 
 void MainWindow::persistPipelineConfig() {
@@ -814,8 +868,8 @@ void MainWindow::maybeStartAnalysis() {
     analysisWatcher_.setFuture(QtConcurrent::run(
         [frame, anchor, offset = currentOrientationOffset_, configs = std::move(configs),
          pipeline = pipelineConfig_, previous = liveFixture_,
-         mm = calibration_.mmPerPixel] {
-            return buildOverlay(frame, anchor, offset, configs, pipeline, previous, mm);
+         mm = calibration_.mmPerPixel, unit = currentUnit()] {
+            return buildOverlay(frame, anchor, offset, configs, pipeline, previous, mm, unit);
         }));
 }
 
@@ -959,6 +1013,33 @@ void MainWindow::onAnchorButtonToggled(bool enabled) {
         video_->setPickMode(false);
         return;
     }
+
+    // Si la pieza ya tiene rasgo, ofrecer quitarlo o reemplazarlo.
+    if (currentAnchor_.has_value()) {
+        QMessageBox box(QMessageBox::Question, tr("Rasgo distintivo"),
+                        tr("Esta pieza ya tiene un rasgo distintivo. ¿Qué quieres hacer?"),
+                        QMessageBox::NoButton, this);
+        auto* removeBtn = box.addButton(tr("Quitar rasgo"), QMessageBox::DestructiveRole);
+        auto* replaceBtn = box.addButton(tr("Marcar otro"), QMessageBox::AcceptRole);
+        box.addButton(QMessageBox::Cancel);
+        box.exec();
+        anchorButton_->setChecked(false);
+        if (box.clickedButton() == removeBtn) {
+            currentAnchor_.reset();
+            video_->setAnchorMarker(false);
+            if (const std::int64_t pieceId = selectedPieceId();
+                pieceId >= 0 && repos_.pieces != nullptr) {
+                repos_.pieces->clearAnchor(pieceId);
+            }
+            statusBar()->showMessage(tr("Rasgo distintivo eliminado."));
+            return;
+        }
+        if (box.clickedButton() != replaceBtn) {
+            return;
+        }
+        // Reemplazar: continúa al modo de selección abajo.
+    }
+
     if (!streaming_ || !liveFixture_.has_value()) {
         statusBar()->showMessage(
             tr("Para marcar el rasgo necesitas video en vivo con la pieza detectada."));
@@ -1089,9 +1170,92 @@ void MainWindow::onManagePiecesClicked() {
     }
 }
 
+// Repuebla el combo de plantillas de la pieza actual. Siempre incluye
+// "principal" aunque aún no tenga herramientas.
+void MainWindow::loadTemplateList(const QString& selectName) {
+    QSignalBlocker blocker(templateCombo_);
+    const QString previous = selectName.isEmpty() ? templateCombo_->currentText()
+                                                  : selectName;
+    templateCombo_->clear();
+
+    std::vector<std::string> names{"principal"};
+    if (const std::int64_t pieceId = selectedPieceId();
+        pieceId >= 0 && repos_.tools != nullptr) {
+        if (auto listed = repos_.tools->listTemplates(pieceId); listed.isOk()) {
+            for (const auto& name : listed.value()) {
+                if (std::find(names.begin(), names.end(), name) == names.end()) {
+                    names.push_back(name);
+                }
+            }
+        }
+    }
+    for (const auto& name : names) {
+        templateCombo_->addItem(QString::fromStdString(name));
+    }
+    const int idx = templateCombo_->findText(previous);
+    templateCombo_->setCurrentIndex(idx >= 0 ? idx : 0);
+}
+
+void MainWindow::onTemplateChanged(int index) {
+    Q_UNUSED(index);
+    autoInspectButton_->setChecked(false);
+    loadToolsForSelectedPiece();
+}
+
+void MainWindow::onNewTemplateClicked() {
+    if (selectedPieceId() < 0) {
+        QMessageBox::information(this, tr("Sin pieza"),
+                                 tr("Selecciona o registra una pieza primero."));
+        return;
+    }
+    bool ok = false;
+    const QString name =
+        QInputDialog::getText(this, tr("Nueva plantilla"),
+                              tr("Nombre de la plantilla:"), QLineEdit::Normal,
+                              tr("plantilla %1").arg(templateCombo_->count() + 1), &ok)
+            .trimmed();
+    if (!ok || name.isEmpty()) {
+        return;
+    }
+    if (templateCombo_->findText(name) >= 0) {
+        QMessageBox::warning(this, tr("Ya existe"),
+                             tr("Ya hay una plantilla con ese nombre."));
+        return;
+    }
+    // La plantilla nace vacía; se materializa al guardar su primera herramienta.
+    templateCombo_->addItem(name);
+    templateCombo_->setCurrentText(name);  // dispara onTemplateChanged
+    statusBar()->showMessage(
+        tr("Plantilla '%1' activa: dibuja herramientas y se guardarán en ella.").arg(name));
+}
+
+void MainWindow::onToolRightClicked(int index) {
+    deleteToolAt(index);
+}
+
+void MainWindow::deleteToolAt(int index) {
+    if (index < 0 || index >= static_cast<int>(liveTools_.size())) {
+        return;
+    }
+    const auto& tool = liveTools_[static_cast<std::size_t>(index)];
+    if (tool.config.id >= 0 && repos_.tools != nullptr) {
+        if (auto removed = repos_.tools->remove(tool.config.id); !removed.isOk()) {
+            statusBar()->showMessage(QString::fromStdString(removed.error().message));
+            return;
+        }
+    }
+    liveTools_.erase(liveTools_.begin() + index);
+    commitUndoState();
+    video_->setSelectedIndex(-1);
+    onLiveSelectionChanged(-1);
+    video_->clearResults();
+    statusBar()->showMessage(tr("Herramienta eliminada."));
+}
+
 void MainWindow::onPieceSelectionChanged(int index) {
     Q_UNUSED(index);
     autoInspectButton_->setChecked(false);
+    loadTemplateList();       // repuebla plantillas de la pieza
     loadToolsForSelectedPiece();
 
     // Rasgo distintivo y ajuste de orientación de la pieza seleccionada.
@@ -1143,7 +1307,7 @@ void MainWindow::loadToolsForSelectedPiece() {
         video_->update();
         return;
     }
-    auto listed = repos_.tools->listForPiece(pieceId);
+    auto listed = repos_.tools->listForPiece(pieceId, activeTemplate());
     if (!listed.isOk()) {
         core::logWarning("No se pudieron cargar las herramientas: " + listed.error().message);
         return;
@@ -1362,12 +1526,14 @@ void MainWindow::finishLiveRegistration() {
         }
     }
 
-    // Persistir las herramientas dibujadas sobre el video.
+    // Persistir las herramientas dibujadas sobre el video (en la plantilla
+    // activa: una pieza puede tener varias plantillas).
+    const std::string tmpl = activeTemplate();
     int toolErrors = 0;
     if (repos_.tools != nullptr) {
         for (auto& tool : liveTools_) {
             tool.config.geometryJson = inspection::toJson(tool.geometry);
-            if (auto saved = repos_.tools->save(pieceId, tool.config); saved.isOk()) {
+            if (auto saved = repos_.tools->save(pieceId, tool.config, tmpl); saved.isOk()) {
                 tool.config.id = saved.value();
             } else {
                 ++toolErrors;
@@ -1415,13 +1581,31 @@ void MainWindow::onAutoToggled(bool enabled) {
             autoInspectButton_->setChecked(false);
             return;
         }
+        autoInspecting_ = true;
+        // En inspección el operador solo lee piezas: se bloquea la edición y
+        // se desactivan las herramientas de dibujo.
+        video_->setEditingLocked(true);
+        video_->setCreateType(std::nullopt);
+        if (auto* selectBtn = toolModeGroup_->button(-1)) {
+            selectBtn->setChecked(true);
+        }
+        for (auto* button : toolModeGroup_->buttons()) {
+            button->setEnabled(false);
+        }
+        deleteToolButton_->setEnabled(false);
         verdictBanner_->setStyleSheet(
             QStringLiteral("background:#444; color:white; font-size:16px; font-weight:bold;"));
         verdictBanner_->setText(tr("Auto-inspección en marcha…"));
         verdictBanner_->setVisible(true);
         autoTimer_.start();
     } else {
+        autoInspecting_ = false;
         autoTimer_.stop();
+        video_->setEditingLocked(false);
+        for (auto* button : toolModeGroup_->buttons()) {
+            button->setEnabled(true);
+        }
+        deleteToolButton_->setEnabled(true);
         verdictBanner_->setVisible(false);
         video_->clearResults();
     }
@@ -1439,6 +1623,9 @@ void MainWindow::onAutoTick() {
     inspectedFrame_ = lastFrame_;
     auto* engine = repos_.engine;
     engine->setPipelineConfig(pipelineConfig_);
+    engine->setMmPerPixel(calibration_.mmPerPixel);
+    engine->setUnit(currentUnit());
+    engine->setTemplateName(activeTemplate());
     const QImage frame = inspectedFrame_;
     inspectionWatcher_.setFuture(QtConcurrent::run([engine, frame, pieceId] {
         using ResultT = core::Result<engine::InspectionEngine::Outcome>;
@@ -1575,7 +1762,7 @@ void MainWindow::onOpenEditorClicked() {
 
     inspection::EditorWindow editor(reference, analysis.value().fixture, pieceId,
                                     pieceId >= 0 ? repos_.tools : nullptr, calibration_,
-                                    this);
+                                    activeTemplate(), this);
     editor.exec();
     // Reflejar en el video los cambios hechos en el editor.
     loadToolsForSelectedPiece();
@@ -1607,6 +1794,9 @@ void MainWindow::onInspectClicked() {
     statusBar()->showMessage(tr("Inspeccionando…"));
     auto* engine = repos_.engine;
     engine->setPipelineConfig(pipelineConfig_);
+    engine->setMmPerPixel(calibration_.mmPerPixel);
+    engine->setUnit(currentUnit());
+    engine->setTemplateName(activeTemplate());
     inspectionWatcher_.setFuture(QtConcurrent::run([engine, frame, pieceId] {
         using ResultT = core::Result<engine::InspectionEngine::Outcome>;
         try {

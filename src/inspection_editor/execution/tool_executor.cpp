@@ -23,15 +23,24 @@ cv::Point2f toImg(const Fixture& f, const cv::Point2f& p) {
     return toImageCoords(f, p);
 }
 
-// Longitud con unidades: px siempre; mm o cm si hay escala calibrada.
-std::string fmtLen(double px, double mmPerPixel) {
+// Empaqueta la escala y la unidad elegida por el operador.
+struct Fmt {
+    double mmPerPixel = 0.0;
+    LengthUnit unit = LengthUnit::Auto;
+};
+
+// Longitud con unidades. Sin escala o unidad Px: píxeles. Con escala: mm, cm
+// o automático (cm a partir de 10 cm) según la elección del operador.
+std::string fmtLen(double px, const Fmt& f) {
     char buffer[64];
-    if (mmPerPixel <= 0.0) {
+    if (f.mmPerPixel <= 0.0 || f.unit == LengthUnit::Pixels) {
         std::snprintf(buffer, sizeof(buffer), "%.1fpx", px);
         return buffer;
     }
-    const double mm = px * mmPerPixel;
-    if (mm >= 100.0) {
+    const double mm = px * f.mmPerPixel;
+    const bool useCm = f.unit == LengthUnit::Centimeters ||
+                       (f.unit == LengthUnit::Auto && mm >= 100.0);
+    if (useCm) {
         std::snprintf(buffer, sizeof(buffer), "%.2fcm (%.1fpx)", mm / 10.0, px);
     } else {
         std::snprintf(buffer, sizeof(buffer), "%.2fmm (%.1fpx)", mm, px);
@@ -39,14 +48,20 @@ std::string fmtLen(double px, double mmPerPixel) {
     return buffer;
 }
 
-std::string fmtArea(double px2, double mmPerPixel) {
+std::string fmtArea(double px2, const Fmt& f) {
     char buffer[64];
-    if (mmPerPixel <= 0.0) {
+    if (f.mmPerPixel <= 0.0 || f.unit == LengthUnit::Pixels) {
         std::snprintf(buffer, sizeof(buffer), "%.0fpx²", px2);
         return buffer;
     }
-    std::snprintf(buffer, sizeof(buffer), "%.1fmm² (%.0fpx²)",
-                  px2 * mmPerPixel * mmPerPixel, px2);
+    const double mm2 = px2 * f.mmPerPixel * f.mmPerPixel;
+    const bool useCm = f.unit == LengthUnit::Centimeters ||
+                       (f.unit == LengthUnit::Auto && mm2 >= 10000.0);
+    if (useCm) {
+        std::snprintf(buffer, sizeof(buffer), "%.2fcm² (%.0fpx²)", mm2 / 100.0, px2);
+    } else {
+        std::snprintf(buffer, sizeof(buffer), "%.1fmm² (%.0fpx²)", mm2, px2);
+    }
     return buffer;
 }
 
@@ -64,7 +79,7 @@ ToolRunResult baseResult(const ToolConfig& config) {
 
 ToolRunResult runCaliper(const cv::Mat& gray, const Fixture& fixture,
                          const ToolConfig& config, const CaliperGeometry& g,
-                         double mmPerPixel) {
+                         const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
     const cv::Point2f p0 = toImg(fixture, g.p0);
     const cv::Point2f p1 = toImg(fixture, g.p1);
@@ -100,14 +115,14 @@ ToolRunResult runCaliper(const cv::Mat& gray, const Fixture& fixture,
 
     result.measured = std::abs(edges[first].position - edges[second].position);
     result.ok = withinTolerance(config, result.measured);
-    result.detail = "d=" + fmtLen(result.measured, mmPerPixel);
+    result.detail = "d=" + fmtLen(result.measured, fmt);
     result.overlayPoints.push_back(edges[first].point);
     result.overlayPoints.push_back(edges[second].point);
     return result;
 }
 
 ToolRunResult runRuler(const Fixture& fixture, const ToolConfig& config,
-                       const RulerGeometry& g, double mmPerPixel) {
+                       const RulerGeometry& g, const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
     const cv::Point2f p0 = toImg(fixture, g.p0);
     const cv::Point2f p1 = toImg(fixture, g.p1);
@@ -117,13 +132,13 @@ ToolRunResult runRuler(const Fixture& fixture, const ToolConfig& config,
 
     result.measured = cv::norm(p1 - p0);
     result.ok = withinTolerance(config, result.measured);
-    result.detail = "L=" + fmtLen(result.measured, mmPerPixel);
+    result.detail = "L=" + fmtLen(result.measured, fmt);
     return result;
 }
 
 ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
                         const ToolConfig& config, const CircleGeometry& g,
-                        double mmPerPixel) {
+                        const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
     const cv::Point2f center = toImg(fixture, g.center);
 
@@ -175,9 +190,9 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
 
     result.measured = 2.0 * r;
     result.ok = withinTolerance(config, result.measured);
-    result.detail = "D=" + fmtLen(result.measured, mmPerPixel) +
-                    ", R=" + fmtLen(r, mmPerPixel) +
-                    ", redondez=" + fmtLen(roundness, mmPerPixel);
+    result.detail = "D=" + fmtLen(result.measured, fmt) +
+                    ", R=" + fmtLen(r, fmt) +
+                    ", redondez=" + fmtLen(roundness, fmt);
     result.overlayPoints = std::move(points);
     result.overlayPoints.push_back(
         {static_cast<float>(cx), static_cast<float>(cy)});
@@ -186,7 +201,7 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
 
 ToolRunResult runPointToLine(const cv::Mat& gray, const Fixture& fixture,
                              const ToolConfig& config, const PointToLineGeometry& g,
-                             double mmPerPixel) {
+                             const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
     const cv::Point2f lineA = toImg(fixture, g.lineA);
     const cv::Point2f lineB = toImg(fixture, g.lineB);
@@ -213,14 +228,14 @@ ToolRunResult runPointToLine(const cv::Mat& gray, const Fixture& fixture,
                          static_cast<double>(lineDelta.y) * (p.x - lineA.x);
     result.measured = std::abs(cross) / lineLength;
     result.ok = withinTolerance(config, result.measured);
-    result.detail = "d=" + fmtLen(result.measured, mmPerPixel);
+    result.detail = "d=" + fmtLen(result.measured, fmt);
     result.overlayPoints.push_back(p);
     return result;
 }
 
 ToolRunResult runEdgeFlaw(const cv::Mat& gray, const Fixture& fixture,
                           const ToolConfig& config, const EdgeFlawGeometry& g,
-                          double mmPerPixel) {
+                          const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
     const cv::Point2f p0 = toImg(fixture, g.p0);
     const cv::Point2f p1 = toImg(fixture, g.p1);
@@ -284,13 +299,13 @@ ToolRunResult runEdgeFlaw(const cv::Mat& gray, const Fixture& fixture,
 
     result.measured = maxDeviation;
     result.ok = withinTolerance(config, result.measured);
-    result.detail = "desv. máx=" + fmtLen(result.measured, mmPerPixel) + " (" +
+    result.detail = "desv. máx=" + fmtLen(result.measured, fmt) + " (" +
                     std::to_string(ts.size()) + " escaneos)";
     return result;
 }
 
 ToolRunResult runBlob(const cv::Mat& gray, const Fixture& fixture, const ToolConfig& config,
-                      const BlobGeometry& g, double mmPerPixel) {
+                      const BlobGeometry& g, const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
 
     // Rectángulo alineado a los ejes de la pieza -> cuadrilátero en imagen.
@@ -354,15 +369,17 @@ ToolRunResult runBlob(const cv::Mat& gray, const Fixture& fixture, const ToolCon
     result.measured = count;
     result.ok = withinTolerance(config, result.measured);
     result.detail =
-        std::to_string(count) + " blob(s), área=" + fmtArea(totalArea, mmPerPixel);
+        std::to_string(count) + " blob(s), área=" + fmtArea(totalArea, fmt);
     return result;
 }
 
 }  // namespace
 
 core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture& fixture,
-                                    const ToolConfig& config, double mmPerPixel) {
+                                    const ToolConfig& config, double mmPerPixel,
+                                    LengthUnit unit) {
     using ResultT = core::Result<ToolRunResult>;
+    const Fmt fmt{mmPerPixel, unit};
 
     if (image.empty()) {
         return ResultT::err("Imagen vacía");
@@ -386,28 +403,28 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Caliper:
                 return ResultT::ok(runCaliper(gray, fixture, config,
                                               std::get<CaliperGeometry>(geometry.value()),
-                                              mmPerPixel));
+                                              fmt));
             case ToolType::Circle:
                 return ResultT::ok(runCircle(gray, fixture, config,
                                              std::get<CircleGeometry>(geometry.value()),
-                                             mmPerPixel));
+                                             fmt));
             case ToolType::PointToLine:
                 return ResultT::ok(
                     runPointToLine(gray, fixture, config,
                                    std::get<PointToLineGeometry>(geometry.value()),
-                                   mmPerPixel));
+                                   fmt));
             case ToolType::EdgeFlaw:
                 return ResultT::ok(runEdgeFlaw(gray, fixture, config,
                                                std::get<EdgeFlawGeometry>(geometry.value()),
-                                               mmPerPixel));
+                                               fmt));
             case ToolType::Blob:
                 return ResultT::ok(runBlob(gray, fixture, config,
                                            std::get<BlobGeometry>(geometry.value()),
-                                           mmPerPixel));
+                                           fmt));
             case ToolType::Ruler:
                 return ResultT::ok(runRuler(fixture, config,
                                             std::get<RulerGeometry>(geometry.value()),
-                                            mmPerPixel));
+                                            fmt));
         }
         return ResultT::err("Tipo de herramienta no soportado");
     } catch (const cv::Exception& e) {
@@ -417,14 +434,14 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
 }
 
 std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture& fixture,
-                                    const std::vector<ToolConfig>& tools,
-                                    double mmPerPixel) {
+                                    const std::vector<ToolConfig>& tools, double mmPerPixel,
+                                    LengthUnit unit) {
     std::vector<ToolRunResult> results;
     for (const auto& config : tools) {
         if (!config.enabled) {
             continue;
         }
-        auto result = runTool(image, fixture, config, mmPerPixel);
+        auto result = runTool(image, fixture, config, mmPerPixel, unit);
         if (result.isOk()) {
             results.push_back(std::move(result.value()));
         } else {
@@ -438,6 +455,10 @@ std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture&
         }
     }
     return results;
+}
+
+std::string formatLength(double px, double mmPerPixel, LengthUnit unit) {
+    return fmtLen(px, Fmt{mmPerPixel, unit});
 }
 
 }  // namespace pci::inspection

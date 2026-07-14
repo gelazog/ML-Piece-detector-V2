@@ -208,6 +208,21 @@ core::Result<void> PieceRepository::saveAnchor(std::int64_t pieceId,
     return core::Result<void>::ok();
 }
 
+core::Result<void> PieceRepository::clearAnchor(std::int64_t pieceId) {
+    auto stmt = db_.prepare(
+        "UPDATE Pieces SET anchor_x = NULL, anchor_y = NULL, anchor_intensity = NULL "
+        "WHERE id = ?;");
+    if (!stmt.isOk()) {
+        return core::Result<void>::err(stmt.error().message);
+    }
+    if (auto b = stmt.value().bindInt(1, pieceId); !b.isOk()) return b;
+    auto step = stmt.value().step();
+    if (!step.isOk()) {
+        return core::Result<void>::err(step.error().message);
+    }
+    return core::Result<void>::ok();
+}
+
 core::Result<std::optional<vision::OrientationAnchor>> PieceRepository::loadAnchor(
     std::int64_t pieceId) {
     using ResultT = core::Result<std::optional<vision::OrientationAnchor>>;

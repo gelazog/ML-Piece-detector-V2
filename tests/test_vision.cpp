@@ -227,6 +227,32 @@ TEST(Pipeline, FailsOnEmptyImage) {
     EXPECT_FALSE(analyzeFrame(cv::Mat()).isOk());
 }
 
+// --- Anisotropía ---
+
+TEST(Anisotropy, RoundLowElongatedHigh) {
+    cv::Mat disc(240, 240, CV_8UC1, cv::Scalar(0));
+    cv::circle(disc, {120, 120}, 80, cv::Scalar(255), cv::FILLED);
+    const double roundAniso = principalAnisotropy(disc);
+    EXPECT_LT(roundAniso, 0.1);  // un círculo no tiene eje definido
+
+    cv::Mat bar(240, 240, CV_8UC1, cv::Scalar(0));
+    cv::rectangle(bar, {20, 110}, {220, 130}, cv::Scalar(255), cv::FILLED);
+    const double barAniso = principalAnisotropy(bar);
+    EXPECT_GT(barAniso, 0.8);  // una barra es muy alargada
+}
+
+TEST(FixtureStabilizer, FreezesAngleForRoundPiece) {
+    // Pieza redonda (anisotropía baja): el ángulo medido es ruido y debe
+    // conservarse el anterior aunque salte 40°.
+    Fixture previous{{100.0F, 100.0F}, 10.0};
+    Fixture measured{{101.0F, 100.0F}, 50.0};
+    measured.anisotropy = 0.05;
+    bool flipped = false;
+    const Fixture result = stabilizeFixture(previous, measured, {}, flipped);
+    EXPECT_DOUBLE_EQ(result.angleDeg, 10.0);  // congelado
+    EXPECT_FALSE(flipped);
+}
+
 // --- Estabilizador temporal del fixture ---
 
 TEST(FixtureStabilizer, HoldsWithinDeadband) {

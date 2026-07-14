@@ -8,7 +8,8 @@
 namespace pci::repositories {
 
 core::Result<std::int64_t> ToolRepository::save(std::int64_t pieceId,
-                                                const inspection::ToolConfig& config) {
+                                                const inspection::ToolConfig& config,
+                                                const std::string& templateName) {
     using ResultT = core::Result<std::int64_t>;
 
     if (config.name.empty()) {
@@ -23,7 +24,8 @@ core::Result<std::int64_t> ToolRepository::save(std::int64_t pieceId,
         isUpdate ? "UPDATE InspectionTools SET type=?, name=?, geometry=?, params=?, "
                    "tolerance_min=?, tolerance_max=?, enabled=? WHERE id=? AND piece_id=?;"
                  : "INSERT INTO InspectionTools (type, name, geometry, params, tolerance_min, "
-                   "tolerance_max, enabled, piece_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?);");
+                   "tolerance_max, enabled, piece_id, template) "
+                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);");
     if (!stmt.isOk()) {
         return ResultT::err(stmt.error().message);
     }
@@ -53,6 +55,10 @@ core::Result<std::int64_t> ToolRepository::save(std::int64_t pieceId,
     }
     if (isUpdate) {
         if (auto b = s.bindInt(9, pieceId); !b.isOk()) return ResultT::err(b.error().message);
+    } else {
+        if (auto b = s.bindText(9, templateName); !b.isOk()) {
+            return ResultT::err(b.error().message);
+        }
     }
 
     if (auto step = s.step(); !step.isOk()) {
@@ -63,22 +69,25 @@ core::Result<std::int64_t> ToolRepository::save(std::int64_t pieceId,
         // reinsertar en lugar de perder la herramienta en silencio.
         inspection::ToolConfig fresh = config;
         fresh.id = -1;
-        return save(pieceId, fresh);
+        return save(pieceId, fresh, templateName);
     }
     return ResultT::ok(isUpdate ? config.id : db_.lastInsertId());
 }
 
 core::Result<std::vector<inspection::ToolConfig>> ToolRepository::listForPiece(
-    std::int64_t pieceId) {
+    std::int64_t pieceId, const std::string& templateName) {
     using ResultT = core::Result<std::vector<inspection::ToolConfig>>;
 
     auto stmt = db_.prepare(
         "SELECT id, type, name, geometry, params, tolerance_min, tolerance_max, enabled "
-        "FROM InspectionTools WHERE piece_id = ? ORDER BY id;");
+        "FROM InspectionTools WHERE piece_id = ? AND template = ? ORDER BY id;");
     if (!stmt.isOk()) {
         return ResultT::err(stmt.error().message);
     }
     if (auto bind = stmt.value().bindInt(1, pieceId); !bind.isOk()) {
+        return ResultT::err(bind.error().message);
+    }
+    if (auto bind = stmt.value().bindText(2, templateName); !bind.isOk()) {
         return ResultT::err(bind.error().message);
     }
 
@@ -110,6 +119,31 @@ core::Result<std::vector<inspection::ToolConfig>> ToolRepository::listForPiece(
         tools.push_back(std::move(config));
     }
     return ResultT::ok(std::move(tools));
+}
+
+core::Result<std::vector<std::string>> ToolRepository::listTemplates(std::int64_t pieceId) {
+    using ResultT = core::Result<std::vector<std::string>>;
+
+    auto stmt = db_.prepare(
+        "SELECT DISTINCT template FROM InspectionTools WHERE piece_id = ? ORDER BY template;");
+    if (!stmt.isOk()) {
+        return ResultT::err(stmt.error().message);
+    }
+    if (auto bind = stmt.value().bindInt(1, pieceId); !bind.isOk()) {
+        return ResultT::err(bind.error().message);
+    }
+    std::vector<std::string> templates;
+    while (true) {
+        auto row = stmt.value().step();
+        if (!row.isOk()) {
+            return ResultT::err(row.error().message);
+        }
+        if (!row.value()) {
+            break;
+        }
+        templates.push_back(stmt.value().columnText(0));
+    }
+    return ResultT::ok(std::move(templates));
 }
 
 core::Result<void> ToolRepository::remove(std::int64_t toolId) {

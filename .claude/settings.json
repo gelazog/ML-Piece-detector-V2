@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($env:PATH = \"C:\\\\msys64\\\\ucrt64\\\\bin;$env:PATH\"; cmake --build --preset mingw-release 2>&1 | Select-String -Pattern 'error|FAILED' -Context 0,4 | Select-Object -First 20; Write-Output \"exit=$LASTEXITCODE\")",
+      "PowerShell(Get-Process pc_inspector -ErrorAction SilentlyContinue | Stop-Process -Force -Confirm:$false; $env:PATH = \"C:\\\\msys64\\\\ucrt64\\\\bin;$env:PATH\"; cmake --build --preset mingw-release 2>&1 | Select-String -Pattern 'error|FAILED' -Context 0,4 | Select-Object -First 24; Write-Output \"exit=$LASTEXITCODE\")",
+      "PowerShell($env:PATH = \"C:\\\\msys64\\\\ucrt64\\\\bin;$env:PATH\"; ctest --preset mingw-release 2>&1 | Select-String 'tests passed|tests failed|Failed' | ForEach-Object Line)",
+      "PowerShell($env:PATH = \"C:\\\\msys64\\\\ucrt64\\\\bin;$env:PATH\"; Remove-Item D:\\\\Proyectos\\\\ml-piece-detection-2\\\\build\\\\release\\\\pc_inspector.log -ErrorAction SilentlyContinue -Confirm:$false; $p = Start-Process -FilePath \"D:\\\\Proyectos\\\\ml-piece-detection-2\\\\build\\\\release\\\\pc_inspector.exe\" -PassThru; Start-Sleep -Seconds 7; $alive = -not $p.HasExited; Write-Output \"App viva: $alive\"; if \\($alive\\) { Stop-Process -Id $p.Id -Force -Confirm:$false }; Get-Content D:\\\\Proyectos\\\\ml-piece-detection-2\\\\build\\\\release\\\\pc_inspector.log -Encoding UTF8 -ErrorAction SilentlyContinue | Select-String 'Migrando|esquema' | ForEach-Object Line)",
+      "PowerShell(git add -A; git commit -F \"C:\\\\Users\\\\furro\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Proyectos-ml-piece-detection-2\\\\d654c09f-4df8-4d1d-a055-a7ad2fad5f74\\\\scratchpad\\\\commit_msg.txt\" | Select-Object -First 2; git push 2>&1 | Select-String 'main|rejected|fatal' | ForEach-Object Line)"
+    ]
+  }
+}

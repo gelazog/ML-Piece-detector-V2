@@ -15,6 +15,10 @@ struct StabilizerOptions {
     // ángulo saltó ~180° se conserva el sentido del frame anterior.
     // Desactivar cuando hay rasgo distintivo (el rasgo es la verdad).
     bool resolveFlips = true;
+    // Por debajo de esta anisotropía la pieza es demasiado redonda para que
+    // su eje principal sea fiable: el ángulo se congela (se conserva el del
+    // frame anterior) para que las herramientas no giren solas.
+    double minAnisotropy = 0.15;
 };
 
 // Estabiliza el fixture medido en este frame contra el mostrado en el frame
