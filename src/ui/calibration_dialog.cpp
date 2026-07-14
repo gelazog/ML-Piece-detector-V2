@@ -29,7 +29,17 @@ CalibrationDialog::CalibrationDialog(const QImage& snapshot,
 
     auto* sideLayout = new QVBoxLayout();
 
-    auto* methodA = new QGroupBox(tr("Método A: objeto de referencia"), this);
+    // Estado actual bien visible: esta es la sección dedicada a la escala.
+    auto* stateLabel = new QLabel(this);
+    stateLabel->setWordWrap(true);
+    stateLabel->setStyleSheet(
+        QStringLiteral("font-weight:bold; padding:6px; background:#22333a; color:#cfe;"));
+    stateLabel->setText(current.valid()
+                            ? tr("Escala actual: %1 mm/px").arg(current.mmPerPixel, 0, 'f', 4)
+                            : tr("Sin calibrar — las medidas están en píxeles."));
+    sideLayout->addWidget(stateLabel);
+
+    auto* methodA = new QGroupBox(tr("Método A: objeto de referencia (recomendado)"), this);
     auto* formA = new QFormLayout(methodA);
     auto* help = new QLabel(
         tr("Coloca una regla u objeto de tamaño conocido sobre la superficie y haz "
@@ -79,6 +89,9 @@ CalibrationDialog::CalibrationDialog(const QImage& snapshot,
     applyButton_ = new QPushButton(tr("Aplicar calibración"), this);
     applyButton_->setEnabled(result_.valid());
     buttonsLayout->addWidget(applyButton_);
+    auto* resetButton = new QPushButton(tr("Quitar calibración"), this);
+    resetButton->setToolTip(tr("Vuelve a medir en píxeles."));
+    buttonsLayout->addWidget(resetButton);
     auto* cancel = new QPushButton(tr("Cancelar"), this);
     buttonsLayout->addWidget(cancel);
     sideLayout->addLayout(buttonsLayout);
@@ -94,6 +107,10 @@ CalibrationDialog::CalibrationDialog(const QImage& snapshot,
     connect(useDistance, &QPushButton::clicked, this,
             &CalibrationDialog::onUseCameraDistance);
     connect(applyButton_, &QPushButton::clicked, this, &CalibrationDialog::onApply);
+    connect(resetButton, &QPushButton::clicked, this, [this] {
+        result_ = domain::ScaleCalibration{};  // sin escala
+        accept();
+    });
     connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
 
     showResult();

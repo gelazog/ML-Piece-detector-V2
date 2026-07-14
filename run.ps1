@@ -107,7 +107,22 @@ if ($missing.Count -gt 0) {
 
 # --- 3. Compilar ---
 $env:PATH = "$ucrtBin;$env:PATH"
-if ($Rebuild -or -not (Test-Path $exe)) {
+# Recompilar si se fuerza (-Rebuild), si no hay binario, o si el código fuente
+# es más nuevo que el binario (evita lanzar una versión vieja tras git pull).
+$needsBuild = $Rebuild -or (-not (Test-Path $exe))
+if (-not $needsBuild) {
+    $exeTime = (Get-Item $exe).LastWriteTime
+    $newest = Get-ChildItem -Path (Join-Path $root 'src'), (Join-Path $root 'tests') `
+        -Recurse -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $cmakeLists = Get-Item (Join-Path $root 'CMakeLists.txt') -ErrorAction SilentlyContinue
+    if (($newest -and $newest.LastWriteTime -gt $exeTime) -or
+        ($cmakeLists -and $cmakeLists.LastWriteTime -gt $exeTime)) {
+        Write-Step 'El código cambió desde la última compilación: recompilando…'
+        $needsBuild = $true
+    }
+}
+if ($needsBuild) {
     Write-Step 'Configurando y compilando (Release)...'
     Push-Location $root
     try {
