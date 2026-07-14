@@ -69,6 +69,7 @@ private slots:
     void onManagePiecesClicked();
     void onLiveSelectionChanged(int index);
     void onLiveParamChanged(int value);
+    void onCalibrateFromToolClicked();
     // Registro en vivo y auto-inspección.
     void onRegisterLiveClicked();
     void onCaptureTick();
@@ -142,6 +143,7 @@ private:
     QPushButton* anchorButton_ = nullptr;  // marcar el rasgo distintivo
     QLabel* liveParamLabel_ = nullptr;     // "Puntos" de la herramienta elegida
     QSpinBox* liveParamSpin_ = nullptr;
+    QPushButton* calibrateFromToolButton_ = nullptr;  // fijar escala con la medida
     QPushButton* managePiecesButton_ = nullptr;
 
     QLabel* verdictBanner_ = nullptr;

@@ -85,7 +85,16 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    vacío para dibujar un **marco de selección** — las herramientas dentro
    quedan seleccionadas y se mueven o borran (Supr) en grupo.
 
-   **Calibración a milímetros** (botón *Calibrar mm…*): dos métodos —
+   **Calibración fácil desde una herramienta** (lo más rápido): traza una
+   Regla (o Caliper/Círculo) sobre algo de tamaño conocido — una regla, una
+   moneda —, selecciónala y pulsa **"Fijar escala con esta medida…"**;
+   escribes cuánto mide de verdad en mm y la escala px→mm sale de ahí. Todas
+   las cotas quedan en unidades reales al instante. (Sin calibrar hay que
+   medir sobre algo conocido: no existe escala automática pura desde una sola
+   cámara.)
+
+   **Calibración a milímetros** (menú *Cámara ▸ Calibrar escala*): dos
+   métodos —
    **A)** haz dos clics sobre una distancia real conocida (una regla, el
    diámetro de una moneda) y escribe los mm: la escala se calcula y además se
    **estima la distancia de la cámara a la superficie**; **B)** escribe la

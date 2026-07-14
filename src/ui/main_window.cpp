@@ -301,6 +301,14 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
            "· Blob: área mínima (px²)"));
     toolsLayout->addWidget(liveParamSpin_);
 
+    calibrateFromToolButton_ = new QPushButton(tr("Fijar escala con esta medida…"), central);
+    calibrateFromToolButton_->setEnabled(false);
+    calibrateFromToolButton_->setToolTip(
+        tr("La forma más fácil de calibrar: traza una herramienta sobre algo de tamaño\n"
+           "conocido (una regla, una moneda), selecciónala y escribe cuánto mide de\n"
+           "verdad. La escala px→mm sale de esa medida y todas las cotas quedan reales."));
+    toolsLayout->addWidget(calibrateFromToolButton_);
+
     toolsLayout->addStretch(1);
     auto* shortcutsButton = new QPushButton(tr("Atajos (F1)"), central);
     shortcutsButton->setToolTip(tr("Guía de atajos de teclado — también puedes cambiarlos"));
@@ -387,6 +395,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(video_, &inspection::EditorCanvas::selectionChanged, this,
             &MainWindow::onLiveSelectionChanged);
     connect(liveParamSpin_, &QSpinBox::valueChanged, this, &MainWindow::onLiveParamChanged);
+    connect(calibrateFromToolButton_, &QPushButton::clicked, this,
+            &MainWindow::onCalibrateFromToolClicked);
     connect(deleteToolButton_, &QPushButton::clicked, this, &MainWindow::onDeleteToolClicked);
     connect(anchorButton_, &QPushButton::toggled, this, &MainWindow::onAnchorButtonToggled);
     connect(video_, &inspection::EditorCanvas::pointPicked, this,
@@ -1151,7 +1161,12 @@ void MainWindow::onAnchorPicked(const cv::Point2f& imagePoint) {
 void MainWindow::onLiveSelectionChanged(int index) {
     liveParamSpin_->setEnabled(false);
     liveParamLabel_->setText(tr("Puntos:"));
-    if (index < 0 || index >= static_cast<int>(liveTools_.size())) {
+    const bool valid = index >= 0 && index < static_cast<int>(liveTools_.size());
+    // Calibrar con la medida: solo tiene sentido en herramientas de longitud.
+    calibrateFromToolButton_->setEnabled(
+        valid && liveTools_[static_cast<std::size_t>(index)].config.type !=
+                     inspection::ToolType::Blob);
+    if (!valid) {
         return;
     }
     QSignalBlocker blocker(liveParamSpin_);
@@ -1202,6 +1217,57 @@ void MainWindow::onLiveParamChanged(int value) {
         liveTools_[static_cast<std::size_t>(index)].geometry);
     commitUndoState();
     video_->update();
+}
+
+// Calibración fácil: la herramienta seleccionada se mide ahora mismo en
+// píxeles y el usuario dice cuánto mide de verdad → escala px→mm.
+void MainWindow::onCalibrateFromToolClicked() {
+    const int index = video_->selectedIndex();
+    if (index < 0 || index >= static_cast<int>(liveTools_.size())) {
+        return;
+    }
+    if (!liveFixture_.has_value() || lastFrame_.isNull()) {
+        statusBar()->showMessage(
+            tr("Necesito ver la pieza para medir la herramienta y calibrar."));
+        return;
+    }
+
+    auto& tool = liveTools_[static_cast<std::size_t>(index)];
+    tool.config.geometryJson = inspection::toJson(tool.geometry);
+    const auto result = inspection::runTool(camera::qImageToMat(lastFrame_), *liveFixture_,
+                                            tool.config);
+    if (!result.isOk() || result.value().measured <= 0.0) {
+        statusBar()->showMessage(
+            tr("La herramienta no midió nada aquí; ajústala sobre la pieza y reintenta."));
+        return;
+    }
+    const double measuredPx = result.value().measured;
+
+    bool ok = false;
+    const double knownMm = QInputDialog::getDouble(
+        this, tr("Fijar escala con la medida"),
+        tr("'%1' mide ahora %2 px.\n¿Cuánto mide de verdad? (mm)")
+            .arg(QString::fromStdString(tool.config.name))
+            .arg(measuredPx, 0, 'f', 1),
+        10.0, 0.01, 100000.0, 2, &ok);
+    if (!ok || knownMm <= 0.0) {
+        return;
+    }
+
+    calibration_ = domain::calibrationFromKnownLength(
+        measuredPx, knownMm, lastFrame_.width(), calibration_.horizontalFovDeg);
+    updateCalibrationLabel();
+    video_->setMmPerPixel(calibration_.mmPerPixel);
+    if (repos_.settings != nullptr) {
+        repos_.settings->setDouble("calib_mm_per_px", calibration_.mmPerPixel);
+        repos_.settings->setDouble("calib_camera_dist_mm", calibration_.cameraDistanceMm);
+        repos_.settings->setDouble("calib_fov_deg", calibration_.horizontalFovDeg);
+    }
+    statusBar()->showMessage(
+        tr("Escala fijada: %1 mm/px (%2 px = %3 mm). Todas las medidas ya están en mm.")
+            .arg(calibration_.mmPerPixel, 0, 'f', 4)
+            .arg(measuredPx, 0, 'f', 1)
+            .arg(knownMm, 0, 'f', 2));
 }
 
 void MainWindow::rotatePieceView(double deltaDeg) {
@@ -1663,6 +1729,7 @@ void MainWindow::onAutoToggled(bool enabled) {
             button->setEnabled(false);
         }
         deleteToolButton_->setEnabled(false);
+        calibrateFromToolButton_->setEnabled(false);
         verdictBanner_->setStyleSheet(
             QStringLiteral("background:#444; color:white; font-size:16px; font-weight:bold;"));
         verdictBanner_->setText(tr("Auto-inspección en marcha…"));
@@ -1676,6 +1743,7 @@ void MainWindow::onAutoToggled(bool enabled) {
             button->setEnabled(true);
         }
         deleteToolButton_->setEnabled(true);
+        onLiveSelectionChanged(video_->selectedIndex());  // reactiva calibrar/puntos
         verdictBanner_->setVisible(false);
         video_->clearResults();
     }
