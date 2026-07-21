@@ -22,7 +22,8 @@ struct ToolRunResult {
     std::string name;
     ToolType type = ToolType::Caliper;
     bool ok = false;
-    double measured = 0.0;  // valor principal (px o conteo)
+    double measured = 0.0;  // valor principal (px, conteo o grados)
+    bool measuredIsAngle = false;  // true = 'measured' está en grados
     std::string detail;
     // Para pintar sobre la imagen inspeccionada (coordenadas de imagen).
     std::vector<cv::Point2f> overlayPoints;

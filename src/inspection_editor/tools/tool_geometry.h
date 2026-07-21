@@ -54,8 +54,16 @@ struct RulerGeometry {
     cv::Point2f p1;
 };
 
+struct LineToLineGeometry {
+    cv::Point2f a0;  // línea de referencia A
+    cv::Point2f a1;
+    cv::Point2f b0;  // línea de referencia B
+    cv::Point2f b1;
+};
+
 using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGeometry,
-                                  EdgeFlawGeometry, BlobGeometry, RulerGeometry>;
+                                  EdgeFlawGeometry, BlobGeometry, RulerGeometry,
+                                  LineToLineGeometry>;
 
 // (De)serialización JSON (cv::FileStorage en memoria). El tipo del JSON debe
 // coincidir con config.type al parsear.

@@ -94,10 +94,14 @@ InspectionResultDialog::InspectionResultDialog(
         const auto& result = outcome_.toolResults[static_cast<std::size_t>(row)];
         table->setItem(row, 0,
                        new QTableWidgetItem(QString::fromStdString(result.name)));
-        const QString measure =
-            result.type == inspection::ToolType::Blob
-                ? QString::number(result.measured, 'f', 0)
-                : QString::fromStdString(calibration.formatLength(result.measured));
+        QString measure;
+        if (result.measuredIsAngle) {
+            measure = QStringLiteral("%1°").arg(result.measured, 0, 'f', 1);
+        } else if (result.type == inspection::ToolType::Blob) {
+            measure = QString::number(result.measured, 'f', 0);
+        } else {
+            measure = QString::fromStdString(calibration.formatLength(result.measured));
+        }
         table->setItem(row, 1, new QTableWidgetItem(measure));
         auto* state = new QTableWidgetItem(result.ok ? QStringLiteral("OK")
                                                      : QStringLiteral("NG"));

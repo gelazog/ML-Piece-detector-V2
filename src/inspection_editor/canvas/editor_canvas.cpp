@@ -21,6 +21,7 @@ QColor toolColor(ToolType type) {
         case ToolType::EdgeFlaw: return {0, 230, 120};
         case ToolType::Blob: return {255, 105, 180};
         case ToolType::Ruler: return {255, 255, 120};
+        case ToolType::LineToLine: return {120, 220, 220};
     }
     return Qt::white;
 }
@@ -51,6 +52,8 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
             } else if constexpr (std::is_same_v<T, CircleGeometry> ||
                                  std::is_same_v<T, BlobGeometry>) {
                 return {g.center};
+            } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
+                return {g.a0, g.a1, g.b0, g.b1};
             } else {
                 return {g.lineA, g.lineB};
             }
@@ -76,6 +79,11 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 g.lineB += delta;
                 g.scanA += delta;
                 g.scanB += delta;
+            } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
+                g.a0 += delta;
+                g.a1 += delta;
+                g.b0 += delta;
+                g.b1 += delta;
             }
         },
         geometry);
@@ -144,7 +152,9 @@ void EditorCanvas::setTools(std::vector<EditedTool>* tools) {
 
 void EditorCanvas::setCreateType(std::optional<ToolType> type) {
     createType_ = type;
+    pendingLineA_.reset();  // cancela una Línea-Línea a medio crear
     setCursor(type.has_value() ? Qt::CrossCursor : Qt::ArrowCursor);
+    update();
 }
 
 void EditorCanvas::setRegionPickMode(bool enabled) {
@@ -271,6 +281,9 @@ int EditorCanvas::hitTest(const cv::Point2f& p) const {
                 } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
                     d = std::min(distanceToSegment(p, toImg(g.lineA), toImg(g.lineB)),
                                  distanceToSegment(p, toImg(g.scanA), toImg(g.scanB)));
+                } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
+                    d = std::min(distanceToSegment(p, toImg(g.a0), toImg(g.a1)),
+                                 distanceToSegment(p, toImg(g.b0), toImg(g.b1)));
                 } else if constexpr (std::is_same_v<T, BlobGeometry>) {
                     const float hw = g.width / 2.0F;
                     const float hh = g.height / 2.0F;
@@ -479,6 +492,24 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
     const cv::Point2f a = vision::toPieceCoords(fixture_, dragStart_);
     const cv::Point2f b = vision::toPieceCoords(fixture_, p);
 
+    // Línea-Línea se crea en dos arrastres: el primero fija la línea A (que se
+    // dibuja mientras se traza la B), el segundo cierra la herramienta.
+    if (*createType_ == ToolType::LineToLine) {
+        if (!pendingLineA_.has_value()) {
+            pendingLineA_ = std::array<cv::Point2f, 2>{a, b};
+            update();
+            return;
+        }
+        LineToLineGeometry g;
+        g.a0 = (*pendingLineA_)[0];
+        g.a1 = (*pendingLineA_)[1];
+        g.b0 = a;
+        g.b1 = b;
+        pendingLineA_.reset();
+        emit toolCreated(ToolGeometry(g));
+        return;
+    }
+
     ToolGeometry geometry = CaliperGeometry{};
     switch (*createType_) {
         case ToolType::Caliper:
@@ -520,6 +551,8 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
             geometry = g;
             break;
         }
+        case ToolType::LineToLine:
+            return;  // gestionado arriba (creación en dos pasos)
     }
     emit toolCreated(geometry);
 }
@@ -611,6 +644,16 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                      << imageToWidget(toImg(g.center + cv::Point2f(-hw, hh)));
                 painter.drawPolygon(quad);
                 labelPos = quad.boundingRect().topLeft() + QPointF(2, -4);
+            } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
+                const QPointF a0 = imageToWidget(toImg(g.a0));
+                const QPointF a1 = imageToWidget(toImg(g.a1));
+                const QPointF b0 = imageToWidget(toImg(g.b0));
+                const QPointF b1 = imageToWidget(toImg(g.b1));
+                painter.drawLine(a0, a1);
+                painter.drawLine(b0, b1);
+                painter.drawEllipse(a0, 3.0, 3.0);
+                painter.drawEllipse(b0, 3.0, 3.0);
+                labelPos = (a0 + b1) / 2.0;
             }
         },
         tool.geometry);
@@ -650,7 +693,9 @@ void EditorCanvas::paintResults(QPainter& painter) const {
             continue;
         }
         QString measure;
-        if (result.type == ToolType::Blob) {
+        if (result.measuredIsAngle) {
+            measure = QStringLiteral("%1°").arg(result.measured, 0, 'f', 1);
+        } else if (result.type == ToolType::Blob) {
             measure = QStringLiteral("n=%1").arg(result.measured, 0, 'f', 0);
         } else if (mmPerPixel_ > 0.0 && unit_ != LengthUnit::Pixels) {
             const double mm = result.measured * mmPerPixel_;
@@ -676,14 +721,21 @@ void EditorCanvas::paintResults(QPainter& painter) const {
 }
 
 void EditorCanvas::paintCreationPreview(QPainter& painter) const {
-    if (!creating_) {
-        return;
-    }
     QPen pen(Qt::white);
     pen.setStyle(Qt::DashLine);
     pen.setCosmetic(true);
     painter.setPen(pen);
     painter.setBrush(Qt::NoBrush);
+
+    // Línea A ya trazada de una Línea-Línea en curso: se mantiene visible
+    // mientras se dibuja la línea B.
+    if (pendingLineA_.has_value()) {
+        painter.drawLine(imageToWidget(toImg((*pendingLineA_)[0])),
+                         imageToWidget(toImg((*pendingLineA_)[1])));
+    }
+    if (!creating_) {
+        return;
+    }
 
     const QPointF a = imageToWidget(dragStart_);
     const QPointF b = imageToWidget(dragCurrent_);

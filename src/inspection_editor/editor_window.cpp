@@ -35,6 +35,7 @@ QString typeLabel(ToolType type) {
         case ToolType::EdgeFlaw: return QStringLiteral("Borde liso");
         case ToolType::Blob: return QStringLiteral("Blob");
         case ToolType::Ruler: return QStringLiteral("Regla");
+        case ToolType::LineToLine: return QStringLiteral("Línea-Línea");
     }
     return QStringLiteral("?");
 }
@@ -84,6 +85,7 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     addMode(tr("Borde liso"), static_cast<int>(ToolType::EdgeFlaw));
     addMode(tr("Blob"), static_cast<int>(ToolType::Blob));
     addMode(tr("Regla"), static_cast<int>(ToolType::Ruler));
+    addMode(tr("Línea-Línea"), static_cast<int>(ToolType::LineToLine));
     modesLayout->addStretch(1);
     rootLayout->addLayout(modesLayout);
 
@@ -285,7 +287,8 @@ void EditorWindow::syncPanelFromSelection() {
         nameEdit_->setText(QString::fromStdString(tool.config.name));
         tolMin_->setValue(tool.config.toleranceMin);
         tolMax_->setValue(tool.config.toleranceMax);
-        if (calibration_.valid() && tool.config.type != ToolType::Blob) {
+        if (calibration_.valid() && tool.config.type != ToolType::Blob &&
+            tool.config.type != ToolType::LineToLine) {
             tolMmLabel_->setText(tr("= %1 – %2 mm")
                                      .arg(calibration_.toMm(tool.config.toleranceMin), 0,
                                           'f', 2)
@@ -393,7 +396,8 @@ void EditorWindow::onPanelEdited() {
     }
     tool.config.toleranceMin = tolMin_->value();
     tool.config.toleranceMax = tolMax_->value();
-    if (calibration_.valid() && tool.config.type != ToolType::Blob) {
+    if (calibration_.valid() && tool.config.type != ToolType::Blob &&
+        tool.config.type != ToolType::LineToLine) {
         tolMmLabel_->setText(tr("= %1 – %2 mm")
                                  .arg(calibration_.toMm(tolMin_->value()), 0, 'f', 2)
                                  .arg(calibration_.toMm(tolMax_->value()), 0, 'f', 2));
@@ -460,10 +464,14 @@ void EditorWindow::onTestClicked() {
 
     QStringList lines;
     for (const auto& result : results) {
-        const QString measure =
-            result.type == ToolType::Blob
-                ? QString::number(result.measured, 'f', 0)
-                : QString::fromStdString(calibration_.formatLength(result.measured));
+        QString measure;
+        if (result.measuredIsAngle) {
+            measure = QStringLiteral("%1°").arg(result.measured, 0, 'f', 1);
+        } else if (result.type == ToolType::Blob) {
+            measure = QString::number(result.measured, 'f', 0);
+        } else {
+            measure = QString::fromStdString(calibration_.formatLength(result.measured));
+        }
         lines << QStringLiteral("%1 [%2] %3 — %4")
                      .arg(QString::fromStdString(result.name),
                           result.ok ? QStringLiteral("OK") : QStringLiteral("NG"), measure,

@@ -170,6 +170,7 @@ QString toolTypeLabel(inspection::ToolType type) {
         case inspection::ToolType::EdgeFlaw: return QStringLiteral("Borde liso");
         case inspection::ToolType::Blob: return QStringLiteral("Blob");
         case inspection::ToolType::Ruler: return QStringLiteral("Regla");
+        case inspection::ToolType::LineToLine: return QStringLiteral("Línea-Línea");
     }
     return QStringLiteral("?");
 }
@@ -277,7 +278,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     for (const auto type :
          {inspection::ToolType::Caliper, inspection::ToolType::Circle,
           inspection::ToolType::PointToLine, inspection::ToolType::EdgeFlaw,
-          inspection::ToolType::Blob, inspection::ToolType::Ruler}) {
+          inspection::ToolType::Blob, inspection::ToolType::Ruler,
+          inspection::ToolType::LineToLine}) {
         auto* button = addMode(toolTypeLabel(type), static_cast<int>(type));
         button->setIcon(inspection::toolIcon(type));
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -727,6 +729,7 @@ void MainWindow::buildShortcuts() {
         {"tool_edge", inspection::ToolType::EdgeFlaw, Qt::Key_4},
         {"tool_blob", inspection::ToolType::Blob, Qt::Key_5},
         {"tool_ruler", inspection::ToolType::Ruler, Qt::Key_6},
+        {"tool_line_to_line", inspection::ToolType::LineToLine, Qt::Key_7},
     };
     for (const auto& entry : toolKeys) {
         const int id = static_cast<int>(entry.type);
@@ -1082,12 +1085,16 @@ void MainWindow::onLiveToolCreated(const inspection::ToolGeometry& geometry) {
             inspection::suggestTolerances(tool.config.type, result.value().measured,
                                           tool.config.toleranceMin,
                                           tool.config.toleranceMax);
-            const QString measure =
-                tool.config.type == inspection::ToolType::Blob
-                    ? QString::number(result.value().measured, 'f', 0)
-                    : QString::fromStdString(
-                          calibration_.formatLength(result.value().measured));
-            hint = tr("%1 — midió %2; tolerancias sugeridas [%3, %4] px")
+            QString measure;
+            if (result.value().measuredIsAngle) {
+                measure = QStringLiteral("%1°").arg(result.value().measured, 0, 'f', 1);
+            } else if (tool.config.type == inspection::ToolType::Blob) {
+                measure = QString::number(result.value().measured, 'f', 0);
+            } else {
+                measure = QString::fromStdString(
+                    calibration_.formatLength(result.value().measured));
+            }
+            hint = tr("%1 — midió %2; tolerancias sugeridas [%3, %4]")
                        .arg(QString::fromStdString(tool.config.name), measure)
                        .arg(tool.config.toleranceMin, 0, 'f', 1)
                        .arg(tool.config.toleranceMax, 0, 'f', 1);
@@ -1221,9 +1228,13 @@ void MainWindow::onLiveSelectionChanged(int index) {
     liveParamLabel_->setText(tr("Puntos:"));
     const bool valid = index >= 0 && index < static_cast<int>(liveTools_.size());
     // Calibrar con la medida: solo tiene sentido en herramientas de longitud.
+    // Calibrar con la medida requiere una LONGITUD; Blob (conteo) y
+    // Línea-Línea (grados) no sirven.
     calibrateFromToolButton_->setEnabled(
         valid && liveTools_[static_cast<std::size_t>(index)].config.type !=
-                     inspection::ToolType::Blob);
+                     inspection::ToolType::Blob &&
+        liveTools_[static_cast<std::size_t>(index)].config.type !=
+            inspection::ToolType::LineToLine);
     if (!valid) {
         return;
     }

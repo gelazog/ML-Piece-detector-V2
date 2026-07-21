@@ -16,13 +16,15 @@ const char* toolTypeName(ToolType type) {
         case ToolType::EdgeFlaw: return "edge_flaw";
         case ToolType::Blob: return "blob";
         case ToolType::Ruler: return "ruler";
+        case ToolType::LineToLine: return "line_to_line";
     }
     return "unknown";
 }
 
 core::Result<ToolType> toolTypeFromName(const std::string& name) {
     for (const ToolType type : {ToolType::Caliper, ToolType::Circle, ToolType::PointToLine,
-                                ToolType::EdgeFlaw, ToolType::Blob, ToolType::Ruler}) {
+                                ToolType::EdgeFlaw, ToolType::Blob, ToolType::Ruler,
+                                ToolType::LineToLine}) {
         if (name == toolTypeName(type)) {
             return core::Result<ToolType>::ok(type);
         }
@@ -57,6 +59,11 @@ const char* toolTypeDescription(ToolType type) {
             return "Regla — distancia directa entre dos puntos fijos de la pieza\n"
                    "(no busca bordes: mide exactamente lo que trazas). Con la escala\n"
                    "calibrada, la medida sale en mm/cm. Ideal para medir al vuelo.";
+        case ToolType::LineToLine:
+            return "Línea-Línea — ángulo entre dos líneas de referencia.\n"
+                   "Traza la primera línea y luego la segunda (dos arrastres); mide el\n"
+                   "ángulo entre ambas en grados y también su separación. Útil para\n"
+                   "verificar paralelismo o el ángulo entre dos bordes de la pieza.";
     }
     return "";
 }
@@ -74,6 +81,13 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
             toleranceMin = 0.0;
             toleranceMax = std::max(measured * 1.5, 2.0);
             return;
+        case ToolType::LineToLine: {
+            // Ángulo en grados: banda de ±2° alrededor del valor de la pieza buena.
+            const double band = 2.0;
+            toleranceMin = std::max(0.0, measured - band);
+            toleranceMax = measured + band;
+            return;
+        }
         case ToolType::Caliper:
         case ToolType::Circle:
         case ToolType::PointToLine:
@@ -101,8 +115,10 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::EdgeFlaw;
             } else if constexpr (std::is_same_v<T, BlobGeometry>) {
                 return ToolType::Blob;
-            } else {
+            } else if constexpr (std::is_same_v<T, RulerGeometry>) {
                 return ToolType::Ruler;
+            } else {
+                return ToolType::LineToLine;
             }
         },
         geometry);
@@ -180,9 +196,15 @@ std::string toJson(const ToolGeometry& geometry) {
                     fs << "cx" << g.center.x << "cy" << g.center.y << "w" << g.width << "h"
                        << g.height << "minArea" << g.minArea << "dark" << (g.darkBlobs ? 1 : 0);
                 });
-            } else {
+            } else if constexpr (std::is_same_v<T, RulerGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "x0" << g.p0.x << "y0" << g.p0.y << "x1" << g.p1.x << "y1" << g.p1.y;
+                });
+            } else {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "ax0" << g.a0.x << "ay0" << g.a0.y << "ax1" << g.a1.x << "ay1"
+                       << g.a1.y << "bx0" << g.b0.x << "by0" << g.b0.y << "bx1" << g.b1.x
+                       << "by1" << g.b1.y;
                 });
             }
         },
@@ -269,6 +291,19 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.height = static_cast<float>(h.value());
                 g.minArea = static_cast<float>(minArea.value());
                 g.darkBlobs = dark.value() != 0.0;
+                return ResultT::ok(g);
+            }
+            case ToolType::LineToLine: {
+                LineToLineGeometry g;
+                auto ax0 = f("ax0"), ay0 = f("ay0"), ax1 = f("ax1"), ay1 = f("ay1");
+                auto bx0 = f("bx0"), by0 = f("by0"), bx1 = f("bx1"), by1 = f("by1");
+                for (const auto* v : {&ax0, &ay0, &ax1, &ay1, &bx0, &by0, &bx1, &by1}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.a0 = {static_cast<float>(ax0.value()), static_cast<float>(ay0.value())};
+                g.a1 = {static_cast<float>(ax1.value()), static_cast<float>(ay1.value())};
+                g.b0 = {static_cast<float>(bx0.value()), static_cast<float>(by0.value())};
+                g.b1 = {static_cast<float>(bx1.value()), static_cast<float>(by1.value())};
                 return ResultT::ok(g);
             }
         }

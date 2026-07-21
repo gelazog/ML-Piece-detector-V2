@@ -44,7 +44,7 @@ archivos principales que toca.
 
 ### A. Herramientas de trazado
 
-- [ ] **T1 — Línea-Línea (Line-to-Line)**. El prompt original pedía
+- [x] **T1 — Línea-Línea (Line-to-Line)**. El prompt original pedía
   *"Point-to-Line / Line-to-Line: distancia o ángulo entre puntos y líneas de
   referencia"*; solo se implementó Punto-Línea. Cognex VisionPro y Halcon
   tratan "line-to-line angle/distance" como herramienta separada del caliper.

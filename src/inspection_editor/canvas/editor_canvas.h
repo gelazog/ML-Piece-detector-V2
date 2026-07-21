@@ -3,6 +3,7 @@
 #include <QImage>
 #include <QWidget>
 
+#include <array>
 #include <optional>
 #include <vector>
 
@@ -119,6 +120,8 @@ private:
     bool marquee_ = false;
     cv::Point2f dragStart_;
     cv::Point2f dragCurrent_;
+    // Primera línea ya trazada de una Línea-Línea en curso (coords de pieza).
+    std::optional<std::array<cv::Point2f, 2>> pendingLineA_;
 
     // Estado del modo vivo.
     bool liveMode_ = false;

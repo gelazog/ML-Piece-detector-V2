@@ -104,6 +104,17 @@ QIcon toolIcon(ToolType type) {
                 p.drawEllipse(QPointF(18, 10), 1.9, 1.9);
                 p.drawEllipse(QPointF(15, 18), 2.7, 2.7);
             });
+        case ToolType::LineToLine:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // Dos líneas que forman un ángulo, con un arco entre ellas.
+                p.drawLine(5, 23, 24, 8);   // línea A
+                p.drawLine(5, 23, 24, 20);  // línea B
+                QPen thin = p.pen();
+                thin.setWidthF(1.2);
+                p.setPen(thin);
+                p.setBrush(Qt::NoBrush);
+                p.drawArc(QRectF(1, 15, 16, 16), 0 * 16, 38 * 16);  // arco del ángulo
+            });
     }
     return {};
 }

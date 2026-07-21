@@ -267,6 +267,40 @@ TEST(Ruler, MeasuresOwnLengthWithMmDetail) {
     EXPECT_DOUBLE_EQ(hi, 66.0);
 }
 
+TEST(LineToLine, JsonRoundTrip) {
+    const LineToLineGeometry g{{10.0F, 10.0F}, {90.0F, 10.0F},
+                               {10.0F, 40.0F}, {90.0F, 70.0F}};
+    auto back = geometryFromJson(ToolType::LineToLine, toJson(ToolGeometry(g)));
+    ASSERT_TRUE(back.isOk()) << back.error().message;
+    const auto& r = std::get<LineToLineGeometry>(back.value());
+    EXPECT_FLOAT_EQ(r.a0.x, 10.0F);
+    EXPECT_FLOAT_EQ(r.a1.x, 90.0F);
+    EXPECT_FLOAT_EQ(r.b0.y, 40.0F);
+    EXPECT_FLOAT_EQ(r.b1.y, 70.0F);
+}
+
+TEST(LineToLine, MeasuresAngleBetweenLines) {
+    const cv::Mat gray(120, 120, CV_8UC1, cv::Scalar(128));
+
+    // Línea A horizontal; línea B a 45° (sube 1 por cada 1 en x).
+    const LineToLineGeometry g{{10.0F, 20.0F}, {100.0F, 20.0F},
+                               {10.0F, 100.0F}, {100.0F, 10.0F}};
+    auto result = runTool(gray, kIdentity,
+                          makeConfig(ToolType::LineToLine, ToolGeometry(g), 43, 47));
+    ASSERT_TRUE(result.isOk()) << result.error().message;
+    EXPECT_TRUE(result.value().measuredIsAngle);
+    EXPECT_NEAR(result.value().measured, 45.0, 1e-3);
+    EXPECT_TRUE(result.value().ok);  // 45 dentro de [43, 47].
+
+    // Líneas paralelas: ángulo 0.
+    const LineToLineGeometry par{{10.0F, 20.0F}, {100.0F, 20.0F},
+                                 {10.0F, 60.0F}, {100.0F, 60.0F}};
+    result = runTool(gray, kIdentity,
+                     makeConfig(ToolType::LineToLine, ToolGeometry(par), -1, 1));
+    ASSERT_TRUE(result.isOk()) << result.error().message;
+    EXPECT_NEAR(result.value().measured, 0.0, 1e-3);
+}
+
 // --- Anclaje al fixture (el test de oro de la fase) ---
 
 TEST(FixtureAnchoring, CaliperMeasuresSameOnRotatedPiece) {

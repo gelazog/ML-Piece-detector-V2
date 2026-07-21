@@ -29,6 +29,12 @@ struct Fmt {
     LengthUnit unit = LengthUnit::Auto;
 };
 
+std::string fmt2(double value) {
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer), "%.2f", value);
+    return buffer;
+}
+
 // Longitud con unidades. Sin escala o unidad Px: píxeles. Con escala: mm, cm
 // o automático (cm a partir de 10 cm) según la elección del operador.
 std::string fmtLen(double px, const Fmt& f) {
@@ -133,6 +139,48 @@ ToolRunResult runRuler(const Fixture& fixture, const ToolConfig& config,
     result.measured = cv::norm(p1 - p0);
     result.ok = withinTolerance(config, result.measured);
     result.detail = "L=" + fmtLen(result.measured, fmt);
+    return result;
+}
+
+ToolRunResult runLineToLine(const Fixture& fixture, const ToolConfig& config,
+                            const LineToLineGeometry& g, const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+    result.measuredIsAngle = true;
+    const cv::Point2f a0 = toImg(fixture, g.a0);
+    const cv::Point2f a1 = toImg(fixture, g.a1);
+    const cv::Point2f b0 = toImg(fixture, g.b0);
+    const cv::Point2f b1 = toImg(fixture, g.b1);
+    result.overlaySegments.push_back({a0, a1});
+    result.overlaySegments.push_back({b0, b1});
+
+    const cv::Point2f dirA = a1 - a0;
+    const cv::Point2f dirB = b1 - b0;
+    if (cv::norm(dirA) < 1.0 || cv::norm(dirB) < 1.0) {
+        result.detail = "Líneas demasiado cortas";
+        return result;
+    }
+
+    // Ángulo entre líneas (no dirigido): 0°..90°. atan2 del producto cruz y
+    // el punto, tomando el valor absoluto y plegando a [0, 90].
+    const double cross = static_cast<double>(dirA.x) * dirB.y -
+                         static_cast<double>(dirA.y) * dirB.x;
+    const double dot = static_cast<double>(dirA.x) * dirB.x +
+                       static_cast<double>(dirA.y) * dirB.y;
+    double angleDeg = std::abs(std::atan2(cross, dot) * 180.0 / kPi);
+    if (angleDeg > 90.0) {
+        angleDeg = 180.0 - angleDeg;
+    }
+
+    // Separación: distancia perpendicular del punto medio de B a la línea A.
+    const cv::Point2f midB = (b0 + b1) * 0.5F;
+    const double lenA = cv::norm(dirA);
+    const double sep = std::abs(static_cast<double>(dirA.x) * (midB.y - a0.y) -
+                                static_cast<double>(dirA.y) * (midB.x - a0.x)) /
+                       lenA;
+
+    result.measured = angleDeg;
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = "ángulo=" + fmt2(angleDeg) + "°, separación=" + fmtLen(sep, fmt);
     return result;
 }
 
@@ -425,6 +473,9 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
                 return ResultT::ok(runRuler(fixture, config,
                                             std::get<RulerGeometry>(geometry.value()),
                                             fmt));
+            case ToolType::LineToLine:
+                return ResultT::ok(runLineToLine(
+                    fixture, config, std::get<LineToLineGeometry>(geometry.value()), fmt));
         }
         return ResultT::err("Tipo de herramienta no soportado");
     } catch (const cv::Exception& e) {
