@@ -405,6 +405,29 @@ TEST(TranslateGeometry, ShiftsAllPointsOfEachType) {
     EXPECT_FLOAT_EQ(std::get<AngleGeometry>(angle).end1.y, 0.0F);
 }
 
+TEST(HomographyScale, LengthToolsUsePerPointHomography) {
+    const cv::Mat gray(140, 140, CV_8UC1, cv::Scalar(128));
+    // Regla de 100 px en imagen (fixture identidad => coords de pieza = imagen).
+    const RulerGeometry g{{10.0F, 10.0F}, {110.0F, 10.0F}};
+    // Homografía fronto-paralela: 0.5 mm por px => 100 px = 50 mm.
+    const cv::Mat imageToMm =
+        (cv::Mat_<double>(3, 3) << 0.5, 0, 0, 0, 0.5, 0, 0, 0, 1);
+
+    auto result = runTool(gray, kIdentity,
+                          makeConfig(ToolType::Ruler, ToolGeometry(g), 90, 110), 0.0,
+                          LengthUnit::Auto, imageToMm);
+    ASSERT_TRUE(result.isOk()) << result.error().message;
+    EXPECT_NEAR(result.value().measured, 100.0, 1e-6);  // el principal sigue en px
+    // Los mm salen de la homografía, no de una escala constante.
+    EXPECT_NE(result.value().detail.find("50.00mm"), std::string::npos);
+
+    // Sin homografía pero con escala constante 0.25 mm/px => 25 mm.
+    result = runTool(gray, kIdentity, makeConfig(ToolType::Ruler, ToolGeometry(g), 90, 110),
+                     0.25, LengthUnit::Auto);
+    ASSERT_TRUE(result.isOk());
+    EXPECT_NE(result.value().detail.find("25.00mm"), std::string::npos);
+}
+
 // --- Anclaje al fixture (el test de oro de la fase) ---
 
 TEST(FixtureAnchoring, CaliperMeasuresSameOnRotatedPiece) {

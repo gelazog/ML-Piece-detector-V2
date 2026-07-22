@@ -206,7 +206,7 @@ archivos principales que toca.
   Skills: `computer-vision-opencv`, `cpp-testing`.
   Archivos: `vision/plane_scale.*`.
 
-- [ ] **D4 — Conectar la homografía por-punto a las herramientas**.
+- [x] **D4 — Conectar la homografía por-punto a las herramientas**.
   `planeDistanceMm` (homografía completa del plano) ya existe en
   `plane_scale.h` pero las herramientas solo usan la **escala local**
   (`mmPerPixel` constante). Con la cámara no perfectamente perpendicular al

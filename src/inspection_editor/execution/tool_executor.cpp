@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "inspection_editor/execution/edge_detection.h"
+#include "vision/plane_scale.h"
 #include "vision/position_fixture.h"
 
 namespace pci::inspection {
@@ -23,10 +24,13 @@ cv::Point2f toImg(const Fixture& f, const cv::Point2f& p) {
     return toImageCoords(f, p);
 }
 
-// Empaqueta la escala y la unidad elegida por el operador.
+// Empaqueta la escala y la unidad elegida por el operador. Si imageToMm no está
+// vacía, es la homografía imagen->mm de un marcador ArUco (D4): las longitudes
+// entre dos puntos se miden por la homografía (perspectiva corregida).
 struct Fmt {
     double mmPerPixel = 0.0;
     LengthUnit unit = LengthUnit::Auto;
+    cv::Mat imageToMm;
 };
 
 std::string fmt2(double value) {
@@ -52,6 +56,49 @@ std::string fmtLen(double px, const Fmt& f) {
         std::snprintf(buffer, sizeof(buffer), "%.2fmm (%.1fpx)", mm, px);
     }
     return buffer;
+}
+
+// Formatea una medida ya conocida en mm junto a su equivalente en px.
+std::string formatMmPx(double mm, double px, const Fmt& f) {
+    char buffer[64];
+    const bool useCm = f.unit == LengthUnit::Centimeters ||
+                       (f.unit == LengthUnit::Auto && mm >= 100.0);
+    if (useCm) {
+        std::snprintf(buffer, sizeof(buffer), "%.2fcm (%.1fpx)", mm / 10.0, px);
+    } else {
+        std::snprintf(buffer, sizeof(buffer), "%.2fmm (%.1fpx)", mm, px);
+    }
+    return buffer;
+}
+
+// Longitud entre dos puntos de imagen. Con homografía ArUco activa, los mm se
+// miden mapeando ambos puntos al plano (corrige perspectiva); sin ella, cae a
+// la escala constante. El texto en px siempre refleja la distancia en imagen.
+std::string fmtLenPts(const cv::Point2f& a, const cv::Point2f& b, const Fmt& f) {
+    if (f.imageToMm.empty() || f.unit == LengthUnit::Pixels) {
+        return fmtLen(cv::norm(b - a), f);
+    }
+    return formatMmPx(vision::planeDistanceMm(f.imageToMm, a, b), cv::norm(b - a), f);
+}
+
+// Distancia perpendicular de un punto a una línea, con mm por homografía cuando
+// hay marcador ArUco (mapea el punto y la línea al plano y mide allí).
+std::string fmtPerpDist(const cv::Point2f& p, const cv::Point2f& lineA,
+                        const cv::Point2f& lineB, double pxDist, const Fmt& f) {
+    if (f.imageToMm.empty() || f.unit == LengthUnit::Pixels) {
+        return fmtLen(pxDist, f);
+    }
+    std::vector<cv::Point2f> in{p, lineA, lineB};
+    std::vector<cv::Point2f> out;
+    cv::perspectiveTransform(in, out, f.imageToMm);
+    const cv::Point2f delta = out[2] - out[1];
+    const double len = cv::norm(delta);
+    const double mm =
+        len > 1e-9 ? std::abs(static_cast<double>(delta.x) * (out[0].y - out[1].y) -
+                              static_cast<double>(delta.y) * (out[0].x - out[1].x)) /
+                         len
+                   : 0.0;
+    return formatMmPx(mm, pxDist, f);
 }
 
 std::string fmtArea(double px2, const Fmt& f) {
@@ -121,7 +168,8 @@ ToolRunResult runCaliper(const cv::Mat& gray, const Fixture& fixture,
 
     result.measured = std::abs(edges[first].position - edges[second].position);
     result.ok = withinTolerance(config, result.measured);
-    result.detail = "d=" + fmtLen(result.measured, fmt);
+    // mm por homografía entre los dos bordes medidos (si hay marcador ArUco).
+    result.detail = "d=" + fmtLenPts(edges[first].point, edges[second].point, fmt);
     result.overlayPoints.push_back(edges[first].point);
     result.overlayPoints.push_back(edges[second].point);
     return result;
@@ -138,7 +186,7 @@ ToolRunResult runRuler(const Fixture& fixture, const ToolConfig& config,
 
     result.measured = cv::norm(p1 - p0);
     result.ok = withinTolerance(config, result.measured);
-    result.detail = "L=" + fmtLen(result.measured, fmt);
+    result.detail = "L=" + fmtLenPts(p0, p1, fmt);
     return result;
 }
 
@@ -305,7 +353,7 @@ ToolRunResult runPointToLine(const cv::Mat& gray, const Fixture& fixture,
                          static_cast<double>(lineDelta.y) * (p.x - lineA.x);
     result.measured = std::abs(cross) / lineLength;
     result.ok = withinTolerance(config, result.measured);
-    result.detail = "d=" + fmtLen(result.measured, fmt);
+    result.detail = "d=" + fmtPerpDist(p, lineA, lineB, result.measured, fmt);
     result.overlayPoints.push_back(p);
     return result;
 }
@@ -494,9 +542,9 @@ ToolRunResult runPolyBlob(const cv::Mat& gray, const Fixture& fixture, const Too
 
 core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture& fixture,
                                     const ToolConfig& config, double mmPerPixel,
-                                    LengthUnit unit) {
+                                    LengthUnit unit, const cv::Mat& imageToMm) {
     using ResultT = core::Result<ToolRunResult>;
-    const Fmt fmt{mmPerPixel, unit};
+    const Fmt fmt{mmPerPixel, unit, imageToMm};
 
     if (image.empty()) {
         return ResultT::err("Imagen vacía");
@@ -561,13 +609,13 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
 
 std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture& fixture,
                                     const std::vector<ToolConfig>& tools, double mmPerPixel,
-                                    LengthUnit unit) {
+                                    LengthUnit unit, const cv::Mat& imageToMm) {
     std::vector<ToolRunResult> results;
     for (const auto& config : tools) {
         if (!config.enabled) {
             continue;
         }
-        auto result = runTool(image, fixture, config, mmPerPixel, unit);
+        auto result = runTool(image, fixture, config, mmPerPixel, unit, imageToMm);
         if (result.isOk()) {
             results.push_back(std::move(result.value()));
         } else {
@@ -584,7 +632,7 @@ std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture&
 }
 
 std::string formatLength(double px, double mmPerPixel, LengthUnit unit) {
-    return fmtLen(px, Fmt{mmPerPixel, unit});
+    return fmtLen(px, Fmt{mmPerPixel, unit, cv::Mat()});
 }
 
 }  // namespace pci::inspection

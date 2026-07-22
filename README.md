@@ -126,8 +126,13 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    marcador es un cuadrado conocido, la uniformidad de sus lados y diagonales en
    píxeles delata cuán perpendicular está la cámara al plano — si sale
    «regular/pobre», endereza la cámara para que la escala sea fiable lejos del
-   marcador. (Puntos a distinta altura/profundidad respecto al plano necesitan
-   una cámara de profundidad; con una sola cámara 2D no es recuperable.)
+   marcador. Con el marcador activo, las herramientas de **longitud** (Caliper,
+   Regla, Punto-Línea) calculan los mm **por homografía punto a punto** en vez de
+   multiplicar píxeles por una escala constante: así corrigen la perspectiva y
+   siguen siendo precisas lejos del marcador (el valor con el que se comparan las
+   tolerancias sigue en px). (Puntos a distinta altura/profundidad respecto al
+   plano necesitan una cámara de profundidad; con una sola cámara 2D no es
+   recuperable.)
 
    **Calibración fácil desde una herramienta** (lo más rápido): traza una
    Regla (o Caliper/Círculo) sobre algo de tamaño conocido — una regla, una

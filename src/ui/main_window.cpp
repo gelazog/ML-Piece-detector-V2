@@ -76,11 +76,13 @@ AnalysisOverlay buildOverlay(const QImage& frame,
         // conocido, la escala se recalcula este frame (se ajusta al acercar o
         // alejar). Si no, se usa la calibración manual pasada.
         double effMm = mmPerPixel;
+        cv::Mat imageToMm;  // homografía del plano (D4): mm por-punto en herramientas
         if (arucoMarkerMm > 0.0) {
             if (auto marker = vision::detectMarkerScale(image, arucoMarkerMm)) {
                 effMm = marker->mmPerPixel;
                 overlay.liveMmPerPixel = marker->mmPerPixel;
                 overlay.liveScaleQuality = marker->quality;
+                imageToMm = marker->imageToMm;
             }
         }
         mmPerPixel = effMm;
@@ -94,7 +96,7 @@ AnalysisOverlay buildOverlay(const QImage& frame,
             overlay.angleDeg = previousFixture->angleDeg;
             if (!tools.empty()) {
                 overlay.toolResults = inspection::runTools(image, *previousFixture, tools,
-                                                           mmPerPixel, unit);
+                                                           mmPerPixel, unit, imageToMm);
             }
             return overlay;
         }
@@ -148,8 +150,8 @@ AnalysisOverlay buildOverlay(const QImage& frame,
         overlay.angleDeg = analysis.value().fixture.angleDeg;
         overlay.normalized = camera::matToQImage(analysis.value().normalized);
         if (!tools.empty()) {
-            overlay.toolResults =
-                inspection::runTools(image, analysis.value().fixture, tools, mmPerPixel, unit);
+            overlay.toolResults = inspection::runTools(image, analysis.value().fixture, tools,
+                                                       mmPerPixel, unit, imageToMm);
         }
     } catch (const std::exception& e) {
         overlay.valid = false;

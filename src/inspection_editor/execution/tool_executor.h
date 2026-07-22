@@ -35,16 +35,24 @@ struct ToolRunResult {
 // medición devuelve Result ok con ToolRunResult{ok=false, detail=motivo};
 // Result err se reserva para configuración corrupta. mmPerPixel > 0 añade la
 // medida en mm/cm a los textos de detalle.
+//
+// imageToMm (opcional, 3x3): homografía imagen->plano en mm de un marcador
+// ArUco. Si se pasa, las herramientas de LONGITUD (Caliper, Regla, Punto-Línea)
+// calculan los mm mapeando sus puntos por la homografía (corrige la perspectiva
+// lejos del marcador) en vez de multiplicar píxeles por una escala constante.
+// El valor principal `measured` sigue en píxeles (las tolerancias son en px).
 core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture& fixture,
                                     const ToolConfig& config, double mmPerPixel = 0.0,
-                                    LengthUnit unit = LengthUnit::Auto);
+                                    LengthUnit unit = LengthUnit::Auto,
+                                    const cv::Mat& imageToMm = cv::Mat());
 
 // Ejecuta todas las herramientas habilitadas; nunca lanza. Los errores de
 // configuración se convierten en resultados NG con el motivo en detail.
 std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture& fixture,
                                     const std::vector<ToolConfig>& tools,
                                     double mmPerPixel = 0.0,
-                                    LengthUnit unit = LengthUnit::Auto);
+                                    LengthUnit unit = LengthUnit::Auto,
+                                    const cv::Mat& imageToMm = cv::Mat());
 
 // Formatea una longitud en píxeles según la escala y la unidad elegida.
 std::string formatLength(double px, double mmPerPixel, LengthUnit unit);
