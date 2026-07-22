@@ -5,6 +5,7 @@
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QCloseEvent>
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QInputDialog>
@@ -800,11 +801,13 @@ void MainWindow::onShowShortcuts() {
 void MainWindow::commitUndoState() {
     undoStack_.push(stableTools_);
     stableTools_ = liveTools_;
+    templateDirty_ = true;  // toda mutación de herramientas deja la plantilla sucia
 }
 
 void MainWindow::restoreTools(std::vector<inspection::EditedTool> tools) {
     liveTools_ = std::move(tools);
     stableTools_ = liveTools_;
+    templateDirty_ = true;  // deshacer/rehacer también cambia el estado guardado
     video_->setSelectedIndex(-1);
     onLiveSelectionChanged(-1);
     video_->clearResults();
@@ -1489,6 +1492,15 @@ void MainWindow::loadTemplateList(const QString& selectName) {
 
 void MainWindow::onTemplateChanged(int index) {
     Q_UNUSED(index);
+    // Igual que al cambiar de pieza: no perder cambios sin guardar en silencio.
+    if (!confirmSaveBeforeLeaving()) {
+        QSignalBlocker blocker(templateCombo_);
+        const int idx = templateCombo_->findText(loadedTemplate_);
+        if (idx >= 0) {
+            templateCombo_->setCurrentIndex(idx);
+        }
+        return;
+    }
     autoInspectButton_->setChecked(false);
     loadToolsForSelectedPiece();
 }
@@ -1551,22 +1563,26 @@ void MainWindow::onDuplicateToolClicked() {
 }
 
 void MainWindow::onSaveTemplateClicked() {
+    saveTemplate(selectedPieceId());
+}
+
+bool MainWindow::saveTemplate(std::int64_t pieceId) {
     if (repos_.tools == nullptr) {
         statusBar()->showMessage(tr("Base de datos no disponible: no se puede guardar."));
-        return;
+        return false;
     }
     if (liveTools_.empty()) {
+        templateDirty_ = false;  // nada que guardar: el estado queda limpio
         statusBar()->showMessage(tr("No hay herramientas dibujadas que guardar."));
-        return;
+        return true;
     }
 
-    std::int64_t pieceId = selectedPieceId();
     if (pieceId < 0) {
-        // Sin pieza seleccionada: crear una y guardar ahí (opción elegida).
+        // Sin pieza: crear una y guardar ahí (opción elegida por el usuario).
         if (repos_.pieces == nullptr) {
             statusBar()->showMessage(
                 tr("No hay pieza seleccionada ni base de datos de piezas."));
-            return;
+            return false;
         }
         bool ok = false;
         const QString name = QInputDialog::getText(
@@ -1574,18 +1590,26 @@ void MainWindow::onSaveTemplateClicked() {
             tr("No hay pieza seleccionada. Nombre de la pieza nueva:"),
             QLineEdit::Normal, tr("pieza"), &ok);
         if (!ok || name.trimmed().isEmpty()) {
-            return;
+            return false;
         }
         auto created = repos_.pieces->createPiece(name.trimmed().toStdString());
         if (!created.isOk()) {
             QMessageBox::warning(this, tr("No se pudo crear la pieza"),
                                  QString::fromStdString(created.error().message));
-            return;
+            return false;
         }
         pieceId = created.value();
+        // Bloquear señales: si el combo dispara onPieceSelectionChanged,
+        // loadToolsForSelectedPiece limpiaría liveTools_ ANTES del upsert.
+        QSignalBlocker blocker(pieceCombo_);
         loadPieceList(pieceId);
     }
 
+    persistTemplateTools(pieceId);
+    return true;
+}
+
+void MainWindow::persistTemplateTools(std::int64_t pieceId) {
     // Upsert de todas las herramientas en vivo a la plantilla activa: inserta
     // las nuevas (id < 0) y actualiza las cambiadas. Los borrados en vivo ya se
     // persistieron al instante (deleteToolAt), así que esto cierra el ciclo.
@@ -1603,6 +1627,9 @@ void MainWindow::onSaveTemplateClicked() {
         }
     }
     stableTools_ = liveTools_;  // el estado guardado pasa a ser el "limpio"
+    templateDirty_ = false;
+    loadedPieceId_ = pieceId;
+    loadedTemplate_ = QString::fromStdString(tmpl);
     statusBar()->showMessage(
         errors == 0
             ? tr("Plantilla '%1' guardada (%2 herramienta(s)).")
@@ -1612,6 +1639,53 @@ void MainWindow::onSaveTemplateClicked() {
                   .arg(QString::fromStdString(tmpl))
                   .arg(errors)
                   .arg(saved));
+}
+
+// Muestra el aviso Guardar/Descartar/Cancelar si hay cambios sin guardar.
+// Devuelve true si se puede continuar (guardado o descartado), false si el
+// operador cancela (o cancela la creación de pieza al guardar).
+bool MainWindow::confirmSaveBeforeLeaving() {
+    if (!templateDirty_) {
+        return true;
+    }
+    QMessageBox box(QMessageBox::Question, tr("Cambios sin guardar"),
+                    tr("La plantilla tiene herramientas con cambios sin guardar.\n\n"
+                       "¿Qué quieres hacer?"),
+                    QMessageBox::NoButton, this);
+    auto* saveBtn = box.addButton(tr("Guardar"), QMessageBox::AcceptRole);
+    auto* discardBtn = box.addButton(tr("Descartar"), QMessageBox::DestructiveRole);
+    auto* cancelBtn = box.addButton(QMessageBox::Cancel);
+    box.exec();
+    if (box.clickedButton() == cancelBtn) {
+        return false;
+    }
+    if (box.clickedButton() == saveBtn) {
+        // Guardar en la pieza a la que pertenecen las herramientas en vivo.
+        if (!saveTemplate(loadedPieceId_)) {
+            return false;  // el usuario canceló la creación de pieza
+        }
+    }
+    (void)discardBtn;
+    templateDirty_ = false;  // guardado o descartado: estado limpio
+    return true;
+}
+
+void MainWindow::selectPieceById(std::int64_t pieceId) {
+    QSignalBlocker blocker(pieceCombo_);
+    for (int i = 0; i < pieceCombo_->count(); ++i) {
+        if (pieceCombo_->itemData(i).toLongLong() == pieceId) {
+            pieceCombo_->setCurrentIndex(i);
+            return;
+        }
+    }
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+    if (!confirmSaveBeforeLeaving()) {
+        event->ignore();  // el operador canceló el cierre para no perder cambios
+        return;
+    }
+    QMainWindow::closeEvent(event);
 }
 
 void MainWindow::deleteToolAt(int index) {
@@ -1635,6 +1709,12 @@ void MainWindow::deleteToolAt(int index) {
 
 void MainWindow::onPieceSelectionChanged(int index) {
     Q_UNUSED(index);
+    // Si hay cambios sin guardar, preguntar antes de abandonar la plantilla.
+    // Al cancelar, restaurar el combo a la pieza cuyas herramientas están vivas.
+    if (!confirmSaveBeforeLeaving()) {
+        selectPieceById(loadedPieceId_);
+        return;
+    }
     autoInspectButton_->setChecked(false);
     loadTemplateList();       // repuebla plantillas de la pieza
     loadToolsForSelectedPiece();
@@ -1685,6 +1765,9 @@ void MainWindow::loadToolsForSelectedPiece() {
 
     const std::int64_t pieceId = selectedPieceId();
     if (pieceId < 0 || repos_.tools == nullptr) {
+        templateDirty_ = false;
+        loadedPieceId_ = pieceId;
+        loadedTemplate_ = QString::fromStdString(activeTemplate());
         video_->update();
         return;
     }
@@ -1708,6 +1791,10 @@ void MainWindow::loadToolsForSelectedPiece() {
     // Cambiar de pieza reinicia el historial de deshacer.
     undoStack_.clear();
     stableTools_ = liveTools_;
+    // Estado recién cargado de la BD = limpio; recordar a quién pertenece.
+    templateDirty_ = false;
+    loadedPieceId_ = pieceId;
+    loadedTemplate_ = QString::fromStdString(activeTemplate());
     video_->update();
 }
 
@@ -1922,6 +2009,11 @@ void MainWindow::finishLiveRegistration() {
             }
         }
     }
+    // Registro guardó las herramientas: el estado queda limpio (P2).
+    stableTools_ = liveTools_;
+    templateDirty_ = false;
+    loadedPieceId_ = pieceId;
+    loadedTemplate_ = QString::fromStdString(tmpl);
 
     stopLiveCapture();
     // Seleccionar la pieza sin recargar las herramientas recién guardadas,

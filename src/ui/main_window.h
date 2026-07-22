@@ -93,6 +93,9 @@ private slots:
     void onNewTemplateClicked();
     void onToolRightClicked(int index);
 
+protected:
+    void closeEvent(QCloseEvent* event) override;  // aviso de cambios sin guardar (P2)
+
 private:
     void setControlsEnabled(bool enabled);
     void maybeStartAnalysis();
@@ -110,6 +113,14 @@ private:
     void loadTemplateList(const QString& selectName = QString());
     void loadToolsForSelectedPiece();
     void deleteToolAt(int index);
+    // Guardado de plantilla (P1/P2). saveTemplate resuelve la pieza (creándola
+    // si hace falta) y persiste; devuelve false si el usuario cancela. persist
+    // hace el upsert propiamente dicho. confirmSaveBeforeLeaving muestra el
+    // aviso Guardar/Descartar/Cancelar si hay cambios sin guardar.
+    bool saveTemplate(std::int64_t pieceId);
+    void persistTemplateTools(std::int64_t pieceId);
+    [[nodiscard]] bool confirmSaveBeforeLeaving();
+    void selectPieceById(std::int64_t pieceId);  // fija el combo sin disparar señales
     [[nodiscard]] inspection::LengthUnit currentUnit() const;
     [[nodiscard]] std::string activeTemplate() const;
     void finishLiveRegistration();
@@ -170,6 +181,12 @@ private:
     std::vector<camera::CameraInfo> cameras_;
     std::vector<inspection::EditedTool> liveTools_;
     std::vector<inspection::EditedTool> stableTools_;  // estado previo a la mutación en curso
+    // Sincronización tiempo real ↔ plantilla (P2): flag de cambios sin guardar y
+    // la pieza/plantilla a la que pertenecen las herramientas en vivo, para poder
+    // guardar en la correcta y restaurar el combo si el operador cancela.
+    bool templateDirty_ = false;
+    std::int64_t loadedPieceId_ = -1;
+    QString loadedTemplate_;
     inspection::UndoStack<std::vector<inspection::EditedTool>> undoStack_;
     std::vector<ShortcutSpec> shortcuts_;
     std::shared_ptr<engine::RegistrationSession> liveSession_;

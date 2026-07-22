@@ -79,7 +79,7 @@ Formato: casilla, ID, tarea, por qué, skill(s), archivos principales.
   Archivos: `repositories/tool_repository.*` (nuevo `replaceTemplateTools` o
   `syncTemplate`), `ui/main_window.*`.
 
-- [ ] **P2 — Marca de cambios sin guardar + aviso al salir**. Rastrear un flag
+- [x] **P2 — Marca de cambios sin guardar + aviso al salir**. Rastrear un flag
   "plantilla sucia" que se activa al dibujar/mover/editar/borrar en vivo y se
   limpia al guardar (P1) o registrar. Al **cambiar de pieza/plantilla** o
   **cerrar la app** con cambios sin guardar, preguntar **Guardar / Descartar /

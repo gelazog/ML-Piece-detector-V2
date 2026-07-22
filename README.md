@@ -223,6 +223,9 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    registrarla** — pulsa **Guardar plantilla** o `Ctrl+S`. Antes solo se
    persistían al registrar; ahora puedes iterar sobre una pieza ya registrada y
    conservar los cambios (si no hay pieza seleccionada, te ofrece crear una).
+   Si hay **cambios sin guardar** y cambias de pieza/plantilla o cierras la app,
+   te pregunta **Guardar / Descartar / Cancelar** en vez de perderlos en
+   silencio.
 7. **Afinar y aprender**: **Plantilla…** abre el editor sobre imagen fija
    para ajustar tolerancias con "Probar sobre esta imagen" (los valores
    medidos te dicen qué rangos poner). **Inspeccionar** hace una inspección
