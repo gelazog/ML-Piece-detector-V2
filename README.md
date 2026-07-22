@@ -82,6 +82,12 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    **Plantilla…** (campo "Puntos"): banda del Caliper, rayos del Círculo,
    escaneos del Borde liso y área mínima del Blob.
 
+   **Snap al borde al dibujar**: mientras trazas un Caliper, Regla o Borde liso,
+   un marcador amarillo resalta el borde detectado más cercano al cursor (usa la
+   detección de bordes subpíxel del proyecto sobre una banda alrededor del
+   puntero); al soltar, el extremo se **pega** a ese borde para colocar la
+   herramienta con precisión sin pulso fino.
+
    **Edición fina con manijas**: al seleccionar una herramienta (modo
    Mover/Elegir) aparecen cuadraditos blancos en sus extremos editables.
    Arrástralos para ajustar un punto suelto sin borrar y volver a dibujar: los

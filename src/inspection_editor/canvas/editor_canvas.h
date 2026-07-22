@@ -99,6 +99,10 @@ private:
     // Manija (extremo editable) de la herramienta seleccionada bajo el cursor,
     // o -1 si ninguna. Permite arrastrar un punto suelto en vez del conjunto.
     [[nodiscard]] int hitHandle(const cv::Point2f& imagePoint) const;
+    // Borde detectado (coords de imagen) cerca del cursor a lo largo del trazo
+    // en curso, para "pegar" el extremo de un Caliper/Regla/Borde liso a él.
+    [[nodiscard]] std::optional<cv::Point2f> snapEdge(const cv::Point2f& cursor,
+                                                      const cv::Point2f& dir) const;
 
     void paintTool(QPainter& painter, const EditedTool& tool, bool selected) const;
     void paintResults(QPainter& painter) const;
@@ -133,6 +137,10 @@ private:
     // Vértices ya marcados de un Blob poligonal en curso (coords de pieza); se
     // cierra al hacer clic cerca del primero (>= 3 vértices).
     std::vector<cv::Point2f> pendingPolygon_;
+    // Snap al borde: imagen en gris del trazo actual y borde resaltado bajo el
+    // cursor (coords de imagen) al que se pegará el extremo al soltar.
+    cv::Mat dragGray_;
+    std::optional<cv::Point2f> snapImg_;
 
     // Estado del modo vivo.
     bool liveMode_ = false;

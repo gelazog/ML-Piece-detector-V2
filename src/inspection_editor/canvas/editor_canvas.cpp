@@ -7,11 +7,24 @@
 #include <algorithm>
 #include <cmath>
 
+#include "inspection_editor/execution/edge_detection.h"
 #include "vision/position_fixture.h"
 
 namespace pci::inspection {
 
 namespace {
+
+// Convierte la imagen visible a un cv::Mat gris (copia propia) para poder
+// detectar bordes bajo el cursor sin depender del origen del frame.
+cv::Mat qimageToGray(const QImage& image) {
+    if (image.isNull()) {
+        return {};
+    }
+    const QImage gray = image.convertToFormat(QImage::Format_Grayscale8);
+    return cv::Mat(gray.height(), gray.width(), CV_8UC1,
+                   const_cast<uchar*>(gray.bits()), gray.bytesPerLine())
+        .clone();
+}
 
 QColor toolColor(ToolType type) {
     switch (type) {
@@ -255,6 +268,7 @@ void EditorCanvas::setCreateType(std::optional<ToolType> type) {
     pendingLineA_.reset();    // cancela una Línea-Línea a medio crear
     pendingAngle_.reset();    // cancela un Ángulo a medio crear
     pendingPolygon_.clear();  // cancela un Blob poligonal a medio crear
+    snapImg_.reset();         // limpia el resaltado de snap al borde
     setCursor(type.has_value() ? Qt::CrossCursor : Qt::ArrowCursor);
     update();
 }
@@ -440,6 +454,27 @@ int EditorCanvas::hitHandle(const cv::Point2f& imagePoint) const {
     return best;
 }
 
+std::optional<cv::Point2f> EditorCanvas::snapEdge(const cv::Point2f& cursor,
+                                                  const cv::Point2f& dir) const {
+    if (dragGray_.empty()) {
+        return std::nullopt;
+    }
+    const double len = cv::norm(dir);
+    if (len < 1.0) {
+        return std::nullopt;  // trazo aún demasiado corto para orientar el escaneo
+    }
+    // Escaneo corto centrado en el cursor y alineado con el trazo: el borde más
+    // fuerte en esa ventana es el candidato al que "pegar" el extremo.
+    const cv::Point2f u = dir / static_cast<float>(len);
+    constexpr float kReach = 14.0F;
+    const auto edges =
+        detectEdges(dragGray_, cursor - u * kReach, cursor + u * kReach, 3.0F, 1);
+    if (edges.empty()) {
+        return std::nullopt;
+    }
+    return edges.front().point;
+}
+
 // En vivo solo se puede dibujar/editar con la pieza detectada en el frame
 // actual: la geometría se guarda relativa a su fixture.
 bool EditorCanvas::interactive() const {
@@ -495,6 +530,9 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
 
     if (createType_.has_value()) {
         creating_ = true;
+        // Cachea el gris del frame actual para el snap al borde durante el trazo.
+        dragGray_ = qimageToGray(image_);
+        snapImg_.reset();
     } else if (const int handle = hitHandle(p); handle >= 0) {
         // Prioridad a las manijas de la herramienta ya seleccionada: se arrastra
         // ese extremo suelto en vez de mover el conjunto completo.
@@ -534,6 +572,13 @@ void EditorCanvas::mouseMoveEvent(QMouseEvent* event) {
         // rotación del fixture se cancela sola).
         setHandlePoint((*tools_)[static_cast<std::size_t>(selected_)].geometry,
                        handleIndex_, vision::toPieceCoords(fixture_, p));
+    }
+
+    // Snap al borde bajo el cursor mientras se traza una herramienta de línea.
+    if (creating_ && createType_.has_value() &&
+        (*createType_ == ToolType::Caliper || *createType_ == ToolType::Ruler ||
+         *createType_ == ToolType::EdgeFlaw)) {
+        snapImg_ = snapEdge(p, p - dragStart_);
     }
 
     if (moving_ && tools_ != nullptr && !multiSelected_.empty()) {
@@ -658,11 +703,15 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
     }
 
     if (!createType_.has_value() || cv::norm(p - dragStart_) < 8.0) {
+        snapImg_.reset();
         return;  // arrastre demasiado corto: ignorado
     }
 
+    // Si hay un borde resaltado bajo el cursor, el extremo se pega a él.
+    const cv::Point2f releaseImg = snapImg_.value_or(p);
+    snapImg_.reset();
     const cv::Point2f a = vision::toPieceCoords(fixture_, dragStart_);
-    const cv::Point2f b = vision::toPieceCoords(fixture_, p);
+    const cv::Point2f b = vision::toPieceCoords(fixture_, releaseImg);
 
     // Línea-Línea se crea en dos arrastres: el primero fija la línea A (que se
     // dibuja mientras se traza la B), el segundo cierra la herramienta.
@@ -987,6 +1036,19 @@ void EditorCanvas::paintCreationPreview(QPainter& painter) const {
         painter.drawRect(QRectF(a, b).normalized());
     } else {
         painter.drawLine(a, b);
+    }
+
+    // Resaltado del borde bajo el cursor (snap): el extremo se pegará aquí.
+    if (snapImg_.has_value()) {
+        const QPointF s = imageToWidget(*snapImg_);
+        QPen snapPen(QColor(255, 230, 0));
+        snapPen.setWidthF(2.0);
+        snapPen.setCosmetic(true);
+        painter.setPen(snapPen);
+        painter.setBrush(Qt::NoBrush);
+        painter.drawEllipse(s, 5.0, 5.0);
+        painter.drawLine(s + QPointF(-8, 0), s + QPointF(8, 0));
+        painter.drawLine(s + QPointF(0, -8), s + QPointF(0, 8));
     }
 }
 

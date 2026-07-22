@@ -81,7 +81,7 @@ archivos principales que toca.
   `cv::fillPoly` en vez de `fillConvexPoly` de rectángulo),
   `editor_canvas.cpp`.
 
-- [ ] **T5 — Snap visual al borde más cercano**. Mientras se arrastra un
+- [x] **T5 — Snap visual al borde más cercano**. Mientras se arrastra un
   Caliper/Regla/Borde liso, resaltar en vivo el borde detectado más cercano
   al cursor (usa `detectEdges` ya existente sobre una banda alrededor del
   puntero). Mejora directa de precisión al dibujar, inspirada en cómo
