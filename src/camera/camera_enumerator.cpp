@@ -2,76 +2,63 @@
 
 #include <opencv2/videoio.hpp>
 
+#include <utility>
+
+#include "camera/native_cameras.h"
 #include "core/logging.h"
 
 namespace pci::camera {
 
-namespace {
-
-struct BackendOption {
-    int id;
-    const char* name;
-};
-
-// En Windows se prueba MSMF primero (nativo, menor latencia) y DirectShow
-// como respaldo: hay drivers —como cámaras integradas comunes— que MSMF no
-// abre pero DirectShow sí.
-constexpr BackendOption kBackends[] = {
-#ifdef _WIN32
-    {cv::CAP_MSMF, "MSMF"},
-    {cv::CAP_DSHOW, "DirectShow"},
-#else
-    {cv::CAP_V4L2, "V4L2"},
-#endif
-};
-
-// Los índices de cámara pueden tener huecos (p. ej. una cámara virtual
-// desinstalada); se tolera un hueco antes de dar por terminado el sondeo.
-constexpr int kMaxConsecutiveMisses = 2;
-
-}  // namespace
-
 std::vector<CameraInfo> CameraEnumerator::enumerate(int maxIndex) {
     std::vector<CameraInfo> cameras;
-    int misses = 0;
 
-    for (int i = 0; i < maxIndex && misses < kMaxConsecutiveMisses; ++i) {
-        bool found = false;
-        for (const auto& backend : kBackends) {
-            // Blindaje total por backend: hay drivers que lanzan cualquier
-            // cosa (no solo cv::Exception) al sondearlos; un driver roto no
-            // debe tumbar la aplicación al arrancar.
-            try {
-                cv::VideoCapture capture;
-                capture.open(i, backend.id);
-                if (!capture.isOpened()) {
-                    continue;
-                }
+    // Enumeración SIN abrir dispositivos. Antes se hacía capture.open() sobre
+    // cada índice solo para leer nombre y resolución, pero abrir una cámara
+    // virtual no lista (p. ej. AndroidCam antes de conectar el celular) hace que
+    // su driver negocie formato, divida por cero y tumbe TODO el proceso con una
+    // excepción estructurada que ningún try/catch de C++ atrapa. Ahora pedimos
+    // la lista al SO por su API nativa (DirectShow / V4L2), que solo lee
+    // metadatos y nunca abre el pin de captura.
+    const std::vector<NativeCamera> natives = enumerateNativeCameras();
 
-                CameraInfo info;
-                info.index = i;
-                info.backend = backend.id;
-                info.name = "Cámara " + std::to_string(i) + " (" + backend.name + ")";
-                info.width = static_cast<int>(capture.get(cv::CAP_PROP_FRAME_WIDTH));
-                info.height = static_cast<int>(capture.get(cv::CAP_PROP_FRAME_HEIGHT));
-                capture.release();
-                cameras.push_back(info);
-                found = true;
-                core::logInfo("Detectada " + info.name + " (" + std::to_string(info.width) +
-                              "x" + std::to_string(info.height) + ")");
-                break;
-            } catch (const cv::Exception& e) {
-                core::logWarning("Excepción de OpenCV sondeando cámara " +
-                                 std::to_string(i) + " (" + backend.name + "): " + e.what());
-            } catch (const std::exception& e) {
-                core::logWarning(std::string("Excepción sondeando cámara: ") + e.what());
-            } catch (...) {
-                core::logWarning("Excepción desconocida sondeando cámara " +
-                                 std::to_string(i));
-            }
+    for (const auto& native : natives) {
+        if (native.index < 0 || native.index >= maxIndex) {
+            continue;
         }
-        misses = found ? 0 : misses + 1;
+        CameraInfo info;
+        info.index = native.index;
+#ifdef _WIN32
+        // El índice nativo viene del orden de DirectShow, que es el mismo que
+        // usa el backend CAP_DSHOW de OpenCV. Abrimos con DSHOW por coherencia
+        // (además hay cámaras integradas que MSMF no abre pero DirectShow sí).
+        info.backend = cv::CAP_DSHOW;
+#elif defined(__linux__)
+        info.backend = cv::CAP_V4L2;
+#else
+        info.backend = 0;  // cv::CAP_ANY
+#endif
+        info.name = native.friendlyName;
+        // Resolución desconocida hasta conectar: no abrimos el dispositivo aquí.
+        info.width = 0;
+        info.height = 0;
+        core::logInfo("Detectada cámara: " + info.name + " (índice " +
+                      std::to_string(info.index) + ")");
+        cameras.push_back(std::move(info));
     }
+
+#if !defined(_WIN32) && !defined(__linux__)
+    // En plataformas sin enumeración nativa ofrecemos el índice 0 como respaldo
+    // para no dejar al usuario sin opciones; en Windows/Linux la lista del SO es
+    // autoritativa y vacía significa, honestamente, "no hay cámaras".
+    if (cameras.empty()) {
+        CameraInfo fallback;
+        fallback.index = 0;
+        fallback.backend = 0;  // cv::CAP_ANY
+        fallback.name = "Cámara 0";
+        cameras.push_back(fallback);
+        core::logWarning("Sin enumeración nativa; se ofrece la cámara 0 como respaldo");
+    }
+#endif
 
     core::logInfo("Enumeración de cámaras terminada: " + std::to_string(cameras.size()) +
                   " encontradas");

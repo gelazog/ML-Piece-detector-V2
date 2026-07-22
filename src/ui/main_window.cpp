@@ -867,8 +867,13 @@ void MainWindow::onCamerasEnumerated() {
     }
 
     for (const auto& cam : cameras_) {
-        cameraCombo_->addItem(QString::fromStdString(cam.name) +
-                              QStringLiteral(" (%1x%2)").arg(cam.width).arg(cam.height));
+        // La resolución solo se conoce tras conectar (la enumeración ya no abre
+        // el dispositivo), así que se omite mientras sea 0.
+        QString label = QString::fromStdString(cam.name);
+        if (cam.width > 0 && cam.height > 0) {
+            label += QStringLiteral(" (%1x%2)").arg(cam.width).arg(cam.height);
+        }
+        cameraCombo_->addItem(label);
     }
 
     // Restaurar la última cámara elegida por el usuario (si sigue conectada).

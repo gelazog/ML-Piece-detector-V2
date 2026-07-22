@@ -29,8 +29,9 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    controles de uso constante (combos de cámara/pieza/plantilla, Iniciar,
    Registrar y activar, Auto-inspección, Inspeccionar y la paleta de dibujo).
 
-2. **Cámara**: elige una del combo (se detectan solas, probando MSMF y
-   DirectShow) y pulsa **Iniciar** para la vista en vivo. Con **Ver ▸ Mostrar
+2. **Cámara**: elige una del combo (aparecen con su nombre real, listadas por
+   la API nativa del SO sin abrirlas) y pulsa **Iniciar** para la vista en vivo.
+   Con **Ver ▸ Mostrar
    contorno** activo (por defecto), el contorno de la pieza, su centro y su
    eje se dibujan sobre el video en tiempo real; **al ocultarlo, las
    herramientas se congelan en su sitio** (la pieza se inspecciona fija, sin
@@ -208,13 +209,26 @@ incompatible de Windows ML y gana al PATH).
 
 ## Fase 1 — Limitaciones conocidas
 
-- **Nombres de cámara genéricos**: OpenCV no expone el nombre real del
-  dispositivo, se muestra "Cámara 0 (DirectShow)/…". Resolver requeriría
-  llamar a Media Foundation directamente (posible mejora futura).
-- **Sondeo multi-backend**: cada índice se prueba con MSMF y después con
-  DirectShow (hay drivers, como muchas cámaras integradas, que MSMF no abre).
-  El backend que funcionó queda guardado y es el que usa la captura. El
-  sondeo corre en un hilo de trabajo y se corta tras 2 índices vacíos.
+- **Enumeración sin abrir el dispositivo (segura ante drivers rotos)**: la lista
+  de cámaras se pide al sistema operativo por su **API nativa** —DirectShow COM
+  en Windows (`native_cameras.cpp`), V4L2 en Linux— que devuelve el **nombre
+  amigable real** ("Integrated Camera", "DroidCam Source 3") **sin abrir el
+  dispositivo ni negociar formato**. Antes se hacía `capture.open()` sobre cada
+  índice solo para leer nombre/resolución, y abrir una cámara virtual no lista
+  (p. ej. AndroidCam antes de conectar el celular) hacía que su driver
+  (`kswdmcap.ax`) dividiera por cero y **tumbara todo el proceso** con una
+  excepción estructurada que ningún `try/catch` de C++ atrapa. La resolución
+  ya no se conoce hasta conectar (se muestra solo el nombre).
+- **Apertura blindada a nivel del SO**: abrir la cámara (el punto donde un driver
+  defectuoso puede fallar) va envuelto en `core::runProtected` (`crash_guard.*`),
+  que usa un *Vectored Exception Handler* + `setjmp/longjmp` (GCC/MinGW no
+  soporta `__try/__except`) para **sobrevivir a divisiones por cero y accesos
+  inválidos del driver** y convertirlos en un simple "no se pudo abrir". Además,
+  `installCrashHandler` deja un manejador de último recurso que, si el proceso
+  muere igualmente a nivel del SO, escribe el código de excepción y la última
+  operación en curso (breadcrumb) a `pc_inspector_crash.log`, para que un cierre
+  que antes era silencioso quede diagnosticado. Portable: en plataformas sin SEH
+  todo degrada a ejecución directa.
 - **Sin control de backpressure explícito**: si la UI fuera más lenta que la
   cámara los frames encolados crecerían; en la práctica el repintado
   coalescido de Qt lo evita a resoluciones de webcam.

@@ -235,13 +235,13 @@ archivos principales que toca.
   Skills: `cpp-testing`.
   Archivos: `engine/registration_session.*`, `ui/main_window.cpp`.
 
-- [ ] **G2 — Nombres reales de cámara (Media Foundation)**. Hoy se muestra
-  "Cámara 0 (DirectShow)". Usar `IMFAttributes`/`MFEnumDeviceSources` en
-  Windows para el nombre real del dispositivo, con *fallback* al nombre
-  genérico si falla (nunca romper la enumeración por esto).
-  Skills: `systematic-debugging` (API de Windows, difícil de testear sin
-  hardware — documentar como limitación conocida si no se puede verificar).
-  Archivos: `camera/camera_enumerator.*`.
+- [x] **G2 — Nombres reales de cámara**. HECHO (2026-07-21), resuelto junto con
+  el blindaje anti-crash de cámara que pidió el usuario. En vez de Media
+  Foundation se usó **DirectShow COM** (`camera/native_cameras.cpp`), que además
+  de dar el nombre real ("Integrated Camera", "DroidCam Source 3") enumera **sin
+  abrir el dispositivo** — clave para no disparar el crash de drivers como
+  `kswdmcap.ax`. Ver `core/crash_guard.*`, `tests/test_crash_guard.cpp` y la
+  sección de limitaciones del README.
 
 - [ ] **G3 — Empaquetado con `windeployqt6`**. Generar un `.zip`/instalador
   liviano que no dependa de tener MSYS2 en la PC de producción — el

@@ -3,8 +3,11 @@
 #include <opencv2/videoio.hpp>
 
 #include <chrono>
+#include <cstdio>
+#include <string>
 
 #include "camera/frame_utils.h"
+#include "core/crash_guard.h"
 #include "core/fps_counter.h"
 #include "core/logging.h"
 
@@ -15,6 +18,34 @@ namespace {
 // ~1 segundo sin frames a 30 fps antes de declarar la cámara perdida.
 constexpr int kMaxConsecutiveFailures = 30;
 constexpr auto kStatsInterval = std::chrono::milliseconds(500);
+
+// Argumentos para abrir la cámara a través del blindaje SEH de core::runProtected.
+struct OpenArgs {
+    cv::VideoCapture* capture;
+    int index;
+    int backend;
+};
+
+// Trampolín sin objetos con destructor no trivial en su firma. Captura las
+// excepciones de C++ AQUÍ (no cruzan la barrera SEH); las excepciones
+// estructuradas del SO —la división por cero de un driver roto— sí la cruzan y
+// las gestiona core::runProtected.
+void openTrampoline(void* ctx) {
+    auto* args = static_cast<OpenArgs*>(ctx);
+    try {
+        args->capture->open(args->index, args->backend);
+    } catch (const cv::Exception& e) {
+        core::logWarning(std::string("OpenCV lanzó al abrir la cámara: ") + e.what());
+    } catch (...) {
+        core::logWarning("Excepción C++ desconocida al abrir la cámara");
+    }
+}
+
+std::string toHex(unsigned long value) {
+    char buffer[16];
+    std::snprintf(buffer, sizeof(buffer), "0x%08lX", value);
+    return buffer;
+}
 
 }  // namespace
 
@@ -57,10 +88,30 @@ void CameraController::captureLoop(CameraInfo camera) {
 
 void CameraController::captureLoopBody(CameraInfo camera) {
     cv::VideoCapture capture;
-    try {
-        capture.open(camera.index, camera.backend);
-    } catch (const cv::Exception& e) {
-        core::logError(std::string("Excepción de OpenCV abriendo cámara: ") + e.what());
+
+    // La apertura es el punto más peligroso: un driver de captura defectuoso
+    // puede dividir por cero al negociar el formato y matar el proceso a nivel
+    // del SO. La miga de pan deja constancia de qué se intentaba abrir por si el
+    // fallo escapa incluso al blindaje SEH; runProtected atrapa la excepción
+    // estructurada y la convierte en un simple "no se pudo abrir".
+    core::setBreadcrumb("abriendo cámara '" + camera.name + "' (índice " +
+                        std::to_string(camera.index) + ", backend " +
+                        std::to_string(camera.backend) + ")");
+    OpenArgs args{&capture, camera.index, camera.backend};
+    unsigned long sehCode = 0;
+    const bool survived = core::runProtected(&openTrampoline, &args, &sehCode);
+
+    if (!survived) {
+        core::logError("Excepción estructurada del SO abriendo " + camera.name +
+                       " (código " + toHex(sehCode) +
+                       "): driver de captura roto o cámara no lista "
+                       "(¿AndroidCam sin conectar el celular?)");
+        running_ = false;
+        emit cameraError(
+            tr("El dispositivo falló al abrir: driver defectuoso o cámara no "
+               "lista (revisa el log)"));
+        emit stopped();
+        return;
     }
 
     if (!capture.isOpened()) {
@@ -70,6 +121,8 @@ void CameraController::captureLoopBody(CameraInfo camera) {
         emit stopped();
         return;
     }
+
+    core::setBreadcrumb("cámara '" + camera.name + "' abierta, leyendo frames");
 
     // Buffer mínimo: preferimos perder frames viejos a acumular latencia.
     capture.set(cv::CAP_PROP_BUFFERSIZE, 1);

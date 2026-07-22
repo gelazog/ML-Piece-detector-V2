@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 
+#include "core/crash_guard.h"
 #include "core/logging.h"
 #include "database/db.h"
 #include "database/schema.h"
@@ -24,6 +25,11 @@ int main(int argc, char* argv[]) {
     const QString appDir = QCoreApplication::applicationDirPath();
     pci::core::Logger::instance().setLogFile(
         (appDir + QStringLiteral("/pc_inspector.log")).toStdString());
+    // Manejador de último recurso: si un driver de captura mata el proceso a
+    // nivel del SO, la causa queda escrita en el log de crash en vez de un
+    // cierre silencioso.
+    pci::core::installCrashHandler(
+        (appDir + QStringLiteral("/pc_inspector_crash.log")).toStdString());
     pci::core::logInfo("Aplicación iniciada");
 
     // La BD vive junto al ejecutable (demo portable). Si falla, la app sigue

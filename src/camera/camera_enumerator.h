@@ -6,10 +6,11 @@
 
 namespace pci::camera {
 
-// Sondea índices de captura de forma síncrona; cada sondeo puede tardar cientos
-// de ms, así que debe llamarse desde un hilo de trabajo, nunca desde la UI.
-// Limitación conocida: OpenCV no expone el nombre real del dispositivo, por lo
-// que los nombres son genéricos ("Cámara 0", "Cámara 1", ...).
+// Lista las cámaras que el SO reporta, con su nombre amigable real, SIN abrir
+// ninguna (ver native_cameras.h). Es rápida y segura, pero conviene llamarla
+// desde un hilo de trabajo por si el subsistema del SO tarda. La resolución no
+// se conoce hasta conectar (width/height quedan en 0), porque leerla exigiría
+// abrir el dispositivo.
 class CameraEnumerator {
 public:
     static std::vector<CameraInfo> enumerate(int maxIndex = 8);
