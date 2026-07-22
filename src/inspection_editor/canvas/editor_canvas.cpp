@@ -96,6 +96,86 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
         geometry);
 }
 
+// Puntos-manija editables de una geometría (coords de pieza), en orden fijo.
+// Cada manija se puede arrastrar por separado. Casos especiales: la 2ª manija
+// del círculo es el radio (centro + (r,0)); la 2ª del blob es una esquina que
+// redimensiona el rectángulo de forma simétrica respecto al centro.
+std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
+    return std::visit(
+        [](const auto& g) -> std::vector<cv::Point2f> {
+            using T = std::decay_t<decltype(g)>;
+            if constexpr (std::is_same_v<T, CaliperGeometry> ||
+                          std::is_same_v<T, EdgeFlawGeometry> ||
+                          std::is_same_v<T, RulerGeometry>) {
+                return {g.p0, g.p1};
+            } else if constexpr (std::is_same_v<T, CircleGeometry>) {
+                return {g.center, g.center + cv::Point2f(g.radius, 0.0F)};
+            } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
+                return {g.lineA, g.lineB, g.scanA, g.scanB};
+            } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
+                return {g.a0, g.a1, g.b0, g.b1};
+            } else if constexpr (std::is_same_v<T, AngleGeometry>) {
+                return {g.vertex, g.end0, g.end1};
+            } else {  // BlobGeometry
+                return {g.center,
+                        g.center + cv::Point2f(g.width / 2.0F, g.height / 2.0F)};
+            }
+        },
+        geometry);
+}
+
+// Reposiciona una sola manija (coords de pieza); el índice corresponde al orden
+// de handlePoints. Mantiene coherente la geometría (radio y tamaños mínimos).
+void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
+    std::visit(
+        [&](auto& g) {
+            using T = std::decay_t<decltype(g)>;
+            if constexpr (std::is_same_v<T, CaliperGeometry> ||
+                          std::is_same_v<T, EdgeFlawGeometry> ||
+                          std::is_same_v<T, RulerGeometry>) {
+                if (handle == 0) {
+                    g.p0 = q;
+                } else {
+                    g.p1 = q;
+                }
+            } else if constexpr (std::is_same_v<T, CircleGeometry>) {
+                if (handle == 0) {
+                    g.center = q;
+                } else {
+                    g.radius = std::max(4.0F, static_cast<float>(cv::norm(q - g.center)));
+                }
+            } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
+                switch (handle) {
+                    case 0: g.lineA = q; break;
+                    case 1: g.lineB = q; break;
+                    case 2: g.scanA = q; break;
+                    default: g.scanB = q; break;
+                }
+            } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
+                switch (handle) {
+                    case 0: g.a0 = q; break;
+                    case 1: g.a1 = q; break;
+                    case 2: g.b0 = q; break;
+                    default: g.b1 = q; break;
+                }
+            } else if constexpr (std::is_same_v<T, AngleGeometry>) {
+                switch (handle) {
+                    case 0: g.vertex = q; break;
+                    case 1: g.end0 = q; break;
+                    default: g.end1 = q; break;
+                }
+            } else {  // BlobGeometry
+                if (handle == 0) {
+                    g.center = q;
+                } else {
+                    g.width = std::max(8.0F, 2.0F * std::abs(q.x - g.center.x));
+                    g.height = std::max(8.0F, 2.0F * std::abs(q.y - g.center.y));
+                }
+            }
+        },
+        geometry);
+}
+
 }  // namespace
 
 EditorCanvas::EditorCanvas(QWidget* parent) : QWidget(parent) {
@@ -317,6 +397,29 @@ int EditorCanvas::hitTest(const cv::Point2f& p) const {
     return best;
 }
 
+int EditorCanvas::hitHandle(const cv::Point2f& imagePoint) const {
+    if (tools_ == nullptr || selected_ < 0 ||
+        selected_ >= static_cast<int>(tools_->size())) {
+        return -1;
+    }
+    const auto& tool = (*tools_)[static_cast<std::size_t>(selected_)];
+    if (tool.deleted) {
+        return -1;
+    }
+    constexpr double kHandleRadius = 9.0;  // zona de agarre de la manija (px imagen)
+    int best = -1;
+    double bestDistance = kHandleRadius;
+    const auto handles = handlePoints(tool.geometry);
+    for (int i = 0; i < static_cast<int>(handles.size()); ++i) {
+        const double d = cv::norm(imagePoint - toImg(handles[static_cast<std::size_t>(i)]));
+        if (d < bestDistance) {
+            bestDistance = d;
+            best = i;
+        }
+    }
+    return best;
+}
+
 // En vivo solo se puede dibujar/editar con la pieza detectada en el frame
 // actual: la geometría se guarda relativa a su fixture.
 bool EditorCanvas::interactive() const {
@@ -372,6 +475,12 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
 
     if (createType_.has_value()) {
         creating_ = true;
+    } else if (const int handle = hitHandle(p); handle >= 0) {
+        // Prioridad a las manijas de la herramienta ya seleccionada: se arrastra
+        // ese extremo suelto en vez de mover el conjunto completo.
+        draggingHandle_ = true;
+        handleIndex_ = handle;
+        update();
     } else {
         const int hit = hitTest(p);
         if (hit >= 0) {
@@ -394,10 +503,18 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
 }
 
 void EditorCanvas::mouseMoveEvent(QMouseEvent* event) {
-    if (!creating_ && !moving_ && !marquee_ && !regionDrag_) {
+    if (!creating_ && !moving_ && !marquee_ && !regionDrag_ && !draggingHandle_) {
         return;
     }
     const cv::Point2f p = widgetToImage(event->position());
+
+    if (draggingHandle_ && tools_ != nullptr && selected_ >= 0 &&
+        selected_ < static_cast<int>(tools_->size())) {
+        // La manija se coloca en el punto del cursor, en coords de pieza (la
+        // rotación del fixture se cancela sola).
+        setHandlePoint((*tools_)[static_cast<std::size_t>(selected_)].geometry,
+                       handleIndex_, vision::toPieceCoords(fixture_, p));
+    }
 
     if (moving_ && tools_ != nullptr && !multiSelected_.empty()) {
         // Delta en coords de pieza (la rotación del fixture se cancela sola);
@@ -481,6 +598,12 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         return;
     }
 
+    if (draggingHandle_) {
+        draggingHandle_ = false;
+        handleIndex_ = -1;
+        emit toolModified();
+        return;
+    }
     if (marquee_) {
         finishMarquee(p);
         return;
@@ -699,6 +822,21 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
     painter.setPen(selected ? Qt::white : color);
     painter.drawText(labelPos + QPointF(6, -4),
                      QString::fromStdString(tool.config.name));
+
+    // Manijas de edición: cuadraditos blancos en cada extremo editable de la
+    // herramienta seleccionada (arrástralos para afinar sin volver a dibujar).
+    if (selected && !editingLocked_) {
+        QPen handlePen(Qt::white);
+        handlePen.setWidthF(1.5);
+        handlePen.setCosmetic(true);
+        painter.setPen(handlePen);
+        painter.setBrush(QColor(40, 40, 40));
+        for (const auto& hp : handlePoints(tool.geometry)) {
+            const QPointF w = imageToWidget(toImg(hp));
+            painter.drawRect(QRectF(w.x() - 3.5, w.y() - 3.5, 7.0, 7.0));
+        }
+        painter.setBrush(Qt::NoBrush);
+    }
 }
 
 void EditorCanvas::paintResults(QPainter& painter) const {

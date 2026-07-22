@@ -79,6 +79,15 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    **Plantilla…** (campo "Puntos"): banda del Caliper, rayos del Círculo,
    escaneos del Borde liso y área mínima del Blob.
 
+   **Edición fina con manijas**: al seleccionar una herramienta (modo
+   Mover/Elegir) aparecen cuadraditos blancos en sus extremos editables.
+   Arrástralos para ajustar un punto suelto sin borrar y volver a dibujar: los
+   dos extremos de un Caliper/Regla/Borde liso, el centro y el radio del
+   Círculo, las cuatro esquinas de línea/escaneo del Punto-Línea y la
+   Línea-Línea, el vértice y los lados del Ángulo, o el centro y el tamaño del
+   rectángulo del Blob. Arrastrar el cuerpo (no una manija) sigue moviendo la
+   herramienta entera.
+
    **Las medidas salen en vivo**: cada herramienta dibujada muestra su valor
    junto al trazo, actualizándose con cada frame (en px, o en mm si
    calibraste), en verde si está dentro de tolerancia y en rojo si no. Los

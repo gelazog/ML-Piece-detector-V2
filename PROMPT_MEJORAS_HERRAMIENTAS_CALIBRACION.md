@@ -63,7 +63,7 @@ archivos principales que toca.
   Skills: `cpp-coding-standards`, `cpp-testing`.
   Archivos: igual que T1.
 
-- [ ] **T3 — Handles de edición fina**. Hoy solo se puede mover el conjunto
+- [x] **T3 — Handles de edición fina**. Hoy solo se puede mover el conjunto
   completo de una herramienta; no se puede arrastrar un extremo individual
   (un punto del Caliper, el radio del Círculo, una esquina del rectángulo del
   Blob) sin borrar y volver a dibujar. Añadir "handles" (círculos pequeños en

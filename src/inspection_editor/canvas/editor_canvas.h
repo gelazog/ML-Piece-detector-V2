@@ -27,7 +27,8 @@ struct EditedTool {
 // Funciona en dos modos: imagen fija (diálogo del editor, setScene) o video
 // en vivo (ventana principal, setFrame + setLivePiece): en vivo el fixture se
 // actualiza con cada análisis y las herramientas siguen a la pieza en tiempo
-// real. Alcance demo: sin handles de redimensionado.
+// real. La herramienta seleccionada muestra manijas por extremo para editarla
+// sin volver a dibujarla.
 class EditorCanvas : public QWidget {
     Q_OBJECT
 
@@ -95,6 +96,9 @@ private:
     [[nodiscard]] cv::Point2f widgetToImage(const QPointF& p) const;
     [[nodiscard]] cv::Point2f toImg(const cv::Point2f& piecePoint) const;
     [[nodiscard]] int hitTest(const cv::Point2f& imagePoint) const;
+    // Manija (extremo editable) de la herramienta seleccionada bajo el cursor,
+    // o -1 si ninguna. Permite arrastrar un punto suelto en vez del conjunto.
+    [[nodiscard]] int hitHandle(const cv::Point2f& imagePoint) const;
 
     void paintTool(QPainter& painter, const EditedTool& tool, bool selected) const;
     void paintResults(QPainter& painter) const;
@@ -118,6 +122,8 @@ private:
     bool creating_ = false;
     bool moving_ = false;
     bool marquee_ = false;
+    bool draggingHandle_ = false;  // arrastrando una manija de la selección
+    int handleIndex_ = -1;         // índice de la manija en handlePoints()
     cv::Point2f dragStart_;
     cv::Point2f dragCurrent_;
     // Primera línea ya trazada de una Línea-Línea en curso (coords de pieza).
