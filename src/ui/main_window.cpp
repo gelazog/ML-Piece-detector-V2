@@ -457,6 +457,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             repos_.settings->getDouble("calib_camera_dist_mm", 0.0).value();
         calibration_.horizontalFovDeg =
             repos_.settings->getDouble("calib_fov_deg", 60.0).value();
+        calibration_.calibratedWidth = repos_.settings->getInt("calib_width", 0).value();
+        calibration_.calibratedHeight = repos_.settings->getInt("calib_height", 0).value();
+        calibratedCameraKey_ = QString::fromStdString(
+            repos_.settings->getString("calib_camera", std::string()).value());
     }
     updateCalibrationLabel();
     video_->setMmPerPixel(calibration_.mmPerPixel);
@@ -807,12 +811,48 @@ void MainWindow::onRedo() {
 }
 
 void MainWindow::updateCalibrationLabel() {
-    calibLabel_->setText(
-        calibration_.valid()
-            ? tr("Escala: %1 mm/px · cámara ~%2 mm")
-                  .arg(calibration_.mmPerPixel, 0, 'f', 4)
-                  .arg(calibration_.cameraDistanceMm, 0, 'f', 0)
-            : tr("Sin calibrar (medidas en px)"));
+    // La escala por ArUco gestiona su propia etiqueta por frame (es dinámica).
+    if (arucoLiveScale_) {
+        return;
+    }
+    if (!calibration_.valid()) {
+        calibLabel_->setText(tr("Sin calibrar (medidas en px)"));
+        return;
+    }
+    // D1: la calibración se hizo a una resolución y cámara concretas. Si el
+    // frame actual no coincide, la escala en px ya no es fiable: se avisa en vez
+    // de mostrar milímetros silenciosamente equivocados.
+    const bool resMismatch =
+        !lastFrame_.isNull() &&
+        !calibration_.matchesResolution(lastFrame_.width(), lastFrame_.height());
+    const bool camMismatch = !calibratedCameraKey_.isEmpty() &&
+                             !currentCameraKey_.isEmpty() &&
+                             calibratedCameraKey_ != currentCameraKey_;
+    if (resMismatch || camMismatch) {
+        calibLabel_->setText(
+            tr("⚠ Calibración obsoleta (%1) — recalibra con C")
+                .arg(resMismatch ? tr("otra resolución") : tr("otra cámara")));
+        return;
+    }
+    calibLabel_->setText(tr("Escala: %1 mm/px · cámara ~%2 mm")
+                             .arg(calibration_.mmPerPixel, 0, 'f', 4)
+                             .arg(calibration_.cameraDistanceMm, 0, 'f', 0));
+}
+
+// Sella la cámara actual y persiste toda la calibración (incluida la resolución
+// que el llamante ya fijó en calibration_). Base común de los dos flujos de
+// calibración (diálogo y "fijar con esta medida").
+void MainWindow::persistCalibration() {
+    calibratedCameraKey_ = currentCameraKey_;
+    if (repos_.settings == nullptr) {
+        return;
+    }
+    repos_.settings->setDouble("calib_mm_per_px", calibration_.mmPerPixel);
+    repos_.settings->setDouble("calib_camera_dist_mm", calibration_.cameraDistanceMm);
+    repos_.settings->setDouble("calib_fov_deg", calibration_.horizontalFovDeg);
+    repos_.settings->setInt("calib_width", calibration_.calibratedWidth);
+    repos_.settings->setInt("calib_height", calibration_.calibratedHeight);
+    repos_.settings->setString("calib_camera", calibratedCameraKey_.toStdString());
 }
 
 void MainWindow::onCalibrateClicked() {
@@ -825,13 +865,11 @@ void MainWindow::onCalibrateClicked() {
         return;
     }
     calibration_ = dialog.calibration();
+    calibration_.calibratedWidth = snapshot.width();
+    calibration_.calibratedHeight = snapshot.height();
+    persistCalibration();
     updateCalibrationLabel();
     video_->setMmPerPixel(calibration_.mmPerPixel);
-    if (repos_.settings != nullptr) {
-        repos_.settings->setDouble("calib_mm_per_px", calibration_.mmPerPixel);
-        repos_.settings->setDouble("calib_camera_dist_mm", calibration_.cameraDistanceMm);
-        repos_.settings->setDouble("calib_fov_deg", calibration_.horizontalFovDeg);
-    }
     statusBar()->showMessage(
         tr("Escala calibrada: las medidas ahora se muestran también en mm."));
 }
@@ -923,17 +961,27 @@ void MainWindow::onStartStopClicked() {
     }
 
     streaming_ = true;
+    // Identidad de la cámara en uso, para detectar si la calibración guardada
+    // corresponde a otra cámara (D1).
+    currentCameraKey_ = QString::fromStdString(cameras_[comboIndex].name);
     startStopButton_->setText(tr("Detener"));
     cameraCombo_->setEnabled(false);
     refreshAction_->setEnabled(false);
     statusBar()->showMessage(tr("Transmitiendo desde %1")
                                  .arg(QString::fromStdString(cameras_[comboIndex].name)));
+    updateCalibrationLabel();  // reevalúa obsolescencia con la cámara nueva
     controller_.start(cameras_[comboIndex]);
 }
 
 void MainWindow::onFrame(const QImage& frame) {
     video_->setFrame(frame);
+    // Si cambia la resolución del frame, reevaluar si la calibración sigue
+    // siendo válida (D1); barato porque solo ocurre al cambiar de fuente.
+    const bool sizeChanged = lastFrame_.size() != frame.size();
     lastFrame_ = frame;
+    if (sizeChanged) {
+        updateCalibrationLabel();
+    }
     if (streaming_) {
         // El análisis corre siempre: da el fixture que ancla el dibujo en vivo.
         pendingAnalysisFrame_ = frame;
@@ -1342,13 +1390,11 @@ void MainWindow::onCalibrateFromToolClicked() {
 
     calibration_ = domain::calibrationFromKnownLength(
         measuredPx, knownMm, lastFrame_.width(), calibration_.horizontalFovDeg);
+    calibration_.calibratedWidth = lastFrame_.width();
+    calibration_.calibratedHeight = lastFrame_.height();
+    persistCalibration();
     updateCalibrationLabel();
     video_->setMmPerPixel(calibration_.mmPerPixel);
-    if (repos_.settings != nullptr) {
-        repos_.settings->setDouble("calib_mm_per_px", calibration_.mmPerPixel);
-        repos_.settings->setDouble("calib_camera_dist_mm", calibration_.cameraDistanceMm);
-        repos_.settings->setDouble("calib_fov_deg", calibration_.horizontalFovDeg);
-    }
     statusBar()->showMessage(
         tr("Escala fijada: %1 mm/px (%2 px = %3 mm). Todas las medidas ya están en mm.")
             .arg(calibration_.mmPerPixel, 0, 'f', 4)

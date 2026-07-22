@@ -102,6 +102,24 @@ TEST(Calibration, FormatLengthWithAndWithoutScale) {
     EXPECT_NE(big.find("15.00 cm"), std::string::npos);
 }
 
+TEST(Calibration, ResolutionMatchGuardsStaleScale) {
+    ScaleCalibration cal;
+    cal.mmPerPixel = 0.1;
+
+    // Sin resolución conocida (calibración heredada): no se cuestiona.
+    EXPECT_FALSE(cal.resolutionKnown());
+    EXPECT_TRUE(cal.matchesResolution(640, 480));
+    EXPECT_TRUE(cal.matchesResolution(1920, 1080));
+
+    // Con resolución sellada: solo coincide con esa exacta.
+    cal.calibratedWidth = 1280;
+    cal.calibratedHeight = 720;
+    EXPECT_TRUE(cal.resolutionKnown());
+    EXPECT_TRUE(cal.matchesResolution(1280, 720));
+    EXPECT_FALSE(cal.matchesResolution(640, 480));
+    EXPECT_FALSE(cal.matchesResolution(1280, 721));
+}
+
 // --- Criterios de calidad de captura ---
 
 namespace {

@@ -97,6 +97,7 @@ private:
     void maybeStartAnalysis();
     [[nodiscard]] bool analysisNeeded() const;
     void updateCalibrationLabel();
+    void persistCalibration();  // sella resolución/cámara y guarda en Settings
     void buildMenuBar();
     void buildShortcuts();
     void commitUndoState();
@@ -179,6 +180,10 @@ private:
     std::optional<vision::OrientationAnchor> currentAnchor_;
     double currentOrientationOffset_ = 0.0;
     domain::ScaleCalibration calibration_;
+    // Identidad de la cámara con la que se calibró vs. la que transmite ahora,
+    // para avisar si la escala quedó obsoleta al cambiar de cámara (D1).
+    QString calibratedCameraKey_;
+    QString currentCameraKey_;
     vision::PipelineConfig pipelineConfig_;
     QImage referenceThumb_;
     int toolNameCounter_ = 0;

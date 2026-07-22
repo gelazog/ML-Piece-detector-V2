@@ -177,7 +177,7 @@ archivos principales que toca.
 
 ### D. Calibración
 
-- [ ] **D1 — Calibración ligada a cámara + resolución**. `calib_mm_per_px`
+- [x] **D1 — Calibración ligada a cámara + resolución**. `calib_mm_per_px`
   hoy es **un valor global** en `Settings`. Si el operador cambia de cámara o
   de resolución, la escala queda obsoleta **sin aviso** — bug silencioso de
   precisión. Guardar la calibración con clave compuesta (backend+índice de

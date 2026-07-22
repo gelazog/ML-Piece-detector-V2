@@ -143,6 +143,10 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    todas las medidas se muestran en mm además de px (al dibujar, en Probar y
    en los reportes de inspección). La escala queda guardada y vale mientras
    la cámara no cambie de altura; las tolerancias internas siguen en px.
+   La calibración se **sella con la cámara y la resolución** en que se hizo: si
+   cambias de cámara o de resolución, la barra de estado avisa **«⚠ Calibración
+   obsoleta»** en lugar de mostrar milímetros silenciosamente equivocados —
+   recalibra (tecla **C**) para la fuente nueva.
 
    **Gestión de piezas** (botón *Piezas…*): renombrar, **eliminar** (con sus
    referencias, herramientas e historial — pide confirmación), **miniatura**
