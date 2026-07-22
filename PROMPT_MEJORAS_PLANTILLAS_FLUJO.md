@@ -88,7 +88,7 @@ Formato: casilla, ID, tarea, por qué, skill(s), archivos principales.
   Skills: `qt-cpp-review`.
   Archivos: `ui/main_window.*` (flag, `closeEvent`, cambio de combo pieza/plantilla).
 
-- [ ] **P3 — Abrir el editor con las herramientas en vivo actuales (ida y
+- [x] **P3 — Abrir el editor con las herramientas en vivo actuales (ida y
   vuelta)**. Hoy el editor carga de la BD y no ve lo dibujado en vivo sin
   guardar; al volver, la vista recarga de BD. Pasar `liveTools_` (incluidas las
   no guardadas) al `EditorWindow` como estado inicial y **devolver** sus

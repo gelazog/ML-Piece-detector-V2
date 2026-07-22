@@ -48,7 +48,8 @@ QString typeLabel(ToolType type) {
 EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixture,
                            std::int64_t pieceId, repositories::ToolRepository* repo,
                            domain::ScaleCalibration calibration,
-                           const std::string& templateName, QWidget* parent)
+                           const std::string& templateName, QWidget* parent,
+                           const std::vector<EditedTool>* initialTools)
     : QDialog(parent), reference_(reference), fixture_(fixture), pieceId_(pieceId),
       repo_(repo), calibration_(calibration), templateName_(templateName) {
     setWindowTitle(tr("Editor de plantilla '%1'")
@@ -179,7 +180,14 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     connect(testButton, &QPushButton::clicked, this, &EditorWindow::onTestClicked);
     connect(saveButton, &QPushButton::clicked, this, &EditorWindow::onSaveClicked);
 
-    loadExistingTools();
+    // Con herramientas iniciales (las de la vista en vivo) arrancamos de ellas;
+    // si no, se cargan de la BD como siempre.
+    if (initialTools != nullptr) {
+        tools_ = *initialTools;
+        nameCounter_ = static_cast<int>(tools_.size());
+    } else {
+        loadExistingTools();
+    }
     stableTools_ = tools_;
     refreshList();
     syncPanelFromSelection();
@@ -595,11 +603,25 @@ void EditorWindow::onSaveClicked() {
     refreshList();
 
     if (errors.isEmpty()) {
+        savedToDb_ = true;  // la vista en vivo puede tratar el estado como limpio
         statusLabel_->setText(tr("Plantilla guardada (%1 herramienta(s)).").arg(saved));
     } else {
         QMessageBox::warning(this, tr("Errores al guardar"),
                              errors.join(QStringLiteral("\n")));
     }
+}
+
+std::vector<EditedTool> EditorWindow::editedTools() const {
+    std::vector<EditedTool> result;
+    for (const auto& tool : tools_) {
+        if (tool.deleted) {
+            continue;
+        }
+        EditedTool copy = tool;
+        copy.config.geometryJson = toJson(copy.geometry);
+        result.push_back(std::move(copy));
+    }
+    return result;
 }
 
 }  // namespace pci::inspection

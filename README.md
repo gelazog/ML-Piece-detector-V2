@@ -228,7 +228,10 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    silencio.
 7. **Afinar y aprender**: **Plantilla…** abre el editor sobre imagen fija
    para ajustar tolerancias con "Probar sobre esta imagen" (los valores
-   medidos te dicen qué rangos poner). **Inspeccionar** hace una inspección
+   medidos te dicen qué rangos poner). El editor arranca con **las mismas
+   herramientas que tienes en vivo** (incluidas las que aún no guardaste) y al
+   cerrarlo tus ediciones vuelven a la vista en vivo — editor y tiempo real
+   muestran siempre lo mismo. **Inspeccionar** hace una inspección
    única con reporte detallado y, si fue OK, **Actualizar referencia**
    incorpora ese embedding como versión nueva (las anteriores nunca se
    borran) — el aprendizaje incremental. **Registrar (asistente)…** sigue

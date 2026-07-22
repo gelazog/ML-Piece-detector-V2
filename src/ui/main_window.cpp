@@ -2224,6 +2224,9 @@ void MainWindow::onOpenEditorClicked() {
     if (pieceId < 0 && repos_.pieces != nullptr) {
         if (auto created = repos_.pieces->createPiece("demo"); created.isOk()) {
             pieceId = created.value();
+            // Señales bloqueadas: onPieceSelectionChanged recargaría de la BD y
+            // vaciaría liveTools_ antes de pasarlas al editor.
+            QSignalBlocker blocker(pieceCombo_);
             loadPieceList(pieceId);
         } else if (auto pieces = repos_.pieces->listPieces(); pieces.isOk()) {
             for (const auto& piece : pieces.value()) {
@@ -2235,12 +2238,31 @@ void MainWindow::onOpenEditorClicked() {
         }
     }
 
+    // Pasar las herramientas EN VIVO actuales (incluidas las no guardadas) para
+    // que el editor muestre exactamente lo mismo que la vista en vivo (P3).
     inspection::EditorWindow editor(reference, analysis.value().fixture, pieceId,
                                     pieceId >= 0 ? repos_.tools : nullptr, calibration_,
-                                    activeTemplate(), this);
+                                    activeTemplate(), this, &liveTools_);
     editor.exec();
-    // Reflejar en el video los cambios hechos en el editor.
-    loadToolsForSelectedPiece();
+
+    // Devolver las herramientas editadas a la vista en vivo (ida y vuelta), en
+    // vez de recargar de la BD y perder lo no guardado.
+    liveTools_ = editor.editedTools();
+    undoStack_.clear();
+    stableTools_ = liveTools_;
+    video_->setSelectedIndex(-1);
+    onLiveSelectionChanged(-1);
+    video_->clearResults();
+    video_->update();
+    if (editor.savedToDb()) {
+        // El editor persistió: estado limpio y ligado a esta pieza/plantilla.
+        templateDirty_ = false;
+        loadedPieceId_ = pieceId;
+        loadedTemplate_ = QString::fromStdString(activeTemplate());
+    } else {
+        // Hubo ediciones no guardadas: quedan como cambios pendientes (Ctrl+S).
+        templateDirty_ = true;
+    }
 }
 
 void MainWindow::onInspectClicked() {

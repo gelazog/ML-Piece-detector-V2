@@ -35,10 +35,19 @@ class EditorWindow : public QDialog {
 public:
     // repo puede ser nullptr (BD no disponible): el editor funciona pero el
     // botón Guardar queda deshabilitado. calibration inválida = medidas en px.
+    // initialTools (opcional): si se pasa, el editor arranca con ESAS
+    // herramientas (las que hay en vivo, incluidas las no guardadas) en vez de
+    // cargarlas de la BD — así el editor y la vista en vivo muestran lo mismo.
     EditorWindow(const QImage& reference, const vision::Fixture& fixture,
                  std::int64_t pieceId, repositories::ToolRepository* repo,
                  domain::ScaleCalibration calibration = {},
-                 const std::string& templateName = "principal", QWidget* parent = nullptr);
+                 const std::string& templateName = "principal", QWidget* parent = nullptr,
+                 const std::vector<EditedTool>* initialTools = nullptr);
+
+    // Herramientas resultantes tras editar (sin las borradas, con su JSON al
+    // día), para devolverlas a la vista en vivo. Y si se guardó a la BD.
+    [[nodiscard]] std::vector<EditedTool> editedTools() const;
+    [[nodiscard]] bool savedToDb() const { return savedToDb_; }
 
 private slots:
     void onToolCreated(const pci::inspection::ToolGeometry& geometry);
@@ -89,7 +98,8 @@ private:
     std::vector<EditedTool> stableTools_;
     UndoStack<std::vector<EditedTool>> undoStack_;
     int nameCounter_ = 0;
-    bool syncing_ = false;  // evita bucles señal<->panel
+    bool syncing_ = false;   // evita bucles señal<->panel
+    bool savedToDb_ = false;  // el operador pulsó Guardar y se persistió (P3)
 };
 
 }  // namespace pci::inspection
