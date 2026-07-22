@@ -122,7 +122,7 @@ Formato: casilla, ID, tarea, por qué, skill(s), archivos principales.
 
 ### C. Gestor de plantillas
 
-- [ ] **M1 — Diálogo «Gestionar plantillas»**. Hoy solo hay combo + botón "+".
+- [x] **M1 — Diálogo «Gestionar plantillas»**. Hoy solo hay combo + botón "+".
   Añadir un gestor para la pieza seleccionada: **listar** (`listTemplates`),
   **crear**, **renombrar**, **eliminar** (con todas sus herramientas — pide
   confirmación), **duplicar** (copiar el conjunto a un nombre nuevo) y marcar la

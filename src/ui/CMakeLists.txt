@@ -6,6 +6,7 @@ add_library(pci_ui STATIC
   piece_manager_dialog.cpp
   registration_wizard.cpp
   shortcuts_dialog.cpp
+  template_manager_dialog.cpp
   video_widget.cpp
 )
 target_include_directories(pci_ui PUBLIC ${CMAKE_SOURCE_DIR}/src)

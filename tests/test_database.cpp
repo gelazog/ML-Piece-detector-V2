@@ -392,6 +392,47 @@ TEST_F(DatabaseTest, MultipleTemplatesPerPiece) {
     EXPECT_EQ(templates.value(), (std::vector<std::string>{"cara-2", "principal"}));
 }
 
+TEST_F(DatabaseTest, TemplateManagementOps) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    repositories::ToolRepository tools(db);
+    const auto pieceId = pieces.createPiece("Gestión de plantillas");
+    ASSERT_TRUE(pieceId.isOk());
+
+    auto makeTool = [](const std::string& name) {
+        inspection::ToolConfig c;
+        c.type = inspection::ToolType::Ruler;
+        c.name = name;
+        c.geometryJson = inspection::toJson(
+            inspection::ToolGeometry(inspection::RulerGeometry{{0, 0}, {10, 0}}));
+        return c;
+    };
+    ASSERT_TRUE(tools.save(pieceId.value(), makeTool("a"), "principal").isOk());
+    ASSERT_TRUE(tools.save(pieceId.value(), makeTool("b"), "cara-2").isOk());
+
+    // Duplicar copia todas las herramientas de la plantilla origen.
+    ASSERT_TRUE(tools.duplicateTemplate(pieceId.value(), "principal", "copia").isOk());
+    EXPECT_EQ(tools.listForPiece(pieceId.value(), "copia").value().size(), 1U);
+    // Duplicar a un nombre que ya existe falla.
+    EXPECT_FALSE(tools.duplicateTemplate(pieceId.value(), "principal", "cara-2").isOk());
+
+    // Renombrar mueve las herramientas al nuevo nombre.
+    ASSERT_TRUE(tools.renameTemplate(pieceId.value(), "cara-2", "cara-B").isOk());
+    EXPECT_TRUE(tools.listForPiece(pieceId.value(), "cara-2").value().empty());
+    EXPECT_EQ(tools.listForPiece(pieceId.value(), "cara-B").value().size(), 1U);
+    // Renombrar a un nombre existente falla.
+    EXPECT_FALSE(tools.renameTemplate(pieceId.value(), "cara-B", "principal").isOk());
+
+    // Eliminar borra todas las herramientas de esa plantilla.
+    ASSERT_TRUE(tools.deleteTemplate(pieceId.value(), "copia").isOk());
+    EXPECT_TRUE(tools.listForPiece(pieceId.value(), "copia").value().empty());
+
+    // Quedan principal + cara-B.
+    auto templates = tools.listTemplates(pieceId.value());
+    ASSERT_TRUE(templates.isOk());
+    EXPECT_EQ(templates.value(), (std::vector<std::string>{"cara-B", "principal"}));
+}
+
 TEST_F(DatabaseTest, ClearAnchorRemovesIt) {
     auto& db = openAndMigrate();
     repositories::PieceRepository pieces(db);

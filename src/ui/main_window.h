@@ -91,6 +91,7 @@ private slots:
     void onUnitChanged();
     void onTemplateChanged(int index);
     void onNewTemplateClicked();
+    void onManageTemplatesClicked();  // gestor de plantillas (M1)
     void onToolRightClicked(int index);
 
 protected:
@@ -148,6 +149,7 @@ private:
     QComboBox* pieceCombo_ = nullptr;
     QComboBox* templateCombo_ = nullptr;   // plantillas de la pieza
     QPushButton* newTemplateButton_ = nullptr;
+    QPushButton* manageTemplatesButton_ = nullptr;  // abre el gestor de plantillas
     QPushButton* registerLiveButton_ = nullptr;
     QPushButton* autoInspectButton_ = nullptr;
     QPushButton* inspectButton_ = nullptr;

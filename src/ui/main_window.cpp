@@ -41,6 +41,7 @@
 #include "ui/inspection_result_dialog.h"
 #include "ui/piece_manager_dialog.h"
 #include "ui/registration_wizard.h"
+#include "ui/template_manager_dialog.h"
 #include "vision/fixture_stabilizer.h"
 #include "vision/pipeline.h"
 #include "vision/plane_scale.h"
@@ -241,6 +242,12 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     newTemplateButton_->setToolTip(tr("Crear una plantilla nueva para esta pieza"));
     newTemplateButton_->setMaximumWidth(32);
     pieceLayout->addWidget(newTemplateButton_);
+    manageTemplatesButton_ = new QPushButton(tr("Gestionar…"), central);
+    manageTemplatesButton_->setToolTip(
+        tr("Renombrar, duplicar o eliminar plantillas de esta pieza"));
+    connect(manageTemplatesButton_, &QPushButton::clicked, this,
+            &MainWindow::onManageTemplatesClicked);
+    pieceLayout->addWidget(manageTemplatesButton_);
 
     registerLiveButton_ = new QPushButton(tr("Registrar y activar"), central);
     registerLiveButton_->setToolTip(
@@ -1502,6 +1509,34 @@ void MainWindow::onTemplateChanged(int index) {
         return;
     }
     autoInspectButton_->setChecked(false);
+    loadToolsForSelectedPiece();
+}
+
+void MainWindow::onManageTemplatesClicked() {
+    const std::int64_t pieceId = selectedPieceId();
+    if (pieceId < 0 || repos_.tools == nullptr) {
+        QMessageBox::information(this, tr("Sin pieza"),
+                                 tr("Selecciona una pieza para gestionar sus plantillas."));
+        return;
+    }
+    // No perder los cambios en vivo si el gestor cambia la plantilla activa.
+    if (!confirmSaveBeforeLeaving()) {
+        return;
+    }
+    TemplateManagerDialog dialog(repos_.tools, pieceId,
+                                 QString::fromStdString(activeTemplate()), this);
+    dialog.exec();
+    // Recargar el combo (pudo haber renombrados/borrados/duplicados) y activar
+    // la plantilla elegida; las herramientas se recargan para la activa.
+    const QString target = dialog.selectedTemplate();
+    loadTemplateList(target);  // usa su propio QSignalBlocker
+    if (!target.isEmpty() && templateCombo_->findText(target) < 0) {
+        // Plantilla nueva y aún vacía: se añade al combo (se materializa al
+        // guardar su primera herramienta), como el botón "+".
+        QSignalBlocker blocker(templateCombo_);
+        templateCombo_->addItem(target);
+        templateCombo_->setCurrentText(target);
+    }
     loadToolsForSelectedPiece();
 }
 

@@ -82,6 +82,12 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    **Plantilla…** (campo "Puntos"): banda del Caliper, rayos del Círculo,
    escaneos del Borde liso y área mínima del Blob.
 
+   **Gestor de plantillas** (botón **Gestionar…** junto al selector de
+   plantilla): una pieza puede tener varias plantillas (p. ej. una por cara);
+   desde aquí puedes **crear, renombrar, duplicar y eliminar** plantillas y
+   elegir cuál activar. Duplicar copia todas las herramientas de la plantilla a
+   un nombre nuevo — útil para partir de una parecida y ajustarla.
+
    **Snap al borde al dibujar**: mientras trazas un Caliper, Regla o Borde liso,
    un marcador amarillo resalta el borde detectado más cercano al cursor (usa la
    detección de bordes subpíxel del proyecto sobre una banda alrededor del
