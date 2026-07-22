@@ -36,6 +36,7 @@ QString typeLabel(ToolType type) {
         case ToolType::Blob: return QStringLiteral("Blob");
         case ToolType::Ruler: return QStringLiteral("Regla");
         case ToolType::LineToLine: return QStringLiteral("Línea-Línea");
+        case ToolType::Angle: return QStringLiteral("Ángulo");
     }
     return QStringLiteral("?");
 }
@@ -86,6 +87,7 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     addMode(tr("Blob"), static_cast<int>(ToolType::Blob));
     addMode(tr("Regla"), static_cast<int>(ToolType::Ruler));
     addMode(tr("Línea-Línea"), static_cast<int>(ToolType::LineToLine));
+    addMode(tr("Ángulo"), static_cast<int>(ToolType::Angle));
     modesLayout->addStretch(1);
     rootLayout->addLayout(modesLayout);
 
@@ -288,7 +290,8 @@ void EditorWindow::syncPanelFromSelection() {
         tolMin_->setValue(tool.config.toleranceMin);
         tolMax_->setValue(tool.config.toleranceMax);
         if (calibration_.valid() && tool.config.type != ToolType::Blob &&
-            tool.config.type != ToolType::LineToLine) {
+            tool.config.type != ToolType::LineToLine &&
+            tool.config.type != ToolType::Angle) {
             tolMmLabel_->setText(tr("= %1 – %2 mm")
                                      .arg(calibration_.toMm(tool.config.toleranceMin), 0,
                                           'f', 2)
@@ -397,7 +400,8 @@ void EditorWindow::onPanelEdited() {
     tool.config.toleranceMin = tolMin_->value();
     tool.config.toleranceMax = tolMax_->value();
     if (calibration_.valid() && tool.config.type != ToolType::Blob &&
-        tool.config.type != ToolType::LineToLine) {
+        tool.config.type != ToolType::LineToLine &&
+        tool.config.type != ToolType::Angle) {
         tolMmLabel_->setText(tr("= %1 – %2 mm")
                                  .arg(calibration_.toMm(tolMin_->value()), 0, 'f', 2)
                                  .arg(calibration_.toMm(tolMax_->value()), 0, 'f', 2));

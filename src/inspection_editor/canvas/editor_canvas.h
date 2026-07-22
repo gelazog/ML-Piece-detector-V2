@@ -122,6 +122,8 @@ private:
     cv::Point2f dragCurrent_;
     // Primera línea ya trazada de una Línea-Línea en curso (coords de pieza).
     std::optional<std::array<cv::Point2f, 2>> pendingLineA_;
+    // Vértice + primer lado ya fijados de un Ángulo en curso (coords de pieza).
+    std::optional<std::array<cv::Point2f, 2>> pendingAngle_;
 
     // Estado del modo vivo.
     bool liveMode_ = false;

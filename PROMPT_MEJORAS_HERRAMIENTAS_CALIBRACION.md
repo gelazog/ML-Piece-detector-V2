@@ -56,7 +56,7 @@ archivos principales que toca.
   `inspection_editor/canvas/{editor_canvas,tool_icons}.cpp`,
   `src/ui/main_window.*` (solo para cablear el botón nuevo).
 
-- [ ] **T2 — Herramienta de Ángulo**. Complementa T1: ángulo de una esquina
+- [x] **T2 — Herramienta de Ángulo**. Complementa T1: ángulo de una esquina
   (vértice + dos puntos) o entre dos segmentos sueltos, salida directa en
   grados con tolerancia en grados (no en px). Común en catálogos de
   herramientas de medición de VisionPro/Halcon junto al caliper.

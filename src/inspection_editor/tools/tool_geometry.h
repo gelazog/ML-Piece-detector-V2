@@ -61,9 +61,15 @@ struct LineToLineGeometry {
     cv::Point2f b1;
 };
 
+struct AngleGeometry {
+    cv::Point2f vertex;  // esquina cuyo ángulo se mide
+    cv::Point2f end0;    // extremo del primer lado
+    cv::Point2f end1;    // extremo del segundo lado
+};
+
 using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGeometry,
                                   EdgeFlawGeometry, BlobGeometry, RulerGeometry,
-                                  LineToLineGeometry>;
+                                  LineToLineGeometry, AngleGeometry>;
 
 // (De)serialización JSON (cv::FileStorage en memoria). El tipo del JSON debe
 // coincidir con config.type al parsear.

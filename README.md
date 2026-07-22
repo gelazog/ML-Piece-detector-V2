@@ -63,6 +63,9 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    - *Línea-Línea*: dos líneas de referencia (se dibujan en dos pasos) → mide el
      **ángulo** entre ellas en grados (0–90°), con la separación perpendicular en
      el detalle. La tolerancia se define en grados; no se calibra a mm.
+   - *Ángulo*: una esquina (vértice + dos lados, en dos pasos) → mide el
+     **ángulo interior** en grados (0–180°). Tolerancia en grados; ideal para
+     chaflanes y esquinas.
 
    Los detalles de todas las herramientas incluyen **mm (y cm a partir de
    10 cm)** cuando hay calibración — también el círculo (diámetro, radio y

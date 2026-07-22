@@ -184,6 +184,35 @@ ToolRunResult runLineToLine(const Fixture& fixture, const ToolConfig& config,
     return result;
 }
 
+ToolRunResult runAngle(const Fixture& fixture, const ToolConfig& config,
+                       const AngleGeometry& g, const Fmt& /*fmt*/) {
+    ToolRunResult result = baseResult(config);
+    result.measuredIsAngle = true;
+    const cv::Point2f vertex = toImg(fixture, g.vertex);
+    const cv::Point2f end0 = toImg(fixture, g.end0);
+    const cv::Point2f end1 = toImg(fixture, g.end1);
+    result.overlaySegments.push_back({vertex, end0});
+    result.overlaySegments.push_back({vertex, end1});
+    result.overlayPoints.push_back(vertex);
+
+    const cv::Point2f r0 = end0 - vertex;
+    const cv::Point2f r1 = end1 - vertex;
+    if (cv::norm(r0) < 1.0 || cv::norm(r1) < 1.0) {
+        result.detail = "Lados demasiado cortos";
+        return result;
+    }
+
+    // Ángulo interior de la esquina (0°..180°) entre los dos lados.
+    const double cross = static_cast<double>(r0.x) * r1.y - static_cast<double>(r0.y) * r1.x;
+    const double dot = static_cast<double>(r0.x) * r1.x + static_cast<double>(r0.y) * r1.y;
+    const double angleDeg = std::abs(std::atan2(cross, dot) * 180.0 / kPi);
+
+    result.measured = angleDeg;
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = "ángulo=" + fmt2(angleDeg) + "°";
+    return result;
+}
+
 ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
                         const ToolConfig& config, const CircleGeometry& g,
                         const Fmt& fmt) {
@@ -476,6 +505,9 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::LineToLine:
                 return ResultT::ok(runLineToLine(
                     fixture, config, std::get<LineToLineGeometry>(geometry.value()), fmt));
+            case ToolType::Angle:
+                return ResultT::ok(runAngle(
+                    fixture, config, std::get<AngleGeometry>(geometry.value()), fmt));
         }
         return ResultT::err("Tipo de herramienta no soportado");
     } catch (const cv::Exception& e) {

@@ -17,6 +17,7 @@ const char* toolTypeName(ToolType type) {
         case ToolType::Blob: return "blob";
         case ToolType::Ruler: return "ruler";
         case ToolType::LineToLine: return "line_to_line";
+        case ToolType::Angle: return "angle";
     }
     return "unknown";
 }
@@ -24,7 +25,7 @@ const char* toolTypeName(ToolType type) {
 core::Result<ToolType> toolTypeFromName(const std::string& name) {
     for (const ToolType type : {ToolType::Caliper, ToolType::Circle, ToolType::PointToLine,
                                 ToolType::EdgeFlaw, ToolType::Blob, ToolType::Ruler,
-                                ToolType::LineToLine}) {
+                                ToolType::LineToLine, ToolType::Angle}) {
         if (name == toolTypeName(type)) {
             return core::Result<ToolType>::ok(type);
         }
@@ -64,6 +65,11 @@ const char* toolTypeDescription(ToolType type) {
                    "Traza la primera línea y luego la segunda (dos arrastres); mide el\n"
                    "ángulo entre ambas en grados y también su separación. Útil para\n"
                    "verificar paralelismo o el ángulo entre dos bordes de la pieza.";
+        case ToolType::Angle:
+            return "Ángulo — mide el ángulo de una esquina en grados.\n"
+                   "Arrastra del VÉRTICE al extremo del primer lado y luego marca el\n"
+                   "extremo del segundo lado; se mide el ángulo interior (0°..180°)\n"
+                   "con tolerancia en grados. Ideal para chaflanes y esquinas.";
     }
     return "";
 }
@@ -81,7 +87,8 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
             toleranceMin = 0.0;
             toleranceMax = std::max(measured * 1.5, 2.0);
             return;
-        case ToolType::LineToLine: {
+        case ToolType::LineToLine:
+        case ToolType::Angle: {
             // Ángulo en grados: banda de ±2° alrededor del valor de la pieza buena.
             const double band = 2.0;
             toleranceMin = std::max(0.0, measured - band);
@@ -117,8 +124,10 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::Blob;
             } else if constexpr (std::is_same_v<T, RulerGeometry>) {
                 return ToolType::Ruler;
-            } else {
+            } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
                 return ToolType::LineToLine;
+            } else {
+                return ToolType::Angle;
             }
         },
         geometry);
@@ -200,11 +209,16 @@ std::string toJson(const ToolGeometry& geometry) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "x0" << g.p0.x << "y0" << g.p0.y << "x1" << g.p1.x << "y1" << g.p1.y;
                 });
-            } else {
+            } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "ax0" << g.a0.x << "ay0" << g.a0.y << "ax1" << g.a1.x << "ay1"
                        << g.a1.y << "bx0" << g.b0.x << "by0" << g.b0.y << "bx1" << g.b1.x
                        << "by1" << g.b1.y;
+                });
+            } else {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "vx" << g.vertex.x << "vy" << g.vertex.y << "e0x" << g.end0.x
+                       << "e0y" << g.end0.y << "e1x" << g.end1.x << "e1y" << g.end1.y;
                 });
             }
         },
@@ -304,6 +318,18 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.a1 = {static_cast<float>(ax1.value()), static_cast<float>(ay1.value())};
                 g.b0 = {static_cast<float>(bx0.value()), static_cast<float>(by0.value())};
                 g.b1 = {static_cast<float>(bx1.value()), static_cast<float>(by1.value())};
+                return ResultT::ok(g);
+            }
+            case ToolType::Angle: {
+                AngleGeometry g;
+                auto vx = f("vx"), vy = f("vy"), e0x = f("e0x"), e0y = f("e0y");
+                auto e1x = f("e1x"), e1y = f("e1y");
+                for (const auto* v : {&vx, &vy, &e0x, &e0y, &e1x, &e1y}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.vertex = {static_cast<float>(vx.value()), static_cast<float>(vy.value())};
+                g.end0 = {static_cast<float>(e0x.value()), static_cast<float>(e0y.value())};
+                g.end1 = {static_cast<float>(e1x.value()), static_cast<float>(e1y.value())};
                 return ResultT::ok(g);
             }
         }

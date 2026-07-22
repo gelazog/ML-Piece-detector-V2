@@ -22,6 +22,7 @@ QColor toolColor(ToolType type) {
         case ToolType::Blob: return {255, 105, 180};
         case ToolType::Ruler: return {255, 255, 120};
         case ToolType::LineToLine: return {120, 220, 220};
+        case ToolType::Angle: return {255, 170, 60};
     }
     return Qt::white;
 }
@@ -54,6 +55,8 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
                 return {g.center};
             } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
                 return {g.a0, g.a1, g.b0, g.b1};
+            } else if constexpr (std::is_same_v<T, AngleGeometry>) {
+                return {g.vertex, g.end0, g.end1};
             } else {
                 return {g.lineA, g.lineB};
             }
@@ -84,6 +87,10 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 g.a1 += delta;
                 g.b0 += delta;
                 g.b1 += delta;
+            } else if constexpr (std::is_same_v<T, AngleGeometry>) {
+                g.vertex += delta;
+                g.end0 += delta;
+                g.end1 += delta;
             }
         },
         geometry);
@@ -152,7 +159,8 @@ void EditorCanvas::setTools(std::vector<EditedTool>* tools) {
 
 void EditorCanvas::setCreateType(std::optional<ToolType> type) {
     createType_ = type;
-    pendingLineA_.reset();  // cancela una Línea-Línea a medio crear
+    pendingLineA_.reset();   // cancela una Línea-Línea a medio crear
+    pendingAngle_.reset();   // cancela un Ángulo a medio crear
     setCursor(type.has_value() ? Qt::CrossCursor : Qt::ArrowCursor);
     update();
 }
@@ -284,6 +292,9 @@ int EditorCanvas::hitTest(const cv::Point2f& p) const {
                 } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
                     d = std::min(distanceToSegment(p, toImg(g.a0), toImg(g.a1)),
                                  distanceToSegment(p, toImg(g.b0), toImg(g.b1)));
+                } else if constexpr (std::is_same_v<T, AngleGeometry>) {
+                    d = std::min(distanceToSegment(p, toImg(g.vertex), toImg(g.end0)),
+                                 distanceToSegment(p, toImg(g.vertex), toImg(g.end1)));
                 } else if constexpr (std::is_same_v<T, BlobGeometry>) {
                     const float hw = g.width / 2.0F;
                     const float hh = g.height / 2.0F;
@@ -510,6 +521,24 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         return;
     }
 
+    // Ángulo: el primer arrastre fija vértice (inicio) y primer lado (fin); el
+    // segundo arrastre define el segundo lado (su punto final), compartiendo el
+    // vértice ya fijado.
+    if (*createType_ == ToolType::Angle) {
+        if (!pendingAngle_.has_value()) {
+            pendingAngle_ = std::array<cv::Point2f, 2>{a, b};
+            update();
+            return;
+        }
+        AngleGeometry g;
+        g.vertex = (*pendingAngle_)[0];
+        g.end0 = (*pendingAngle_)[1];
+        g.end1 = b;
+        pendingAngle_.reset();
+        emit toolCreated(ToolGeometry(g));
+        return;
+    }
+
     ToolGeometry geometry = CaliperGeometry{};
     switch (*createType_) {
         case ToolType::Caliper:
@@ -552,6 +581,7 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
             break;
         }
         case ToolType::LineToLine:
+        case ToolType::Angle:
             return;  // gestionado arriba (creación en dos pasos)
     }
     emit toolCreated(geometry);
@@ -654,6 +684,14 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 painter.drawEllipse(a0, 3.0, 3.0);
                 painter.drawEllipse(b0, 3.0, 3.0);
                 labelPos = (a0 + b1) / 2.0;
+            } else if constexpr (std::is_same_v<T, AngleGeometry>) {
+                const QPointF v = imageToWidget(toImg(g.vertex));
+                const QPointF e0 = imageToWidget(toImg(g.end0));
+                const QPointF e1 = imageToWidget(toImg(g.end1));
+                painter.drawLine(v, e0);
+                painter.drawLine(v, e1);
+                painter.drawEllipse(v, 3.0, 3.0);
+                labelPos = v;
             }
         },
         tool.geometry);
@@ -732,6 +770,11 @@ void EditorCanvas::paintCreationPreview(QPainter& painter) const {
     if (pendingLineA_.has_value()) {
         painter.drawLine(imageToWidget(toImg((*pendingLineA_)[0])),
                          imageToWidget(toImg((*pendingLineA_)[1])));
+    }
+    // Primer lado de un Ángulo en curso: vértice + primer lado ya fijados.
+    if (pendingAngle_.has_value()) {
+        painter.drawLine(imageToWidget(toImg((*pendingAngle_)[0])),
+                         imageToWidget(toImg((*pendingAngle_)[1])));
     }
     if (!creating_) {
         return;

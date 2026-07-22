@@ -115,6 +115,19 @@ QIcon toolIcon(ToolType type) {
                 p.setBrush(Qt::NoBrush);
                 p.drawArc(QRectF(1, 15, 16, 16), 0 * 16, 38 * 16);  // arco del ángulo
             });
+        case ToolType::Angle:
+            return makeIcon([](QPainter& p, const QColor& c) {
+                // Esquina: vértice con dos lados y un arco marcando el ángulo.
+                p.drawLine(6, 22, 6, 4);    // lado vertical
+                p.drawLine(6, 22, 24, 22);  // lado horizontal
+                p.setBrush(c);
+                p.drawEllipse(QPointF(6, 22), 1.8, 1.8);  // vértice
+                QPen thin = p.pen();
+                thin.setWidthF(1.2);
+                p.setPen(thin);
+                p.setBrush(Qt::NoBrush);
+                p.drawArc(QRectF(0, 16, 12, 12), 0 * 16, 90 * 16);  // arco de 90°
+            });
     }
     return {};
 }

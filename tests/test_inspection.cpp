@@ -301,6 +301,42 @@ TEST(LineToLine, MeasuresAngleBetweenLines) {
     EXPECT_NEAR(result.value().measured, 0.0, 1e-3);
 }
 
+TEST(Angle, JsonRoundTrip) {
+    const AngleGeometry g{{50.0F, 50.0F}, {90.0F, 50.0F}, {50.0F, 10.0F}};
+    auto back = geometryFromJson(ToolType::Angle, toJson(ToolGeometry(g)));
+    ASSERT_TRUE(back.isOk()) << back.error().message;
+    const auto& r = std::get<AngleGeometry>(back.value());
+    EXPECT_FLOAT_EQ(r.vertex.x, 50.0F);
+    EXPECT_FLOAT_EQ(r.vertex.y, 50.0F);
+    EXPECT_FLOAT_EQ(r.end0.x, 90.0F);
+    EXPECT_FLOAT_EQ(r.end1.y, 10.0F);
+}
+
+TEST(Angle, MeasuresCornerAngle) {
+    const cv::Mat gray(120, 120, CV_8UC1, cv::Scalar(128));
+
+    // Esquina recta: un lado hacia +x, el otro hacia -y (arriba) => 90°.
+    const AngleGeometry right{{50.0F, 50.0F}, {90.0F, 50.0F}, {50.0F, 10.0F}};
+    auto result =
+        runTool(gray, kIdentity, makeConfig(ToolType::Angle, ToolGeometry(right), 88, 92));
+    ASSERT_TRUE(result.isOk()) << result.error().message;
+    EXPECT_TRUE(result.value().measuredIsAngle);
+    EXPECT_NEAR(result.value().measured, 90.0, 1e-3);
+    EXPECT_TRUE(result.value().ok);
+
+    // Ángulo de 45°: lado hacia +x y lado en diagonal (+x, -y).
+    const AngleGeometry diag{{50.0F, 50.0F}, {90.0F, 50.0F}, {90.0F, 10.0F}};
+    result = runTool(gray, kIdentity, makeConfig(ToolType::Angle, ToolGeometry(diag), 0, 180));
+    ASSERT_TRUE(result.isOk()) << result.error().message;
+    EXPECT_NEAR(result.value().measured, 45.0, 1e-3);
+
+    // Ángulo llano (lados opuestos) => 180°.
+    const AngleGeometry flat{{50.0F, 50.0F}, {90.0F, 50.0F}, {10.0F, 50.0F}};
+    result = runTool(gray, kIdentity, makeConfig(ToolType::Angle, ToolGeometry(flat), 0, 180));
+    ASSERT_TRUE(result.isOk()) << result.error().message;
+    EXPECT_NEAR(result.value().measured, 180.0, 1e-3);
+}
+
 // --- Anclaje al fixture (el test de oro de la fase) ---
 
 TEST(FixtureAnchoring, CaliperMeasuresSameOnRotatedPiece) {

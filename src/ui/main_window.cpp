@@ -171,6 +171,7 @@ QString toolTypeLabel(inspection::ToolType type) {
         case inspection::ToolType::Blob: return QStringLiteral("Blob");
         case inspection::ToolType::Ruler: return QStringLiteral("Regla");
         case inspection::ToolType::LineToLine: return QStringLiteral("Línea-Línea");
+        case inspection::ToolType::Angle: return QStringLiteral("Ángulo");
     }
     return QStringLiteral("?");
 }
@@ -279,7 +280,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
          {inspection::ToolType::Caliper, inspection::ToolType::Circle,
           inspection::ToolType::PointToLine, inspection::ToolType::EdgeFlaw,
           inspection::ToolType::Blob, inspection::ToolType::Ruler,
-          inspection::ToolType::LineToLine}) {
+          inspection::ToolType::LineToLine, inspection::ToolType::Angle}) {
         auto* button = addMode(toolTypeLabel(type), static_cast<int>(type));
         button->setIcon(inspection::toolIcon(type));
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -730,6 +731,7 @@ void MainWindow::buildShortcuts() {
         {"tool_blob", inspection::ToolType::Blob, Qt::Key_5},
         {"tool_ruler", inspection::ToolType::Ruler, Qt::Key_6},
         {"tool_line_to_line", inspection::ToolType::LineToLine, Qt::Key_7},
+        {"tool_angle", inspection::ToolType::Angle, Qt::Key_8},
     };
     for (const auto& entry : toolKeys) {
         const int id = static_cast<int>(entry.type);
@@ -1239,7 +1241,9 @@ void MainWindow::onLiveSelectionChanged(int index) {
         valid && liveTools_[static_cast<std::size_t>(index)].config.type !=
                      inspection::ToolType::Blob &&
         liveTools_[static_cast<std::size_t>(index)].config.type !=
-            inspection::ToolType::LineToLine);
+            inspection::ToolType::LineToLine &&
+        liveTools_[static_cast<std::size_t>(index)].config.type !=
+            inspection::ToolType::Angle);
     if (!valid) {
         return;
     }
