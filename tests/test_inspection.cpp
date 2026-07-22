@@ -337,6 +337,48 @@ TEST(Angle, MeasuresCornerAngle) {
     EXPECT_NEAR(result.value().measured, 180.0, 1e-3);
 }
 
+TEST(PolyBlob, JsonRoundTrip) {
+    PolyBlobGeometry g;
+    g.vertices = {{10.0F, 10.0F}, {90.0F, 15.0F}, {70.0F, 80.0F}, {20.0F, 60.0F}};
+    g.minArea = 12.0F;
+    g.darkBlobs = false;
+    auto back = geometryFromJson(ToolType::PolyBlob, toJson(ToolGeometry(g)));
+    ASSERT_TRUE(back.isOk()) << back.error().message;
+    const auto& r = std::get<PolyBlobGeometry>(back.value());
+    ASSERT_EQ(r.vertices.size(), 4U);
+    EXPECT_FLOAT_EQ(r.vertices[0].x, 10.0F);
+    EXPECT_FLOAT_EQ(r.vertices[1].y, 15.0F);
+    EXPECT_FLOAT_EQ(r.vertices[2].x, 70.0F);
+    EXPECT_FLOAT_EQ(r.minArea, 12.0F);
+    EXPECT_FALSE(r.darkBlobs);
+}
+
+TEST(PolyBlob, RejectsDegeneratePolygon) {
+    PolyBlobGeometry g;
+    g.vertices = {{10.0F, 10.0F}, {90.0F, 15.0F}};  // solo 2 vértices
+    auto back = geometryFromJson(ToolType::PolyBlob, toJson(ToolGeometry(g)));
+    EXPECT_FALSE(back.isOk());
+}
+
+TEST(PolyBlob, CountsBlobsInsidePolygon) {
+    // Fondo claro con dos cuadrados oscuros dentro de una zona pentagonal.
+    cv::Mat gray(120, 120, CV_8UC1, cv::Scalar(230));
+    cv::rectangle(gray, cv::Rect(30, 30, 12, 12), cv::Scalar(20), cv::FILLED);
+    cv::rectangle(gray, cv::Rect(60, 55, 12, 12), cv::Scalar(20), cv::FILLED);
+    // Un tercer cuadrado FUERA del polígono no debe contarse.
+    cv::rectangle(gray, cv::Rect(100, 100, 12, 12), cv::Scalar(20), cv::FILLED);
+
+    PolyBlobGeometry g;
+    g.vertices = {{20.0F, 20.0F}, {85.0F, 20.0F}, {85.0F, 85.0F}, {20.0F, 85.0F}};
+    g.minArea = 20.0F;
+    g.darkBlobs = true;
+    auto result =
+        runTool(gray, kIdentity, makeConfig(ToolType::PolyBlob, ToolGeometry(g), 2, 2));
+    ASSERT_TRUE(result.isOk()) << result.error().message;
+    EXPECT_EQ(static_cast<int>(result.value().measured), 2);
+    EXPECT_TRUE(result.value().ok);
+}
+
 // --- Anclaje al fixture (el test de oro de la fase) ---
 
 TEST(FixtureAnchoring, CaliperMeasuresSameOnRotatedPiece) {

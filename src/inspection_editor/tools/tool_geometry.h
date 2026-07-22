@@ -4,6 +4,7 @@
 
 #include <string>
 #include <variant>
+#include <vector>
 
 #include "core/result.h"
 #include "inspection_editor/tools/tool_types.h"
@@ -67,9 +68,15 @@ struct AngleGeometry {
     cv::Point2f end1;    // extremo del segundo lado
 };
 
+struct PolyBlobGeometry {
+    std::vector<cv::Point2f> vertices;  // región poligonal libre (>= 3 vértices)
+    float minArea = 20.0F;
+    bool darkBlobs = true;  // buscar manchas oscuras (o claras si false)
+};
+
 using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGeometry,
                                   EdgeFlawGeometry, BlobGeometry, RulerGeometry,
-                                  LineToLineGeometry, AngleGeometry>;
+                                  LineToLineGeometry, AngleGeometry, PolyBlobGeometry>;
 
 // (De)serialización JSON (cv::FileStorage en memoria). El tipo del JSON debe
 // coincidir con config.type al parsear.

@@ -23,6 +23,7 @@ QColor toolColor(ToolType type) {
         case ToolType::Ruler: return {255, 255, 120};
         case ToolType::LineToLine: return {120, 220, 220};
         case ToolType::Angle: return {255, 170, 60};
+        case ToolType::PolyBlob: return {200, 120, 255};
     }
     return Qt::white;
 }
@@ -57,6 +58,8 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
                 return {g.a0, g.a1, g.b0, g.b1};
             } else if constexpr (std::is_same_v<T, AngleGeometry>) {
                 return {g.vertex, g.end0, g.end1};
+            } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
+                return g.vertices;
             } else {
                 return {g.lineA, g.lineB};
             }
@@ -91,6 +94,10 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 g.vertex += delta;
                 g.end0 += delta;
                 g.end1 += delta;
+            } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
+                for (auto& v : g.vertices) {
+                    v += delta;
+                }
             }
         },
         geometry);
@@ -116,9 +123,11 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
                 return {g.a0, g.a1, g.b0, g.b1};
             } else if constexpr (std::is_same_v<T, AngleGeometry>) {
                 return {g.vertex, g.end0, g.end1};
-            } else {  // BlobGeometry
+            } else if constexpr (std::is_same_v<T, BlobGeometry>) {
                 return {g.center,
                         g.center + cv::Point2f(g.width / 2.0F, g.height / 2.0F)};
+            } else {  // PolyBlobGeometry
+                return g.vertices;
             }
         },
         geometry);
@@ -164,12 +173,16 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
                     case 1: g.end0 = q; break;
                     default: g.end1 = q; break;
                 }
-            } else {  // BlobGeometry
+            } else if constexpr (std::is_same_v<T, BlobGeometry>) {
                 if (handle == 0) {
                     g.center = q;
                 } else {
                     g.width = std::max(8.0F, 2.0F * std::abs(q.x - g.center.x));
                     g.height = std::max(8.0F, 2.0F * std::abs(q.y - g.center.y));
+                }
+            } else {  // PolyBlobGeometry
+                if (handle >= 0 && handle < static_cast<int>(g.vertices.size())) {
+                    g.vertices[static_cast<std::size_t>(handle)] = q;
                 }
             }
         },
@@ -239,8 +252,9 @@ void EditorCanvas::setTools(std::vector<EditedTool>* tools) {
 
 void EditorCanvas::setCreateType(std::optional<ToolType> type) {
     createType_ = type;
-    pendingLineA_.reset();   // cancela una Línea-Línea a medio crear
-    pendingAngle_.reset();   // cancela un Ángulo a medio crear
+    pendingLineA_.reset();    // cancela una Línea-Línea a medio crear
+    pendingAngle_.reset();    // cancela un Ángulo a medio crear
+    pendingPolygon_.clear();  // cancela un Blob poligonal a medio crear
     setCursor(type.has_value() ? Qt::CrossCursor : Qt::ArrowCursor);
     update();
 }
@@ -385,6 +399,12 @@ int EditorCanvas::hitTest(const cv::Point2f& p) const {
                         toImg(g.center + cv::Point2f(-hw, hh))};
                     for (int k = 0; k < 4; ++k) {
                         d = std::min(d, distanceToSegment(p, c[k], c[(k + 1) % 4]));
+                    }
+                } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
+                    const std::size_t n = g.vertices.size();
+                    for (std::size_t k = 0; k < n; ++k) {
+                        d = std::min(d, distanceToSegment(p, toImg(g.vertices[k]),
+                                                          toImg(g.vertices[(k + 1) % n])));
                     }
                 }
             },
@@ -619,6 +639,24 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
     creating_ = false;
     update();
 
+    // Blob poligonal: se construye por clics sucesivos (no por arrastre). Cada
+    // clic añade un vértice; hacer clic cerca del primero (con >= 3 vértices)
+    // cierra el polígono y crea la herramienta.
+    if (createType_.has_value() && *createType_ == ToolType::PolyBlob) {
+        if (pendingPolygon_.size() >= 3 &&
+            cv::norm(toImg(pendingPolygon_.front()) - p) < 12.0) {
+            PolyBlobGeometry g;
+            g.vertices = pendingPolygon_;
+            pendingPolygon_.clear();
+            emit toolCreated(ToolGeometry(g));
+            update();
+            return;
+        }
+        pendingPolygon_.push_back(vision::toPieceCoords(fixture_, p));
+        update();
+        return;
+    }
+
     if (!createType_.has_value() || cv::norm(p - dragStart_) < 8.0) {
         return;  // arrastre demasiado corto: ignorado
     }
@@ -705,7 +743,8 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         }
         case ToolType::LineToLine:
         case ToolType::Angle:
-            return;  // gestionado arriba (creación en dos pasos)
+        case ToolType::PolyBlob:
+            return;  // gestionado arriba (creación en varios pasos)
     }
     emit toolCreated(geometry);
 }
@@ -815,6 +854,13 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 painter.drawLine(v, e1);
                 painter.drawEllipse(v, 3.0, 3.0);
                 labelPos = v;
+            } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
+                QPolygonF poly;
+                for (const auto& vtx : g.vertices) {
+                    poly << imageToWidget(toImg(vtx));
+                }
+                painter.drawPolygon(poly);
+                labelPos = poly.boundingRect().topLeft() + QPointF(2, -4);
             }
         },
         tool.geometry);
@@ -913,6 +959,20 @@ void EditorCanvas::paintCreationPreview(QPainter& painter) const {
     if (pendingAngle_.has_value()) {
         painter.drawLine(imageToWidget(toImg((*pendingAngle_)[0])),
                          imageToWidget(toImg((*pendingAngle_)[1])));
+    }
+    // Blob poligonal en curso: vértices marcados, con el primero resaltado para
+    // indicar dónde cerrar.
+    if (!pendingPolygon_.empty()) {
+        for (std::size_t i = 0; i + 1 < pendingPolygon_.size(); ++i) {
+            painter.drawLine(imageToWidget(toImg(pendingPolygon_[i])),
+                             imageToWidget(toImg(pendingPolygon_[i + 1])));
+        }
+        for (const auto& v : pendingPolygon_) {
+            painter.drawEllipse(imageToWidget(toImg(v)), 2.5, 2.5);
+        }
+        painter.setBrush(QColor(0, 220, 0));
+        painter.drawEllipse(imageToWidget(toImg(pendingPolygon_.front())), 4.0, 4.0);
+        painter.setBrush(Qt::NoBrush);
     }
     if (!creating_) {
         return;

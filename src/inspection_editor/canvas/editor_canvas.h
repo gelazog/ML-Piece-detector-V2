@@ -130,6 +130,9 @@ private:
     std::optional<std::array<cv::Point2f, 2>> pendingLineA_;
     // Vértice + primer lado ya fijados de un Ángulo en curso (coords de pieza).
     std::optional<std::array<cv::Point2f, 2>> pendingAngle_;
+    // Vértices ya marcados de un Blob poligonal en curso (coords de pieza); se
+    // cierra al hacer clic cerca del primero (>= 3 vértices).
+    std::vector<cv::Point2f> pendingPolygon_;
 
     // Estado del modo vivo.
     bool liveMode_ = false;

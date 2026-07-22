@@ -128,6 +128,18 @@ QIcon toolIcon(ToolType type) {
                 p.setBrush(Qt::NoBrush);
                 p.drawArc(QRectF(0, 16, 12, 12), 0 * 16, 90 * 16);  // arco de 90°
             });
+        case ToolType::PolyBlob:
+            return makeIcon([](QPainter& p, const QColor& c) {
+                // Polígono libre con un par de manchas dentro.
+                QPolygonF poly;
+                poly << QPointF(6, 8) << QPointF(20, 5) << QPointF(24, 17)
+                     << QPointF(14, 24) << QPointF(4, 17);
+                p.drawPolygon(poly);
+                p.setBrush(c);
+                p.setPen(Qt::NoPen);
+                p.drawEllipse(QPointF(12, 13), 2.0, 2.0);
+                p.drawEllipse(QPointF(18, 15), 1.6, 1.6);
+            });
     }
     return {};
 }

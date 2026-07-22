@@ -381,60 +381,55 @@ ToolRunResult runEdgeFlaw(const cv::Mat& gray, const Fixture& fixture,
     return result;
 }
 
-ToolRunResult runBlob(const cv::Mat& gray, const Fixture& fixture, const ToolConfig& config,
-                      const BlobGeometry& g, const Fmt& fmt) {
-    ToolRunResult result = baseResult(config);
-
-    // Rectángulo alineado a los ejes de la pieza -> cuadrilátero en imagen.
-    const float hw = g.width / 2.0F;
-    const float hh = g.height / 2.0F;
-    const std::array<cv::Point2f, 4> quad = {
-        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, hh)),
-        toImg(fixture, g.center + cv::Point2f(-hw, hh)),
-    };
-    for (int i = 0; i < 4; ++i) {
-        result.overlaySegments.push_back(
-            {quad[static_cast<std::size_t>(i)], quad[static_cast<std::size_t>((i + 1) % 4)]});
+// Cuenta manchas dentro de un polígono dado en coords de IMAGEN (convexo o no).
+// Rellena las aristas del polígono y los centroides en `result`; devuelve el
+// conteo, o -1 si la región cae fuera de la imagen (con el detalle ya puesto).
+int countBlobsInPolygon(const cv::Mat& gray, const std::vector<cv::Point2f>& poly,
+                        float minArea, bool darkBlobs, double& totalAreaOut,
+                        ToolRunResult& result) {
+    const std::size_t n = poly.size();
+    for (std::size_t i = 0; i < n; ++i) {
+        result.overlaySegments.push_back({poly[i], poly[(i + 1) % n]});
     }
 
-    std::vector<cv::Point> quadInt;
-    for (const auto& p : quad) {
-        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
+    std::vector<cv::Point> polyInt;
+    polyInt.reserve(n);
+    for (const auto& p : poly) {
+        polyInt.emplace_back(cvRound(p.x), cvRound(p.y));
     }
-    const cv::Rect bounds = cv::boundingRect(quadInt) & cv::Rect(0, 0, gray.cols, gray.rows);
+    const cv::Rect bounds = cv::boundingRect(polyInt) & cv::Rect(0, 0, gray.cols, gray.rows);
     if (bounds.area() < 9) {
         result.detail = "La región cae fuera de la imagen";
-        return result;
+        return -1;
     }
 
     cv::Mat regionMask = cv::Mat::zeros(bounds.size(), CV_8UC1);
-    std::vector<cv::Point> quadLocal;
-    for (const auto& p : quadInt) {
-        quadLocal.emplace_back(p.x - bounds.x, p.y - bounds.y);
+    std::vector<cv::Point> polyLocal;
+    polyLocal.reserve(n);
+    for (const auto& p : polyInt) {
+        polyLocal.emplace_back(p.x - bounds.x, p.y - bounds.y);
     }
-    cv::fillConvexPoly(regionMask, quadLocal, cv::Scalar(255));
+    // fillPoly admite polígonos no convexos (a diferencia de fillConvexPoly).
+    cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{polyLocal}, cv::Scalar(255));
 
     const cv::Mat roi = gray(bounds);
     cv::Mat binary;
     cv::threshold(roi, binary, 0.0, 255.0,
-                  (g.darkBlobs ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) |
-                      cv::THRESH_OTSU);
+                  (darkBlobs ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
     cv::bitwise_and(binary, regionMask, binary);
 
     std::vector<std::vector<cv::Point>> contours;
     cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
     int count = 0;
-    double totalArea = 0.0;
+    totalAreaOut = 0.0;
     for (const auto& contour : contours) {
         const double area = cv::contourArea(contour);
-        if (area < static_cast<double>(g.minArea)) {
+        if (area < static_cast<double>(minArea)) {
             continue;
         }
         ++count;
-        totalArea += area;
+        totalAreaOut += area;
         const cv::Moments m = cv::moments(contour);
         if (m.m00 > 0.0) {
             result.overlayPoints.emplace_back(
@@ -442,11 +437,56 @@ ToolRunResult runBlob(const cv::Mat& gray, const Fixture& fixture, const ToolCon
                 static_cast<float>(m.m01 / m.m00 + bounds.y));
         }
     }
+    return count;
+}
 
+ToolRunResult runBlob(const cv::Mat& gray, const Fixture& fixture, const ToolConfig& config,
+                      const BlobGeometry& g, const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+
+    // Rectángulo alineado a los ejes de la pieza -> cuadrilátero en imagen.
+    const float hw = g.width / 2.0F;
+    const float hh = g.height / 2.0F;
+    const std::vector<cv::Point2f> quad = {
+        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, hh)),
+        toImg(fixture, g.center + cv::Point2f(-hw, hh)),
+    };
+
+    double totalArea = 0.0;
+    const int count = countBlobsInPolygon(gray, quad, g.minArea, g.darkBlobs, totalArea, result);
+    if (count < 0) {
+        return result;
+    }
     result.measured = count;
     result.ok = withinTolerance(config, result.measured);
-    result.detail =
-        std::to_string(count) + " blob(s), área=" + fmtArea(totalArea, fmt);
+    result.detail = std::to_string(count) + " blob(s), área=" + fmtArea(totalArea, fmt);
+    return result;
+}
+
+ToolRunResult runPolyBlob(const cv::Mat& gray, const Fixture& fixture, const ToolConfig& config,
+                          const PolyBlobGeometry& g, const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+    if (g.vertices.size() < 3) {
+        result.detail = "El polígono necesita al menos 3 vértices";
+        return result;
+    }
+
+    std::vector<cv::Point2f> poly;
+    poly.reserve(g.vertices.size());
+    for (const auto& v : g.vertices) {
+        poly.push_back(toImg(fixture, v));
+    }
+
+    double totalArea = 0.0;
+    const int count = countBlobsInPolygon(gray, poly, g.minArea, g.darkBlobs, totalArea, result);
+    if (count < 0) {
+        return result;
+    }
+    result.measured = count;
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = std::to_string(count) + " blob(s), área=" + fmtArea(totalArea, fmt);
     return result;
 }
 
@@ -508,6 +548,9 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Angle:
                 return ResultT::ok(runAngle(
                     fixture, config, std::get<AngleGeometry>(geometry.value()), fmt));
+            case ToolType::PolyBlob:
+                return ResultT::ok(runPolyBlob(
+                    gray, fixture, config, std::get<PolyBlobGeometry>(geometry.value()), fmt));
         }
         return ResultT::err("Tipo de herramienta no soportado");
     } catch (const cv::Exception& e) {

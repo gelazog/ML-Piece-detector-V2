@@ -97,7 +97,8 @@ InspectionResultDialog::InspectionResultDialog(
         QString measure;
         if (result.measuredIsAngle) {
             measure = QStringLiteral("%1°").arg(result.measured, 0, 'f', 1);
-        } else if (result.type == inspection::ToolType::Blob) {
+        } else if (result.type == inspection::ToolType::Blob ||
+                   result.type == inspection::ToolType::PolyBlob) {
             measure = QString::number(result.measured, 'f', 0);
         } else {
             measure = QString::fromStdString(calibration.formatLength(result.measured));

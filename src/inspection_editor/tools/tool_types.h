@@ -7,7 +7,17 @@
 
 namespace pci::inspection {
 
-enum class ToolType { Caliper, Circle, PointToLine, EdgeFlaw, Blob, Ruler, LineToLine, Angle };
+enum class ToolType {
+    Caliper,
+    Circle,
+    PointToLine,
+    EdgeFlaw,
+    Blob,
+    Ruler,
+    LineToLine,
+    Angle,
+    PolyBlob
+};
 
 const char* toolTypeName(ToolType type);
 core::Result<ToolType> toolTypeFromName(const std::string& name);

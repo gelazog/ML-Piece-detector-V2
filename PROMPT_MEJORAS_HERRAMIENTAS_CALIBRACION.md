@@ -72,7 +72,7 @@ archivos principales que toca.
   Skills: `qt-cpp-review`.
   Archivos: `inspection_editor/canvas/editor_canvas.*`.
 
-- [ ] **T4 — Blob poligonal**. Hoy la región del Blob es un rectángulo
+- [x] **T4 — Blob poligonal**. Hoy la región del Blob es un rectángulo
   alineado a los ejes de la pieza. Añadir una variante de región poligonal
   libre (clics sucesivos para cerrar el polígono) para zonas irregulares —
   patrón "polygon ROI" habitual en blob analysis industrial.

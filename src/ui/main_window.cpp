@@ -172,6 +172,7 @@ QString toolTypeLabel(inspection::ToolType type) {
         case inspection::ToolType::Ruler: return QStringLiteral("Regla");
         case inspection::ToolType::LineToLine: return QStringLiteral("Línea-Línea");
         case inspection::ToolType::Angle: return QStringLiteral("Ángulo");
+        case inspection::ToolType::PolyBlob: return QStringLiteral("Blob poligonal");
     }
     return QStringLiteral("?");
 }
@@ -280,7 +281,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
          {inspection::ToolType::Caliper, inspection::ToolType::Circle,
           inspection::ToolType::PointToLine, inspection::ToolType::EdgeFlaw,
           inspection::ToolType::Blob, inspection::ToolType::Ruler,
-          inspection::ToolType::LineToLine, inspection::ToolType::Angle}) {
+          inspection::ToolType::LineToLine, inspection::ToolType::Angle,
+          inspection::ToolType::PolyBlob}) {
         auto* button = addMode(toolTypeLabel(type), static_cast<int>(type));
         button->setIcon(inspection::toolIcon(type));
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -732,6 +734,7 @@ void MainWindow::buildShortcuts() {
         {"tool_ruler", inspection::ToolType::Ruler, Qt::Key_6},
         {"tool_line_to_line", inspection::ToolType::LineToLine, Qt::Key_7},
         {"tool_angle", inspection::ToolType::Angle, Qt::Key_8},
+        {"tool_poly_blob", inspection::ToolType::PolyBlob, Qt::Key_9},
     };
     for (const auto& entry : toolKeys) {
         const int id = static_cast<int>(entry.type);
@@ -1095,7 +1098,8 @@ void MainWindow::onLiveToolCreated(const inspection::ToolGeometry& geometry) {
             QString measure;
             if (result.value().measuredIsAngle) {
                 measure = QStringLiteral("%1°").arg(result.value().measured, 0, 'f', 1);
-            } else if (tool.config.type == inspection::ToolType::Blob) {
+            } else if (tool.config.type == inspection::ToolType::Blob ||
+                       tool.config.type == inspection::ToolType::PolyBlob) {
                 measure = QString::number(result.value().measured, 'f', 0);
             } else {
                 measure = QString::fromStdString(
@@ -1243,7 +1247,9 @@ void MainWindow::onLiveSelectionChanged(int index) {
         liveTools_[static_cast<std::size_t>(index)].config.type !=
             inspection::ToolType::LineToLine &&
         liveTools_[static_cast<std::size_t>(index)].config.type !=
-            inspection::ToolType::Angle);
+            inspection::ToolType::Angle &&
+        liveTools_[static_cast<std::size_t>(index)].config.type !=
+            inspection::ToolType::PolyBlob);
     if (!valid) {
         return;
     }

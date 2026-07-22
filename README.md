@@ -58,6 +58,9 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    - *Punto-Línea*: línea de referencia → distancia perpendicular del borde.
    - *Borde liso*: línea sobre un borde recto → desviación máxima (muescas).
    - *Blob*: rectángulo sobre una zona → conteo de manchas/agujeros.
+   - *Blob poligonal*: región de forma libre (clic para marcar vértices, clic
+     sobre el primero para cerrar) → mismo conteo que el Blob pero para zonas
+     irregulares que un rectángulo no cubre bien.
    - *Regla*: distancia directa entre dos puntos fijos (no busca bordes) —
      con la escala calibrada mide en mm/cm al vuelo.
    - *Línea-Línea*: dos líneas de referencia (se dibujan en dos pasos) → mide el

@@ -18,6 +18,7 @@ const char* toolTypeName(ToolType type) {
         case ToolType::Ruler: return "ruler";
         case ToolType::LineToLine: return "line_to_line";
         case ToolType::Angle: return "angle";
+        case ToolType::PolyBlob: return "poly_blob";
     }
     return "unknown";
 }
@@ -25,7 +26,7 @@ const char* toolTypeName(ToolType type) {
 core::Result<ToolType> toolTypeFromName(const std::string& name) {
     for (const ToolType type : {ToolType::Caliper, ToolType::Circle, ToolType::PointToLine,
                                 ToolType::EdgeFlaw, ToolType::Blob, ToolType::Ruler,
-                                ToolType::LineToLine, ToolType::Angle}) {
+                                ToolType::LineToLine, ToolType::Angle, ToolType::PolyBlob}) {
         if (name == toolTypeName(type)) {
             return core::Result<ToolType>::ok(type);
         }
@@ -70,6 +71,11 @@ const char* toolTypeDescription(ToolType type) {
                    "Arrastra del VÉRTICE al extremo del primer lado y luego marca el\n"
                    "extremo del segundo lado; se mide el ángulo interior (0°..180°)\n"
                    "con tolerancia en grados. Ideal para chaflanes y esquinas.";
+        case ToolType::PolyBlob:
+            return "Blob poligonal — cuenta manchas dentro de una región de forma\n"
+                   "libre. Haz clic para ir marcando los vértices del polígono y\n"
+                   "cierra haciendo clic sobre el primero. Igual que el Blob pero\n"
+                   "para zonas irregulares que un rectángulo no cubre bien.";
     }
     return "";
 }
@@ -78,6 +84,7 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
                        double& toleranceMax) {
     switch (type) {
         case ToolType::Blob:
+        case ToolType::PolyBlob:
             // Conteo: se exige exactamente lo que hay en la pieza buena.
             toleranceMin = measured;
             toleranceMax = measured;
@@ -126,8 +133,10 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::Ruler;
             } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
                 return ToolType::LineToLine;
-            } else {
+            } else if constexpr (std::is_same_v<T, AngleGeometry>) {
                 return ToolType::Angle;
+            } else {
+                return ToolType::PolyBlob;
             }
         },
         geometry);
@@ -167,6 +176,25 @@ public:
             return fallback;
         }
         return static_cast<double>(node.real());
+    }
+
+    // Secuencia plana [x0,y0,x1,y1,...] como lista de puntos.
+    std::vector<cv::Point2f> points(const char* key) {
+        std::vector<cv::Point2f> pts;
+        const cv::FileNode node = fs_[key];
+        if (node.empty() || !node.isSeq()) {
+            return pts;
+        }
+        std::vector<double> flat;
+        for (const auto& n : node) {
+            if (n.isReal() || n.isInt()) {
+                flat.push_back(static_cast<double>(n.real()));
+            }
+        }
+        for (std::size_t i = 0; i + 1 < flat.size(); i += 2) {
+            pts.emplace_back(static_cast<float>(flat[i]), static_cast<float>(flat[i + 1]));
+        }
+        return pts;
     }
 
 private:
@@ -215,10 +243,20 @@ std::string toJson(const ToolGeometry& geometry) {
                        << g.a1.y << "bx0" << g.b0.x << "by0" << g.b0.y << "bx1" << g.b1.x
                        << "by1" << g.b1.y;
                 });
-            } else {
+            } else if constexpr (std::is_same_v<T, AngleGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "vx" << g.vertex.x << "vy" << g.vertex.y << "e0x" << g.end0.x
                        << "e0y" << g.end0.y << "e1x" << g.end1.x << "e1y" << g.end1.y;
+                });
+            } else {
+                return writeJson([&](cv::FileStorage& fs) {
+                    // Los vértices van como secuencia plana [x0,y0,x1,y1,...].
+                    fs << "verts" << "[:";
+                    for (const auto& v : g.vertices) {
+                        fs << v.x << v.y;
+                    }
+                    fs << "]";
+                    fs << "minArea" << g.minArea << "dark" << (g.darkBlobs ? 1 : 0);
                 });
             }
         },
@@ -330,6 +368,20 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.vertex = {static_cast<float>(vx.value()), static_cast<float>(vy.value())};
                 g.end0 = {static_cast<float>(e0x.value()), static_cast<float>(e0y.value())};
                 g.end1 = {static_cast<float>(e1x.value()), static_cast<float>(e1y.value())};
+                return ResultT::ok(g);
+            }
+            case ToolType::PolyBlob: {
+                PolyBlobGeometry g;
+                g.vertices = reader.points("verts");
+                if (g.vertices.size() < 3) {
+                    return ResultT::err("Blob poligonal: se necesitan al menos 3 vértices");
+                }
+                auto minArea = f("minArea"), dark = f("dark");
+                for (const auto* v : {&minArea, &dark}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.minArea = static_cast<float>(minArea.value());
+                g.darkBlobs = dark.value() != 0.0;
                 return ResultT::ok(g);
             }
         }
