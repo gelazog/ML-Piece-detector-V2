@@ -28,6 +28,9 @@ struct AnalysisOverlay {
     std::vector<inspection::ToolRunResult> toolResults;
     // Escala derivada del marcador ArUco en este frame (0 = no detectado).
     double liveMmPerPixel = 0.0;
+    // Calidad de esa escala (0..1): 1.0 = cámara perpendicular al plano; baja
+    // con perspectiva/inclinación (D5). Solo válida si liveMmPerPixel > 0.
+    double liveScaleQuality = 0.0;
 };
 
 }  // namespace pci::ui

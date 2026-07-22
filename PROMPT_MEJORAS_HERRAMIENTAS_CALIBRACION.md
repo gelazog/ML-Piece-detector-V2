@@ -217,7 +217,7 @@ archivos principales que toca.
   Archivos: `inspection_editor/execution/tool_executor.*`,
   `ui/main_window.cpp`.
 
-- [ ] **D5 — Indicador de calidad de calibración**. Mostrar el error de
+- [x] **D5 — Indicador de calidad de calibración**. Mostrar el error de
   reproyección (método D2) o la dispersión de la escala medida en varios
   puntos del marcador (método A/ArUco) para que el operador sepa si calibró
   bien — hoy se confía ciegamente en el resultado.

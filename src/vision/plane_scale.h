@@ -15,6 +15,12 @@ namespace pci::vision {
 struct MarkerScale {
     double mmPerPixel = 0.0;  // escala local (en el centro del marcador)
     cv::Mat imageToMm;        // homografía 3x3 imagen -> mm en el plano
+    // Calidad de la calibración (0..1): el marcador es un cuadrado, así que la
+    // uniformidad de sus 4 lados y 2 diagonales en píxeles mide cuán perpendicular
+    // está la cámara al plano. 1.0 = vista fronto-paralela ideal; valores bajos =
+    // perspectiva/inclinación fuerte, donde una escala px->mm única es poco fiable
+    // lejos del marcador.
+    double quality = 0.0;
 };
 
 // Detecta el primer marcador ArUco (diccionario 4x4_50) de lado markerSideMm.

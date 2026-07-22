@@ -122,8 +122,12 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    la pieza (en el mismo plano): la escala px→mm se recalcula **en cada frame
    con la homografía del marcador** y se ajusta sola si acercas o alejas la
    cámara — no hay que recalibrar a mano. La barra de estado muestra la escala
-   viva. (Puntos a distinta altura/profundidad respecto al plano necesitan una
-   cámara de profundidad; con una sola cámara 2D no es recuperable.)
+   viva y un **indicador de calidad** (buena / regular / pobre, en %): como el
+   marcador es un cuadrado conocido, la uniformidad de sus lados y diagonales en
+   píxeles delata cuán perpendicular está la cámara al plano — si sale
+   «regular/pobre», endereza la cámara para que la escala sea fiable lejos del
+   marcador. (Puntos a distinta altura/profundidad respecto al plano necesitan
+   una cámara de profundidad; con una sola cámara 2D no es recuperable.)
 
    **Calibración fácil desde una herramienta** (lo más rápido): traza una
    Regla (o Caliper/Círculo) sobre algo de tamaño conocido — una regla, una

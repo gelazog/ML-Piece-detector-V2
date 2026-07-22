@@ -80,6 +80,7 @@ AnalysisOverlay buildOverlay(const QImage& frame,
             if (auto marker = vision::detectMarkerScale(image, arucoMarkerMm)) {
                 effMm = marker->mmPerPixel;
                 overlay.liveMmPerPixel = marker->mmPerPixel;
+                overlay.liveScaleQuality = marker->quality;
             }
         }
         mmPerPixel = effMm;
@@ -1017,8 +1018,16 @@ void MainWindow::onAnalysisFinished() {
         if (overlay.liveMmPerPixel > 0.0) {
             calibration_.mmPerPixel = overlay.liveMmPerPixel;
             video_->setMmPerPixel(overlay.liveMmPerPixel);
-            calibLabel_->setText(tr("Escala (ArUco): %1 mm/px")
-                                     .arg(overlay.liveMmPerPixel, 0, 'f', 4));
+            // Indicador de calidad (D5): buena / regular / pobre según cuán
+            // perpendicular esté la cámara al plano del marcador.
+            const double q = overlay.liveScaleQuality;
+            const QString quality = q >= 0.9   ? tr("buena")
+                                    : q >= 0.75 ? tr("regular — endereza la cámara")
+                                                : tr("pobre — cámara muy inclinada");
+            calibLabel_->setText(tr("Escala (ArUco): %1 mm/px · calidad %2 (%3%)")
+                                     .arg(overlay.liveMmPerPixel, 0, 'f', 4)
+                                     .arg(quality)
+                                     .arg(q * 100.0, 0, 'f', 0));
         } else if (arucoLiveScale_) {
             calibLabel_->setText(tr("Escala (ArUco): marcador no visible"));
         }

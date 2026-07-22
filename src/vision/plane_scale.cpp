@@ -3,6 +3,7 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/objdetect/aruco_detector.hpp>
 
+#include <algorithm>
 #include <array>
 #include <vector>
 
@@ -66,6 +67,23 @@ std::optional<MarkerScale> detectMarkerScale(const cv::Mat& image, double marker
     if (result.mmPerPixel <= 0.0) {
         return std::nullopt;
     }
+
+    // Calidad: el marcador es un cuadrado, así que en una vista perpendicular
+    // sus 4 lados son iguales y sus 2 diagonales también. La perspectiva rompe
+    // esa igualdad; la razón mínimo/máximo (de lados y diagonales) da 1.0 ideal.
+    const double s01 = cv::norm(c[0] - c[1]);
+    const double s12 = cv::norm(c[1] - c[2]);
+    const double s23 = cv::norm(c[2] - c[3]);
+    const double s30 = cv::norm(c[3] - c[0]);
+    const double diag02 = cv::norm(c[0] - c[2]);
+    const double diag13 = cv::norm(c[1] - c[3]);
+    const double sideMin = std::min({s01, s12, s23, s30});
+    const double sideMax = std::max({s01, s12, s23, s30});
+    const double diagMin = std::min(diag02, diag13);
+    const double diagMax = std::max(diag02, diag13);
+    result.quality =
+        std::min(sideMax > 0.0 ? sideMin / sideMax : 0.0,
+                 diagMax > 0.0 ? diagMin / diagMax : 0.0);
     return result;
 }
 

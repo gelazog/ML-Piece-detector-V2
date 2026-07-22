@@ -250,6 +250,9 @@ TEST(PlaneScale, DetectsMarkerAndComputesScale) {
     // Lado detectado ~100 px -> 30 mm / 100 px = 0.30 mm/px.
     EXPECT_NEAR(scale->mmPerPixel, 0.30, 0.04);
     EXPECT_FALSE(scale->imageToMm.empty());
+    // Vista perpendicular (marcador fronto-paralelo): calidad casi perfecta.
+    EXPECT_GT(scale->quality, 0.95);
+    EXPECT_LE(scale->quality, 1.0);
 }
 
 TEST(PlaneScale, NoMarkerReturnsNullopt) {
