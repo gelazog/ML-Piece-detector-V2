@@ -9,6 +9,7 @@
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -329,6 +330,15 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
            "conocido (una regla, una moneda), selecciónala y escribe cuánto mide de\n"
            "verdad. La escala px→mm sale de esa medida y todas las cotas quedan reales."));
     toolsLayout->addWidget(calibrateFromToolButton_);
+
+    saveTemplateButton_ = new QPushButton(tr("Guardar plantilla (Ctrl+S)"), central);
+    saveTemplateButton_->setToolTip(
+        tr("Guarda las herramientas dibujadas en vivo en la plantilla activa de la\n"
+           "pieza, sin tener que volver a registrarla. Si no hay pieza seleccionada\n"
+           "te pide crear una."));
+    connect(saveTemplateButton_, &QPushButton::clicked, this,
+            &MainWindow::onSaveTemplateClicked);
+    toolsLayout->addWidget(saveTemplateButton_);
 
     toolsLayout->addStretch(1);
     auto* shortcutsButton = new QPushButton(tr("Atajos (F1)"), central);
@@ -774,6 +784,8 @@ void MainWindow::buildShortcuts() {
                 [this] { anchorButton_->toggle(); });
     addShortcut("duplicate_tool", tr("Duplicar la herramienta seleccionada"),
                 QKeySequence(Qt::CTRL | Qt::Key_D), &MainWindow::onDuplicateToolClicked);
+    addShortcut("save_template", tr("Guardar la plantilla (herramientas en vivo)"),
+                QKeySequence::Save, &MainWindow::onSaveTemplateClicked);
     addShortcut("shortcuts_help", tr("Guía de atajos"), QKeySequence(Qt::Key_F1),
                 &MainWindow::onShowShortcuts);
 }
@@ -1536,6 +1548,70 @@ void MainWindow::onDuplicateToolClicked() {
     video_->setSelectedIndex(newIndex);
     onLiveSelectionChanged(newIndex);
     statusBar()->showMessage(tr("Herramienta duplicada."));
+}
+
+void MainWindow::onSaveTemplateClicked() {
+    if (repos_.tools == nullptr) {
+        statusBar()->showMessage(tr("Base de datos no disponible: no se puede guardar."));
+        return;
+    }
+    if (liveTools_.empty()) {
+        statusBar()->showMessage(tr("No hay herramientas dibujadas que guardar."));
+        return;
+    }
+
+    std::int64_t pieceId = selectedPieceId();
+    if (pieceId < 0) {
+        // Sin pieza seleccionada: crear una y guardar ahí (opción elegida).
+        if (repos_.pieces == nullptr) {
+            statusBar()->showMessage(
+                tr("No hay pieza seleccionada ni base de datos de piezas."));
+            return;
+        }
+        bool ok = false;
+        const QString name = QInputDialog::getText(
+            this, tr("Nueva pieza"),
+            tr("No hay pieza seleccionada. Nombre de la pieza nueva:"),
+            QLineEdit::Normal, tr("pieza"), &ok);
+        if (!ok || name.trimmed().isEmpty()) {
+            return;
+        }
+        auto created = repos_.pieces->createPiece(name.trimmed().toStdString());
+        if (!created.isOk()) {
+            QMessageBox::warning(this, tr("No se pudo crear la pieza"),
+                                 QString::fromStdString(created.error().message));
+            return;
+        }
+        pieceId = created.value();
+        loadPieceList(pieceId);
+    }
+
+    // Upsert de todas las herramientas en vivo a la plantilla activa: inserta
+    // las nuevas (id < 0) y actualiza las cambiadas. Los borrados en vivo ya se
+    // persistieron al instante (deleteToolAt), así que esto cierra el ciclo.
+    const std::string tmpl = activeTemplate();
+    int saved = 0;
+    int errors = 0;
+    for (auto& tool : liveTools_) {
+        tool.config.geometryJson = inspection::toJson(tool.geometry);
+        if (auto result = repos_.tools->save(pieceId, tool.config, tmpl); result.isOk()) {
+            tool.config.id = result.value();
+            ++saved;
+        } else {
+            ++errors;
+            core::logError(result.error().message);
+        }
+    }
+    stableTools_ = liveTools_;  // el estado guardado pasa a ser el "limpio"
+    statusBar()->showMessage(
+        errors == 0
+            ? tr("Plantilla '%1' guardada (%2 herramienta(s)).")
+                  .arg(QString::fromStdString(tmpl))
+                  .arg(saved)
+            : tr("Plantilla '%1' guardada con %2 error(es); %3 ok (ver log).")
+                  .arg(QString::fromStdString(tmpl))
+                  .arg(errors)
+                  .arg(saved));
 }
 
 void MainWindow::deleteToolAt(int index) {

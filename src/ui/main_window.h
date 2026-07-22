@@ -61,6 +61,7 @@ private slots:
     void onLiveToolModified();
     void onDeleteToolClicked();
     void onDuplicateToolClicked();
+    void onSaveTemplateClicked();  // guarda liveTools_ en la plantilla activa (P1)
     void onUndo();
     void onRedo();
     void onShowShortcuts();
@@ -146,6 +147,7 @@ private:
     QLabel* liveParamLabel_ = nullptr;     // "Puntos" de la herramienta elegida
     QSpinBox* liveParamSpin_ = nullptr;
     QPushButton* calibrateFromToolButton_ = nullptr;  // fijar escala con la medida
+    QPushButton* saveTemplateButton_ = nullptr;       // guardar herramientas en vivo (P1)
     QPushButton* managePiecesButton_ = nullptr;
 
     QLabel* verdictBanner_ = nullptr;

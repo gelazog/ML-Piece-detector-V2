@@ -218,7 +218,12 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    dibujados sobre el video y estadísticas del día en la barra de estado.
    Todo queda en el historial. Se puede prender/apagar cuando quieras con la
    pieza seleccionada.
-6. **Afinar y aprender**: **Plantilla…** abre el editor sobre imagen fija
+6. **Guardar plantilla (Ctrl+S)**: las herramientas que dibujas o ajustas en
+   vivo se guardan en la plantilla activa de la pieza **sin tener que volver a
+   registrarla** — pulsa **Guardar plantilla** o `Ctrl+S`. Antes solo se
+   persistían al registrar; ahora puedes iterar sobre una pieza ya registrada y
+   conservar los cambios (si no hay pieza seleccionada, te ofrece crear una).
+7. **Afinar y aprender**: **Plantilla…** abre el editor sobre imagen fija
    para ajustar tolerancias con "Probar sobre esta imagen" (los valores
    medidos te dicen qué rangos poner). **Inspeccionar** hace una inspección
    única con reporte detallado y, si fue OK, **Actualizar referencia**

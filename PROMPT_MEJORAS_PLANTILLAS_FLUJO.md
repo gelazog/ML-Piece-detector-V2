@@ -66,7 +66,7 @@ Formato: casilla, ID, tarea, por qué, skill(s), archivos principales.
 
 ### A. Persistencia y sincronización tiempo real ↔ plantilla
 
-- [ ] **P1 — Guardar la plantilla desde la vista en vivo (sin re-registrar)**
+- [x] **P1 — Guardar la plantilla desde la vista en vivo (sin re-registrar)**
   *(pide confirmación)*. Hoy solo el registro persiste las herramientas. Añadir
   una acción **"Guardar plantilla"** (botón junto a las herramientas + atajo,
   p. ej. `Ctrl+S`) que sincronice `liveTools_` con la plantilla activa de la
