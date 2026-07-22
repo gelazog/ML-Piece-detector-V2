@@ -90,7 +90,7 @@ archivos principales que toca.
   Archivos: `editor_canvas.cpp` (preview de creación),
   `execution/edge_detection.h` (reutilizar, no duplicar).
 
-- [ ] **T6 — Duplicar / copiar-pegar herramienta**. Con varias plantillas por
+- [x] **T6 — Duplicar / copiar-pegar herramienta**. Con varias plantillas por
   pieza ya soportadas (fase de plantillas múltiples), falta poder reutilizar
   una herramienta entre plantillas o piezas: `Ctrl+D` duplica la seleccionada
   con un pequeño desplazamiento; copiar/pegar entre plantillas de la misma

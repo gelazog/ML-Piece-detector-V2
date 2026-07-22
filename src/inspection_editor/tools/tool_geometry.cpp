@@ -142,6 +142,41 @@ ToolType typeOf(const ToolGeometry& geometry) {
         geometry);
 }
 
+void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
+    std::visit(
+        [&delta](auto& g) {
+            using T = std::decay_t<decltype(g)>;
+            if constexpr (std::is_same_v<T, CaliperGeometry> ||
+                          std::is_same_v<T, EdgeFlawGeometry> ||
+                          std::is_same_v<T, RulerGeometry>) {
+                g.p0 += delta;
+                g.p1 += delta;
+            } else if constexpr (std::is_same_v<T, CircleGeometry> ||
+                                 std::is_same_v<T, BlobGeometry>) {
+                g.center += delta;
+            } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
+                g.lineA += delta;
+                g.lineB += delta;
+                g.scanA += delta;
+                g.scanB += delta;
+            } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
+                g.a0 += delta;
+                g.a1 += delta;
+                g.b0 += delta;
+                g.b1 += delta;
+            } else if constexpr (std::is_same_v<T, AngleGeometry>) {
+                g.vertex += delta;
+                g.end0 += delta;
+                g.end1 += delta;
+            } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
+                for (auto& v : g.vertices) {
+                    v += delta;
+                }
+            }
+        },
+        geometry);
+}
+
 namespace {
 
 std::string writeJson(const std::function<void(cv::FileStorage&)>& body) {

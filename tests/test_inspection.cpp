@@ -379,6 +379,32 @@ TEST(PolyBlob, CountsBlobsInsidePolygon) {
     EXPECT_TRUE(result.value().ok);
 }
 
+TEST(TranslateGeometry, ShiftsAllPointsOfEachType) {
+    const cv::Point2f d{15.0F, -10.0F};
+
+    ToolGeometry caliper = CaliperGeometry{{10.0F, 20.0F}, {110.0F, 25.0F}, 8.0F};
+    translateGeometry(caliper, d);
+    EXPECT_FLOAT_EQ(std::get<CaliperGeometry>(caliper).p0.x, 25.0F);
+    EXPECT_FLOAT_EQ(std::get<CaliperGeometry>(caliper).p1.y, 15.0F);
+
+    ToolGeometry circle = CircleGeometry{{50.0F, 50.0F}, 30.0F};
+    const float r0 = std::get<CircleGeometry>(circle).radius;
+    translateGeometry(circle, d);
+    EXPECT_FLOAT_EQ(std::get<CircleGeometry>(circle).center.x, 65.0F);
+    EXPECT_FLOAT_EQ(std::get<CircleGeometry>(circle).radius, r0);  // el radio no cambia
+
+    ToolGeometry poly = PolyBlobGeometry{{{0.0F, 0.0F}, {10.0F, 0.0F}, {5.0F, 10.0F}}, 20.0F, true};
+    translateGeometry(poly, d);
+    const auto& pv = std::get<PolyBlobGeometry>(poly).vertices;
+    EXPECT_FLOAT_EQ(pv[0].x, 15.0F);
+    EXPECT_FLOAT_EQ(pv[2].y, 0.0F);
+
+    ToolGeometry angle = AngleGeometry{{50.0F, 50.0F}, {90.0F, 50.0F}, {50.0F, 10.0F}};
+    translateGeometry(angle, d);
+    EXPECT_FLOAT_EQ(std::get<AngleGeometry>(angle).vertex.x, 65.0F);
+    EXPECT_FLOAT_EQ(std::get<AngleGeometry>(angle).end1.y, 0.0F);
+}
+
 // --- Anclaje al fixture (el test de oro de la fase) ---
 
 TEST(FixtureAnchoring, CaliperMeasuresSameOnRotatedPiece) {

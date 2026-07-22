@@ -14,6 +14,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include <optional>
 #include <type_traits>
 #include <variant>
 
@@ -199,6 +200,23 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     connect(deleteAction, &QAction::triggered, this, &EditorWindow::onDeleteClicked);
     addAction(deleteAction);
 
+    // Duplicar (Ctrl+D) y copiar/pegar (Ctrl+C / Ctrl+V). El portapapeles es de
+    // proceso, así que copiar y reabrir el editor en otra plantilla de la misma
+    // pieza permite pegar allí la herramienta.
+    auto* duplicateAction = new QAction(tr("Duplicar herramienta"), this);
+    duplicateAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
+    connect(duplicateAction, &QAction::triggered, this,
+            [this] { duplicateSelected(); });
+    addAction(duplicateAction);
+    auto* copyAction = new QAction(tr("Copiar herramienta"), this);
+    copyAction->setShortcut(QKeySequence::Copy);
+    connect(copyAction, &QAction::triggered, this, [this] { copySelected(); });
+    addAction(copyAction);
+    auto* pasteAction = new QAction(tr("Pegar herramienta"), this);
+    pasteAction->setShortcut(QKeySequence::Paste);
+    connect(pasteAction, &QAction::triggered, this, [this] { pasteClipboard(); });
+    addAction(pasteAction);
+
     // Con herramientas cargadas, medir de entrada: las medidas se ven sin
     // tener que pulsar Probar.
     if (!tools_.empty()) {
@@ -372,6 +390,65 @@ void EditorWindow::onToolCreated(const ToolGeometry& geometry) {
     canvas_->setSelectedIndex(static_cast<int>(tools_.size()) - 1);
     refreshList();
     syncPanelFromSelection();
+}
+
+namespace {
+// Portapapeles de proceso: comparte una herramienta entre instancias del editor
+// (p. ej. entre plantillas de la misma pieza).
+std::optional<EditedTool> g_toolClipboard;
+}  // namespace
+
+void EditorWindow::addToolCopy(const ToolConfig& config, const ToolGeometry& geometry,
+                               const cv::Point2f& offset) {
+    EditedTool tool;
+    tool.geometry = geometry;
+    translateGeometry(tool.geometry, offset);
+    tool.config = config;
+    tool.config.id = -1;  // copia nueva: aún no guardada en la BD
+    ++nameCounter_;
+    tool.config.name =
+        (typeLabel(config.type) + QStringLiteral(" %1").arg(nameCounter_)).toStdString();
+    tool.config.geometryJson = toJson(tool.geometry);
+    tool.deleted = false;
+
+    tools_.push_back(std::move(tool));
+    commitUndoState();
+    canvas_->clearResults();
+    canvas_->setSelectedIndex(static_cast<int>(tools_.size()) - 1);
+    refreshList();
+    syncPanelFromSelection();
+    onTestClicked();
+}
+
+void EditorWindow::duplicateSelected() {
+    const int index = canvas_->selectedIndex();
+    if (index < 0 || index >= static_cast<int>(tools_.size())) {
+        statusLabel_->setText(tr("Selecciona una herramienta para duplicar."));
+        return;
+    }
+    const auto& src = tools_[static_cast<std::size_t>(index)];
+    addToolCopy(src.config, src.geometry, {15.0F, 15.0F});
+    statusLabel_->setText(tr("Herramienta duplicada."));
+}
+
+void EditorWindow::copySelected() {
+    const int index = canvas_->selectedIndex();
+    if (index < 0 || index >= static_cast<int>(tools_.size())) {
+        statusLabel_->setText(tr("Selecciona una herramienta para copiar."));
+        return;
+    }
+    g_toolClipboard = tools_[static_cast<std::size_t>(index)];
+    statusLabel_->setText(tr("Herramienta copiada (Ctrl+V para pegar, también en "
+                             "otra plantilla)."));
+}
+
+void EditorWindow::pasteClipboard() {
+    if (!g_toolClipboard.has_value()) {
+        statusLabel_->setText(tr("El portapapeles de herramientas está vacío."));
+        return;
+    }
+    addToolCopy(g_toolClipboard->config, g_toolClipboard->geometry, {15.0F, 15.0F});
+    statusLabel_->setText(tr("Herramienta pegada."));
 }
 
 void EditorWindow::onCanvasSelection(int index) {

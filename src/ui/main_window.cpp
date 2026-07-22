@@ -765,6 +765,8 @@ void MainWindow::buildShortcuts() {
                 &MainWindow::onCalibrateClicked);
     addShortcut("anchor", tr("Marcar rasgo distintivo"), QKeySequence(Qt::Key_D),
                 [this] { anchorButton_->toggle(); });
+    addShortcut("duplicate_tool", tr("Duplicar la herramienta seleccionada"),
+                QKeySequence(Qt::CTRL | Qt::Key_D), &MainWindow::onDuplicateToolClicked);
     addShortcut("shortcuts_help", tr("Guía de atajos"), QKeySequence(Qt::Key_F1),
                 &MainWindow::onShowShortcuts);
 }
@@ -1451,6 +1453,32 @@ void MainWindow::onNewTemplateClicked() {
 
 void MainWindow::onToolRightClicked(int index) {
     deleteToolAt(index);
+}
+
+void MainWindow::onDuplicateToolClicked() {
+    const int index = video_->selectedIndex();
+    if (index < 0 || index >= static_cast<int>(liveTools_.size())) {
+        statusBar()->showMessage(tr("Selecciona una herramienta para duplicar."));
+        return;
+    }
+    // Copia con un pequeño desplazamiento y nombre nuevo; id = -1 = aún sin
+    // guardar en la BD (se persiste al guardar la plantilla, como las nuevas).
+    inspection::EditedTool tool = liveTools_[static_cast<std::size_t>(index)];
+    tool.config.id = -1;
+    inspection::translateGeometry(tool.geometry, {15.0F, 15.0F});
+    ++toolNameCounter_;
+    tool.config.name = (toolTypeLabel(tool.config.type) +
+                        QStringLiteral(" %1").arg(toolNameCounter_))
+                           .toStdString();
+    tool.config.geometryJson = inspection::toJson(tool.geometry);
+
+    liveTools_.push_back(std::move(tool));
+    commitUndoState();
+    video_->clearResults();
+    const int newIndex = static_cast<int>(liveTools_.size()) - 1;
+    video_->setSelectedIndex(newIndex);
+    onLiveSelectionChanged(newIndex);
+    statusBar()->showMessage(tr("Herramienta duplicada."));
 }
 
 void MainWindow::deleteToolAt(int index) {

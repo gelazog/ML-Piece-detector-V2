@@ -85,6 +85,10 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
 
 ToolType typeOf(const ToolGeometry& geometry);
 
+// Traslada in situ todos los puntos de la geometría (coords de pieza). Útil
+// para mover o duplicar una herramienta con un pequeño desplazamiento.
+void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta);
+
 // Descripción de uso para tooltips/ayuda (UTF-8, en español): qué mide la
 // herramienta y cómo dibujarla.
 const char* toolTypeDescription(ToolType type);

@@ -60,6 +60,7 @@ private slots:
     void onLiveToolCreated(const pci::inspection::ToolGeometry& geometry);
     void onLiveToolModified();
     void onDeleteToolClicked();
+    void onDuplicateToolClicked();
     void onUndo();
     void onRedo();
     void onShowShortcuts();

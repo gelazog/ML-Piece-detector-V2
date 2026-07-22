@@ -51,6 +51,14 @@ private slots:
 
 private:
     void loadExistingTools();
+    // Añade una herramienta a partir de config+geometría (nombre nuevo,
+    // desplazada `offset` en coords de pieza) y la selecciona. Base común de
+    // duplicar (Ctrl+D) y pegar (Ctrl+V).
+    void addToolCopy(const ToolConfig& config, const ToolGeometry& geometry,
+                     const cv::Point2f& offset);
+    void duplicateSelected();  // Ctrl+D
+    void copySelected();       // Ctrl+C
+    void pasteClipboard();     // Ctrl+V
     void refreshList();
     void syncPanelFromSelection();
     void commitUndoState();

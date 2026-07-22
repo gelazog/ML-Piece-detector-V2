@@ -88,6 +88,12 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    puntero); al soltar, el extremo se **pega** a ese borde para colocar la
    herramienta con precisión sin pulso fino.
 
+   **Duplicar y copiar/pegar**: con una herramienta seleccionada, **Ctrl+D** la
+   duplica con un pequeño desplazamiento. En el editor de plantilla, **Ctrl+C** /
+   **Ctrl+V** copian y pegan; el portapapeles vive durante toda la sesión, así
+   que copiar y reabrir el editor en **otra plantilla de la misma pieza** permite
+   pegar allí la herramienta.
+
    **Edición fina con manijas**: al seleccionar una herramienta (modo
    Mover/Elegir) aparecen cuadraditos blancos en sus extremos editables.
    Arrástralos para ajustar un punto suelto sin borrar y volver a dibujar: los
