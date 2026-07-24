@@ -151,7 +151,7 @@ archivos principales que toca.
   Archivos: `ui/history_dialog.*` (nuevo), `repositories/
   inspection_repository.*` (añadir consulta paginada/filtrada si falta).
 
-- [ ] **S2 — Panel de estadísticas simple**. Reutiliza la tabla
+- [x] **S2 — Panel de estadísticas simple**. Reutiliza la tabla
   `Statistics` (ya existe en el esquema desde la fase 4, sin consumidor de
   UI): conteo OK/NG por día y una tendencia simple (lista o barras con
   `QPainter`, sin librería de gráficos nueva).

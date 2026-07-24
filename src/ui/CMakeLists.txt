@@ -7,6 +7,7 @@ add_library(pci_ui STATIC
   piece_manager_dialog.cpp
   registration_wizard.cpp
   shortcuts_dialog.cpp
+  stats_bar_chart.cpp
   template_manager_dialog.cpp
   video_widget.cpp
 )

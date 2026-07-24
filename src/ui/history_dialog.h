@@ -9,6 +9,10 @@ class QLabel;
 class QSpinBox;
 class QTableWidget;
 
+namespace pci::ui {
+class StatsBarChart;
+}
+
 namespace pci::repositories {
 class InspectionRepository;
 class PieceRepository;
@@ -39,6 +43,7 @@ private:
     QSpinBox* limitSpin_ = nullptr;
     QTableWidget* table_ = nullptr;
     QLabel* summaryLabel_ = nullptr;
+    StatsBarChart* chart_ = nullptr;  // tendencia OK/NG por día (S2)
 };
 
 }  // namespace pci::ui

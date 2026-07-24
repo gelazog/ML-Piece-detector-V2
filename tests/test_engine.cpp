@@ -8,6 +8,7 @@
 
 #include "database/db.h"
 #include "database/schema.h"
+#include "domain/verdict.h"
 #include "engine/inspection_engine.h"
 #include "engine/registration_session.h"
 #include "inspection_editor/tools/tool_geometry.h"
@@ -233,6 +234,28 @@ TEST_F(EngineTest, DefectivePieceIsNg) {
     const auto stats = history_->todayStats(pieceId);
     ASSERT_TRUE(stats.isOk());
     EXPECT_EQ(stats.value().ngCount, 1);
+}
+
+TEST_F(EngineTest, DailyStatsAggregatesByDay) {
+    auto pieceId = pieces_->createPiece("stats-test");
+    ASSERT_TRUE(pieceId.isOk());
+
+    domain::InspectionVerdict okV;
+    okV.ok = true;
+    okV.summary = "OK";
+    domain::InspectionVerdict ngV;
+    ngV.ok = false;
+    ngV.summary = "NG";
+    ASSERT_TRUE(history_->saveInspection(pieceId.value(), 1, okV, {}, {}).isOk());
+    ASSERT_TRUE(history_->saveInspection(pieceId.value(), 1, okV, {}, {}).isOk());
+    ASSERT_TRUE(history_->saveInspection(pieceId.value(), 1, ngV, {}, {}).isOk());
+
+    auto daily = history_->dailyStats(pieceId.value(), 30);
+    ASSERT_TRUE(daily.isOk());
+    ASSERT_EQ(daily.value().size(), 1U);  // todas las inspecciones son de hoy
+    EXPECT_EQ(daily.value()[0].total, 3);
+    EXPECT_EQ(daily.value()[0].okCount, 2);
+    EXPECT_EQ(daily.value()[0].ngCount, 1);
 }
 
 TEST_F(EngineTest, DifferentShapeIsAnomalous) {

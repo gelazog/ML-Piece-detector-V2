@@ -191,4 +191,42 @@ core::Result<InspectionRepository::DayStats> InspectionRepository::todayStats(
     return ResultT::ok(stats);
 }
 
+core::Result<std::vector<InspectionRepository::DailyStat>>
+InspectionRepository::dailyStats(std::int64_t pieceId, int days) {
+    using ResultT = core::Result<std::vector<DailyStat>>;
+
+    const std::string sinceModifier = "-" + std::to_string(days > 0 ? days - 1 : 0) + " days";
+    auto stmt = db_.prepare(
+        "SELECT date, total, ok_count, ng_count FROM Statistics "
+        "WHERE piece_id = ? AND date >= date('now', 'localtime', ?) ORDER BY date;");
+    if (!stmt.isOk()) {
+        return ResultT::err(stmt.error().message);
+    }
+    if (auto b = stmt.value().bindInt(1, pieceId); !b.isOk()) {
+        return ResultT::err(b.error().message);
+    }
+    if (auto b = stmt.value().bindText(2, sinceModifier); !b.isOk()) {
+        return ResultT::err(b.error().message);
+    }
+
+    std::vector<DailyStat> stats;
+    while (true) {
+        auto row = stmt.value().step();
+        if (!row.isOk()) {
+            return ResultT::err(row.error().message);
+        }
+        if (!row.value()) {
+            break;
+        }
+        auto& s = stmt.value();
+        DailyStat day;
+        day.date = s.columnText(0);
+        day.total = static_cast<int>(s.columnInt(1));
+        day.okCount = static_cast<int>(s.columnInt(2));
+        day.ngCount = static_cast<int>(s.columnInt(3));
+        stats.push_back(std::move(day));
+    }
+    return ResultT::ok(std::move(stats));
+}
+
 }  // namespace pci::repositories

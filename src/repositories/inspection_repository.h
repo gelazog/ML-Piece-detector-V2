@@ -41,6 +41,16 @@ public:
     };
     core::Result<DayStats> todayStats(std::int64_t pieceId);
 
+    struct DailyStat {
+        std::string date;  // "YYYY-MM-DD"
+        int total = 0;
+        int okCount = 0;
+        int ngCount = 0;
+    };
+    // Estadísticas OK/NG por día de una pieza, de los últimos `days` días
+    // (incluye hoy), en orden cronológico. Reutiliza la tabla Statistics.
+    core::Result<std::vector<DailyStat>> dailyStats(std::int64_t pieceId, int days = 30);
+
 private:
     database::Db& db_;
 };

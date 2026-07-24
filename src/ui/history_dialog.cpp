@@ -16,6 +16,7 @@
 
 #include "repositories/inspection_repository.h"
 #include "repositories/piece_repository.h"
+#include "ui/stats_bar_chart.h"
 
 namespace pci::ui {
 
@@ -66,6 +67,10 @@ HistoryDialog::HistoryDialog(repositories::InspectionRepository* inspections,
     summaryLabel_ = new QLabel(this);
     root->addWidget(summaryLabel_);
 
+    root->addWidget(new QLabel(tr("Tendencia OK/NG por día (últimos 30 días):"), this));
+    chart_ = new StatsBarChart(this);
+    root->addWidget(chart_);
+
     auto* buttons = new QDialogButtonBox(this);
     auto* exportBtn = buttons->addButton(tr("Exportar CSV…"), QDialogButtonBox::ActionRole);
     buttons->addButton(tr("Cerrar"), QDialogButtonBox::RejectRole);
@@ -107,6 +112,7 @@ void HistoryDialog::reload() {
     summaryLabel_->clear();
     const std::int64_t pieceId = currentPieceId();
     if (pieceId < 0 || inspections_ == nullptr) {
+        chart_->setData({});
         return;
     }
 
@@ -142,6 +148,13 @@ void HistoryDialog::reload() {
                                .arg(total)
                                .arg(okCount)
                                .arg(total - okCount));
+
+    // Tendencia por día (S2): independiente del límite de la tabla.
+    if (auto daily = inspections_->dailyStats(pieceId, 30); daily.isOk()) {
+        chart_->setData(daily.value());
+    } else {
+        chart_->setData({});
+    }
 }
 
 void HistoryDialog::exportCsv() {
