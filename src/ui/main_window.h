@@ -26,6 +26,7 @@ class QActionGroup;
 class QButtonGroup;
 class QCheckBox;
 class QComboBox;
+class QDockWidget;
 class QLabel;
 class QProgressDialog;
 class QPushButton;
@@ -163,6 +164,7 @@ private:
     QSpinBox* liveParamSpin_ = nullptr;
     QPushButton* calibrateFromToolButton_ = nullptr;  // fijar escala con la medida
     QPushButton* saveTemplateButton_ = nullptr;       // guardar herramientas en vivo (P1)
+    QDockWidget* compareDock_ = nullptr;              // panel comparación reubicable (S3)
     QPushButton* managePiecesButton_ = nullptr;
 
     QLabel* verdictBanner_ = nullptr;

@@ -6,6 +6,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCloseEvent>
+#include <QDockWidget>
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QInputDialog>
@@ -363,15 +364,19 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     verdictBanner_->setVisible(false);
     rootLayout->addWidget(verdictBanner_);
 
-    // Video (canvas de edición) + panel de comparación registrada vs actual.
-    auto* viewLayout = new QHBoxLayout();
+    // Video (canvas de edición) como área central de la ventana.
     video_ = new inspection::EditorCanvas(central);
     video_->setTools(&liveTools_);
-    viewLayout->addWidget(video_, 1);
+    rootLayout->addWidget(video_, 1);
 
-    auto* compareLayout = new QVBoxLayout();
-    auto makeThumb = [central]() {
-        auto* label = new QLabel(central);
+    setCentralWidget(central);
+
+    // Panel de comparación "registrada vs actual" en un dock reubicable (S3):
+    // el operador lo puede mover, flotar o cerrar, y su posición se guarda.
+    auto* compareWidget = new QWidget(this);
+    auto* compareLayout = new QVBoxLayout(compareWidget);
+    auto makeThumb = [compareWidget]() {
+        auto* label = new QLabel(compareWidget);
         label->setFixedSize(170, 170);
         label->setAlignment(Qt::AlignCenter);
         label->setStyleSheet(
@@ -379,18 +384,18 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         label->setText(QStringLiteral("—"));
         return label;
     };
-    compareLayout->addWidget(new QLabel(tr("Pieza registrada:"), central));
+    compareLayout->addWidget(new QLabel(tr("Pieza registrada:"), compareWidget));
     refThumbLabel_ = makeThumb();
     compareLayout->addWidget(refThumbLabel_);
-    compareLayout->addWidget(new QLabel(tr("Pieza actual:"), central));
+    compareLayout->addWidget(new QLabel(tr("Pieza actual:"), compareWidget));
     currentThumbLabel_ = makeThumb();
     compareLayout->addWidget(currentThumbLabel_);
 
     // Rotar la vista de la pieza a gusto del usuario (gira la orientación de
     // la pieza seleccionada; persiste y aplica en registro e inspección).
     auto* rotateLayout = new QHBoxLayout();
-    auto* rotateLeft = new QPushButton(QStringLiteral("⟲ 90°"), central);
-    auto* rotateRight = new QPushButton(QStringLiteral("⟳ 90°"), central);
+    auto* rotateLeft = new QPushButton(QStringLiteral("⟲ 90°"), compareWidget);
+    auto* rotateRight = new QPushButton(QStringLiteral("⟳ 90°"), compareWidget);
     const QString rotateTip =
         tr("Gira cómo se ve la pieza (su recorte normalizado). Con una pieza\n"
            "seleccionada el giro se guarda con ella.");
@@ -401,14 +406,15 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     compareLayout->addLayout(rotateLayout);
     connect(rotateLeft, &QPushButton::clicked, this, [this] { rotatePieceView(-90.0); });
     connect(rotateRight, &QPushButton::clicked, this, [this] { rotatePieceView(90.0); });
-    similarityLabel_ = new QLabel(central);
+    similarityLabel_ = new QLabel(compareWidget);
     similarityLabel_->setWordWrap(true);
     compareLayout->addWidget(similarityLabel_);
     compareLayout->addStretch(1);
-    viewLayout->addLayout(compareLayout);
-    rootLayout->addLayout(viewLayout, 1);
 
-    setCentralWidget(central);
+    compareDock_ = new QDockWidget(tr("Comparación registrada / actual"), this);
+    compareDock_->setObjectName(QStringLiteral("compareDock"));
+    compareDock_->setWidget(compareWidget);
+    addDockWidget(Qt::RightDockWidgetArea, compareDock_);
 
     calibLabel_ = new QLabel(this);
     statusBar()->addPermanentWidget(calibLabel_);
@@ -519,6 +525,16 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
 
     buildShortcuts();
 
+    // Restaurar la disposición de paneles/docks que el operador dejó (S3).
+    if (repos_.settings != nullptr) {
+        if (auto state = repos_.settings->getString("window_state", std::string());
+            state.isOk() && !state.value().empty()) {
+            const QByteArray base64(state.value().data(),
+                                    static_cast<qsizetype>(state.value().size()));
+            restoreState(QByteArray::fromBase64(base64));
+        }
+    }
+
     refreshCameras();
     loadPieceList();
 }
@@ -615,6 +631,13 @@ void MainWindow::buildMenuBar() {
             &inspection::EditorCanvas::setLiveContourVisible);
     connect(showContourAction_, &QAction::toggled, this,
             [this](bool) { maybeStartAnalysis(); });
+
+    // Mostrar/ocultar el panel de comparación reubicable (S3).
+    if (compareDock_ != nullptr) {
+        auto* toggle = compareDock_->toggleViewAction();
+        toggle->setText(tr("Panel de comparación"));
+        viewMenu->addAction(toggle);
+    }
 
     trackRotationAction_ = viewMenu->addAction(tr("Seguir rotación de la pieza"));
     trackRotationAction_->setCheckable(true);
@@ -1732,6 +1755,11 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     if (!confirmSaveBeforeLeaving()) {
         event->ignore();  // el operador canceló el cierre para no perder cambios
         return;
+    }
+    // Guardar la disposición de paneles/docks para la próxima sesión (S3).
+    if (repos_.settings != nullptr) {
+        repos_.settings->setString("window_state",
+                                   saveState().toBase64().toStdString());
     }
     QMainWindow::closeEvent(event);
 }

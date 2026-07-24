@@ -159,7 +159,7 @@ archivos principales que toca.
   Archivos: `ui/history_dialog.*` (puede vivir junto a S1) o
   `ui/stats_widget.*`.
 
-- [ ] **S3 — Paneles reubicables (`QDockWidget`)**. El panel de comparación
+- [x] **S3 — Paneles reubicables (`QDockWidget`)**. El panel de comparación
   "Pieza registrada / actual" y la futura sección de historial hoy son fijos
   en el layout. Migrarlos a `QDockWidget` con `QMainWindow::saveState` /
   `restoreState` (persistido en `Settings`) para que el operador acomode la

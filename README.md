@@ -76,7 +76,10 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    polaridad opuesta** (mide anchos reales, no dos bordes del mismo lado), y
    la banda de muestreo del Caliper/Borde liso **se dibuja en pantalla** al
    cambiar el campo Puntos. Bajo "Pieza actual" hay botones **⟲/⟳ 90°** para
-   girar cómo se ve la pieza (persiste con la pieza seleccionada).
+   girar cómo se ve la pieza (persiste con la pieza seleccionada). El **panel de
+   comparación** es un **dock reubicable**: arrástralo, déjalo flotante o
+   ciérralo (se reabre desde **Ver ▸ Panel de comparación**); su disposición se
+   guarda entre sesiones.
 
    La **cantidad de puntos de muestreo** de cada herramienta es editable en
    **Plantilla…** (campo "Puntos"): banda del Caliper, rayos del Círculo,
