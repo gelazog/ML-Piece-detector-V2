@@ -101,8 +101,9 @@ archivos principales que toca.
 
 ### B. Opciones y configuración
 
-- [ ] **O1 — Diálogo "Preferencias" unificado** *(pide confirmación de
-  alcance)*. Hoy varios valores están fijos en código o dispersos: intervalo
+- [x] **O1 — Diálogo "Preferencias" unificado** *(pide confirmación de
+  alcance)*. Alcance confirmado por el usuario (2026-07-23): solo intervalo de
+  auto-inspección + kSigma (no miniatura ni capturas). Hoy varios valores están fijos en código o dispersos: intervalo
   de auto-inspección (1000 ms fijo en `main_window.cpp`), `kSigma` de
   anomalía (3.0 fijo en `EngineOptions`), objetivo/mínimo de capturas del
   registro (30/5 fijos), tamaño de miniatura. Centralizarlos en

@@ -42,6 +42,7 @@
 #include "ui/inspection_result_dialog.h"
 #include "ui/history_dialog.h"
 #include "ui/piece_manager_dialog.h"
+#include "ui/preferences_dialog.h"
 #include "ui/registration_wizard.h"
 #include "ui/template_manager_dialog.h"
 #include "vision/fixture_stabilizer.h"
@@ -484,7 +485,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             &MainWindow::onInspectionFinished);
 
     captureTimer_.setInterval(350);
-    autoTimer_.setInterval(1000);
+    autoTimer_.setInterval(autoIntervalMs_);  // se reajusta al cargar Preferencias
 
     // Calibración de escala persistida.
     if (repos_.settings != nullptr) {
@@ -501,6 +502,18 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     }
     updateCalibrationLabel();
     video_->setMmPerPixel(calibration_.mmPerPixel);
+
+    // Preferencias persistidas (O1): intervalo de auto-inspección y kSigma.
+    if (repos_.settings != nullptr) {
+        autoIntervalMs_ =
+            std::clamp(repos_.settings->getInt("pref_auto_interval_ms", 1000).value(),
+                       200, 10000);
+        kSigma_ = std::clamp(repos_.settings->getDouble("pref_ksigma", 3.0).value(), 0.5, 6.0);
+    }
+    autoTimer_.setInterval(autoIntervalMs_);
+    if (repos_.engine != nullptr) {
+        repos_.engine->setKSigma(kSigma_);
+    }
 
     // Ajustes de detección persistidos (umbral, polaridad, kernels y zona).
     if (repos_.settings != nullptr) {
@@ -584,6 +597,7 @@ void MainWindow::buildMenuBar() {
                                              &MainWindow::onCalibrateClicked);
     detectionAction_ = cameraMenu->addAction(tr("Ajustes de detección…"), this,
                                              &MainWindow::onDetectionClicked);
+    cameraMenu->addAction(tr("Preferencias…"), this, &MainWindow::onPreferencesClicked);
     cameraMenu->addSeparator();
     auto* arucoAction = cameraMenu->addAction(tr("Escala por marcador ArUco (en vivo)"));
     arucoAction->setCheckable(true);
@@ -1567,6 +1581,26 @@ void MainWindow::onTemplateChanged(int index) {
     }
     autoInspectButton_->setChecked(false);
     loadToolsForSelectedPiece();
+}
+
+void MainWindow::onPreferencesClicked() {
+    PreferencesDialog dialog(autoIntervalMs_, kSigma_, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    autoIntervalMs_ = dialog.autoIntervalMs();
+    kSigma_ = dialog.kSigma();
+
+    // Aplicar de inmediato.
+    autoTimer_.setInterval(autoIntervalMs_);
+    if (repos_.engine != nullptr) {
+        repos_.engine->setKSigma(kSigma_);
+    }
+    if (repos_.settings != nullptr) {
+        repos_.settings->setInt("pref_auto_interval_ms", autoIntervalMs_);
+        repos_.settings->setDouble("pref_ksigma", kSigma_);
+    }
+    statusBar()->showMessage(tr("Preferencias guardadas."));
 }
 
 void MainWindow::onShowHistoryClicked() {

@@ -157,6 +157,11 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    medir sobre algo conocido: no existe escala automática pura desde una sola
    cámara.)
 
+   **Preferencias** (menú *Cámara ▸ Preferencias…*): centraliza ajustes antes
+   fijos en código — el **intervalo de auto-inspección** (ms) y la
+   **sensibilidad de anomalía (kσ)** de apariencia. Se aplican al aceptar y
+   quedan guardados.
+
    **Calibración a milímetros** (menú *Cámara ▸ Calibrar escala*): dos
    métodos —
    **A)** haz dos clics sobre una distancia real conocida (una regla, el

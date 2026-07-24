@@ -5,6 +5,7 @@ add_library(pci_ui STATIC
   inspection_result_dialog.cpp
   main_window.cpp
   piece_manager_dialog.cpp
+  preferences_dialog.cpp
   registration_wizard.cpp
   shortcuts_dialog.cpp
   stats_bar_chart.cpp

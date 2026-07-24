@@ -94,6 +94,7 @@ private slots:
     void onNewTemplateClicked();
     void onManageTemplatesClicked();  // gestor de plantillas (M1)
     void onShowHistoryClicked();      // pantalla de historial (S1)
+    void onPreferencesClicked();      // diálogo de preferencias (O1)
     void onToolRightClicked(int index);
 
 protected:
@@ -221,6 +222,9 @@ private:
     bool autoInspecting_ = false;
     bool arucoLiveScale_ = false;   // escala por marcador ArUco en vivo
     double markerSizeMm_ = 30.0;    // lado real del marcador impreso
+    // Preferencias configurables (O1), persistidas en Settings.
+    int autoIntervalMs_ = 1000;     // intervalo de auto-inspección
+    double kSigma_ = 3.0;           // sensibilidad de anomalía de apariencia
 };
 
 }  // namespace pci::ui

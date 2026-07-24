@@ -68,6 +68,8 @@ public:
     void setMmPerPixel(double mmPerPixel) { options_.mmPerPixel = mmPerPixel; }
     void setUnit(inspection::LengthUnit unit) { options_.unit = unit; }
     void setTemplateName(const std::string& name) { options_.templateName = name; }
+    // Sensibilidad de anomalía de apariencia (Preferencias, O1).
+    void setKSigma(double kSigma) { options_.kSigma = kSigma; }
 
 private:
     EmbedFn embedFn_;
