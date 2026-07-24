@@ -167,7 +167,7 @@ archivos principales que toca.
   Skills: `qt-cpp-review`.
   Archivos: `ui/main_window.*`.
 
-- [ ] **S4 — Barra de estado con indicadores de icono**. Hoy es texto plano.
+- [x] **S4 — Barra de estado con indicadores de icono**. Hoy es texto plano.
   Añadir 3 indicadores pequeños (cámara / base de datos / modelo ONNX)
   verde-rojo con tooltip del detalle — mismo espíritu que los iconos ya
   dibujados en código para las herramientas (`tool_icons.cpp`), sin assets

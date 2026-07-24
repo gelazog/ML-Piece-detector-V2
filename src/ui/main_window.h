@@ -104,7 +104,8 @@ private:
     void maybeStartAnalysis();
     [[nodiscard]] bool analysisNeeded() const;
     void updateCalibrationLabel();
-    void persistCalibration();  // sella resolución/cámara y guarda en Settings
+    void persistCalibration();     // sella resolución/cámara y guarda en Settings
+    void updateStatusIndicators();  // pone al día los iconos de estado (S4)
     void buildMenuBar();
     void buildShortcuts();
     void commitUndoState();
@@ -170,6 +171,10 @@ private:
     QLabel* verdictBanner_ = nullptr;
     inspection::EditorCanvas* video_ = nullptr;
     QLabel* statsLabel_ = nullptr;
+    // Indicadores de estado (S4): cámara / base de datos / modelo ONNX.
+    QLabel* camIndicator_ = nullptr;
+    QLabel* dbIndicator_ = nullptr;
+    QLabel* modelIndicator_ = nullptr;
     // Panel de comparación: pieza registrada vs pieza actual.
     QLabel* refThumbLabel_ = nullptr;
     QLabel* currentThumbLabel_ = nullptr;

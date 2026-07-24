@@ -28,6 +28,9 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    Ayuda) para las acciones de configuración, y deja en la vista solo los
    controles de uso constante (combos de cámara/pieza/plantilla, Iniciar,
    Registrar y activar, Auto-inspección, Inspeccionar y la paleta de dibujo).
+   La **barra de estado** muestra tres indicadores verde/rojo con tooltip —
+   **Cám** (cámara transmitiendo), **BD** (base de datos conectada) y **ONNX**
+   (modelo de embeddings cargado) — para ver de un vistazo qué está disponible.
 
 2. **Cámara**: elige una del combo (aparecen con su nombre real, listadas por
    la API nativa del SO sin abrirlas) y pulsa **Iniciar** para la vista en vivo.

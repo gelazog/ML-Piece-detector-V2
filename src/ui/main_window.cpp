@@ -421,6 +421,15 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     statsLabel_ = new QLabel(this);
     statusBar()->addPermanentWidget(statsLabel_);
 
+    // Indicadores de estado con punto verde/rojo (S4): cámara, BD y modelo ONNX.
+    camIndicator_ = new QLabel(this);
+    dbIndicator_ = new QLabel(this);
+    modelIndicator_ = new QLabel(this);
+    statusBar()->addPermanentWidget(camIndicator_);
+    statusBar()->addPermanentWidget(dbIndicator_);
+    statusBar()->addPermanentWidget(modelIndicator_);
+    updateStatusIndicators();
+
     connect(startStopButton_, &QPushButton::clicked, this, &MainWindow::onStartStopClicked);
     connect(&enumerationWatcher_, &QFutureWatcher<std::vector<camera::CameraInfo>>::finished,
             this, &MainWindow::onCamerasEnumerated);
@@ -861,6 +870,26 @@ void MainWindow::onRedo() {
     }
 }
 
+void MainWindow::updateStatusIndicators() {
+    // Punto de color + leyenda por indicador (rich text: sin assets externos).
+    auto set = [](QLabel* label, const QString& caption, bool ok, const QString& okText,
+                  const QString& badText) {
+        const QString color = ok ? QStringLiteral("#22cc44") : QStringLiteral("#cc4444");
+        label->setText(QStringLiteral("<span style='color:%1'>&#9679;</span> %2")
+                           .arg(color, caption));
+        label->setToolTip(ok ? okText : badText);
+    };
+
+    set(camIndicator_, tr("Cám"), streaming_, tr("Cámara: transmitiendo"),
+        tr("Cámara: detenida"));
+    set(dbIndicator_, tr("BD"), repos_.pieces != nullptr,
+        tr("Base de datos: conectada"),
+        tr("Base de datos: no disponible (sin persistencia)"));
+    set(modelIndicator_, tr("ONNX"), static_cast<bool>(repos_.embedFn),
+        tr("Modelo de embeddings: cargado"),
+        tr("Modelo ONNX: no disponible (inspección solo con herramientas)"));
+}
+
 void MainWindow::updateCalibrationLabel() {
     // La escala por ArUco gestiona su propia etiqueta por frame (es dinámica).
     if (arucoLiveScale_) {
@@ -1021,6 +1050,7 @@ void MainWindow::onStartStopClicked() {
     statusBar()->showMessage(tr("Transmitiendo desde %1")
                                  .arg(QString::fromStdString(cameras_[comboIndex].name)));
     updateCalibrationLabel();  // reevalúa obsolescencia con la cámara nueva
+    updateStatusIndicators();  // cámara ahora en verde (S4)
     controller_.start(cameras_[comboIndex]);
 }
 
@@ -1151,6 +1181,7 @@ void MainWindow::onStreamStopped() {
     pendingAnalysisFrame_ = QImage();
     lastFrame_ = QImage();
     video_->clearLive();
+    updateStatusIndicators();  // cámara vuelve a rojo (S4)
 }
 
 void MainWindow::setControlsEnabled(bool enabled) {
