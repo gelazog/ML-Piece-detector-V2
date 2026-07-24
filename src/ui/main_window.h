@@ -92,6 +92,7 @@ private slots:
     void onTemplateChanged(int index);
     void onNewTemplateClicked();
     void onManageTemplatesClicked();  // gestor de plantillas (M1)
+    void onShowHistoryClicked();      // pantalla de historial (S1)
     void onToolRightClicked(int index);
 
 protected:

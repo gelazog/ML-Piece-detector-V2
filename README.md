@@ -226,7 +226,9 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    continuamente (~1/s): banner **OK/NG** en vivo, resultados por herramienta
    dibujados sobre el video y estadísticas del día en la barra de estado.
    Todo queda en el historial. Se puede prender/apagar cuando quieras con la
-   pieza seleccionada.
+   pieza seleccionada. **Inspección ▸ Ver historial…** abre la tabla de
+   inspecciones recientes (fecha, veredicto, similitud, versión de referencia)
+   por pieza, con la cantidad a mostrar ajustable y **exportación a CSV**.
 6. **Guardar plantilla (Ctrl+S)**: las herramientas que dibujas o ajustas en
    vivo se guardan en la plantilla activa de la pieza **sin tener que volver a
    registrarla** — pulsa **Guardar plantilla** o `Ctrl+S`. Antes solo se

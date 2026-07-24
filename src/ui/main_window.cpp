@@ -39,6 +39,7 @@
 #include "ui/calibration_dialog.h"
 #include "ui/detection_dialog.h"
 #include "ui/inspection_result_dialog.h"
+#include "ui/history_dialog.h"
 #include "ui/piece_manager_dialog.h"
 #include "ui/registration_wizard.h"
 #include "ui/template_manager_dialog.h"
@@ -600,6 +601,8 @@ void MainWindow::buildMenuBar() {
     auto* inspectionMenu = menuBar()->addMenu(tr("&Inspección"));
     editorAction_ = inspectionMenu->addAction(tr("Editor de plantilla…"), this,
                                               &MainWindow::onOpenEditorClicked);
+    inspectionMenu->addAction(tr("Ver historial…"), this,
+                              &MainWindow::onShowHistoryClicked);
 
     auto* viewMenu = menuBar()->addMenu(tr("&Ver"));
     showContourAction_ = viewMenu->addAction(tr("Mostrar contorno"));
@@ -1510,6 +1513,16 @@ void MainWindow::onTemplateChanged(int index) {
     }
     autoInspectButton_->setChecked(false);
     loadToolsForSelectedPiece();
+}
+
+void MainWindow::onShowHistoryClicked() {
+    if (repos_.inspections == nullptr || repos_.pieces == nullptr) {
+        QMessageBox::information(this, tr("Historial no disponible"),
+                                 tr("El historial necesita la base de datos."));
+        return;
+    }
+    HistoryDialog dialog(repos_.inspections, repos_.pieces, selectedPieceId(), this);
+    dialog.exec();
 }
 
 void MainWindow::onManageTemplatesClicked() {

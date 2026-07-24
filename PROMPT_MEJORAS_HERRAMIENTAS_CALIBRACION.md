@@ -142,7 +142,7 @@ archivos principales que toca.
 
 ### C. Secciones de la interfaz
 
-- [ ] **S1 — Pantalla de Historial de inspecciones**. `InspectionRepository`
+- [x] **S1 — Pantalla de Historial de inspecciones**. `InspectionRepository`
   ya tiene `recentForPiece`/`todayStats` en el backend, pero **no hay ninguna
   UI para verlos** más allá del contador en la barra de estado. Añadir
   `Inspección ▸ Ver historial…`: tabla (fecha, veredicto, similitud,
@@ -186,25 +186,6 @@ archivos principales que toca.
   Skills: `sqlite-database-expert`, `cpp-testing`.
   Archivos: `domain/calibration.*`, `repositories/settings_repository.*`,
   `ui/main_window.cpp`.
-
-- [ ] **D2 — Calibración avanzada con tablero de ajedrez (distorsión de
-  lente)**. Hoy se asume proyección *pinhole* sin distorsión (válido cerca
-  del centro de la imagen, impreciso en los bordes con lentes gran angular).
-  MVTec Halcon resuelve esto con `calibrate_cameras` + un tablero de
-  calibración fotografiado en varias posiciones. Añadir un modo "avanzado"
-  con `cv::findChessboardCorners` + `cv::calibrateCamera` que guarde
-  coeficientes de distorsión y aplique `cv::undistort` antes de analizar cada
-  frame. **Opcional/avanzado** — no bloquea el resto del backlog.
-  Skills: `computer-vision-opencv`, `cpp-testing`.
-  Archivos: `vision/lens_calibration.*` (nuevo), `vision/pipeline.*`
-  (`cv::undistort` opcional antes de `segmentPiece`).
-
-- [ ] **D3 — Tablero/multi-marcador ArUco (`cv::aruco::GridBoard`)**. La
-  escala en vivo depende de **un solo marcador**; si la pieza o una mano lo
-  tapan, se pierde. Un `GridBoard` de 4-6 marcadores sigue dando escala
-  mientras se vea al menos uno.
-  Skills: `computer-vision-opencv`, `cpp-testing`.
-  Archivos: `vision/plane_scale.*`.
 
 - [x] **D4 — Conectar la homografía por-punto a las herramientas**.
   `planeDistanceMm` (homografía completa del plano) ya existe en
