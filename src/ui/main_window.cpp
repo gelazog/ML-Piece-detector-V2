@@ -2178,6 +2178,10 @@ QImage MainWindow::frameOrFile() {
     if (!lastFrame_.isNull()) {
         return lastFrame_;
     }
+    return openImageFile();
+}
+
+QImage MainWindow::openImageFile() {
     const QString path = QFileDialog::getOpenFileName(
         this, tr("Elegir imagen"), QString(), tr("Imágenes (*.png *.jpg *.jpeg *.bmp)"));
     if (path.isEmpty()) {
@@ -2241,7 +2245,28 @@ void MainWindow::onRegisterWizardClicked() {
 }
 
 void MainWindow::onOpenEditorClicked() {
-    const QImage reference = frameOrFile();
+    // E2: con vídeo en marcha, elegir explícitamente la fuente de la imagen.
+    const bool live = streaming_ && !lastFrame_.isNull();
+    QImage reference;
+    if (live) {
+        QMessageBox box(QMessageBox::Question, tr("Editor de plantilla"),
+                        tr("¿Sobre qué imagen quieres editar la plantilla?"),
+                        QMessageBox::NoButton, this);
+        auto* current =
+            box.addButton(tr("Frame actual de la cámara"), QMessageBox::AcceptRole);
+        auto* fromFile = box.addButton(tr("Abrir archivo…"), QMessageBox::ActionRole);
+        box.addButton(QMessageBox::Cancel);
+        box.exec();
+        if (box.clickedButton() == current) {
+            reference = lastFrame_;
+        } else if (box.clickedButton() == fromFile) {
+            reference = openImageFile();
+        } else {
+            return;
+        }
+    } else {
+        reference = frameOrFile();
+    }
     if (reference.isNull()) {
         return;
     }
@@ -2274,10 +2299,12 @@ void MainWindow::onOpenEditorClicked() {
     }
 
     // Pasar las herramientas EN VIVO actuales (incluidas las no guardadas) para
-    // que el editor muestre exactamente lo mismo que la vista en vivo (P3).
+    // que el editor muestre lo mismo que la vista en vivo (P3), y la cámara en
+    // marcha para el botón "Actualizar desde cámara" (E1) — solo con vídeo.
     inspection::EditorWindow editor(reference, analysis.value().fixture, pieceId,
                                     pieceId >= 0 ? repos_.tools : nullptr, calibration_,
-                                    activeTemplate(), this, &liveTools_);
+                                    activeTemplate(), this, &liveTools_,
+                                    live ? &controller_ : nullptr);
     editor.exec();
 
     // Devolver las herramientas editadas a la vista en vivo (ida y vuelta), en

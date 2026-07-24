@@ -101,7 +101,7 @@ Formato: casilla, ID, tarea, por qué, skill(s), archivos principales.
 
 ### B. Editor con dos modos: tiempo real o imagen
 
-- [ ] **E1 — Elegir modo al abrir el editor: «Tiempo real» o «Desde imagen»**
+- [x] **E1 — Elegir modo al abrir el editor: «Tiempo real» o «Desde imagen»**
   *(pide confirmación de flujo)*. Al abrir el editor, ofrecer dos modos:
   **(a) Tiempo real** — el canvas del editor muestra el **video en vivo**
   (`EditorCanvas` ya soporta modo vivo con `setFrame` + `setLivePiece`), el
@@ -114,7 +114,7 @@ Formato: casilla, ID, tarea, por qué, skill(s), archivos principales.
   Archivos: `inspection_editor/editor_window.*` (aceptar un `CameraController*`
   opcional y un modo), `ui/main_window.cpp`.
 
-- [ ] **E2 — En modo imagen, elegir explícitamente cámara-actual vs archivo**.
+- [x] **E2 — En modo imagen, elegir explícitamente cámara-actual vs archivo**.
   Hoy `frameOrFile()` decide solo. Hacerlo explícito dentro del diálogo de E1:
   «frame actual» o «abrir archivo…». Pequeño, se apoya en E1.
   Skills: `qt-cpp-review`.

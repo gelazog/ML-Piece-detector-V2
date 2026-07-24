@@ -18,11 +18,13 @@
 #include <type_traits>
 #include <variant>
 
+#include "camera/camera_controller.h"
 #include "camera/frame_utils.h"
 #include "core/logging.h"
 #include "inspection_editor/canvas/tool_icons.h"
 #include "inspection_editor/execution/tool_executor.h"
 #include "repositories/tool_repository.h"
+#include "vision/pipeline.h"
 
 namespace pci::inspection {
 
@@ -49,9 +51,11 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
                            std::int64_t pieceId, repositories::ToolRepository* repo,
                            domain::ScaleCalibration calibration,
                            const std::string& templateName, QWidget* parent,
-                           const std::vector<EditedTool>* initialTools)
+                           const std::vector<EditedTool>* initialTools,
+                           camera::CameraController* liveController)
     : QDialog(parent), reference_(reference), fixture_(fixture), pieceId_(pieceId),
-      repo_(repo), calibration_(calibration), templateName_(templateName) {
+      repo_(repo), calibration_(calibration), templateName_(templateName),
+      liveController_(liveController) {
     setWindowTitle(tr("Editor de plantilla '%1'")
                        .arg(QString::fromStdString(templateName)));
     resize(1100, 700);
@@ -145,6 +149,13 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     deleteButton_ = new QPushButton(tr("Eliminar herramienta"), this);
     sideLayout->addWidget(deleteButton_);
 
+    refreshButton_ = new QPushButton(tr("Actualizar desde cámara"), this);
+    refreshButton_->setToolTip(
+        tr("Recaptura una imagen fresca de la cámara en marcha y reanaliza la\n"
+           "pieza, sin cerrar el editor. Las herramientas siguen a la pieza."));
+    refreshButton_->setEnabled(liveController_ != nullptr);
+    sideLayout->addWidget(refreshButton_);
+
     auto* testButton = new QPushButton(tr("Probar sobre esta imagen"), this);
     sideLayout->addWidget(testButton);
 
@@ -179,6 +190,15 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     connect(deleteButton_, &QPushButton::clicked, this, &EditorWindow::onDeleteClicked);
     connect(testButton, &QPushButton::clicked, this, &EditorWindow::onTestClicked);
     connect(saveButton, &QPushButton::clicked, this, &EditorWindow::onSaveClicked);
+    connect(refreshButton_, &QPushButton::clicked, this,
+            &EditorWindow::onRefreshFromCamera);
+    // Mantener el último frame de la cámara en marcha para el refresco bajo
+    // demanda (no se muestra en vivo: la imagen del editor solo cambia al pulsar
+    // "Actualizar desde cámara", así las tolerancias no bailan mientras se ajusta).
+    if (liveController_ != nullptr) {
+        connect(liveController_, &camera::CameraController::frameReady, this,
+                [this](const QImage& frame) { latestLiveFrame_ = frame; });
+    }
 
     // Con herramientas iniciales (las de la vista en vivo) arrancamos de ellas;
     // si no, se cargan de la BD como siempre.
@@ -547,6 +567,27 @@ std::vector<ToolConfig> EditorWindow::activeConfigs() const {
         configs.push_back(std::move(config));
     }
     return configs;
+}
+
+void EditorWindow::onRefreshFromCamera() {
+    if (latestLiveFrame_.isNull()) {
+        statusLabel_->setText(tr("Aún no llega imagen de la cámara; espera un momento."));
+        return;
+    }
+    const QImage frame = latestLiveFrame_;
+    const auto analysis = vision::analyzeFrame(camera::qImageToMat(frame));
+    if (!analysis.isOk()) {
+        statusLabel_->setText(tr("No se pudo detectar la pieza en la imagen nueva: %1")
+                                  .arg(QString::fromStdString(analysis.error().message)));
+        return;
+    }
+    // Nueva imagen de referencia + fixture; las herramientas (en coords de
+    // pieza) siguen ancladas y se remiden sobre la imagen fresca.
+    reference_ = frame;
+    fixture_ = analysis.value().fixture;
+    canvas_->setScene(reference_, fixture_);
+    onTestClicked();
+    statusLabel_->setText(tr("Imagen actualizada desde la cámara."));
 }
 
 void EditorWindow::onTestClicked() {

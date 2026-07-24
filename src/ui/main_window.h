@@ -129,6 +129,7 @@ private:
     void showLiveVerdict(const engine::InspectionEngine::Outcome& outcome);
     [[nodiscard]] std::int64_t selectedPieceId() const;
     [[nodiscard]] QImage frameOrFile();
+    [[nodiscard]] QImage openImageFile();  // siempre abre el diálogo de archivo
 
     // Menú y acciones de baja frecuencia (antes botones sueltos).
     QAction* refreshAction_ = nullptr;

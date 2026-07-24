@@ -24,6 +24,10 @@ namespace pci::repositories {
 class ToolRepository;
 }
 
+namespace pci::camera {
+class CameraController;
+}
+
 namespace pci::inspection {
 
 // Editor de plantilla de inspección (estilo VisionMaster): dibuja herramientas
@@ -38,11 +42,15 @@ public:
     // initialTools (opcional): si se pasa, el editor arranca con ESAS
     // herramientas (las que hay en vivo, incluidas las no guardadas) en vez de
     // cargarlas de la BD — así el editor y la vista en vivo muestran lo mismo.
+    // liveController (opcional): la cámara en marcha de la ventana principal. Si
+    // se pasa, el editor ofrece "Actualizar desde cámara" para recapturar una
+    // imagen fresca sin cerrar (modo por imagen con refresco, no vídeo continuo).
     EditorWindow(const QImage& reference, const vision::Fixture& fixture,
                  std::int64_t pieceId, repositories::ToolRepository* repo,
                  domain::ScaleCalibration calibration = {},
                  const std::string& templateName = "principal", QWidget* parent = nullptr,
-                 const std::vector<EditedTool>* initialTools = nullptr);
+                 const std::vector<EditedTool>* initialTools = nullptr,
+                 camera::CameraController* liveController = nullptr);
 
     // Herramientas resultantes tras editar (sin las borradas, con su JSON al
     // día), para devolverlas a la vista en vivo. Y si se guardó a la BD.
@@ -57,6 +65,7 @@ private slots:
     void onDeleteClicked();
     void onTestClicked();
     void onSaveClicked();
+    void onRefreshFromCamera();  // recaptura una imagen fresca de la cámara (E1)
 
 private:
     void loadExistingTools();
@@ -86,6 +95,7 @@ private:
     QLabel* tolMmLabel_ = nullptr;   // equivalente en mm de las tolerancias
     QPushButton* deleteButton_ = nullptr;
     QLabel* statusLabel_ = nullptr;
+    QPushButton* refreshButton_ = nullptr;  // "Actualizar desde cámara" (E1)
 
     QImage reference_;
     vision::Fixture fixture_;
@@ -93,6 +103,8 @@ private:
     repositories::ToolRepository* repo_ = nullptr;
     domain::ScaleCalibration calibration_;
     std::string templateName_ = "principal";
+    camera::CameraController* liveController_ = nullptr;
+    QImage latestLiveFrame_;  // último frame recibido de la cámara en marcha
 
     std::vector<EditedTool> tools_;
     std::vector<EditedTool> stableTools_;
