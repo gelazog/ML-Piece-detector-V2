@@ -1,6 +1,9 @@
 #include "ui/template_manager_dialog.h"
 
 #include <QDialogButtonBox>
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLabel>
@@ -13,6 +16,7 @@
 #include <algorithm>
 #include <vector>
 
+#include "inspection_editor/tools/template_io.h"
 #include "repositories/tool_repository.h"
 
 namespace pci::ui {
@@ -41,6 +45,16 @@ TemplateManagerDialog::TemplateManagerDialog(repositories::ToolRepository* repo,
     actions->addWidget(deleteBtn);
     root->addLayout(actions);
 
+    auto* fileActions = new QHBoxLayout();
+    auto* exportBtn = new QPushButton(tr("Exportar…"), this);
+    exportBtn->setToolTip(tr("Guardar la plantilla seleccionada en un archivo .json"));
+    auto* importBtn = new QPushButton(tr("Importar…"), this);
+    importBtn->setToolTip(tr("Cargar una plantilla desde un archivo .json a esta pieza"));
+    fileActions->addWidget(exportBtn);
+    fileActions->addWidget(importBtn);
+    fileActions->addStretch(1);
+    root->addLayout(fileActions);
+
     auto* buttons = new QDialogButtonBox(this);
     auto* useBtn = buttons->addButton(tr("Usar seleccionada"), QDialogButtonBox::AcceptRole);
     buttons->addButton(tr("Cerrar"), QDialogButtonBox::RejectRole);
@@ -50,6 +64,8 @@ TemplateManagerDialog::TemplateManagerDialog(repositories::ToolRepository* repo,
     connect(renameBtn, &QPushButton::clicked, this, &TemplateManagerDialog::onRename);
     connect(duplicateBtn, &QPushButton::clicked, this, &TemplateManagerDialog::onDuplicate);
     connect(deleteBtn, &QPushButton::clicked, this, &TemplateManagerDialog::onDelete);
+    connect(exportBtn, &QPushButton::clicked, this, &TemplateManagerDialog::onExport);
+    connect(importBtn, &QPushButton::clicked, this, &TemplateManagerDialog::onImport);
     connect(useBtn, &QPushButton::clicked, this, [this] {
         selected_ = currentName();
         accept();
@@ -180,6 +196,104 @@ void TemplateManagerDialog::onDelete() {
         return;
     }
     reload();
+}
+
+void TemplateManagerDialog::onExport() {
+    const QString name = currentName();
+    if (name.isEmpty() || repo_ == nullptr) {
+        return;
+    }
+    auto tools = repo_->listForPiece(pieceId_, name.toStdString());
+    if (!tools.isOk()) {
+        QMessageBox::warning(this, tr("No se pudo leer la plantilla"),
+                             QString::fromStdString(tools.error().message));
+        return;
+    }
+    if (tools.value().empty()) {
+        QMessageBox::information(this, tr("Plantilla vacía"),
+                                 tr("La plantilla '%1' no tiene herramientas que exportar.")
+                                     .arg(name));
+        return;
+    }
+    const QString path = QFileDialog::getSaveFileName(
+        this, tr("Exportar plantilla"), name + QStringLiteral(".json"),
+        tr("Plantilla de inspección (*.json)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    const std::string json = inspection::exportTemplateJson(tools.value());
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, tr("No se pudo escribir"),
+                             tr("No se pudo abrir el archivo para escribir."));
+        return;
+    }
+    file.write(json.data(), static_cast<qint64>(json.size()));
+    file.close();
+    QMessageBox::information(this, tr("Exportada"),
+                             tr("Plantilla '%1' exportada (%2 herramienta(s)).")
+                                 .arg(name)
+                                 .arg(tools.value().size()));
+}
+
+void TemplateManagerDialog::onImport() {
+    if (repo_ == nullptr) {
+        return;
+    }
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Importar plantilla"), QString(),
+        tr("Plantilla de inspección (*.json)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, tr("No se pudo leer"),
+                             tr("No se pudo abrir el archivo."));
+        return;
+    }
+    const QByteArray data = file.readAll();
+    file.close();
+
+    auto imported = inspection::importTemplateJson(data.toStdString());
+    if (!imported.isOk()) {
+        QMessageBox::warning(this, tr("Archivo inválido"),
+                             QString::fromStdString(imported.error().message));
+        return;
+    }
+
+    bool ok = false;
+    const QString target =
+        QInputDialog::getText(this, tr("Importar en plantilla"),
+                              tr("Nombre de la plantilla destino:"), QLineEdit::Normal,
+                              QFileInfo(path).completeBaseName(), &ok)
+            .trimmed();
+    if (!ok || target.isEmpty()) {
+        return;
+    }
+    if (!list_->findItems(target, Qt::MatchExactly).isEmpty()) {
+        QMessageBox::warning(this, tr("Ya existe"),
+                             tr("Ya hay una plantilla '%1'. Elige otro nombre.").arg(target));
+        return;
+    }
+
+    int errors = 0;
+    for (auto& config : imported.value()) {
+        config.id = -1;
+        if (auto saved = repo_->save(pieceId_, config, target.toStdString()); !saved.isOk()) {
+            ++errors;
+        }
+    }
+    reload(target);
+    if (errors == 0) {
+        QMessageBox::information(this, tr("Importada"),
+                                 tr("Plantilla importada como '%1' (%2 herramienta(s)).")
+                                     .arg(target)
+                                     .arg(imported.value().size()));
+    } else {
+        QMessageBox::warning(this, tr("Importada con errores"),
+                             tr("%1 herramienta(s) no se pudieron guardar.").arg(errors));
+    }
 }
 
 }  // namespace pci::ui

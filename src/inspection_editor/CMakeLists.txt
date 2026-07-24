@@ -2,6 +2,7 @@
 add_library(pci_inspection STATIC
   execution/edge_detection.cpp
   execution/tool_executor.cpp
+  tools/template_io.cpp
   tools/tool_geometry.cpp
 )
 target_include_directories(pci_inspection PUBLIC ${CMAKE_SOURCE_DIR}/src)

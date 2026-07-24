@@ -133,7 +133,7 @@ Formato: casilla, ID, tarea, por qué, skill(s), archivos principales.
   Archivos: `ui/template_manager_dialog.*` (nuevo),
   `repositories/tool_repository.*`, `ui/main_window.cpp` (botón «Gestionar…»).
 
-- [ ] **M2 — Exportar/Importar una plantilla a archivo (`.json`)**. Volcar una
+- [x] **M2 — Exportar/Importar una plantilla a archivo (`.json`)**. Volcar una
   plantilla (sus `ToolConfig` + geometrías + tolerancias) a un `.json` y
   reimportarla en otra pieza o PC de la línea. Reutiliza la (de)serialización de
   geometrías ya existente (`toJson`/`geometryFromJson`). Complementa O4 del otro

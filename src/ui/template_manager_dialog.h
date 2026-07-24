@@ -35,6 +35,8 @@ private:
     void onRename();
     void onDuplicate();
     void onDelete();
+    void onExport();
+    void onImport();
 
     repositories::ToolRepository* repo_ = nullptr;
     std::int64_t pieceId_ = -1;

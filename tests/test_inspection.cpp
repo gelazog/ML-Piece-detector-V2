@@ -6,6 +6,7 @@
 
 #include "inspection_editor/execution/edge_detection.h"
 #include "inspection_editor/execution/tool_executor.h"
+#include "inspection_editor/tools/template_io.h"
 #include "inspection_editor/tools/tool_geometry.h"
 #include "inspection_editor/tools/undo_stack.h"
 #include "test_helpers.h"
@@ -426,6 +427,57 @@ TEST(HomographyScale, LengthToolsUsePerPointHomography) {
                      0.25, LengthUnit::Auto);
     ASSERT_TRUE(result.isOk());
     EXPECT_NE(result.value().detail.find("25.00mm"), std::string::npos);
+}
+
+// --- Exportar/Importar plantilla (M2) ---
+
+TEST(TemplateIo, RoundTripPreservesTools) {
+    std::vector<ToolConfig> tools;
+    {
+        ToolConfig caliper;
+        caliper.id = 7;  // el id NO debe conservarse al importar
+        caliper.type = ToolType::Caliper;
+        caliper.name = "Ancho";
+        caliper.geometryJson =
+            toJson(ToolGeometry(CaliperGeometry{{0.0F, 0.0F}, {40.0F, 0.0F}, 6.0F}));
+        caliper.toleranceMin = 35.0;
+        caliper.toleranceMax = 45.0;
+        caliper.enabled = false;
+        tools.push_back(caliper);
+
+        ToolConfig blob;
+        blob.type = ToolType::Blob;
+        blob.name = "Agujeros";
+        blob.geometryJson = toJson(ToolGeometry(BlobGeometry{{20.0F, 20.0F}, 30.0F, 30.0F}));
+        blob.toleranceMin = 2.0;
+        blob.toleranceMax = 2.0;
+        tools.push_back(blob);
+    }
+
+    const std::string json = exportTemplateJson(tools);
+    auto back = importTemplateJson(json);
+    ASSERT_TRUE(back.isOk()) << back.error().message;
+    ASSERT_EQ(back.value().size(), 2U);
+
+    const auto& a = back.value()[0];
+    EXPECT_EQ(a.id, -1);  // importadas como nuevas
+    EXPECT_EQ(a.type, ToolType::Caliper);
+    EXPECT_EQ(a.name, "Ancho");
+    EXPECT_DOUBLE_EQ(a.toleranceMin, 35.0);
+    EXPECT_DOUBLE_EQ(a.toleranceMax, 45.0);
+    EXPECT_FALSE(a.enabled);
+    // La geometría sobrevive el viaje.
+    auto geom = geometryFromJson(a.type, a.geometryJson);
+    ASSERT_TRUE(geom.isOk());
+    EXPECT_FLOAT_EQ(std::get<CaliperGeometry>(geom.value()).p1.x, 40.0F);
+
+    EXPECT_EQ(back.value()[1].type, ToolType::Blob);
+    EXPECT_EQ(back.value()[1].name, "Agujeros");
+}
+
+TEST(TemplateIo, RejectsCorruptJson) {
+    EXPECT_FALSE(importTemplateJson("no es json").isOk());
+    EXPECT_FALSE(importTemplateJson("{\"version\":1}").isOk());  // sin 'tools'
 }
 
 // --- Anclaje al fixture (el test de oro de la fase) ---

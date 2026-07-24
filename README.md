@@ -87,6 +87,9 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    desde aquí puedes **crear, renombrar, duplicar y eliminar** plantillas y
    elegir cuál activar. Duplicar copia todas las herramientas de la plantilla a
    un nombre nuevo — útil para partir de una parecida y ajustarla.
+   También puedes **exportar** una plantilla a un archivo `.json` e **importarla**
+   en otra pieza (o en otra PC de la línea): se copian todas las herramientas con
+   sus tolerancias, sin tener que redibujarlas.
 
    **Snap al borde al dibujar**: mientras trazas un Caliper, Regla o Borde liso,
    un marcador amarillo resalta el borde detectado más cercano al cursor (usa la
