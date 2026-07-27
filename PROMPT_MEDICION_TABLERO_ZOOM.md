@@ -132,9 +132,18 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
 - [ ] **T1 — Geometría del tablero (lógica pura, con test)**. Nuevo
   `vision/board_frame.{h,cpp}` (o `domain/`): dado un **origen** y un **ángulo
   de referencia**, convierte imagen ↔ tablero y expone la lectura de un punto
-  como **(dx, dy, radio, ángulo)**, en px y en mm si hay escala. Origen
-  seleccionable: **centro de la imagen**, **centro de la pieza** (`Fixture`,
-  que ya es el centro) o **punto fijado por el operador**. Sin Qt: testeable.
+  como **(dx, dy, radio, ángulo)**, en px y en mm si hay escala. Sin Qt:
+  testeable.
+
+  **DECIDIDO por el usuario (2026-07-27): el origen es ELEGIBLE**, con los tres
+  modos implementados —
+  **(a) centro de la pieza** (`Fixture.origin`, sigue a la pieza: mide
+  desviaciones internas respecto a su propio centro),
+  **(b) centro de la imagen** (fijo en pantalla: mide cuánto se desvía la pieza
+  respecto al centro del campo de visión, para centrado en un jig) y
+  **(c) punto fijado a mano** por el operador.
+  El enum del origen vive junto a la geometría del tablero y la elección se
+  persiste (con la pieza, junto al modo de medición de M1).
   Skills: `test-driven-development` (test primero), `cpp-testing`,
   `computer-vision-opencv`, `cpp-coding-standards`.
   Archivos: `vision/board_frame.*` (nuevo), `tests/test_vision.cpp`.
