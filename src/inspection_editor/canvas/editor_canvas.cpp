@@ -248,7 +248,7 @@ void EditorCanvas::setCreateType(std::optional<ToolType> type) {
     pendingAngle_.reset();    // cancela un Ángulo a medio crear
     pendingPolygon_.clear();  // cancela un Blob poligonal a medio crear
     snapImg_.reset();         // limpia el resaltado de snap al borde
-    setCursor(type.has_value() ? Qt::CrossCursor : Qt::ArrowCursor);
+    restoreCursor();
     update();
 }
 
@@ -337,8 +337,27 @@ QRectF EditorCanvas::targetRect() const {
         return fit;
     }
     QRectF scaled(0.0, 0.0, fit.width() * zoom_, fit.height() * zoom_);
-    scaled.moveCenter(fit.center() + pan_);
+    // El límite se aplica aquí (no solo al arrastrar) para que redimensionar la
+    // ventana tampoco pueda dejar la imagen fuera de vista.
+    scaled.moveCenter(fit.center() + clampedPan(pan_));
     return scaled;
+}
+
+QPointF EditorCanvas::clampedPan(const QPointF& pan) const {
+    const QRectF fit = fitRect();
+    if (fit.isEmpty()) {
+        return {};
+    }
+    // Margen que se puede desplazar en cada eje sin descubrir el fondo. Si con
+    // el zoom actual la imagen sigue cabiendo en ese eje, el margen es 0 y la
+    // imagen queda centrada.
+    const double maxX = std::max(0.0, (fit.width() * zoom_ - width()) / 2.0);
+    const double maxY = std::max(0.0, (fit.height() * zoom_ - height()) / 2.0);
+    return {std::clamp(pan.x(), -maxX, maxX), std::clamp(pan.y(), -maxY, maxY)};
+}
+
+void EditorCanvas::restoreCursor() {
+    setCursor(createType_.has_value() ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
 void EditorCanvas::resetView() {
@@ -362,7 +381,7 @@ void EditorCanvas::zoomAt(const QPointF& widgetPos, double factor) {
     } else {
         // Corrige el desplazamiento para que ese mismo punto siga bajo el
         // cursor: el contenido señalado no se mueve al hacer zoom.
-        pan_ += widgetPos - imageToWidget(anchor);
+        pan_ = clampedPan(pan_ + (widgetPos - imageToWidget(anchor)));
     }
     update();
 }
@@ -513,6 +532,23 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
     if (image_.isNull()) {
         return;
     }
+
+    // Arrastrar la vista (Z2): botón central, o Ctrl + botón izquierdo para
+    // ratones sin rueda pulsable. Funciona también con la edición bloqueada:
+    // mirar de cerca no modifica nada.
+    const bool panRequest =
+        event->button() == Qt::MiddleButton ||
+        (event->button() == Qt::LeftButton &&
+         (event->modifiers() & Qt::ControlModifier) != 0);
+    if (panRequest) {
+        panning_ = true;
+        panStartWidget_ = event->position();
+        panStartOffset_ = clampedPan(pan_);
+        setCursor(Qt::ClosedHandCursor);
+        event->accept();
+        return;
+    }
+
     const cv::Point2f pressPoint = widgetToImage(event->position());
 
     // Clic derecho sobre una herramienta: borrado rápido (aunque la edición
@@ -589,6 +625,11 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
 }
 
 void EditorCanvas::mouseMoveEvent(QMouseEvent* event) {
+    if (panning_) {
+        pan_ = clampedPan(panStartOffset_ + (event->position() - panStartWidget_));
+        update();
+        return;
+    }
     if (!creating_ && !moving_ && !marquee_ && !regionDrag_ && !draggingHandle_) {
         return;
     }
@@ -672,6 +713,13 @@ void EditorCanvas::finishMarquee(const cv::Point2f& releasePoint) {
 }
 
 void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
+    if (panning_ &&
+        (event->button() == Qt::MiddleButton || event->button() == Qt::LeftButton)) {
+        panning_ = false;
+        restoreCursor();
+        event->accept();
+        return;
+    }
     if (event->button() != Qt::LeftButton) {
         return;
     }

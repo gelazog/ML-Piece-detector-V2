@@ -101,7 +101,10 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    hasta 20×; el zoom va **hacia el cursor**, así que el detalle que señalas se
    queda quieto mientras te acercas. Al volver al ajuste (1×) la vista se
    recentra sola. Sirve tanto en la vista en vivo como en el editor, y las
-   herramientas siguen ancladas a la pieza con cualquier zoom.
+   herramientas siguen ancladas a la pieza con cualquier zoom. Para moverte por
+   la imagen ampliada, arrastra con el **botón central** o con **Ctrl + botón
+   izquierdo** (cursor de mano): el dibujo y el marco de selección siguen
+   funcionando igual, y la imagen nunca se pierde de vista.
 
    **Snap al borde al dibujar**: mientras trazas un Caliper, Regla o Borde liso,
    un marcador amarillo resalta el borde detectado más cercano al cursor (usa la

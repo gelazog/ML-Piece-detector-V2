@@ -115,12 +115,15 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
   cayendo donde deben con zoom ≠ 1).
   Archivos: `inspection_editor/canvas/editor_canvas.{h,cpp}`.
 
-- [ ] **Z2 — Paneo (arrastrar la vista)**. Con zoom > ajuste, permitir mover la
-  imagen: arrastre con **botón central** o **espacio + arrastre izquierdo**
-  (sin robarle el arrastre al dibujo), cursor de mano mientras dura, y
-  **límites** para que la imagen no se pierda fuera del widget.
-  Skills: `qt-cpp-review`, `qt-ui-design`.
-  Archivos: `editor_canvas.{h,cpp}`.
+- [x] **Z2 — Paneo (arrastrar la vista)**. HECHO. Arrastre con **botón central**
+  o **Ctrl + botón izquierdo** (se eligió Ctrl en vez de la barra espaciadora:
+  no requiere que el canvas tenga el foco del teclado ni compite con los atajos
+  de la ventana), con cursor de mano mientras dura y **sin robarle el arrastre
+  al dibujo ni al marco de selección**. `clampedPan()` limita el
+  desplazamiento para que nunca se descubra el fondo; si con el zoom actual la
+  imagen cabe en un eje, en ese eje queda centrada. El límite se aplica dentro
+  de `targetRect()`, así que **redimensionar la ventana tampoco puede dejar la
+  imagen fuera de vista**. Funciona con la edición bloqueada (mirar no edita).
 
 - [ ] **Z3 — Controles y atajos de vista**. `Ctrl++` / `Ctrl+-` zoom,
   `Ctrl+0` = ajustar a ventana, `Ctrl+1` = 100 %, doble clic = ajustar.

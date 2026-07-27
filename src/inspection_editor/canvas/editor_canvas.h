@@ -107,6 +107,11 @@ private:
     [[nodiscard]] QRectF targetRect() const;
     // Aplica zoom manteniendo quieto el punto de la imagen bajo `widgetPos`.
     void zoomAt(const QPointF& widgetPos, double factor);
+    // Limita el desplazamiento para que la imagen nunca deje huecos ni se
+    // pierda de vista; si con el zoom actual cabe entera en un eje, la centra.
+    [[nodiscard]] QPointF clampedPan(const QPointF& pan) const;
+    // Cursor que corresponde al modo actual (cruz al dibujar, flecha si no).
+    void restoreCursor();
     [[nodiscard]] QPointF imageToWidget(const cv::Point2f& p) const;
     [[nodiscard]] cv::Point2f widgetToImage(const QPointF& p) const;
     [[nodiscard]] cv::Point2f toImg(const cv::Point2f& piecePoint) const;
@@ -143,6 +148,10 @@ private:
     // arrastre manual llega en Z2.
     double zoom_ = 1.0;
     QPointF pan_;
+    // Arrastre de la vista (botón central o Ctrl + botón izquierdo).
+    bool panning_ = false;
+    QPointF panStartWidget_;
+    QPointF panStartOffset_;
 
     bool creating_ = false;
     bool moving_ = false;
