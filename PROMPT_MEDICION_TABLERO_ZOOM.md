@@ -33,14 +33,12 @@ Punto de partida real, para no redescubrirlo en cada iteración:
    y todo el ratón pasan por ahí** → el zoom se implementa modificando *solo*
    esas tres funciones (+ rueda/paneo). Esto hace el ítem barato y de bajo
    riesgo.
-3. **Dos excepciones** que **no** pasan por `imageToWidget` y hay que ajustar a
-   mano al meter zoom (si no, se descuadran):
-   - `paintLiveOverlay()`: usa `painter.translate(target.topLeft())` +
-     `painter.scale(target.width()/image_.width(), …)` directo.
-   - El **radio del círculo** en `paintTool()`: usa
-     `targetRect().width() / image_.width()` como factor de escala.
-   (Un patrón alternativo, más limpio: centralizar el factor en un helper
-   `viewScale()` y que ambos lo usen.)
+3. ~~Dos excepciones que no pasan por `imageToWidget`~~ — **CORREGIDO al
+   implementar Z1 (2026-07-27)**: los dos sitios que no usan `imageToWidget`
+   (`paintLiveOverlay()`, que hace `translate`+`scale`, y el radio del círculo en
+   `paintTool()`) **sí derivan de `targetRect()`**, así que al aplicar el zoom
+   dentro de `targetRect()` se ajustan solos. No hubo que tocarlos: el canvas
+   entero cuelga de una única función.
 4. **El canvas se usa en DOS modos**: imagen fija del editor (`setScene`) y
    vídeo en vivo de la ventana principal (`setFrame` + `setLivePiece`). El zoom
    debe funcionar en ambos y **no romper el anclaje** de las herramientas.
@@ -101,13 +99,17 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
 
 ### Z. Zoom y navegación del lienzo
 
-- [ ] **Z1 — Zoom con la rueda, centrado en el cursor**. Añadir `zoomFactor_` y
-  `panOffset_` a `EditorCanvas`; `targetRect()` los aplica sobre el rect
-  aspect-fit actual y `imageToWidget`/`widgetToImage` siguen siendo el único
-  punto de conversión (ver diagnóstico 2). `wheelEvent` multiplica el factor
-  (p. ej. ×1.15 por muesca, límites 0.2×–20×) **ajustando el paneo para que el
-  punto bajo el cursor no se mueva**. Arreglar de paso las **dos excepciones**
-  del diagnóstico 3.
+- [x] **Z1 — Zoom con la rueda, centrado en el cursor**. HECHO. `zoom_` + `pan_`
+  en `EditorCanvas`; `fitRect()` (encuadre ajustado) y `targetRect()` (= fit con
+  zoom y desplazamiento) — `imageToWidget`/`widgetToImage` y todo el pintado
+  cuelgan de ahí, así que el zoom se propagó **solo** al resto del canvas
+  (incluidas las supuestas excepciones, ver diagnóstico 3 corregido).
+  `wheelEvent` aplica ×1.15 por muesca y `zoomAt()` corrige el desplazamiento
+  para que **el punto bajo el cursor no se mueva**.
+  Decisiones tomadas: **límites 1×–20×** (por debajo del ajuste no aporta en
+  inspección: el ajuste ya muestra la imagen entera); al volver a 1× la vista se
+  **recentra sola**; `setScene` conserva el zoom si la imagen mantiene el tamaño
+  (para que "Actualizar desde cámara" no lo pierda) y `clearLive` lo reinicia.
   Skills: `qt-cpp-review`, `qt-ui-design`, `systematic-debugging` (los bugs de
   transformación son sutiles: comprobar que dibujar/mover/handles siguen
   cayendo donde deben con zoom ≠ 1).

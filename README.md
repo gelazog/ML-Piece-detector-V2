@@ -97,6 +97,12 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    en otra pieza (o en otra PC de la línea): se copian todas las herramientas con
    sus tolerancias, sin tener que redibujarlas.
 
+   **Zoom con la rueda**: gira la rueda sobre el vídeo o la imagen para acercarte
+   hasta 20×; el zoom va **hacia el cursor**, así que el detalle que señalas se
+   queda quieto mientras te acercas. Al volver al ajuste (1×) la vista se
+   recentra sola. Sirve tanto en la vista en vivo como en el editor, y las
+   herramientas siguen ancladas a la pieza con cualquier zoom.
+
    **Snap al borde al dibujar**: mientras trazas un Caliper, Regla o Borde liso,
    un marcador amarillo resalta el borde detectado más cercano al cursor (usa la
    detección de bordes subpíxel del proyecto sobre una banda alrededor del

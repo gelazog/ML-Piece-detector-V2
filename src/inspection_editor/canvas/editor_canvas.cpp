@@ -3,6 +3,7 @@
 #include <QFontMetrics>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QWheelEvent>
 
 #include <algorithm>
 #include <cmath>
@@ -13,6 +14,12 @@
 namespace pci::inspection {
 
 namespace {
+
+// Límites de zoom (1.0 = imagen ajustada a la ventana) y factor por muesca de
+// rueda: 15% da una progresión suave sin sentirse lento.
+constexpr double kMinZoom = 1.0;   // por debajo del ajuste no aporta nada
+constexpr double kMaxZoom = 20.0;
+constexpr double kZoomStep = 1.15;
 
 // Convierte la imagen visible a un cv::Mat gris (copia propia) para poder
 // detectar bordes bajo el cursor sin depender del origen del frame.
@@ -179,6 +186,12 @@ QSize EditorCanvas::sizeHint() const {
 }
 
 void EditorCanvas::setScene(const QImage& image, const vision::Fixture& fixture) {
+    // Solo se reencuadra si cambia el tamaño (imagen distinta): así "Actualizar
+    // desde cámara" conserva el zoom con el que el operador estaba trabajando.
+    if (image_.size() != image.size()) {
+        zoom_ = 1.0;
+        pan_ = QPointF();
+    }
     image_ = image;
     fixture_ = fixture;
     liveMode_ = false;
@@ -218,6 +231,8 @@ void EditorCanvas::clearLive() {
     pieceVisible_ = false;
     liveStatus_.clear();
     results_.clear();
+    zoom_ = 1.0;  // fin de la transmisión: vista limpia para la próxima
+    pan_ = QPointF();
     update();
 }
 
@@ -305,7 +320,7 @@ void EditorCanvas::setEditingLocked(bool locked) {
     update();
 }
 
-QRectF EditorCanvas::targetRect() const {
+QRectF EditorCanvas::fitRect() const {
     if (image_.isNull()) {
         return {};
     }
@@ -314,6 +329,55 @@ QRectF EditorCanvas::targetRect() const {
     QRectF rect(QPointF(0, 0), target);
     rect.moveCenter(QRectF(this->rect()).center());
     return rect;
+}
+
+QRectF EditorCanvas::targetRect() const {
+    const QRectF fit = fitRect();
+    if (fit.isEmpty()) {
+        return fit;
+    }
+    QRectF scaled(0.0, 0.0, fit.width() * zoom_, fit.height() * zoom_);
+    scaled.moveCenter(fit.center() + pan_);
+    return scaled;
+}
+
+void EditorCanvas::resetView() {
+    zoom_ = 1.0;
+    pan_ = QPointF();
+    update();
+}
+
+void EditorCanvas::zoomAt(const QPointF& widgetPos, double factor) {
+    const double next = std::clamp(zoom_ * factor, kMinZoom, kMaxZoom);
+    if (std::abs(next - zoom_) < 1e-9) {
+        return;  // ya está en el tope
+    }
+    // Punto de imagen bajo el cursor ANTES de cambiar el zoom.
+    const cv::Point2f anchor = widgetToImage(widgetPos);
+    zoom_ = next;
+    if (zoom_ <= 1.0) {
+        // Al volver al ajuste (o menos) la imagen se recentra: es lo que el
+        // operador espera y evita quedarse con la vista desplazada.
+        pan_ = QPointF();
+    } else {
+        // Corrige el desplazamiento para que ese mismo punto siga bajo el
+        // cursor: el contenido señalado no se mueve al hacer zoom.
+        pan_ += widgetPos - imageToWidget(anchor);
+    }
+    update();
+}
+
+void EditorCanvas::wheelEvent(QWheelEvent* event) {
+    if (image_.isNull()) {
+        QWidget::wheelEvent(event);
+        return;
+    }
+    const double steps = event->angleDelta().y() / 120.0;  // una muesca = 120
+    if (std::abs(steps) < 1e-6) {
+        return;
+    }
+    zoomAt(event->position(), std::pow(kZoomStep, steps));
+    event->accept();
 }
 
 QPointF EditorCanvas::imageToWidget(const cv::Point2f& p) const {

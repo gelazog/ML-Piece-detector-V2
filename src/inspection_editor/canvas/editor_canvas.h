@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QImage>
+#include <QPointF>
 #include <QWidget>
 
 #include <array>
@@ -76,6 +77,12 @@ public:
 
     [[nodiscard]] QSize sizeHint() const override;
 
+    // --- zoom (Z1) ---
+    // Vuelve al encuadre "ajustar a la ventana" (zoom 1, sin desplazamiento).
+    void resetView();
+    // Zoom actual: 1.0 = imagen ajustada a la ventana.
+    [[nodiscard]] double zoomFactor() const { return zoom_; }
+
 signals:
     void toolCreated(const pci::inspection::ToolGeometry& geometry);
     void selectionChanged(int index);
@@ -89,9 +96,17 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
 
 private:
+    // Encuadre base (imagen ajustada a la ventana, sin zoom ni desplazamiento).
+    [[nodiscard]] QRectF fitRect() const;
+    // Encuadre efectivo = fitRect con el zoom y el desplazamiento aplicados.
+    // ÚNICO punto del que dependen imageToWidget/widgetToImage y todo el
+    // pintado, así que el zoom se propaga solo al resto del canvas.
     [[nodiscard]] QRectF targetRect() const;
+    // Aplica zoom manteniendo quieto el punto de la imagen bajo `widgetPos`.
+    void zoomAt(const QPointF& widgetPos, double factor);
     [[nodiscard]] QPointF imageToWidget(const cv::Point2f& p) const;
     [[nodiscard]] cv::Point2f widgetToImage(const QPointF& p) const;
     [[nodiscard]] cv::Point2f toImg(const cv::Point2f& piecePoint) const;
@@ -122,6 +137,12 @@ private:
     double mmPerPixel_ = 0.0;
     LengthUnit unit_ = LengthUnit::Auto;
     bool editingLocked_ = false;
+
+    // Vista: zoom sobre el encuadre ajustado y desplazamiento en píxeles de
+    // widget (Z1). El desplazamiento lo genera el zoom hacia el cursor; el
+    // arrastre manual llega en Z2.
+    double zoom_ = 1.0;
+    QPointF pan_;
 
     bool creating_ = false;
     bool moving_ = false;
