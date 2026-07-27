@@ -13,6 +13,12 @@
       "skillPath": "skills/build-systems/cmake/SKILL.md",
       "computedHash": "934820a54d2e3a0be75b3b5cd219ff55a4f4e48904a324014e5c1cd6186844c2"
     },
+    "computer-vision-opencv": {
+      "source": "mindrally/skills",
+      "sourceType": "github",
+      "skillPath": "computer-vision-opencv/SKILL.md",
+      "computedHash": "18c248ee75adf4ebffb009c3d98b374629d6c7b9abafd31ab5f01e3c5d812981"
+    },
     "cpp-coding-standards": {
       "source": "affaan-m/everything-claude-code",
       "sourceType": "github",
@@ -48,6 +54,12 @@
       "sourceType": "github",
       "skillPath": "skills/qt-cpp-review/SKILL.md",
       "computedHash": "75462b081c131f4ac32797163ad664db0d886034f9dd205f302750ea4943c606"
+    },
+    "qt-ui-design": {
+      "source": "theqtcompanyrnd/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/qt-ui-design/SKILL.md",
+      "computedHash": "232774eb03632f484d6d6f0415bf019238a0d1dd5c5a6325c30306f4438a968f"
     },
     "remotion-best-practices": {
       "source": "remotion-dev/skills",
