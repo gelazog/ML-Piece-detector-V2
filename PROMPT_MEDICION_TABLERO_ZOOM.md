@@ -145,7 +145,7 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
 
 ### T. Tablero de referencia centrado (centro = 0)
 
-- [ ] **T1 — Geometría del tablero (lógica pura, con test)**. Nuevo
+- [x] **T1 — Geometría del tablero (lógica pura, con test)**. HECHO. Nuevo
   `vision/board_frame.{h,cpp}` (o `domain/`): dado un **origen** y un **ángulo
   de referencia**, convierte imagen ↔ tablero y expone la lectura de un punto
   como **(dx, dy, radio, ángulo)**, en px y en mm si hay escala. Sin Qt:
@@ -163,6 +163,22 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
   Skills: `test-driven-development` (test primero), `cpp-testing`,
   `computer-vision-opencv`, `cpp-coding-standards`.
   Archivos: `vision/board_frame.*` (nuevo), `tests/test_vision.cpp`.
+
+  **Cómo quedó**: `BoardConfig{origin, fixedPoint, followPieceAngle}` (lo que
+  elige el operador y se persistirá en M1) → `resolveBoardFrame(config, fixture,
+  pieceFound, imageSize)` → `BoardFrame{origin, angleDeg}` para el frame actual.
+  Lecturas: `readPoint`, `toImagePoint` (inversa exacta), `readPiece` y
+  `pieceAngleOffset`, más `toMillimeters` y `niceGridStep` (escalones 1-2-5, ya
+  listo para la grilla adaptativa de T2) y `originKey`/`originFromKey` para
+  persistir. **Convenios fijados**: +X derecha, **+Y arriba** (se invierte la y
+  de la imagen), ángulo en (−180, 180] antihorario positivo; el ángulo del
+  tablero usa el mismo convenio que `Fixture::angleDeg`.
+  **Decisiones de robustez**: sin pieza detectada, el origen "centro de pieza"
+  cae al centro de la imagen y los ejes dejan de girar (el tablero sigue siendo
+  usable justo cuando falla la detección); sin calibración, `toMillimeters`
+  devuelve píxeles en vez de inventar milímetros.
+  8 tests nuevos (146/146). Sin cambios en el README: aún no hay nada visible
+  para el operador (llega en T2).
 
 - [ ] **T2 — Overlay del tablero en el lienzo**. Dibujar ejes X/Y y grilla con
   el **0 en el centro**, paso adaptativo (1/5/10/25 mm o px según zoom, para que

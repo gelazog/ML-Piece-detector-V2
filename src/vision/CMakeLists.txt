@@ -1,4 +1,5 @@
 add_library(pci_vision STATIC
+  board_frame.cpp
   contour_analysis.cpp
   fixture_stabilizer.cpp
   orientation.cpp

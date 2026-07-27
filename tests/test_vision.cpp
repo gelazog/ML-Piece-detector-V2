@@ -9,6 +9,7 @@
 
 #include <array>
 
+#include "vision/board_frame.h"
 #include "vision/contour_analysis.h"
 #include "vision/fixture_stabilizer.h"
 #include "vision/orientation.h"
@@ -472,4 +473,157 @@ TEST(OrientationAnchor, ResolveKeepsCorrectFixture) {
 TEST(Pipeline, FailsOnUniformImage) {
     const cv::Mat uniform(480, 640, CV_8UC1, cv::Scalar(128));
     EXPECT_FALSE(analyzeFrame(uniform).isOk());
+}
+
+// --- Tablero de referencia centrado (T1) ---
+
+TEST(BoardFrame, OriginModesResolveAsDeclared) {
+    Fixture fixture;
+    fixture.origin = {120.0F, 90.0F};
+    fixture.angleDeg = 30.0;
+    const cv::Size imageSize(640, 480);
+
+    BoardConfig cfg;
+    cfg.origin = BoardOrigin::PieceCenter;
+    EXPECT_EQ(resolveBoardFrame(cfg, fixture, true, imageSize).origin, fixture.origin);
+    // Sin pieza detectada cae al centro de la imagen (y sin girar).
+    const BoardFrame noPiece = resolveBoardFrame(cfg, fixture, false, imageSize);
+    EXPECT_EQ(noPiece.origin, cv::Point2f(320.0F, 240.0F));
+    EXPECT_DOUBLE_EQ(noPiece.angleDeg, 0.0);
+
+    cfg.origin = BoardOrigin::ImageCenter;
+    EXPECT_EQ(resolveBoardFrame(cfg, fixture, true, imageSize).origin,
+              cv::Point2f(320.0F, 240.0F));
+
+    cfg.origin = BoardOrigin::FixedPoint;
+    cfg.fixedPoint = {12.5F, 34.5F};
+    EXPECT_EQ(resolveBoardFrame(cfg, fixture, true, imageSize).origin, cfg.fixedPoint);
+
+    // Los ejes solo giran si se pide seguir a la pieza Y hay pieza.
+    cfg.followPieceAngle = true;
+    EXPECT_DOUBLE_EQ(resolveBoardFrame(cfg, fixture, true, imageSize).angleDeg, 30.0);
+    EXPECT_DOUBLE_EQ(resolveBoardFrame(cfg, fixture, false, imageSize).angleDeg, 0.0);
+}
+
+TEST(BoardFrame, CenterIsZeroAndYPointsUp) {
+    BoardFrame frame;
+    frame.origin = {100.0F, 100.0F};
+
+    const BoardReading center = readPoint(frame, {100.0F, 100.0F});
+    EXPECT_DOUBLE_EQ(center.dx, 0.0);
+    EXPECT_DOUBLE_EQ(center.dy, 0.0);
+    EXPECT_DOUBLE_EQ(center.radius, 0.0);
+    EXPECT_DOUBLE_EQ(center.angleDeg, 0.0);
+
+    // A la derecha = +X, 0°.
+    const BoardReading right = readPoint(frame, {110.0F, 100.0F});
+    EXPECT_NEAR(right.dx, 10.0, 1e-9);
+    EXPECT_NEAR(right.dy, 0.0, 1e-9);
+    EXPECT_NEAR(right.angleDeg, 0.0, 1e-9);
+
+    // Arriba en pantalla (y de imagen MENOR) = +Y del tablero, 90°.
+    const BoardReading up = readPoint(frame, {100.0F, 80.0F});
+    EXPECT_NEAR(up.dy, 20.0, 1e-9);
+    EXPECT_NEAR(up.angleDeg, 90.0, 1e-9);
+
+    // Abajo = -Y, -90°.
+    const BoardReading down = readPoint(frame, {100.0F, 130.0F});
+    EXPECT_NEAR(down.dy, -30.0, 1e-9);
+    EXPECT_NEAR(down.angleDeg, -90.0, 1e-9);
+
+    // Radio: 3-4-5.
+    const BoardReading diag = readPoint(frame, {103.0F, 96.0F});
+    EXPECT_NEAR(diag.radius, 5.0, 1e-9);
+}
+
+TEST(BoardFrame, RotatedAxesMeasureInPieceFrame) {
+    BoardFrame frame;
+    frame.origin = {200.0F, 150.0F};
+    frame.angleDeg = 90.0;  // el eje X del tablero apunta hacia abajo en la imagen
+
+    // Un punto 10 px por debajo del origen en la imagen queda en +X del tablero.
+    const BoardReading reading = readPoint(frame, {200.0F, 160.0F});
+    EXPECT_NEAR(reading.dx, 10.0, 1e-6);
+    EXPECT_NEAR(reading.dy, 0.0, 1e-6);
+    EXPECT_NEAR(reading.angleDeg, 0.0, 1e-6);
+}
+
+TEST(BoardFrame, ReadAndBackIsIdentity) {
+    BoardFrame frame;
+    frame.origin = {321.0F, 77.0F};
+    for (const double angle : {0.0, 17.0, -42.5, 123.0}) {
+        frame.angleDeg = angle;
+        for (const cv::Point2f point : {cv::Point2f{0.0F, 0.0F}, cv::Point2f{640.0F, 480.0F},
+                                        cv::Point2f{321.0F, 77.0F}, cv::Point2f{15.5F, 400.25F}}) {
+            const BoardReading reading = readPoint(frame, point);
+            const cv::Point2f back = toImagePoint(frame, reading.dx, reading.dy);
+            EXPECT_NEAR(back.x, point.x, 1e-3);
+            EXPECT_NEAR(back.y, point.y, 1e-3);
+        }
+    }
+}
+
+TEST(BoardFrame, PieceDeviationAndAngleOffset) {
+    BoardConfig cfg;
+    cfg.origin = BoardOrigin::ImageCenter;
+    Fixture fixture;
+    fixture.origin = {330.0F, 220.0F};  // 10 px a la derecha, 20 px por encima
+    fixture.angleDeg = 12.0;
+
+    const BoardFrame frame = resolveBoardFrame(cfg, fixture, true, cv::Size(640, 480));
+    const BoardReading reading = readPiece(frame, fixture);
+    EXPECT_NEAR(reading.dx, 10.0, 1e-9);
+    EXPECT_NEAR(reading.dy, 20.0, 1e-9);
+    EXPECT_NEAR(pieceAngleOffset(frame, fixture), 12.0, 1e-9);
+
+    // Con los ejes siguiendo a la pieza, la desviación angular es cero.
+    cfg.followPieceAngle = true;
+    const BoardFrame aligned = resolveBoardFrame(cfg, fixture, true, cv::Size(640, 480));
+    EXPECT_NEAR(pieceAngleOffset(aligned, fixture), 0.0, 1e-9);
+
+    // El salto de 360° no debe aparecer como desviación enorme.
+    Fixture wrapped = fixture;
+    wrapped.angleDeg = 359.0;
+    BoardFrame flat;
+    EXPECT_NEAR(pieceAngleOffset(flat, wrapped), -1.0, 1e-9);
+}
+
+TEST(BoardFrame, MillimetersOnlyWhenCalibrated) {
+    BoardReading reading;
+    reading.dx = 10.0;
+    reading.dy = -4.0;
+    reading.radius = 12.0;
+    reading.angleDeg = 33.0;
+
+    const BoardReading raw = toMillimeters(reading, 0.0);
+    EXPECT_DOUBLE_EQ(raw.dx, 10.0);  // sin calibrar: se queda en px
+    EXPECT_DOUBLE_EQ(raw.radius, 12.0);
+
+    const BoardReading mm = toMillimeters(reading, 0.5);
+    EXPECT_DOUBLE_EQ(mm.dx, 5.0);
+    EXPECT_DOUBLE_EQ(mm.dy, -2.0);
+    EXPECT_DOUBLE_EQ(mm.radius, 6.0);
+    EXPECT_DOUBLE_EQ(mm.angleDeg, 33.0);  // el ángulo no depende de la escala
+}
+
+TEST(BoardFrame, GridStepIsRoundAndProportional) {
+    EXPECT_DOUBLE_EQ(niceGridStep(100.0, 10), 10.0);
+    EXPECT_DOUBLE_EQ(niceGridStep(1000.0, 10), 100.0);
+    EXPECT_DOUBLE_EQ(niceGridStep(10.0, 10), 1.0);
+    EXPECT_DOUBLE_EQ(niceGridStep(0.5, 10), 0.05);
+    // Valores intermedios caen en el escalón 1-2-5 inmediato superior.
+    EXPECT_DOUBLE_EQ(niceGridStep(30.0, 10), 5.0);
+    EXPECT_DOUBLE_EQ(niceGridStep(18.0, 10), 2.0);
+    // Entradas degeneradas no rompen el dibujo.
+    EXPECT_GT(niceGridStep(0.0, 10), 0.0);
+    EXPECT_GT(niceGridStep(100.0, 0), 0.0);
+}
+
+TEST(BoardFrame, OriginKeysRoundTrip) {
+    for (const BoardOrigin origin :
+         {BoardOrigin::PieceCenter, BoardOrigin::ImageCenter, BoardOrigin::FixedPoint}) {
+        EXPECT_EQ(originFromKey(originKey(origin)), origin);
+    }
+    EXPECT_EQ(originFromKey("desconocido"), BoardOrigin::PieceCenter);
+    EXPECT_EQ(originFromKey("", BoardOrigin::ImageCenter), BoardOrigin::ImageCenter);
 }
