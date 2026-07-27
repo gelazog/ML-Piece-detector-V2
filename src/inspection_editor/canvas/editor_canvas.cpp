@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "inspection_editor/execution/edge_detection.h"
 #include "vision/position_fixture.h"
@@ -306,6 +307,24 @@ void EditorCanvas::setMmPerPixel(double mmPerPixel) {
 bool EditorCanvas::isSelected(int index) const {
     return std::find(multiSelected_.begin(), multiSelected_.end(), index) !=
            multiSelected_.end();
+}
+
+void EditorCanvas::setBoardVisible(bool visible) {
+    boardVisible_ = visible;
+    update();
+}
+
+void EditorCanvas::setBoardConfig(const vision::BoardConfig& config) {
+    boardConfig_ = config;
+    update();
+}
+
+vision::BoardFrame EditorCanvas::boardFrame() const {
+    // Con imagen fija (editor) el fixture siempre es válido; en vivo depende de
+    // que la pieza se esté detectando ahora mismo.
+    const bool pieceFound = hasFixture_ && (!liveMode_ || pieceVisible_);
+    return vision::resolveBoardFrame(boardConfig_, fixture_, pieceFound,
+                                     cv::Size(image_.width(), image_.height()));
 }
 
 void EditorCanvas::setLengthUnit(LengthUnit unit) {
@@ -1195,6 +1214,168 @@ void EditorCanvas::paintCreationPreview(QPainter& painter) const {
     }
 }
 
+void EditorCanvas::paintBoard(QPainter& painter) const {
+    if (!boardVisible_ || image_.isNull()) {
+        return;
+    }
+    const QRectF view = QRectF(rect()).intersected(targetRect());
+    if (view.isEmpty()) {
+        return;
+    }
+    const vision::BoardFrame frame = boardFrame();
+
+    // Extensión visible en coordenadas del tablero (px de imagen): basta con
+    // las cuatro esquinas de la vista, aunque los ejes estén girados.
+    double minX = 0.0;
+    double maxX = 0.0;
+    double minY = 0.0;
+    double maxY = 0.0;
+    bool first = true;
+    for (const QPointF& corner : {view.topLeft(), view.topRight(), view.bottomLeft(),
+                                  view.bottomRight()}) {
+        const vision::BoardReading r = vision::readPoint(frame, widgetToImage(corner));
+        if (first) {
+            minX = maxX = r.dx;
+            minY = maxY = r.dy;
+            first = false;
+            continue;
+        }
+        minX = std::min(minX, r.dx);
+        maxX = std::max(maxX, r.dx);
+        minY = std::min(minY, r.dy);
+        maxY = std::max(maxY, r.dy);
+    }
+
+    // Paso adaptativo: se elige en la unidad activa (mm si hay escala, px si
+    // no) para que las etiquetas sean números redondos, apuntando a una línea
+    // cada ~90 px de pantalla.
+    const double unitsPerPx = mmPerPixel_ > 0.0 ? mmPerPixel_ : 1.0;
+    const int divisions =
+        std::max(2, static_cast<int>(std::lround(std::min(view.width(), view.height()) / 90.0)));
+    const double spanUnits = std::max(maxX - minX, maxY - minY) * unitsPerPx;
+    const double stepUnits = vision::niceGridStep(spanUnits, divisions);
+    const double stepPx = stepUnits / unitsPerPx;
+    if (!(stepPx > 0.0) || !std::isfinite(stepPx)) {
+        return;
+    }
+    const double linesX = (maxX - minX) / stepPx;
+    const double linesY = (maxY - minY) / stepPx;
+    if (linesX > 500.0 || linesY > 500.0) {
+        return;  // salvaguarda: nunca pintar una grilla ilegible
+    }
+
+    painter.save();
+    painter.setClipRect(view);
+    QFont font = painter.font();
+    font.setPointSizeF(std::max(7.0, font.pointSizeF() - 1.0));
+    painter.setFont(font);
+
+    QPen gridPen(QColor(120, 200, 255, 60));
+    gridPen.setCosmetic(true);
+    QPen axisPen(QColor(0, 220, 255, 200));
+    axisPen.setWidthF(1.6);
+    axisPen.setCosmetic(true);
+
+    // Etiqueta compacta: la de las herramientas (formatLength) añade el
+    // equivalente en px entre paréntesis y aquí satura la grilla.
+    const auto tickLabel = [this](double valuePx) {
+        QString text;
+        if (mmPerPixel_ > 0.0 && unit_ != LengthUnit::Pixels) {
+            const double mm = valuePx * mmPerPixel_;
+            text = (unit_ == LengthUnit::Centimeters)
+                       ? QStringLiteral("%1 cm").arg(mm / 10.0, 0, 'f', 2)
+                       : QStringLiteral("%1 mm").arg(mm, 0, 'f', 1);
+        } else {
+            text = QStringLiteral("%1 px").arg(valuePx, 0, 'f', 0);
+        }
+        return (valuePx > 0.0 ? QStringLiteral("+") : QString()) + text;
+    };
+    // Posición de los ejes en pantalla, para colgar de ellos las etiquetas; si
+    // el eje queda fuera de la vista, se pegan al borde.
+    const QPointF originWidget = imageToWidget(vision::toImagePoint(frame, 0.0, 0.0));
+    const double labelY = std::clamp(originWidget.y() + 12.0, view.top() + 12.0, view.bottom() - 3.0);
+    const double labelX = std::clamp(originWidget.x() + 5.0, view.left() + 3.0, view.right() - 55.0);
+
+    // Líneas verticales (dx constante) y horizontales (dy constante).
+    for (int axis = 0; axis < 2; ++axis) {
+        const double lo = (axis == 0) ? minX : minY;
+        const double hi = (axis == 0) ? maxX : maxY;
+        const double otherLo = (axis == 0) ? minY : minX;
+        const double otherHi = (axis == 0) ? maxY : maxX;
+        const long long kFirst = static_cast<long long>(std::ceil(lo / stepPx));
+        const long long kLast = static_cast<long long>(std::floor(hi / stepPx));
+        for (long long k = kFirst; k <= kLast; ++k) {
+            const double value = static_cast<double>(k) * stepPx;
+            const bool isAxis = (k == 0);
+            const QPointF a = imageToWidget(axis == 0 ? vision::toImagePoint(frame, value, otherLo)
+                                                      : vision::toImagePoint(frame, otherLo, value));
+            const QPointF b = imageToWidget(axis == 0 ? vision::toImagePoint(frame, value, otherHi)
+                                                      : vision::toImagePoint(frame, otherHi, value));
+            painter.setPen(isAxis ? axisPen : gridPen);
+            painter.drawLine(a, b);
+            if (isAxis) {
+                continue;  // el 0 se rotula en el origen
+            }
+            // La etiqueta cuelga del eje correspondiente (o del borde si el eje
+            // quedó fuera de la vista); el valor va en px de imagen y
+            // formatLength lo pasa a la unidad activa.
+            painter.setPen(QColor(170, 220, 255, 200));
+            if (axis == 0) {
+                const double x = imageToWidget(vision::toImagePoint(frame, value, 0.0)).x();
+                painter.drawText(QPointF(x + 3.0, labelY), tickLabel(value));
+            } else {
+                const double y = imageToWidget(vision::toImagePoint(frame, 0.0, value)).y();
+                painter.drawText(QPointF(labelX, y - 3.0), tickLabel(value));
+            }
+        }
+    }
+
+    // Origen y cuadrante: +X a la derecha y +Y hacia arriba, como en metrología.
+    painter.setPen(axisPen);
+    painter.setBrush(Qt::NoBrush);
+    painter.drawEllipse(originWidget, 4.0, 4.0);
+    painter.setPen(QColor(0, 220, 255, 230));
+    painter.drawText(originWidget + QPointF(6.0, 14.0), QStringLiteral("0"));
+    // Marcas de cuadrante: se colocan donde cada semieje positivo abandona la
+    // vista, así siguen visibles aunque los ejes estén girados. Si el origen
+    // quedó fuera de la vista no se dibujan (no habría de dónde partir).
+    if (view.contains(originWidget)) {
+        const QRectF inset = view.adjusted(26.0, 22.0, -26.0, -10.0);
+        const auto edgePoint = [&inset, &originWidget](const QPointF& direction) {
+            double t = std::numeric_limits<double>::max();
+            if (direction.x() > 1e-9) {
+                t = std::min(t, (inset.right() - originWidget.x()) / direction.x());
+            } else if (direction.x() < -1e-9) {
+                t = std::min(t, (inset.left() - originWidget.x()) / direction.x());
+            }
+            if (direction.y() > 1e-9) {
+                t = std::min(t, (inset.bottom() - originWidget.y()) / direction.y());
+            } else if (direction.y() < -1e-9) {
+                t = std::min(t, (inset.top() - originWidget.y()) / direction.y());
+            }
+            if (!std::isfinite(t) || t < 0.0) {
+                t = 0.0;
+            }
+            return originWidget + direction * t;
+        };
+        const auto unitDir = [&originWidget](const QPointF& along) {
+            const QPointF d = along - originWidget;
+            const double len = std::hypot(d.x(), d.y());
+            return len > 1e-9 ? QPointF(d.x() / len, d.y() / len) : QPointF(1.0, 0.0);
+        };
+        const QPointF dirX =
+            unitDir(imageToWidget(vision::toImagePoint(frame, stepPx, 0.0)));
+        const QPointF dirY =
+            unitDir(imageToWidget(vision::toImagePoint(frame, 0.0, stepPx)));
+        // Pequeño desplazamiento perpendicular para no chocar con la etiqueta
+        // de la última división de cada eje.
+        painter.drawText(edgePoint(dirX) + QPointF(0.0, -8.0), QStringLiteral("+X"));
+        painter.drawText(edgePoint(dirY) + QPointF(12.0, 0.0), QStringLiteral("+Y"));
+    }
+
+    painter.restore();
+}
+
 void EditorCanvas::paintLiveOverlay(QPainter& painter) const {
     if (!liveMode_) {
         return;
@@ -1254,6 +1435,7 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
     painter.drawImage(targetRect(), image_);
 
+    paintBoard(painter);  // por debajo de la pieza y de las herramientas
     paintLiveOverlay(painter);
 
     // Marcador del rasgo distintivo (rombo magenta anclado a la pieza).

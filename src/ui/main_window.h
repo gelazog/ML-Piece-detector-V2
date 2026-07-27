@@ -19,6 +19,7 @@
 #include "inspection_editor/canvas/editor_canvas.h"
 #include "ui/analysis_overlay.h"
 #include "ui/app_repositories.h"
+#include "vision/board_frame.h"
 #include "vision/orientation_anchor.h"
 
 class QAction;
@@ -109,6 +110,8 @@ private:
     void persistCalibration();     // sella resolución/cámara y guarda en Settings
     void updateStatusIndicators();  // pone al día los iconos de estado (S4)
     void updateZoomIndicator();     // porcentaje y botones de la barra de zoom (Z3)
+    void onBoardOriginChanged(QAction* action);  // origen del tablero (T2)
+    void persistBoardConfig();
     void buildMenuBar();
     void buildShortcuts();
     void commitUndoState();
@@ -147,6 +150,13 @@ private:
     QAction* showContourAction_ = nullptr;   // Ver > Mostrar contorno (checkable)
     QAction* trackRotationAction_ = nullptr;  // Ver > Seguir rotación (checkable)
     QActionGroup* unitGroup_ = nullptr;      // Ver > Unidad (Auto/mm/cm/px)
+    // Tablero de referencia centrado (T2).
+    QAction* boardAction_ = nullptr;          // Ver > Tablero de referencia
+    QAction* boardFollowAction_ = nullptr;    // ejes girados con la pieza
+    QActionGroup* boardOriginGroup_ = nullptr;
+    bool boardVisible_ = false;
+    bool boardPointPick_ = false;  // el próximo clic fija el cero del tablero
+    vision::BoardConfig boardConfig_;
     // Fila 1: cámara (controles de uso constante).
     QComboBox* cameraCombo_ = nullptr;
     QPushButton* startStopButton_ = nullptr;

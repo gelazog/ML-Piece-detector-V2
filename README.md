@@ -116,6 +116,17 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    un píxel de imagen por píxel de pantalla. Al cambiar de pieza el encuadre
    vuelve al ajuste.
 
+   **Tablero de referencia (centro = 0)**: en **Ver ▸ Tablero de referencia** se
+   dibujan ejes y grilla con el **cero en el origen que elijas**, para medir la
+   *posición* de la pieza (cuánto se desvía y cuánto gira) y no solo distancias
+   sueltas. +X a la derecha y **+Y hacia arriba**, como en metrología. En **Ver ▸
+   Origen del tablero** eliges entre **centro de la pieza** (el cero viaja con
+   ella), **centro de la imagen** (el cero queda fijo en pantalla, útil para
+   centrar la pieza en un soporte) o un **punto fijado a mano** (se marca con un
+   clic), y si los **ejes giran con la pieza** o quedan alineados con la imagen.
+   El paso de la grilla se adapta al zoom y las etiquetas salen en la unidad
+   activa (mm/cm si hay escala calibrada, px si no). Todo queda guardado.
+
    **Snap al borde al dibujar**: mientras trazas un Caliper, Regla o Borde liso,
    un marcador amarillo resalta el borde detectado más cercano al cursor (usa la
    detección de bordes subpíxel del proyecto sobre una banda alrededor del

@@ -569,6 +569,19 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     }
     updateRoiButton();
 
+    // Tablero de referencia (T2): visibilidad y origen elegidos por el operador.
+    if (repos_.settings != nullptr) {
+        boardVisible_ = repos_.settings->getInt("board_visible", 0).value() != 0;
+        boardConfig_.origin = vision::originFromKey(
+            repos_.settings->getString("board_origin", std::string("piece")).value());
+        boardConfig_.followPieceAngle = repos_.settings->getInt("board_follow", 0).value() != 0;
+        boardConfig_.fixedPoint = {
+            static_cast<float>(repos_.settings->getDouble("board_fixed_x", 0.0).value()),
+            static_cast<float>(repos_.settings->getDouble("board_fixed_y", 0.0).value())};
+    }
+    video_->setBoardVisible(boardVisible_);
+    video_->setBoardConfig(boardConfig_);
+
     buildMenuBar();  // crea las acciones de menú (incluidas unidad y contorno)
 
     // Unidad de medida elegida por el operador (persistida).
@@ -709,6 +722,65 @@ void MainWindow::buildMenuBar() {
         persistPipelineConfig();
         statusBar()->showMessage(on ? tr("Siguiendo la rotación de la pieza.")
                                     : tr("Pieza mostrada vertical (orientación fija)."));
+    });
+
+    // Tablero de referencia centrado (T2): overlay + elección de origen.
+    viewMenu->addSeparator();
+    boardAction_ = viewMenu->addAction(tr("Tablero de referencia (centro = 0)"));
+    boardAction_->setCheckable(true);
+    boardAction_->setChecked(boardVisible_);
+    boardAction_->setToolTip(
+        tr("Dibuja ejes y grilla con el CERO en el origen elegido, para medir\n"
+           "la posición de la pieza (desviación en X/Y y ángulo) en vez de solo\n"
+           "distancias sueltas. +X a la derecha, +Y hacia arriba."));
+    connect(boardAction_, &QAction::toggled, this, [this](bool on) {
+        boardVisible_ = on;
+        video_->setBoardVisible(on);
+        if (repos_.settings != nullptr) {
+            repos_.settings->setInt("board_visible", on ? 1 : 0);
+        }
+        statusBar()->showMessage(on ? tr("Tablero de referencia activo (centro = 0).")
+                                    : tr("Tablero de referencia oculto."));
+    });
+
+    auto* boardMenu = viewMenu->addMenu(tr("Origen del tablero"));
+    boardOriginGroup_ = new QActionGroup(this);
+    const struct {
+        QString label;
+        QString tip;
+        vision::BoardOrigin origin;
+    } origins[] = {
+        {tr("Centro de la pieza"),
+         tr("El cero viaja con la pieza: mide desviaciones respecto a su propio centro."),
+         vision::BoardOrigin::PieceCenter},
+        {tr("Centro de la imagen"),
+         tr("El cero queda fijo en pantalla: mide cuánto se desvía la pieza del centro\n"
+            "del campo de visión (útil para centrarla en un soporte)."),
+         vision::BoardOrigin::ImageCenter},
+        {tr("Punto fijado a mano…"),
+         tr("Marca un punto de la imagen con el ratón y todo se mide respecto a él."),
+         vision::BoardOrigin::FixedPoint},
+    };
+    for (const auto& entry : origins) {
+        auto* action = boardMenu->addAction(entry.label);
+        action->setCheckable(true);
+        action->setToolTip(entry.tip);
+        action->setData(static_cast<int>(entry.origin));
+        action->setChecked(entry.origin == boardConfig_.origin);
+        boardOriginGroup_->addAction(action);
+    }
+    connect(boardOriginGroup_, &QActionGroup::triggered, this, &MainWindow::onBoardOriginChanged);
+
+    boardFollowAction_ = boardMenu->addAction(tr("Ejes girados con la pieza"));
+    boardFollowAction_->setCheckable(true);
+    boardFollowAction_->setChecked(boardConfig_.followPieceAngle);
+    boardFollowAction_->setToolTip(
+        tr("Activado: los ejes acompañan el giro de la pieza (se mide en su marco).\n"
+           "Desactivado: los ejes quedan alineados con la imagen (marco de la máquina)."));
+    connect(boardFollowAction_, &QAction::toggled, this, [this](bool on) {
+        boardConfig_.followPieceAngle = on;
+        video_->setBoardConfig(boardConfig_);
+        persistBoardConfig();
     });
 
     auto* unitMenu = viewMenu->addMenu(tr("Unidad de medida"));
@@ -1422,7 +1494,52 @@ void MainWindow::onAnchorButtonToggled(bool enabled) {
         tr("Haz clic sobre un punto único de la pieza (agujero, marca, esquina oscura)…"));
 }
 
+void MainWindow::onBoardOriginChanged(QAction* action) {
+    if (action == nullptr) {
+        return;
+    }
+    boardConfig_.origin = static_cast<vision::BoardOrigin>(action->data().toInt());
+    video_->setBoardConfig(boardConfig_);
+    persistBoardConfig();
+    if (boardConfig_.origin == vision::BoardOrigin::FixedPoint) {
+        // El punto se marca con el ratón; el canvas sale del modo al primer clic.
+        boardPointPick_ = true;
+        video_->setPickMode(true);
+        statusBar()->showMessage(tr("Haz clic en el punto que será el cero del tablero."));
+        return;
+    }
+    statusBar()->showMessage(
+        boardConfig_.origin == vision::BoardOrigin::PieceCenter
+            ? tr("Tablero centrado en la pieza: el cero la acompaña.")
+            : tr("Tablero centrado en la imagen: el cero queda fijo en pantalla."));
+}
+
+void MainWindow::persistBoardConfig() {
+    if (repos_.settings == nullptr) {
+        return;
+    }
+    repos_.settings->setString("board_origin",
+                               std::string(vision::originKey(boardConfig_.origin)));
+    repos_.settings->setInt("board_follow", boardConfig_.followPieceAngle ? 1 : 0);
+    repos_.settings->setDouble("board_fixed_x", boardConfig_.fixedPoint.x);
+    repos_.settings->setDouble("board_fixed_y", boardConfig_.fixedPoint.y);
+}
+
 void MainWindow::onAnchorPicked(const cv::Point2f& imagePoint) {
+    // El mismo gesto de "elegir un punto" sirve para fijar el cero del tablero.
+    if (boardPointPick_) {
+        boardPointPick_ = false;
+        boardConfig_.fixedPoint = imagePoint;
+        video_->setBoardConfig(boardConfig_);
+        persistBoardConfig();
+        if (!boardVisible_ && boardAction_ != nullptr) {
+            boardAction_->setChecked(true);  // mostrar lo que se acaba de fijar
+        }
+        statusBar()->showMessage(tr("Cero del tablero fijado en (%1, %2) px.")
+                                     .arg(qRound(imagePoint.x))
+                                     .arg(qRound(imagePoint.y)));
+        return;
+    }
     anchorButton_->setChecked(false);
     if (!liveFixture_.has_value() || lastFrame_.isNull()) {
         return;

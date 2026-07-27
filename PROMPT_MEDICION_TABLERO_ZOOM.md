@@ -180,13 +180,33 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
   8 tests nuevos (146/146). Sin cambios en el README: aún no hay nada visible
   para el operador (llega en T2).
 
-- [ ] **T2 — Overlay del tablero en el lienzo**. Dibujar ejes X/Y y grilla con
+- [x] **T2 — Overlay del tablero en el lienzo**. HECHO. Dibujar ejes X/Y y grilla con
   el **0 en el centro**, paso adaptativo (1/5/10/25 mm o px según zoom, para que
   nunca sature), etiquetas en la unidad activa, líneas finas semitransparentes
   y **cuadrante marcado** (+X derecha, +Y arriba, como en metrología). Activable
   desde **Ver ▸ Tablero de referencia**, persistido.
   Skills: `qt-cpp-review`, `qt-ui-design`.
   Archivos: `editor_canvas.{h,cpp}`, `ui/main_window.cpp` (acción de menú).
+
+  **Cómo quedó**: `EditorCanvas::setBoardVisible/setBoardConfig/boardFrame()` +
+  `paintBoard()`, que se pinta justo tras la imagen (queda **por debajo** de la
+  pieza y de las herramientas). El paso se elige en la unidad activa a partir de
+  las cuatro esquinas de la vista, apuntando a una línea cada ~90 px de
+  pantalla, con salvaguarda de 500 líneas por eje. Menú **Ver ▸ Tablero de
+  referencia (centro = 0)** + submenú **Origen del tablero** (pieza / imagen /
+  punto fijado a mano, este último se marca con un clic reutilizando el modo de
+  selección de punto) y **Ejes girados con la pieza**; todo persistido en
+  Settings (`board_visible`, `board_origin`, `board_follow`, `board_fixed_x/y`).
+  **Verificado con render offscreen** (arnés desechable en el scratchpad que
+  instancia el canvas y guarda PNG): eso destapó tres defectos que el compilador
+  no ve y se corrigieron —
+  (1) `niceGridStep` redondeaba **hacia arriba** y dejaba la grilla a la mitad de
+  densidad: ahora elige el escalón 1-2-5 **más cercano** (cortes en las medias
+  geométricas; test actualizado);
+  (2) las etiquetas usaban `formatLength`, que añade el equivalente en px entre
+  paréntesis (`-50.00mm (200.0px)`) y saturaba: ahora son compactas (`+20.0 mm`);
+  (3) las marcas **+X/+Y** se salían de la vista con los ejes girados: ahora se
+  colocan donde cada semieje positivo cruza el borde.
 
 - [ ] **T3 — Lectura en vivo de posición y ángulo de la pieza**. Mostrar de
   forma continua **cuánto está descentrada y girada** la pieza respecto al

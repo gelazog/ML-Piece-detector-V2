@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "inspection_editor/execution/tool_executor.h"
+#include "vision/board_frame.h"
 #include "inspection_editor/tools/tool_geometry.h"
 #include "inspection_editor/tools/tool_types.h"
 #include "vision/types.h"
@@ -97,6 +98,16 @@ public:
     [[nodiscard]] bool atMinZoom() const;
     [[nodiscard]] bool atMaxZoom() const;
 
+    // --- tablero de referencia centrado (T2) ---
+    // Ejes y grilla con el 0 en el origen elegido. Informa, no estorba: líneas
+    // finas semitransparentes por debajo de las herramientas.
+    void setBoardVisible(bool visible);
+    [[nodiscard]] bool boardVisible() const { return boardVisible_; }
+    void setBoardConfig(const vision::BoardConfig& config);
+    [[nodiscard]] const vision::BoardConfig& boardConfig() const { return boardConfig_; }
+    // Tablero resuelto para el frame actual (lo reutilizan las lecturas de T3/T4).
+    [[nodiscard]] vision::BoardFrame boardFrame() const;
+
 signals:
     // El zoom, el desplazamiento o el tamaño del lienzo cambiaron: quien
     // muestre el porcentaje debe releer displayScale().
@@ -147,6 +158,7 @@ private:
     void paintResults(QPainter& painter) const;
     void paintCreationPreview(QPainter& painter) const;
     void paintLiveOverlay(QPainter& painter) const;
+    void paintBoard(QPainter& painter) const;
     [[nodiscard]] bool interactive() const;
     [[nodiscard]] bool isSelected(int index) const;
     void finishMarquee(const cv::Point2f& releasePoint);
@@ -171,6 +183,10 @@ private:
     bool panning_ = false;
     QPointF panStartWidget_;
     QPointF panStartOffset_;
+
+    // Tablero de referencia (T2): visibilidad y elección de origen/ejes.
+    bool boardVisible_ = false;
+    vision::BoardConfig boardConfig_;
 
     bool creating_ = false;
     bool moving_ = false;

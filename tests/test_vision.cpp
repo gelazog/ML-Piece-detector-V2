@@ -611,9 +611,13 @@ TEST(BoardFrame, GridStepIsRoundAndProportional) {
     EXPECT_DOUBLE_EQ(niceGridStep(1000.0, 10), 100.0);
     EXPECT_DOUBLE_EQ(niceGridStep(10.0, 10), 1.0);
     EXPECT_DOUBLE_EQ(niceGridStep(0.5, 10), 0.05);
-    // Valores intermedios caen en el escalón 1-2-5 inmediato superior.
-    EXPECT_DOUBLE_EQ(niceGridStep(30.0, 10), 5.0);
+    // Valores intermedios caen en el escalón 1-2-5 más cercano (corte en la
+    // media geométrica), no en el inmediato superior: así la densidad de la
+    // grilla es la pedida y no la mitad.
+    EXPECT_DOUBLE_EQ(niceGridStep(30.0, 10), 2.0);   // 3.0 está más cerca de 2 que de 5
+    EXPECT_DOUBLE_EQ(niceGridStep(40.0, 10), 5.0);   // 4.0 ya cae del lado del 5
     EXPECT_DOUBLE_EQ(niceGridStep(18.0, 10), 2.0);
+    EXPECT_DOUBLE_EQ(niceGridStep(12.0, 10), 1.0);
     // Entradas degeneradas no rompen el dibujo.
     EXPECT_GT(niceGridStep(0.0, 10), 0.0);
     EXPECT_GT(niceGridStep(100.0, 0), 0.0);

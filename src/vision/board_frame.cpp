@@ -111,13 +111,16 @@ double niceGridStep(double span, int targetDivisions) {
     const double raw = usableSpan / divisions;
     const double magnitude = std::pow(10.0, std::floor(std::log10(raw)));
     const double normalized = raw / magnitude;  // [1, 10)
-    // Escalones 1-2-5: los que un operador lee de un vistazo.
+    // Escalones 1-2-5: los que un operador lee de un vistazo. Se elige el MÁS
+    // CERCANO (cortes en las medias geométricas) en vez del inmediato superior:
+    // redondear siempre hacia arriba dejaba la grilla a la mitad de densidad de
+    // la pedida y se veía vacía.
     double step = 10.0;
-    if (normalized <= 1.0) {
+    if (normalized < 1.4142135623730951) {  // sqrt(1*2)
         step = 1.0;
-    } else if (normalized <= 2.0) {
+    } else if (normalized < 3.1622776601683795) {  // sqrt(2*5)
         step = 2.0;
-    } else if (normalized <= 5.0) {
+    } else if (normalized < 7.0710678118654755) {  // sqrt(5*10)
         step = 5.0;
     }
     return step * magnitude;
