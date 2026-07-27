@@ -417,6 +417,42 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     compareDock_->setWidget(compareWidget);
     addDockWidget(Qt::RightDockWidgetArea, compareDock_);
 
+    // Controles de vista (Z3): mínimo / − / porcentaje / + / máximo, siempre a
+    // mano en la barra inferior para quien no use atajos ni rueda.
+    auto* zoomBar = new QWidget(this);
+    auto* zoomLayout = new QHBoxLayout(zoomBar);
+    zoomLayout->setContentsMargins(0, 0, 0, 0);
+    zoomLayout->setSpacing(2);
+    auto addZoomButton = [this, zoomBar, zoomLayout](const QString& text, const QString& tip,
+                                                     auto slot) {
+        auto* button = new QToolButton(zoomBar);
+        button->setText(text);
+        button->setToolTip(tip);
+        button->setAutoRaise(true);
+        button->setFocusPolicy(Qt::NoFocus);  // no robar el foco al lienzo
+        connect(button, &QToolButton::clicked, this, slot);
+        zoomLayout->addWidget(button);
+        return button;
+    };
+    zoomMinButton_ = addZoomButton(QStringLiteral("⤢"), tr("Zoom mínimo: ajustar a la ventana"),
+                                   [this] { video_->zoomToMin(); });
+    zoomOutButton_ = addZoomButton(QStringLiteral("−"), tr("Alejar (Ctrl+-)"),
+                                   [this] { video_->zoomOut(); });
+    zoomLabel_ = new QLabel(zoomBar);
+    zoomLabel_->setMinimumWidth(52);
+    zoomLabel_->setAlignment(Qt::AlignCenter);
+    zoomLabel_->setToolTip(tr("Zoom actual. Rueda = acercar/alejar hacia el cursor,\n"
+                              "botón central o Ctrl + arrastrar = mover la vista,\n"
+                              "doble clic = ajustar a la ventana."));
+    zoomLayout->addWidget(zoomLabel_);
+    zoomInButton_ = addZoomButton(QStringLiteral("+"), tr("Acercar (Ctrl++)"),
+                                  [this] { video_->zoomIn(); });
+    zoomMaxButton_ = addZoomButton(QStringLiteral("⛶"), tr("Zoom máximo (20×)"),
+                                   [this] { video_->zoomToMax(); });
+    statusBar()->addPermanentWidget(zoomBar);
+    connect(video_, &inspection::EditorCanvas::viewChanged, this, &MainWindow::updateZoomIndicator);
+    updateZoomIndicator();
+
     calibLabel_ = new QLabel(this);
     statusBar()->addPermanentWidget(calibLabel_);
     statsLabel_ = new QLabel(this);
@@ -845,6 +881,31 @@ void MainWindow::buildShortcuts() {
                 QKeySequence::Save, &MainWindow::onSaveTemplateClicked);
     addShortcut("shortcuts_help", tr("Guía de atajos"), QKeySequence(Qt::Key_F1),
                 &MainWindow::onShowShortcuts);
+
+    // Vista (Z3). ZoomIn cubre Ctrl++ y Ctrl+= (la misma tecla sin Shift).
+    addShortcut("zoom_in", tr("Acercar la vista"), QKeySequence::ZoomIn,
+                [this] { video_->zoomIn(); });
+    addShortcut("zoom_out", tr("Alejar la vista"), QKeySequence::ZoomOut,
+                [this] { video_->zoomOut(); });
+    addShortcut("zoom_fit", tr("Ajustar la vista a la ventana (zoom mínimo)"),
+                QKeySequence(Qt::CTRL | Qt::Key_0), [this] { video_->zoomToMin(); });
+    addShortcut("zoom_actual", tr("Vista al 100 % (píxeles reales)"),
+                QKeySequence(Qt::CTRL | Qt::Key_1), [this] { video_->zoomToActualPixels(); });
+    addShortcut("zoom_max", tr("Zoom máximo"), QKeySequence(Qt::CTRL | Qt::Key_2),
+                [this] { video_->zoomToMax(); });
+}
+
+// Porcentaje visible y estado de los botones de la barra de zoom.
+void MainWindow::updateZoomIndicator() {
+    const double scale = video_->displayScale();
+    const bool hasImage = scale > 0.0;
+    zoomLabel_->setText(hasImage ? tr("%1 %").arg(qRound(scale * 100.0))
+                                 : QStringLiteral("—"));
+    zoomLabel_->setEnabled(hasImage);
+    zoomMinButton_->setEnabled(hasImage && !video_->atMinZoom());
+    zoomOutButton_->setEnabled(hasImage && !video_->atMinZoom());
+    zoomInButton_->setEnabled(hasImage && !video_->atMaxZoom());
+    zoomMaxButton_->setEnabled(hasImage && !video_->atMaxZoom());
 }
 
 void MainWindow::onShowShortcuts() {
@@ -1857,6 +1918,7 @@ void MainWindow::onPieceSelectionChanged(int index) {
         return;
     }
     autoInspectButton_->setChecked(false);
+    video_->resetView();  // otra pieza, encuadre limpio (Z3)
     loadTemplateList();       // repuebla plantillas de la pieza
     loadToolsForSelectedPiece();
 

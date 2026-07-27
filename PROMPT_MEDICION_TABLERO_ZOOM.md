@@ -125,12 +125,23 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
   de `targetRect()`, así que **redimensionar la ventana tampoco puede dejar la
   imagen fuera de vista**. Funciona con la edición bloqueada (mirar no edita).
 
-- [ ] **Z3 — Controles y atajos de vista**. `Ctrl++` / `Ctrl+-` zoom,
-  `Ctrl+0` = ajustar a ventana, `Ctrl+1` = 100 %, doble clic = ajustar.
-  Indicador del **porcentaje de zoom** en la barra de estado (junto a los
-  indicadores de S4) y reset del zoom al cambiar de pieza/imagen.
-  Skills: `qt-cpp-review`.
-  Archivos: `editor_canvas.{h,cpp}`, `ui/main_window.cpp` (atajos + indicador).
+- [x] **Z3 — Controles y atajos de vista**. HECHO. **Barra de zoom visible**
+  (pedida por el usuario: *"para el zoom tambien agregale la opcion de + y
+  menos, min y max"*) en la barra inferior de la ventana principal y bajo el
+  lienzo del editor de plantillas: `⤢` (mínimo = ajustar a la ventana), `−`,
+  **porcentaje**, `+`, `⛶` (máximo, 20×). Los botones se deshabilitan solos al
+  llegar a cada tope, así que el operador **ve** dónde está el límite en vez de
+  descubrirlo pulsando. Atajos: `Ctrl++` / `Ctrl+-` (secuencias estándar de Qt),
+  `Ctrl+0` mínimo/ajustar, `Ctrl+1` 100 % (píxeles reales), `Ctrl+2` máximo, y
+  **doble clic = ajustar**. El zoom se reinicia al cambiar de pieza.
+  Decisiones: el porcentaje mostrado es la **escala real** (px de pantalla por
+  px de imagen), no el factor interno `zoom_` — así "100 %" significa lo que el
+  operador espera y el ajuste a ventana puede leerse, p. ej., 62 %.
+  `EditorCanvas` emite `viewChanged()` (también al redimensionar, porque cambia
+  el encuadre ajustado) y expone `displayScale()` / `atMinZoom()` / `atMaxZoom()`
+  para que la UI no duplique la aritmética del zoom.
+  Archivos: `editor_canvas.{h,cpp}`, `ui/main_window.{h,cpp}`,
+  `inspection_editor/editor_window.cpp`.
 
 ### T. Tablero de referencia centrado (centro = 0)
 

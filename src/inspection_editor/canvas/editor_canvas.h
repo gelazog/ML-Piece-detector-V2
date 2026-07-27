@@ -77,13 +77,30 @@ public:
 
     [[nodiscard]] QSize sizeHint() const override;
 
-    // --- zoom (Z1) ---
+    // --- zoom (Z1/Z3) ---
     // Vuelve al encuadre "ajustar a la ventana" (zoom 1, sin desplazamiento).
     void resetView();
+    // Un paso de zoom hacia el centro de la vista (botones + / − y atajos).
+    void zoomIn();
+    void zoomOut();
+    // Topes de la vista: mínimo = imagen ajustada a la ventana, máximo = 20×.
+    void zoomToMin();
+    void zoomToMax();
+    // 100 %: un píxel de la imagen ocupa un píxel de pantalla. Si la imagen es
+    // más pequeña que el lienzo, el ajuste ya la agranda y queda en el mínimo.
+    void zoomToActualPixels();
     // Zoom actual: 1.0 = imagen ajustada a la ventana.
     [[nodiscard]] double zoomFactor() const { return zoom_; }
+    // Escala visible: píxeles de pantalla por píxel de imagen (1.0 = 100 %).
+    // 0 si aún no hay imagen. Es lo que se muestra al operador.
+    [[nodiscard]] double displayScale() const;
+    [[nodiscard]] bool atMinZoom() const;
+    [[nodiscard]] bool atMaxZoom() const;
 
 signals:
+    // El zoom, el desplazamiento o el tamaño del lienzo cambiaron: quien
+    // muestre el porcentaje debe releer displayScale().
+    void viewChanged();
     void toolCreated(const pci::inspection::ToolGeometry& geometry);
     void selectionChanged(int index);
     void toolModified();
@@ -96,7 +113,9 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     // Encuadre base (imagen ajustada a la ventana, sin zoom ni desplazamiento).

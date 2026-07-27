@@ -106,6 +106,16 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    izquierdo** (cursor de mano): el dibujo y el marco de selección siguen
    funcionando igual, y la imagen nunca se pierde de vista.
 
+   **Barra de zoom** (barra inferior de la ventana principal y bajo el lienzo del
+   editor), por si prefieres no usar la rueda: `⤢` mínimo (ajustar a la ventana),
+   `−` alejar, el **porcentaje actual**, `+` acercar y `⛶` máximo. Los botones se
+   apagan al llegar a cada tope. Atajos equivalentes: **Ctrl++** / **Ctrl+-**
+   acercar/alejar, **Ctrl+0** ajustar a la ventana, **Ctrl+1** ver al 100 %
+   (píxeles reales), **Ctrl+2** zoom máximo y **doble clic** para volver al
+   ajuste. El porcentaje es la escala real de pantalla, así que "100 %" significa
+   un píxel de imagen por píxel de pantalla. Al cambiar de pieza el encuadre
+   vuelve al ajuste.
+
    **Snap al borde al dibujar**: mientras trazas un Caliper, Regla o Borde liso,
    un marcador amarillo resalta el borde detectado más cercano al cursor (usa la
    detección de bordes subpíxel del proyecto sobre una banda alrededor del

@@ -14,8 +14,11 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include <functional>
+#include <initializer_list>
 #include <optional>
 #include <type_traits>
+#include <utility>
 #include <variant>
 
 #include "camera/camera_controller.h"
@@ -104,7 +107,72 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     canvas_->setScene(reference_, fixture_);
     canvas_->setTools(&tools_);
     canvas_->setMmPerPixel(calibration_.mmPerPixel);
-    rootLayout->addWidget(canvas_, 1);
+
+    // Canvas + barra de vista (Z3): los mismos controles que en la ventana
+    // principal, para que el zoom se maneje igual en los dos sitios.
+    auto* centerLayout = new QVBoxLayout();
+    centerLayout->setContentsMargins(0, 0, 0, 0);
+    centerLayout->addWidget(canvas_, 1);
+    auto* zoomLayout = new QHBoxLayout();
+    zoomLayout->setSpacing(2);
+    zoomLayout->addStretch(1);
+    auto* zoomLabel = new QLabel(this);
+    zoomLabel->setMinimumWidth(52);
+    zoomLabel->setAlignment(Qt::AlignCenter);
+    zoomLabel->setToolTip(tr("Zoom actual. Rueda = acercar/alejar hacia el cursor,\n"
+                             "botón central o Ctrl + arrastrar = mover la vista,\n"
+                             "doble clic = ajustar a la ventana."));
+    auto makeZoomButton = [this, zoomLayout](const QString& text, const QString& tip,
+                                             auto slot) {
+        auto* button = new QToolButton(this);
+        button->setText(text);
+        button->setToolTip(tip);
+        button->setAutoRaise(true);
+        button->setFocusPolicy(Qt::NoFocus);
+        connect(button, &QToolButton::clicked, this, slot);
+        zoomLayout->addWidget(button);
+        return button;
+    };
+    auto* zoomMin = makeZoomButton(QStringLiteral("⤢"),
+                                   tr("Zoom mínimo: ajustar a la ventana (Ctrl+0)"),
+                                   [this] { canvas_->zoomToMin(); });
+    auto* zoomOut = makeZoomButton(QStringLiteral("−"), tr("Alejar (Ctrl+-)"),
+                                   [this] { canvas_->zoomOut(); });
+    zoomLayout->addWidget(zoomLabel);
+    auto* zoomIn = makeZoomButton(QStringLiteral("+"), tr("Acercar (Ctrl++)"),
+                                  [this] { canvas_->zoomIn(); });
+    auto* zoomMax = makeZoomButton(QStringLiteral("⛶"), tr("Zoom máximo (Ctrl+2)"),
+                                   [this] { canvas_->zoomToMax(); });
+    zoomLayout->addStretch(1);
+    centerLayout->addLayout(zoomLayout);
+    rootLayout->addLayout(centerLayout, 1);
+
+    auto updateZoom = [this, zoomLabel, zoomMin, zoomOut, zoomIn, zoomMax] {
+        const double scale = canvas_->displayScale();
+        const bool hasImage = scale > 0.0;
+        zoomLabel->setText(hasImage ? tr("%1 %").arg(qRound(scale * 100.0))
+                                    : QStringLiteral("—"));
+        zoomMin->setEnabled(hasImage && !canvas_->atMinZoom());
+        zoomOut->setEnabled(hasImage && !canvas_->atMinZoom());
+        zoomIn->setEnabled(hasImage && !canvas_->atMaxZoom());
+        zoomMax->setEnabled(hasImage && !canvas_->atMaxZoom());
+    };
+    connect(canvas_, &EditorCanvas::viewChanged, this, updateZoom);
+    updateZoom();
+
+    // Atajos de vista dentro del editor (mismas teclas que en la principal).
+    for (const auto& [sequence, action] :
+         std::initializer_list<std::pair<QKeySequence, std::function<void()>>>{
+             {QKeySequence::ZoomIn, [this] { canvas_->zoomIn(); }},
+             {QKeySequence::ZoomOut, [this] { canvas_->zoomOut(); }},
+             {QKeySequence(Qt::CTRL | Qt::Key_0), [this] { canvas_->zoomToMin(); }},
+             {QKeySequence(Qt::CTRL | Qt::Key_1), [this] { canvas_->zoomToActualPixels(); }},
+             {QKeySequence(Qt::CTRL | Qt::Key_2), [this] { canvas_->zoomToMax(); }}}) {
+        auto* shortcutAction = new QAction(this);
+        shortcutAction->setShortcut(sequence);
+        connect(shortcutAction, &QAction::triggered, this, action);
+        addAction(shortcutAction);
+    }
 
     // Panel derecho: lista + propiedades + acciones.
     auto* sideLayout = new QVBoxLayout();

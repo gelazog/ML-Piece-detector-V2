@@ -31,6 +31,7 @@ class QLabel;
 class QProgressDialog;
 class QPushButton;
 class QSpinBox;
+class QToolButton;
 
 namespace pci::ui {
 
@@ -107,6 +108,7 @@ private:
     void updateCalibrationLabel();
     void persistCalibration();     // sella resolución/cámara y guarda en Settings
     void updateStatusIndicators();  // pone al día los iconos de estado (S4)
+    void updateZoomIndicator();     // porcentaje y botones de la barra de zoom (Z3)
     void buildMenuBar();
     void buildShortcuts();
     void commitUndoState();
@@ -176,6 +178,12 @@ private:
     QLabel* camIndicator_ = nullptr;
     QLabel* dbIndicator_ = nullptr;
     QLabel* modelIndicator_ = nullptr;
+    // Controles de vista (Z3): mínimo / − / % / + / máximo.
+    QLabel* zoomLabel_ = nullptr;
+    QToolButton* zoomInButton_ = nullptr;
+    QToolButton* zoomOutButton_ = nullptr;
+    QToolButton* zoomMinButton_ = nullptr;
+    QToolButton* zoomMaxButton_ = nullptr;
     // Panel de comparación: pieza registrada vs pieza actual.
     QLabel* refThumbLabel_ = nullptr;
     QLabel* currentThumbLabel_ = nullptr;

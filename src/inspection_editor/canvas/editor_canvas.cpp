@@ -198,6 +198,7 @@ void EditorCanvas::setScene(const QImage& image, const vision::Fixture& fixture)
     hasFixture_ = true;
     pieceVisible_ = true;
     update();
+    emit viewChanged();
 }
 
 void EditorCanvas::setFrame(const QImage& frame) {
@@ -234,6 +235,7 @@ void EditorCanvas::clearLive() {
     zoom_ = 1.0;  // fin de la transmisión: vista limpia para la próxima
     pan_ = QPointF();
     update();
+    emit viewChanged();
 }
 
 void EditorCanvas::setTools(std::vector<EditedTool>* tools) {
@@ -364,6 +366,52 @@ void EditorCanvas::resetView() {
     zoom_ = 1.0;
     pan_ = QPointF();
     update();
+    emit viewChanged();
+}
+
+void EditorCanvas::zoomIn() {
+    zoomAt(QRectF(rect()).center(), kZoomStep);
+}
+
+void EditorCanvas::zoomOut() {
+    zoomAt(QRectF(rect()).center(), 1.0 / kZoomStep);
+}
+
+void EditorCanvas::zoomToMin() {
+    resetView();  // el mínimo es justo el encuadre ajustado a la ventana
+}
+
+void EditorCanvas::zoomToMax() {
+    zoomAt(QRectF(rect()).center(), kMaxZoom / zoom_);
+}
+
+void EditorCanvas::zoomToActualPixels() {
+    const QRectF fit = fitRect();
+    if (fit.isEmpty()) {
+        return;
+    }
+    // Zoom que hace coincidir el ancho pintado con el ancho real de la imagen.
+    const double target = image_.width() / fit.width();
+    zoomAt(QRectF(rect()).center(), target / zoom_);
+}
+
+double EditorCanvas::displayScale() const {
+    if (image_.isNull()) {
+        return 0.0;
+    }
+    const QRectF target = targetRect();
+    if (target.isEmpty()) {
+        return 0.0;
+    }
+    return target.width() / image_.width();
+}
+
+bool EditorCanvas::atMinZoom() const {
+    return zoom_ <= kMinZoom + 1e-9;
+}
+
+bool EditorCanvas::atMaxZoom() const {
+    return zoom_ >= kMaxZoom - 1e-9;
 }
 
 void EditorCanvas::zoomAt(const QPointF& widgetPos, double factor) {
@@ -384,6 +432,7 @@ void EditorCanvas::zoomAt(const QPointF& widgetPos, double factor) {
         pan_ = clampedPan(pan_ + (widgetPos - imageToWidget(anchor)));
     }
     update();
+    emit viewChanged();
 }
 
 void EditorCanvas::wheelEvent(QWheelEvent* event) {
@@ -397,6 +446,24 @@ void EditorCanvas::wheelEvent(QWheelEvent* event) {
     }
     zoomAt(event->position(), std::pow(kZoomStep, steps));
     event->accept();
+}
+
+void EditorCanvas::mouseDoubleClickEvent(QMouseEvent* event) {
+    // Doble clic = volver al encuadre completo: la salida rápida cuando uno se
+    // pierde con el zoom. No interfiere con el dibujo (que usa arrastre).
+    if (event->button() == Qt::LeftButton && !image_.isNull()) {
+        resetView();
+        event->accept();
+        return;
+    }
+    QWidget::mouseDoubleClickEvent(event);
+}
+
+void EditorCanvas::resizeEvent(QResizeEvent* event) {
+    QWidget::resizeEvent(event);
+    // Al cambiar el tamaño cambia el encuadre ajustado y, con él, el porcentaje
+    // visible aunque el zoom no se haya tocado.
+    emit viewChanged();
 }
 
 QPointF EditorCanvas::imageToWidget(const cv::Point2f& p) const {
