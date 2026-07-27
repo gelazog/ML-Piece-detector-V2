@@ -111,6 +111,7 @@ private:
     void updateStatusIndicators();  // pone al día los iconos de estado (S4)
     void updateZoomIndicator();     // porcentaje y botones de la barra de zoom (Z3)
     void onBoardOriginChanged(QAction* action);  // origen del tablero (T2)
+    void updateBoardReadout();  // lectura en vivo de desviacion y giro (T3)
     void persistBoardConfig();
     void buildMenuBar();
     void buildShortcuts();
@@ -182,6 +183,7 @@ private:
     QPushButton* managePiecesButton_ = nullptr;
 
     QLabel* verdictBanner_ = nullptr;
+    QLabel* boardReadoutLabel_ = nullptr;  // dx/dy/radio/giro respecto al tablero (T3)
     inspection::EditorCanvas* video_ = nullptr;
     QLabel* statsLabel_ = nullptr;
     // Indicadores de estado (S4): cámara / base de datos / modelo ONNX.

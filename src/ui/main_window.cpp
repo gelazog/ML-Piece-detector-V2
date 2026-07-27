@@ -365,6 +365,15 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     verdictBanner_->setVisible(false);
     rootLayout->addWidget(verdictBanner_);
 
+    // Lectura continua de la pieza respecto al tablero (T3): solo visible con
+    // el tablero encendido, junto al banner y nunca en un diálogo.
+    boardReadoutLabel_ = new QLabel(central);
+    boardReadoutLabel_->setAlignment(Qt::AlignCenter);
+    boardReadoutLabel_->setStyleSheet(
+        QStringLiteral("color:#7fd6ff; background:#10222b; padding:3px; border-radius:3px;"));
+    boardReadoutLabel_->setVisible(false);
+    rootLayout->addWidget(boardReadoutLabel_);
+
     // Video (canvas de edición) como área central de la ventana.
     video_ = new inspection::EditorCanvas(central);
     video_->setTools(&liveTools_);
@@ -581,6 +590,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     }
     video_->setBoardVisible(boardVisible_);
     video_->setBoardConfig(boardConfig_);
+    updateBoardReadout();
 
     buildMenuBar();  // crea las acciones de menú (incluidas unidad y contorno)
 
@@ -739,6 +749,7 @@ void MainWindow::buildMenuBar() {
         if (repos_.settings != nullptr) {
             repos_.settings->setInt("board_visible", on ? 1 : 0);
         }
+        updateBoardReadout();
         statusBar()->showMessage(on ? tr("Tablero de referencia activo (centro = 0).")
                                     : tr("Tablero de referencia oculto."));
     });
@@ -781,6 +792,7 @@ void MainWindow::buildMenuBar() {
         boardConfig_.followPieceAngle = on;
         video_->setBoardConfig(boardConfig_);
         persistBoardConfig();
+        updateBoardReadout();
     });
 
     auto* unitMenu = viewMenu->addMenu(tr("Unidad de medida"));
@@ -1260,6 +1272,7 @@ void MainWindow::onAnalysisFinished() {
         }
         // Medidas en vivo de las herramientas dibujadas (px o mm calibrados).
         video_->setResults(overlay.toolResults);
+        updateBoardReadout();  // desviación y giro respecto al tablero (T3)
         maybeStartAnalysis();
     }
 }
@@ -1328,6 +1341,8 @@ void MainWindow::onStreamStopped() {
     pendingAnalysisFrame_ = QImage();
     lastFrame_ = QImage();
     video_->clearLive();
+    liveFixture_.reset();
+    updateBoardReadout();      // "sin pieza detectada" al cortar la transmisión
     updateStatusIndicators();  // cámara vuelve a rojo (S4)
 }
 
@@ -1494,6 +1509,56 @@ void MainWindow::onAnchorButtonToggled(bool enabled) {
         tr("Haz clic sobre un punto único de la pieza (agujero, marca, esquina oscura)…"));
 }
 
+// Lectura continua "cuánto está descentrada y girada la pieza" respecto al
+// tablero (T3). Con el origen en la propia pieza la desviación es cero por
+// definición, así que ahí solo tiene sentido el giro: se dice explícitamente en
+// vez de mostrar un 0,0 que parecería un fallo.
+void MainWindow::updateBoardReadout() {
+    if (boardReadoutLabel_ == nullptr) {
+        return;
+    }
+    if (!boardVisible_) {
+        boardReadoutLabel_->setVisible(false);
+        return;
+    }
+    boardReadoutLabel_->setVisible(true);
+    if (!liveFixture_.has_value()) {
+        boardReadoutLabel_->setText(tr("Tablero — sin pieza detectada"));
+        return;
+    }
+
+    const vision::BoardFrame frame = video_->boardFrame();
+    const vision::BoardReading reading = vision::readPiece(frame, *liveFixture_);
+    const double offsetDeg = vision::pieceAngleOffset(frame, *liveFixture_);
+
+    // Misma unidad que el resto de la UI: mm/cm si hay escala, px si no.
+    const inspection::LengthUnit unit = currentUnit();
+    const double mmPerPixel = calibration_.mmPerPixel;
+    const auto len = [unit, mmPerPixel](double px) {
+        if (mmPerPixel > 0.0 && unit != inspection::LengthUnit::Pixels) {
+            const double mm = px * mmPerPixel;
+            return (unit == inspection::LengthUnit::Centimeters)
+                       ? QStringLiteral("%1 cm").arg(mm / 10.0, 0, 'f', 2)
+                       : QStringLiteral("%1 mm").arg(mm, 0, 'f', 1);
+        }
+        return QStringLiteral("%1 px").arg(px, 0, 'f', 0);
+    };
+    const auto signedLen = [&len](double px) {
+        return (px > 0.0 ? QStringLiteral("+") : QString()) + len(px);
+    };
+
+    if (boardConfig_.origin == vision::BoardOrigin::PieceCenter) {
+        boardReadoutLabel_->setText(
+            tr("Tablero — el cero viaja con la pieza · giro %1°")
+                .arg(offsetDeg, 0, 'f', 1));
+        return;
+    }
+    boardReadoutLabel_->setText(tr("Tablero — dx %1 · dy %2 · radio %3 · giro %4°")
+                                    .arg(signedLen(reading.dx), signedLen(reading.dy),
+                                         len(reading.radius))
+                                    .arg(offsetDeg, 0, 'f', 1));
+}
+
 void MainWindow::onBoardOriginChanged(QAction* action) {
     if (action == nullptr) {
         return;
@@ -1501,6 +1566,7 @@ void MainWindow::onBoardOriginChanged(QAction* action) {
     boardConfig_.origin = static_cast<vision::BoardOrigin>(action->data().toInt());
     video_->setBoardConfig(boardConfig_);
     persistBoardConfig();
+    updateBoardReadout();
     if (boardConfig_.origin == vision::BoardOrigin::FixedPoint) {
         // El punto se marca con el ratón; el canvas sale del modo al primer clic.
         boardPointPick_ = true;
@@ -1532,6 +1598,7 @@ void MainWindow::onAnchorPicked(const cv::Point2f& imagePoint) {
         boardConfig_.fixedPoint = imagePoint;
         video_->setBoardConfig(boardConfig_);
         persistBoardConfig();
+        updateBoardReadout();
         if (!boardVisible_ && boardAction_ != nullptr) {
             boardAction_->setChecked(true);  // mostrar lo que se acaba de fijar
         }

@@ -208,13 +208,24 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
   (3) las marcas **+X/+Y** se salían de la vista con los ejes girados: ahora se
   colocan donde cada semieje positivo cruza el borde.
 
-- [ ] **T3 — Lectura en vivo de posición y ángulo de la pieza**. Mostrar de
+- [x] **T3 — Lectura en vivo de posición y ángulo de la pieza**. HECHO. Mostrar de
   forma continua **cuánto está descentrada y girada** la pieza respecto al
   origen del tablero: `dx`, `dy`, radio y ángulo (con unidades). Reutiliza
   `Fixture.origin` / `angleDeg`, que ya se calculan cada frame. Se muestra en el
   panel lateral o junto al banner, no en un diálogo.
   Skills: `qt-cpp-review`, `computer-vision-opencv`.
   Archivos: `ui/main_window.cpp` (usa `AnalysisOverlay`), `analysis_overlay.h`.
+
+  **Cómo quedó**: banda `boardReadoutLabel_` justo debajo del banner de
+  veredicto (nunca un diálogo), visible solo con el tablero encendido, que se
+  actualiza en cada análisis con `readPiece` + `pieceAngleOffset` sobre el mismo
+  `boardFrame()` que se está dibujando. Unidades: las activas de la UI.
+  **Decisión de honestidad**: con el origen *en la propia pieza* la desviación
+  es 0 por definición, así que en ese modo no se muestra un "0,0" que parecería
+  un fallo, sino "el cero viaja con la pieza" + el giro. Al cortar la
+  transmisión se limpia el fixture y la banda pasa a "sin pieza detectada".
+  No hizo falta tocar `AnalysisOverlay`: el centroide y el ángulo ya viajaban en
+  él y `liveFixture_` ya se construye con ellos.
 
 - [ ] **T4 — Coordenadas bajo el cursor**. Mientras el ratón está sobre el
   lienzo con el tablero activo, mostrar las coordenadas del punto en el sistema

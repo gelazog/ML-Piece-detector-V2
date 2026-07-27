@@ -126,6 +126,10 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    clic), y si los **ejes giran con la pieza** o quedan alineados con la imagen.
    El paso de la grilla se adapta al zoom y las etiquetas salen en la unidad
    activa (mm/cm si hay escala calibrada, px si no). Todo queda guardado.
+   Con el tablero encendido aparece además una **lectura continua** sobre el
+   vídeo: `dx`, `dy`, radio y giro de la pieza respecto al cero. Si el cero está
+   en la propia pieza, la desviación es cero por definición y solo se muestra el
+   giro.
 
    **Snap al borde al dibujar**: mientras trazas un Caliper, Regla o Borde liso,
    un marcador amarillo resalta el borde detectado más cercano al cursor (usa la
