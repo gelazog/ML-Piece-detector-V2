@@ -19,6 +19,7 @@
 #include "inspection_editor/canvas/editor_canvas.h"
 #include "ui/analysis_overlay.h"
 #include "ui/app_repositories.h"
+#include "repositories/piece_repository.h"
 #include "vision/board_frame.h"
 #include "vision/orientation_anchor.h"
 
@@ -97,6 +98,7 @@ private slots:
     void onManageTemplatesClicked();  // gestor de plantillas (M1)
     void onShowHistoryClicked();      // pantalla de historial (S1)
     void onPreferencesClicked();      // diálogo de preferencias (O1)
+    void onMeasurementModeClicked();  // modo de medición de la pieza (M2)
     void onToolRightClicked(int index);
 
 protected:
@@ -113,6 +115,11 @@ private:
     void onBoardOriginChanged(QAction* action);  // origen del tablero (T2)
     void updateBoardReadout();  // lectura en vivo de desviacion y giro (T3)
     void persistBoardConfig();
+    // Aplica el modo + tablero de una pieza a toda la UI (canvas, motor,
+    // visibilidad del tablero y menús). Es el único punto que cambia el estado
+    // de medición, para que no se desincronicen.
+    void applyMeasurement(const repositories::PieceMeasurement& measurement);
+    void loadMeasurementForSelectedPiece();
     void buildMenuBar();
     void buildShortcuts();
     void commitUndoState();
@@ -158,6 +165,11 @@ private:
     bool boardVisible_ = false;
     bool boardPointPick_ = false;  // el próximo clic fija el cero del tablero
     vision::BoardConfig boardConfig_;
+    // Modo de medición de la pieza activa (M1/M2). Sin pieza seleccionada actúa
+    // como valor por defecto de la sesión.
+    domain::MeasurementMode measurementMode_ = domain::MeasurementMode::Real;
+    // Modo elegido durante un registro en curso, para guardarlo al terminar.
+    repositories::PieceMeasurement pendingMeasurement_;
     // Fila 1: cámara (controles de uso constante).
     QComboBox* cameraCombo_ = nullptr;
     QPushButton* startStopButton_ = nullptr;

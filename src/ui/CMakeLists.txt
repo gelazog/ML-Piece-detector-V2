@@ -4,6 +4,7 @@ add_library(pci_ui STATIC
   history_dialog.cpp
   inspection_result_dialog.cpp
   main_window.cpp
+  measurement_mode_dialog.cpp
   piece_manager_dialog.cpp
   preferences_dialog.cpp
   registration_wizard.cpp
@@ -14,6 +15,6 @@ add_library(pci_ui STATIC
 )
 target_include_directories(pci_ui PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(pci_ui
-  PUBLIC Qt6::Widgets pci_camera pci_engine
-  PRIVATE Qt6::Concurrent pci_core pci_editor pci_vision pci_repositories project_warnings
+  PUBLIC Qt6::Widgets pci_camera pci_engine pci_repositories
+  PRIVATE Qt6::Concurrent pci_core pci_editor pci_vision project_warnings
 )

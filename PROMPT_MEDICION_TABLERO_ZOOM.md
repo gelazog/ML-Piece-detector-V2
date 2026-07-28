@@ -310,7 +310,7 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
   v4 con piezas guardadas): migró a v5 y las columnas nuevas están ahí.
   3 tests nuevos → 151/151.
 
-- [ ] **M2 — Elegir el modo al registrar** *(pide confirmación de flujo)*. El
+- [x] **M2 — Elegir el modo al registrar**. HECHO *(flujo confirmado por el usuario)*. El
   registro (`onRegisterLiveClicked`) pregunta el modo junto con el nombre —o en
   el paso siguiente— y lo guarda con la pieza. Al seleccionar una pieza, la UI
   **refleja su modo**: en *Especial* el tablero aparece encendido y con las
@@ -318,6 +318,25 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
   Skills: `qt-ui-design`, `qt-cpp-review`.
   Archivos: `ui/main_window.cpp`, `ui/registration_wizard.*` (si se quiere
   también en el asistente).
+
+  **DECIDIDO por el usuario (2026-07-27)**: (1) el modo se elige **al registrar
+  Y se puede cambiar después** desde **Pieza ▸ Modo de medición…**; (2) al
+  seleccionar una pieza **manda la pieza**: en Especial se aplica su tablero y
+  se enciende, en Real se apaga.
+
+  **Cómo quedó**: nuevo `ui/measurement_mode_dialog.*` (modo + origen del
+  tablero + ejes girados, con la explicación de cada modo a la vista), usado en
+  los dos sitios. En el registro aparece justo después del nombre y **se aplica
+  ya**, para que el operador capture las 30 referencias viendo el tablero con el
+  que se va a medir; cancelarlo cancela el registro. `applyMeasurement()` es el
+  **único** punto que cambia el estado de medición (canvas, motor, visibilidad
+  del tablero y menús, con `QSignalBlocker` para no reguardar en cascada) y
+  `persistBoardConfig()` escribe en la pieza seleccionada y, además, en Settings
+  como valor por defecto de sesión cuando aún no hay pieza. Al arrancar se llama
+  `loadMeasurementForSelectedPiece()` porque `loadPieceList()` puede no disparar
+  la señal del combo. Verificado con render offscreen del diálogo. 151/151.
+  Nota: el asistente de registro (`registration_wizard`) **no** pregunta el
+  modo; se queda con el valor por defecto y se cambia luego desde el menú.
 
 - [ ] **M3 — Indicador de modo siempre visible**. Que el operador nunca dude en
   qué modo está: etiqueta junto al combo de pieza y/o en la barra de estado

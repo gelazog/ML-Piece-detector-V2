@@ -138,6 +138,17 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    giro. Y al pasar el ratón por encima, un recuadro muestra las **coordenadas
    del punto bajo el cursor** en ese mismo sistema centrado.
 
+   **Modos de medición (por pieza)**: cada pieza se mide en uno de dos modos,
+   que eliges al **registrarla** y puedes cambiar luego en **Pieza ▸ Modo de
+   medición…**:
+   - **Posición real (personalizada)**: lo de siempre — mides donde quieras y
+     cada herramienta se juzga con sus tolerancias.
+   - **Especial (tablero centrado)**: además, la pieza se mide respecto al
+     tablero (centro = 0). Al seleccionar una pieza en este modo, **su** tablero
+     se aplica y se enciende solo; al volver a una pieza en modo real, se apaga.
+   El modo y el tablero (origen, punto fijado y si los ejes giran) se guardan
+   **con la pieza**, así que cada una recuerda cómo se mide.
+
    **Snap al borde al dibujar**: mientras trazas un Caliper, Regla o Borde liso,
    un marcador amarillo resalta el borde detectado más cercano al cursor (usa la
    detección de bordes subpíxel del proyecto sobre una banda alrededor del

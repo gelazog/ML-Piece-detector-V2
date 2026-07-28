@@ -42,6 +42,7 @@
 #include "ui/inspection_result_dialog.h"
 #include "ui/history_dialog.h"
 #include "ui/piece_manager_dialog.h"
+#include "ui/measurement_mode_dialog.h"
 #include "ui/preferences_dialog.h"
 #include "ui/registration_wizard.h"
 #include "ui/template_manager_dialog.h"
@@ -632,6 +633,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
 
     refreshCameras();
     loadPieceList();
+    // Al arrancar con una pieza ya seleccionada, su modo y su tablero mandan
+    // sobre el ajuste global (M2); loadPieceList puede no disparar la señal.
+    loadMeasurementForSelectedPiece();
 }
 
 inspection::LengthUnit MainWindow::currentUnit() const {
@@ -709,6 +713,9 @@ void MainWindow::buildMenuBar() {
                                                  &MainWindow::onRegisterWizardClicked);
     managePiecesAction_ = pieceMenu->addAction(tr("Gestionar piezas…"), this,
                                                &MainWindow::onManagePiecesClicked);
+    pieceMenu->addSeparator();
+    pieceMenu->addAction(tr("Modo de medición…"), this,
+                         &MainWindow::onMeasurementModeClicked);
 
     auto* inspectionMenu = menuBar()->addMenu(tr("&Inspección"));
     editorAction_ = inspectionMenu->addAction(tr("Editor de plantilla…"), this,
@@ -1578,6 +1585,72 @@ void MainWindow::updateBoardReadout() {
                                     .arg(offsetDeg, 0, 'f', 1));
 }
 
+// Aplica a toda la UI el modo y el tablero de una pieza. Decisión del usuario
+// (2026-07-27): manda la pieza — en modo Especial el tablero se enciende con su
+// configuración y en modo Real se apaga.
+void MainWindow::applyMeasurement(const repositories::PieceMeasurement& measurement) {
+    measurementMode_ = measurement.mode;
+    boardConfig_ = measurement.board;
+    boardVisible_ = measurement.mode == domain::MeasurementMode::Special;
+
+    video_->setBoardConfig(boardConfig_);
+    video_->setBoardVisible(boardVisible_);
+    if (repos_.engine != nullptr) {
+        repos_.engine->setBoardConfig(boardConfig_);
+    }
+
+    // Menús al día sin re-disparar sus señales (evita guardados en cascada).
+    if (boardAction_ != nullptr) {
+        QSignalBlocker blocker(boardAction_);
+        boardAction_->setChecked(boardVisible_);
+    }
+    if (boardFollowAction_ != nullptr) {
+        QSignalBlocker blocker(boardFollowAction_);
+        boardFollowAction_->setChecked(boardConfig_.followPieceAngle);
+    }
+    if (boardOriginGroup_ != nullptr) {
+        for (auto* action : boardOriginGroup_->actions()) {
+            if (action->data().toInt() == static_cast<int>(boardConfig_.origin)) {
+                QSignalBlocker blocker(action);
+                action->setChecked(true);
+            }
+        }
+    }
+    updateBoardReadout();
+}
+
+void MainWindow::loadMeasurementForSelectedPiece() {
+    const std::int64_t pieceId = selectedPieceId();
+    if (pieceId < 0 || repos_.pieces == nullptr) {
+        return;  // sin pieza: se conserva el ajuste de la sesión
+    }
+    if (auto loaded = repos_.pieces->loadMeasurement(pieceId); loaded.isOk()) {
+        applyMeasurement(loaded.value());
+    }
+}
+
+void MainWindow::onMeasurementModeClicked() {
+    repositories::PieceMeasurement current;
+    current.mode = measurementMode_;
+    current.board = boardConfig_;
+
+    const std::int64_t pieceId = selectedPieceId();
+    MeasurementModeDialog dialog(current, pieceCombo_->currentText(), this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    applyMeasurement(dialog.measurement());
+    persistBoardConfig();  // guarda en la pieza (si hay) y en el ajuste global
+
+    const QString modeName = QString::fromUtf8(domain::modeLabel(measurementMode_));
+    statusBar()->showMessage(
+        pieceId < 0
+            ? tr("Modo de medición de la sesión: %1 (aún sin pieza seleccionada).")
+                  .arg(modeName)
+            : tr("La pieza %1 medirá en modo %2.")
+                  .arg(pieceCombo_->currentText(), modeName));
+}
+
 void MainWindow::onBoardOriginChanged(QAction* action) {
     if (action == nullptr) {
         return;
@@ -1604,6 +1677,19 @@ void MainWindow::persistBoardConfig() {
     // tablero: si no se le pasa, el veredicto no coincidiría con lo que se ve.
     if (repos_.engine != nullptr) {
         repos_.engine->setBoardConfig(boardConfig_);
+    }
+    // El modo y el tablero son POR PIEZA (decisión del usuario): si hay uno
+    // seleccionado mandan sus columnas; el ajuste global solo sirve de valor
+    // por defecto mientras no hay pieza.
+    if (const std::int64_t pieceId = selectedPieceId();
+        pieceId >= 0 && repos_.pieces != nullptr) {
+        repositories::PieceMeasurement measurement;
+        measurement.mode = measurementMode_;
+        measurement.board = boardConfig_;
+        if (auto saved = repos_.pieces->saveMeasurement(pieceId, measurement); !saved.isOk()) {
+            core::logWarning("No se pudo guardar el modo de medición: " +
+                             saved.error().message);
+        }
     }
     if (repos_.settings == nullptr) {
         return;
@@ -2142,6 +2228,7 @@ void MainWindow::onPieceSelectionChanged(int index) {
     }
     autoInspectButton_->setChecked(false);
     video_->resetView();  // otra pieza, encuadre limpio (Z3)
+    loadMeasurementForSelectedPiece();  // modo y tablero de ESTA pieza (M2)
     loadTemplateList();       // repuebla plantillas de la pieza
     loadToolsForSelectedPiece();
 
@@ -2288,6 +2375,21 @@ void MainWindow::onRegisterLiveClicked() {
     }
     pendingPieceName_ = name;
 
+    // Modo de medición de la pieza nueva (M2): se pregunta aquí, junto al
+    // nombre, y se aplica ya mismo para que el operador capture viendo el
+    // tablero con el que se va a medir. Cancelar aquí cancela el registro.
+    {
+        repositories::PieceMeasurement current;
+        current.mode = measurementMode_;
+        current.board = boardConfig_;
+        MeasurementModeDialog modeDialog(current, name, this);
+        if (modeDialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        pendingMeasurement_ = modeDialog.measurement();
+        applyMeasurement(pendingMeasurement_);
+    }
+
     // El rasgo distintivo marcado (si hay) fija la orientación de las 30
     // capturas de referencia y se guarda con la pieza.
     liveSession_ = std::make_shared<engine::RegistrationSession>(
@@ -2409,6 +2511,12 @@ void MainWindow::finishLiveRegistration() {
         if (auto saved = repos_.pieces->saveThumbnail(pieceId, thumbnail); !saved.isOk()) {
             core::logWarning("No se pudo guardar la miniatura: " + saved.error().message);
         }
+    }
+
+    // Modo de medición y tablero elegidos al empezar el registro (M2).
+    if (auto saved = repos_.pieces->saveMeasurement(pieceId, pendingMeasurement_);
+        !saved.isOk()) {
+        core::logWarning("No se pudo guardar el modo de medición: " + saved.error().message);
     }
 
     // Rasgo distintivo elegido durante la sesión.
