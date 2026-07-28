@@ -338,12 +338,20 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
   Nota: el asistente de registro (`registration_wizard`) **no** pregunta el
   modo; se queda con el valor por defecto y se cambia luego desde el menú.
 
-- [ ] **M3 — Indicador de modo siempre visible**. Que el operador nunca dude en
+- [x] **M3 — Indicador de modo siempre visible**. HECHO. Que el operador nunca dude en
   qué modo está: etiqueta junto al combo de pieza y/o en la barra de estado
   (mismo espíritu que los indicadores de S4), con tooltip explicando qué implica
   cada modo.
   Skills: `qt-ui-design`.
   Archivos: `ui/main_window.cpp`.
+
+  **Cómo quedó**: etiqueta tipo *chip* **junto al combo de pieza** (donde se
+  decide el modo, no perdida en la barra inferior): gris «Posición real» o cian
+  «Especial (tablero)», con el mismo cian del tablero para que se asocien de un
+  vistazo. El tooltip explica qué implica el modo y **dónde se cambia**
+  (Pieza ▸ Modo de medición…). Se actualiza desde `applyMeasurement()`, que ya
+  es el único punto que cambia el estado, más una llamada al arrancar para que
+  el chip no salga vacío cuando no hay pieza seleccionada.
 
 - [ ] **M4 — Reglas específicas del modo Especial**. Lo que hace que "especial"
   signifique algo: **tolerancias de centrado y orientación por pieza**

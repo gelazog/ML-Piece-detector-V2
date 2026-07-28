@@ -147,7 +147,9 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
      tablero (centro = 0). Al seleccionar una pieza en este modo, **su** tablero
      se aplica y se enciende solo; al volver a una pieza en modo real, se apaga.
    El modo y el tablero (origen, punto fijado y si los ejes giran) se guardan
-   **con la pieza**, así que cada una recuerda cómo se mide.
+   **con la pieza**, así que cada una recuerda cómo se mide. **Junto al combo de
+   pieza hay una etiqueta con el modo activo** (gris = posición real, cian =
+   especial), para no dudar nunca en cuál estás.
 
    **Snap al borde al dibujar**: mientras trazas un Caliper, Regla o Borde liso,
    un marcador amarillo resalta el borde detectado más cercano al cursor (usa la

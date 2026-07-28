@@ -120,6 +120,7 @@ private:
     // de medición, para que no se desincronicen.
     void applyMeasurement(const repositories::PieceMeasurement& measurement);
     void loadMeasurementForSelectedPiece();
+    void updateModeChip();  // etiqueta del modo activo (M3)
     void buildMenuBar();
     void buildShortcuts();
     void commitUndoState();
@@ -177,6 +178,7 @@ private:
     QLabel* calibLabel_ = nullptr;  // estado de la escala en la barra inferior
     // Fila 2: pieza y flujo.
     QComboBox* pieceCombo_ = nullptr;
+    QLabel* modeChip_ = nullptr;           // modo de medición activo (M3)
     QComboBox* templateCombo_ = nullptr;   // plantillas de la pieza
     QPushButton* newTemplateButton_ = nullptr;
     QPushButton* manageTemplatesButton_ = nullptr;  // abre el gestor de plantillas

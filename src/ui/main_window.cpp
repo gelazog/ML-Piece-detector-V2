@@ -246,6 +246,12 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     pieceCombo_->setMinimumWidth(140);
     pieceLayout->addWidget(pieceCombo_, 1);
 
+    // Indicador del modo de medición (M3): junto al combo de pieza, que es
+    // donde se decide. El operador nunca debe dudar en qué modo está.
+    modeChip_ = new QLabel(central);
+    modeChip_->setAlignment(Qt::AlignCenter);
+    pieceLayout->addWidget(modeChip_);
+
     pieceLayout->addWidget(new QLabel(tr("Plantilla:"), central));
     templateCombo_ = new QComboBox(central);
     templateCombo_->setMinimumWidth(110);
@@ -605,6 +611,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     if (repos_.engine != nullptr) {
         repos_.engine->setBoardConfig(boardConfig_);
     }
+    updateModeChip();  // el indicador arranca con el modo por defecto (M3)
     updateBoardReadout();
 
     buildMenuBar();  // crea las acciones de menú (incluidas unidad y contorno)
@@ -1616,7 +1623,25 @@ void MainWindow::applyMeasurement(const repositories::PieceMeasurement& measurem
             }
         }
     }
+    updateModeChip();
     updateBoardReadout();
+}
+
+// Etiqueta del modo activo (M3). Cambia de color para distinguirse de un
+// vistazo y el tooltip explica qué implica el modo y dónde se cambia.
+void MainWindow::updateModeChip() {
+    if (modeChip_ == nullptr) {
+        return;
+    }
+    const bool special = measurementMode_ == domain::MeasurementMode::Special;
+    modeChip_->setText(special ? tr(" Especial (tablero) ") : tr(" Posición real "));
+    modeChip_->setStyleSheet(
+        special ? QStringLiteral("color:#0b2a35; background:#7fd6ff; border-radius:8px;"
+                                 " padding:1px 6px; font-weight:bold;")
+                : QStringLiteral("color:#ddd; background:#3a3a3a; border-radius:8px;"
+                                 " padding:1px 6px;"));
+    modeChip_->setToolTip(QString::fromUtf8(domain::modeDescription(measurementMode_)) +
+                          tr("\n\nSe cambia en Pieza ▸ Modo de medición…"));
 }
 
 void MainWindow::loadMeasurementForSelectedPiece() {
