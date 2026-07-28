@@ -43,6 +43,7 @@ QString typeLabel(ToolType type) {
         case ToolType::Ruler: return QStringLiteral("Regla");
         case ToolType::LineToLine: return QStringLiteral("Línea-Línea");
         case ToolType::Angle: return QStringLiteral("Ángulo");
+        case ToolType::Position: return QStringLiteral("Posición");
         case ToolType::PolyBlob: return QStringLiteral("Blob poligonal");
     }
     return QStringLiteral("?");
@@ -99,6 +100,7 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     addMode(tr("Línea-Línea"), static_cast<int>(ToolType::LineToLine));
     addMode(tr("Ángulo"), static_cast<int>(ToolType::Angle));
     addMode(tr("Blob poligonal"), static_cast<int>(ToolType::PolyBlob));
+    addMode(tr("Posición"), static_cast<int>(ToolType::Position));
     modesLayout->addStretch(1);
     rootLayout->addLayout(modesLayout);
 

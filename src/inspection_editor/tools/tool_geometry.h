@@ -74,9 +74,18 @@ struct PolyBlobGeometry {
     bool darkBlobs = true;  // buscar manchas oscuras (o claras si false)
 };
 
+// Eje sobre el que se juzga la desviación de una herramienta Posición.
+enum class PositionAxis { Radial, X, Y };
+
+struct PositionGeometry {
+    cv::Point2f point;  // rasgo marcado, en coords de pieza (viaja con ella)
+    PositionAxis axis = PositionAxis::Radial;
+};
+
 using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGeometry,
                                   EdgeFlawGeometry, BlobGeometry, RulerGeometry,
-                                  LineToLineGeometry, AngleGeometry, PolyBlobGeometry>;
+                                  LineToLineGeometry, AngleGeometry, PolyBlobGeometry,
+                                  PositionGeometry>;
 
 // (De)serialización JSON (cv::FileStorage en memoria). El tipo del JSON debe
 // coincidir con config.type al parsear.

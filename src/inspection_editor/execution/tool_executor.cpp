@@ -190,6 +190,35 @@ ToolRunResult runRuler(const Fixture& fixture, const ToolConfig& config,
     return result;
 }
 
+// Posición: dónde cae un rasgo respecto al cero del tablero de referencia.
+// Es lo que convierte el tablero en criterio OK/NG y no solo en ayuda visual.
+ToolRunResult runPosition(const Fixture& fixture, const ToolConfig& config,
+                          const PositionGeometry& g, const Fmt& fmt,
+                          const vision::BoardFrame& board) {
+    ToolRunResult result = baseResult(config);
+    const cv::Point2f p = toImg(fixture, g.point);
+    result.overlayPoints.push_back(board.origin);
+    result.overlayPoints.push_back(p);
+    result.overlaySegments.push_back({board.origin, p});
+
+    const vision::BoardReading reading = vision::readPoint(board, p);
+    switch (g.axis) {
+        case PositionAxis::Radial:
+            result.measured = reading.radius;
+            break;
+        case PositionAxis::X:
+            result.measured = std::abs(reading.dx);
+            break;
+        case PositionAxis::Y:
+            result.measured = std::abs(reading.dy);
+            break;
+    }
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = "dx=" + fmtLen(reading.dx, fmt) + " dy=" + fmtLen(reading.dy, fmt) +
+                    " r=" + fmtLen(reading.radius, fmt) + " " + fmt2(reading.angleDeg) + "deg";
+    return result;
+}
+
 ToolRunResult runLineToLine(const Fixture& fixture, const ToolConfig& config,
                             const LineToLineGeometry& g, const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
@@ -542,7 +571,8 @@ ToolRunResult runPolyBlob(const cv::Mat& gray, const Fixture& fixture, const Too
 
 core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture& fixture,
                                     const ToolConfig& config, double mmPerPixel,
-                                    LengthUnit unit, const cv::Mat& imageToMm) {
+                                    LengthUnit unit, const cv::Mat& imageToMm,
+                                    const vision::BoardFrame* board) {
     using ResultT = core::Result<ToolRunResult>;
     const Fmt fmt{mmPerPixel, unit, imageToMm};
 
@@ -599,6 +629,13 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::PolyBlob:
                 return ResultT::ok(runPolyBlob(
                     gray, fixture, config, std::get<PolyBlobGeometry>(geometry.value()), fmt));
+            case ToolType::Position: {
+                // Sin tablero explícito: cero en la pieza y ejes de la imagen.
+                const vision::BoardFrame fallback{fixture.origin, 0.0};
+                return ResultT::ok(runPosition(fixture, config,
+                                               std::get<PositionGeometry>(geometry.value()),
+                                               fmt, board != nullptr ? *board : fallback));
+            }
         }
         return ResultT::err("Tipo de herramienta no soportado");
     } catch (const cv::Exception& e) {
@@ -609,13 +646,14 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
 
 std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture& fixture,
                                     const std::vector<ToolConfig>& tools, double mmPerPixel,
-                                    LengthUnit unit, const cv::Mat& imageToMm) {
+                                    LengthUnit unit, const cv::Mat& imageToMm,
+                                    const vision::BoardFrame* board) {
     std::vector<ToolRunResult> results;
     for (const auto& config : tools) {
         if (!config.enabled) {
             continue;
         }
-        auto result = runTool(image, fixture, config, mmPerPixel, unit, imageToMm);
+        auto result = runTool(image, fixture, config, mmPerPixel, unit, imageToMm, board);
         if (result.isOk()) {
             results.push_back(std::move(result.value()));
         } else {

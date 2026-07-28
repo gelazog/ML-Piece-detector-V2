@@ -19,6 +19,7 @@ const char* toolTypeName(ToolType type) {
         case ToolType::LineToLine: return "line_to_line";
         case ToolType::Angle: return "angle";
         case ToolType::PolyBlob: return "poly_blob";
+        case ToolType::Position: return "position";
     }
     return "unknown";
 }
@@ -26,7 +27,8 @@ const char* toolTypeName(ToolType type) {
 core::Result<ToolType> toolTypeFromName(const std::string& name) {
     for (const ToolType type : {ToolType::Caliper, ToolType::Circle, ToolType::PointToLine,
                                 ToolType::EdgeFlaw, ToolType::Blob, ToolType::Ruler,
-                                ToolType::LineToLine, ToolType::Angle, ToolType::PolyBlob}) {
+                                ToolType::LineToLine, ToolType::Angle, ToolType::PolyBlob,
+                                ToolType::Position}) {
         if (name == toolTypeName(type)) {
             return core::Result<ToolType>::ok(type);
         }
@@ -76,6 +78,12 @@ const char* toolTypeDescription(ToolType type) {
                    "libre. Haz clic para ir marcando los vértices del polígono y\n"
                    "cierra haciendo clic sobre el primero. Igual que el Blob pero\n"
                    "para zonas irregulares que un rectángulo no cubre bien.";
+        case ToolType::Position:
+            return "Posición — vigila DÓNDE cae un rasgo respecto al cero del tablero\n"
+                   "de referencia (Ver ▸ Tablero). Marca el rasgo con un clic-arrastre;\n"
+                   "se mide su desviación (radial, en X o en Y) y se compara con las\n"
+                   "tolerancias. Con el cero en la pieza la desviación es fija: usa el\n"
+                   "centro de la imagen o un punto fijado para que signifique algo.";
     }
     return "";
 }
@@ -93,6 +101,12 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
             // Desviación: la pieza buena define el piso; techo holgado.
             toleranceMin = 0.0;
             toleranceMax = std::max(measured * 1.5, 2.0);
+            return;
+        case ToolType::Position:
+            // Desviación respecto al cero: se admite desde 0 hasta un margen
+            // alrededor de donde cayó la pieza buena.
+            toleranceMin = 0.0;
+            toleranceMax = std::max(measured * 1.25, 5.0);
             return;
         case ToolType::LineToLine:
         case ToolType::Angle: {
@@ -135,8 +149,10 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::LineToLine;
             } else if constexpr (std::is_same_v<T, AngleGeometry>) {
                 return ToolType::Angle;
-            } else {
+            } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
                 return ToolType::PolyBlob;
+            } else {
+                return ToolType::Position;
             }
         },
         geometry);
@@ -172,6 +188,8 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 for (auto& v : g.vertices) {
                     v += delta;
                 }
+            } else if constexpr (std::is_same_v<T, PositionGeometry>) {
+                g.point += delta;
             }
         },
         geometry);
@@ -283,7 +301,7 @@ std::string toJson(const ToolGeometry& geometry) {
                     fs << "vx" << g.vertex.x << "vy" << g.vertex.y << "e0x" << g.end0.x
                        << "e0y" << g.end0.y << "e1x" << g.end1.x << "e1y" << g.end1.y;
                 });
-            } else {
+            } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
                     // Los vértices van como secuencia plana [x0,y0,x1,y1,...].
                     fs << "verts" << "[:";
@@ -292,6 +310,11 @@ std::string toJson(const ToolGeometry& geometry) {
                     }
                     fs << "]";
                     fs << "minArea" << g.minArea << "dark" << (g.darkBlobs ? 1 : 0);
+                });
+            } else {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "px" << g.point.x << "py" << g.point.y << "axis"
+                       << static_cast<int>(g.axis);
                 });
             }
         },
@@ -417,6 +440,19 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 }
                 g.minArea = static_cast<float>(minArea.value());
                 g.darkBlobs = dark.value() != 0.0;
+                return ResultT::ok(g);
+            }
+            case ToolType::Position: {
+                PositionGeometry g;
+                auto px = f("px"), py = f("py");
+                for (const auto* v : {&px, &py}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.point = {static_cast<float>(px.value()), static_cast<float>(py.value())};
+                const int axis = static_cast<int>(reader.numberOr("axis", 0.0));
+                g.axis = (axis == 1)   ? PositionAxis::X
+                         : (axis == 2) ? PositionAxis::Y
+                                       : PositionAxis::Radial;
                 return ResultT::ok(g);
             }
         }

@@ -72,6 +72,12 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    - *Ángulo*: una esquina (vértice + dos lados, en dos pasos) → mide el
      **ángulo interior** en grados (0–180°). Tolerancia en grados; ideal para
      chaflanes y esquinas.
+   - *Posición*: marca un rasgo y vigila **dónde cae respecto al cero del
+     tablero** de referencia (ver más abajo). Mide la desviación radial, solo en
+     X o solo en Y (campo *Eje*: 1/2/3) y la compara con sus tolerancias, así
+     que el tablero pasa a ser criterio OK/NG y no solo ayuda visual. Con el
+     cero *en la propia pieza* la desviación es constante: usa el centro de la
+     imagen o un punto fijado para que mida algo útil.
 
    Los detalles de todas las herramientas incluyen **mm (y cm a partir de
    10 cm)** cuando hay calibración — también el círculo (diámetro, radio y

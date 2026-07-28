@@ -140,6 +140,20 @@ QIcon toolIcon(ToolType type) {
                 p.drawEllipse(QPointF(12, 13), 2.0, 2.0);
                 p.drawEllipse(QPointF(18, 15), 1.6, 1.6);
             });
+        case ToolType::Position:
+            return makeIcon([](QPainter& p, const QColor& c) {
+                // Diana con ejes: "dónde debe caer este rasgo".
+                QPen thin = p.pen();
+                thin.setWidthF(1.2);
+                p.setPen(thin);
+                p.drawLine(14, 3, 14, 25);
+                p.drawLine(3, 14, 25, 14);
+                p.setPen(c);
+                p.setBrush(Qt::NoBrush);
+                p.drawEllipse(QPointF(14, 14), 7.0, 7.0);
+                p.setBrush(c);
+                p.drawEllipse(QPointF(17, 10), 2.0, 2.0);  // rasgo fuera del cero
+            });
     }
     return {};
 }

@@ -69,7 +69,8 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                              const vision::PipelineConfig& pipeline,
                              std::optional<vision::Fixture> previousFixture,
                              double mmPerPixel, inspection::LengthUnit unit,
-                             bool freezePose, double arucoMarkerMm) {
+                             bool freezePose, double arucoMarkerMm,
+                             vision::BoardConfig boardConfig) {
     AnalysisOverlay overlay;
     overlay.frameSize = frame.size();
 
@@ -101,8 +102,15 @@ AnalysisOverlay buildOverlay(const QImage& frame,
             overlay.centroid = QPointF(previousFixture->origin.x, previousFixture->origin.y);
             overlay.angleDeg = previousFixture->angleDeg;
             if (!tools.empty()) {
+                // El tablero se resuelve con el mismo fixture con el que se
+                // miden las herramientas, para que la lectura de Posición
+                // coincida con lo que el operador ve dibujado.
+                const vision::BoardFrame board = vision::resolveBoardFrame(
+                    boardConfig, *previousFixture, true,
+                    cv::Size(image.cols, image.rows));
                 overlay.toolResults = inspection::runTools(image, *previousFixture, tools,
-                                                           mmPerPixel, unit, imageToMm);
+                                                           mmPerPixel, unit, imageToMm,
+                                                           &board);
             }
             return overlay;
         }
@@ -156,8 +164,10 @@ AnalysisOverlay buildOverlay(const QImage& frame,
         overlay.angleDeg = analysis.value().fixture.angleDeg;
         overlay.normalized = camera::matToQImage(analysis.value().normalized);
         if (!tools.empty()) {
+            const vision::BoardFrame board = vision::resolveBoardFrame(
+                boardConfig, analysis.value().fixture, true, cv::Size(image.cols, image.rows));
             overlay.toolResults = inspection::runTools(image, analysis.value().fixture, tools,
-                                                       mmPerPixel, unit, imageToMm);
+                                                       mmPerPixel, unit, imageToMm, &board);
         }
     } catch (const std::exception& e) {
         overlay.valid = false;
@@ -182,6 +192,7 @@ QString toolTypeLabel(inspection::ToolType type) {
         case inspection::ToolType::LineToLine: return QStringLiteral("Línea-Línea");
         case inspection::ToolType::Angle: return QStringLiteral("Ángulo");
         case inspection::ToolType::PolyBlob: return QStringLiteral("Blob poligonal");
+        case inspection::ToolType::Position: return QStringLiteral("Posición");
     }
     return QStringLiteral("?");
 }
@@ -297,7 +308,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
           inspection::ToolType::PointToLine, inspection::ToolType::EdgeFlaw,
           inspection::ToolType::Blob, inspection::ToolType::Ruler,
           inspection::ToolType::LineToLine, inspection::ToolType::Angle,
-          inspection::ToolType::PolyBlob}) {
+          inspection::ToolType::PolyBlob, inspection::ToolType::Position}) {
         auto* button = addMode(toolTypeLabel(type), static_cast<int>(type));
         button->setIcon(inspection::toolIcon(type));
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -590,6 +601,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     }
     video_->setBoardVisible(boardVisible_);
     video_->setBoardConfig(boardConfig_);
+    if (repos_.engine != nullptr) {
+        repos_.engine->setBoardConfig(boardConfig_);
+    }
     updateBoardReadout();
 
     buildMenuBar();  // crea las acciones de menú (incluidas unidad y contorno)
@@ -929,6 +943,7 @@ void MainWindow::buildShortcuts() {
         {"tool_line_to_line", inspection::ToolType::LineToLine, Qt::Key_7},
         {"tool_angle", inspection::ToolType::Angle, Qt::Key_8},
         {"tool_poly_blob", inspection::ToolType::PolyBlob, Qt::Key_9},
+        {"tool_position", inspection::ToolType::Position, Qt::Key_0},
     };
     for (const auto& entry : toolKeys) {
         const int id = static_cast<int>(entry.type);
@@ -1311,9 +1326,10 @@ void MainWindow::maybeStartAnalysis() {
     analysisWatcher_.setFuture(QtConcurrent::run(
         [frame, anchor, offset = currentOrientationOffset_, configs = std::move(configs),
          pipeline = pipelineConfig_, previous = liveFixture_,
-         mm = calibration_.mmPerPixel, unit = currentUnit(), freeze, markerMm] {
+         mm = calibration_.mmPerPixel, unit = currentUnit(), freeze, markerMm,
+         board = boardConfig_] {
             return buildOverlay(frame, anchor, offset, configs, pipeline, previous, mm, unit,
-                                freeze, markerMm);
+                                freeze, markerMm, board);
         }));
 }
 
@@ -1389,9 +1405,12 @@ void MainWindow::onLiveToolCreated(const inspection::ToolGeometry& geometry) {
     // ese valor: la pieza buena define su propio rango de aceptación.
     QString hint;
     if (liveFixture_.has_value() && !lastFrame_.isNull()) {
+        // Mismo tablero que está dibujado: si la herramienta es de Posición, la
+        // tolerancia sugerida se calcula respecto al cero que el operador ve.
+        const vision::BoardFrame board = video_->boardFrame();
         const auto result =
             inspection::runTool(camera::qImageToMat(lastFrame_), *liveFixture_, tool.config,
-                                calibration_.mmPerPixel);
+                                calibration_.mmPerPixel, currentUnit(), cv::Mat(), &board);
         if (result.isOk() && !result.value().detail.empty() &&
             (result.value().ok || result.value().measured > 0.0)) {
             inspection::suggestTolerances(tool.config.type, result.value().measured,
@@ -1581,6 +1600,11 @@ void MainWindow::onBoardOriginChanged(QAction* action) {
 }
 
 void MainWindow::persistBoardConfig() {
+    // El motor de inspección juzga las herramientas de Posición con este mismo
+    // tablero: si no se le pasa, el veredicto no coincidiría con lo que se ve.
+    if (repos_.engine != nullptr) {
+        repos_.engine->setBoardConfig(boardConfig_);
+    }
     if (repos_.settings == nullptr) {
         return;
     }
@@ -1648,7 +1672,9 @@ void MainWindow::onLiveSelectionChanged(int index) {
         liveTools_[static_cast<std::size_t>(index)].config.type !=
             inspection::ToolType::Angle &&
         liveTools_[static_cast<std::size_t>(index)].config.type !=
-            inspection::ToolType::PolyBlob);
+            inspection::ToolType::PolyBlob &&
+        liveTools_[static_cast<std::size_t>(index)].config.type !=
+            inspection::ToolType::Position);
     if (!valid) {
         return;
     }
@@ -1671,6 +1697,15 @@ void MainWindow::onLiveSelectionChanged(int index) {
             } else if constexpr (std::is_same_v<T, inspection::BlobGeometry>) {
                 liveParamLabel_->setText(tr("Área mín:"));
                 liveParamSpin_->setValue(static_cast<int>(g.minArea));
+                liveParamSpin_->setEnabled(true);
+            } else if constexpr (std::is_same_v<T, inspection::PositionGeometry>) {
+                liveParamLabel_->setText(tr("Eje:"));
+                liveParamSpin_->setToolTip(
+                    tr("Eje sobre el que se juzga la desviación:\n"
+                       "1 = radial (distancia al cero)\n"
+                       "2 = solo X\n"
+                       "3 = solo Y"));
+                liveParamSpin_->setValue(static_cast<int>(g.axis) + 1);
                 liveParamSpin_->setEnabled(true);
             }
             // Punto-Línea no tiene parámetro de muestreo editable.
@@ -1695,6 +1730,10 @@ void MainWindow::onLiveParamChanged(int value) {
                 g.scanCount = value;
             } else if constexpr (std::is_same_v<T, inspection::BlobGeometry>) {
                 g.minArea = static_cast<float>(value);
+            } else if constexpr (std::is_same_v<T, inspection::PositionGeometry>) {
+                g.axis = (value == 2)   ? inspection::PositionAxis::X
+                         : (value == 3) ? inspection::PositionAxis::Y
+                                        : inspection::PositionAxis::Radial;
             }
         },
         liveTools_[static_cast<std::size_t>(index)].geometry);

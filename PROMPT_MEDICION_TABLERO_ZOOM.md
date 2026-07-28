@@ -249,7 +249,7 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
   la ventana principal; el diálogo del editor de plantilla no tiene barra de
   menú y de momento se queda sin él.
 
-- [ ] **T5 — Herramienta "Posición" (`ToolType::Position`)**. Herramienta nueva
+- [x] **T5 — Herramienta "Posición" (`ToolType::Position`)**. HECHO. Herramienta nueva
   siguiendo el patrón ya establecido (T1–T6 del backlog anterior): marca un
   punto/rasgo y **mide su desviación respecto al origen del tablero** (dx, dy o
   radio+ángulo, elegible), con tolerancias propias. Es lo que convierte el
@@ -258,6 +258,24 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
   Archivos: `inspection_editor/tools/tool_{types,geometry}.*`,
   `execution/tool_executor.*`, `canvas/{editor_canvas,tool_icons}.cpp`,
   `ui/main_window.cpp` (botón + atajo).
+
+  **Cómo quedó**: `PositionGeometry{point, axis}` con `PositionAxis{Radial, X,
+  Y}`; el punto vive en coordenadas de pieza (viaja con ella) y en cada frame se
+  lleva a la imagen y se lee contra el tablero. `measured` = radio, |dx| o |dy|
+  según el eje, así que las tolerancias de siempre (mín/máx) ya sirven de
+  criterio OK/NG. Botón, icono de diana, atajo **0** y también modo en el editor
+  de plantilla; el spin de parámetro pasa a ser el eje (1 radial / 2 X / 3 Y).
+  **Decisión de contrato**: `runTool`/`runTools` reciben ahora un
+  `const vision::BoardFrame*` opcional. Lo resuelven el análisis en vivo
+  (`buildOverlay`), la sugerencia de tolerancias al crear la herramienta y
+  **también `InspectionEngine`** (nuevo `EngineOptions::board` +
+  `setBoardConfig`, que `MainWindow` mantiene sincronizado): si el motor no
+  recibiera el mismo tablero, el veredicto no coincidiría con la lectura en
+  vivo. Sin tablero se cae a un cero en la propia pieza con ejes de la imagen.
+  **Honestidad sobre su alcance**: con el cero *en la pieza* la desviación de un
+  rasgo anclado es constante; la descripción de la herramienta lo dice y
+  recomienda centro de imagen o punto fijado. 3 tests nuevos (149/149) y render
+  offscreen para comprobar el dibujo (diana + línea punteada al cero).
 
 ### M. Modos de medición y registro
 

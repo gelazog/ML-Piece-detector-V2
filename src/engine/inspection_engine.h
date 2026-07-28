@@ -12,6 +12,7 @@
 #include "repositories/inspection_repository.h"
 #include "repositories/piece_repository.h"
 #include "repositories/tool_repository.h"
+#include "vision/board_frame.h"
 #include "vision/pipeline.h"
 #include "vision/types.h"
 
@@ -24,6 +25,10 @@ struct EngineOptions {
     double mmPerPixel = 0.0;          // escala calibrada para los detalles
     inspection::LengthUnit unit = inspection::LengthUnit::Auto;
     std::string templateName = "principal";  // plantilla de herramientas activa
+    // Tablero de referencia con el que se juzgan las herramientas de Posición.
+    // Debe ser el mismo que ve el operador para que la inspección coincida con
+    // la lectura en vivo.
+    vision::BoardConfig board;
 };
 
 // Miniatura JPEG cuadrada de una imagen (BGR o gris); vacía si la imagen lo es.
@@ -70,6 +75,7 @@ public:
     void setTemplateName(const std::string& name) { options_.templateName = name; }
     // Sensibilidad de anomalía de apariencia (Preferencias, O1).
     void setKSigma(double kSigma) { options_.kSigma = kSigma; }
+    void setBoardConfig(const vision::BoardConfig& board) { options_.board = board; }
 
 private:
     EmbedFn embedFn_;

@@ -608,3 +608,78 @@ TEST(RunTools, CorruptToolBecomesNgNotCrash) {
     EXPECT_FALSE(results[0].ok);
     EXPECT_FALSE(results[0].detail.empty());
 }
+
+// --- Herramienta Posición (T5) ---
+
+TEST(ToolExecutor, PositionMeasuresDeviationFromBoardZero) {
+    const cv::Mat gray(240, 320, CV_8UC1, cv::Scalar(128));
+    // Fixture identidad: el rasgo marcado cae tal cual en la imagen.
+    const PositionGeometry geometry{{190.0F, 90.0F}, PositionAxis::Radial};
+    ToolConfig config = makeConfig(ToolType::Position, ToolGeometry(geometry), 0.0, 100.0);
+
+    // Tablero con el cero en el centro de la imagen (160, 120): el rasgo queda
+    // 30 px a la derecha y 30 px por encima -> radio 42.43, ángulo +45°.
+    pci::vision::BoardConfig boardConfig;
+    boardConfig.origin = pci::vision::BoardOrigin::ImageCenter;
+    const pci::vision::BoardFrame board =
+        pci::vision::resolveBoardFrame(boardConfig, kIdentity, true, cv::Size(320, 240));
+
+    auto radial = runTool(gray, kIdentity, config, 0.0, LengthUnit::Auto, cv::Mat(), &board);
+    ASSERT_TRUE(radial.isOk());
+    EXPECT_NEAR(radial.value().measured, std::hypot(30.0, 30.0), 1e-6);
+    EXPECT_TRUE(radial.value().ok);  // dentro de [0, 100]
+
+    // Por eje: solo X y solo Y valen 30 px cada uno.
+    config.geometryJson = toJson(ToolGeometry(PositionGeometry{{190.0F, 90.0F}, PositionAxis::X}));
+    auto onlyX = runTool(gray, kIdentity, config, 0.0, LengthUnit::Auto, cv::Mat(), &board);
+    ASSERT_TRUE(onlyX.isOk());
+    EXPECT_NEAR(onlyX.value().measured, 30.0, 1e-6);
+
+    config.geometryJson = toJson(ToolGeometry(PositionGeometry{{190.0F, 90.0F}, PositionAxis::Y}));
+    auto onlyY = runTool(gray, kIdentity, config, 0.0, LengthUnit::Auto, cv::Mat(), &board);
+    ASSERT_TRUE(onlyY.isOk());
+    EXPECT_NEAR(onlyY.value().measured, 30.0, 1e-6);
+
+    // Fuera de tolerancia: la misma desviación con un techo de 10 px es NG.
+    config.toleranceMax = 10.0;
+    auto tight = runTool(gray, kIdentity, config, 0.0, LengthUnit::Auto, cv::Mat(), &board);
+    ASSERT_TRUE(tight.isOk());
+    EXPECT_FALSE(tight.value().ok);
+}
+
+TEST(ToolExecutor, PositionWithoutBoardFallsBackToPieceCenter) {
+    const cv::Mat gray(240, 320, CV_8UC1, cv::Scalar(128));
+    // Pieza centrada en (100, 100); el rasgo está 40 px a su derecha.
+    const Fixture fixture{{100.0F, 100.0F}, 0.0};
+    const PositionGeometry geometry{{40.0F, 0.0F}, PositionAxis::Radial};
+    const ToolConfig config =
+        makeConfig(ToolType::Position, ToolGeometry(geometry), 0.0, 100.0);
+
+    auto result = runTool(gray, fixture, config);  // sin tablero explícito
+    ASSERT_TRUE(result.isOk());
+    EXPECT_NEAR(result.value().measured, 40.0, 1e-6);
+    // El overlay une el cero con el rasgo, para poder pintarlo.
+    ASSERT_EQ(result.value().overlayPoints.size(), 2U);
+    EXPECT_FLOAT_EQ(result.value().overlayPoints[0].x, 100.0F);
+    EXPECT_FLOAT_EQ(result.value().overlayPoints[1].x, 140.0F);
+}
+
+TEST(ToolGeometry, PositionRoundTripAndAxisDefault) {
+    const PositionGeometry position{{12.5F, -8.25F}, PositionAxis::Y};
+    auto back = geometryFromJson(ToolType::Position, toJson(ToolGeometry(position)));
+    ASSERT_TRUE(back.isOk());
+    EXPECT_FLOAT_EQ(std::get<PositionGeometry>(back.value()).point.x, 12.5F);
+    EXPECT_FLOAT_EQ(std::get<PositionGeometry>(back.value()).point.y, -8.25F);
+    EXPECT_EQ(std::get<PositionGeometry>(back.value()).axis, PositionAxis::Y);
+
+    // JSON sin "axis" (formato anterior a esta herramienta): radial por defecto.
+    auto legacy = geometryFromJson(ToolType::Position, R"({"px":5.0,"py":6.0})");
+    ASSERT_TRUE(legacy.isOk());
+    EXPECT_EQ(std::get<PositionGeometry>(legacy.value()).axis, PositionAxis::Radial);
+
+    // Traslación: el punto se mueve con la herramienta.
+    ToolGeometry moved = ToolGeometry(position);
+    translateGeometry(moved, {2.0F, 3.0F});
+    EXPECT_FLOAT_EQ(std::get<PositionGeometry>(moved).point.x, 14.5F);
+    EXPECT_FLOAT_EQ(std::get<PositionGeometry>(moved).point.y, -5.25F);
+}

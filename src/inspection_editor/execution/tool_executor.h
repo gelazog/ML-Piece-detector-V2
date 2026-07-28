@@ -10,6 +10,7 @@
 #include "core/result.h"
 #include "inspection_editor/tools/tool_geometry.h"
 #include "inspection_editor/tools/tool_types.h"
+#include "vision/board_frame.h"
 #include "vision/types.h"
 
 namespace pci::inspection {
@@ -41,10 +42,16 @@ struct ToolRunResult {
 // calculan los mm mapeando sus puntos por la homografía (corrige la perspectiva
 // lejos del marcador) en vez de multiplicar píxeles por una escala constante.
 // El valor principal `measured` sigue en píxeles (las tolerancias son en px).
+//
+// board (opcional): tablero de referencia ya resuelto para este frame. Solo lo
+// usa la herramienta Posición, que mide respecto a su cero. Si no se pasa, se
+// asume un tablero centrado en la propia pieza y alineado con la imagen (en ese
+// caso la desviación de un rasgo es constante: ver toolTypeDescription).
 core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture& fixture,
                                     const ToolConfig& config, double mmPerPixel = 0.0,
                                     LengthUnit unit = LengthUnit::Auto,
-                                    const cv::Mat& imageToMm = cv::Mat());
+                                    const cv::Mat& imageToMm = cv::Mat(),
+                                    const vision::BoardFrame* board = nullptr);
 
 // Ejecuta todas las herramientas habilitadas; nunca lanza. Los errores de
 // configuración se convierten en resultados NG con el motivo en detail.
@@ -52,7 +59,8 @@ std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture&
                                     const std::vector<ToolConfig>& tools,
                                     double mmPerPixel = 0.0,
                                     LengthUnit unit = LengthUnit::Auto,
-                                    const cv::Mat& imageToMm = cv::Mat());
+                                    const cv::Mat& imageToMm = cv::Mat(),
+                                    const vision::BoardFrame* board = nullptr);
 
 // Formatea una longitud en píxeles según la escala y la unidad elegida.
 std::string formatLength(double px, double mmPerPixel, LengthUnit unit);

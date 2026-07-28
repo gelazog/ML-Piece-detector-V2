@@ -101,8 +101,15 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
         core::logWarning("No se pudieron cargar las herramientas: " +
                          listed.error().message);
     }
-    outcome.toolResults = inspection::runTools(
-        frameBgr, outcome.analysis.fixture, toolConfigs, options_.mmPerPixel, options_.unit);
+    // El tablero se resuelve con el fixture de ESTA inspección: las
+    // herramientas de Posición se juzgan contra el mismo cero que ve el
+    // operador en vivo.
+    const vision::BoardFrame board = vision::resolveBoardFrame(
+        options_.board, outcome.analysis.fixture, true,
+        cv::Size(frameBgr.cols, frameBgr.rows));
+    outcome.toolResults =
+        inspection::runTools(frameBgr, outcome.analysis.fixture, toolConfigs,
+                             options_.mmPerPixel, options_.unit, cv::Mat(), &board);
 
     std::vector<domain::ToolCheck> toolChecks;
     toolChecks.reserve(outcome.toolResults.size());

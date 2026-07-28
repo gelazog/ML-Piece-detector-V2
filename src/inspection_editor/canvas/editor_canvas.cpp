@@ -45,6 +45,7 @@ QColor toolColor(ToolType type) {
         case ToolType::LineToLine: return {120, 220, 220};
         case ToolType::Angle: return {255, 170, 60};
         case ToolType::PolyBlob: return {200, 120, 255};
+        case ToolType::Position: return {255, 80, 80};
     }
     return Qt::white;
 }
@@ -81,6 +82,8 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
                 return {g.vertex, g.end0, g.end1};
             } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
                 return g.vertices;
+            } else if constexpr (std::is_same_v<T, PositionGeometry>) {
+                return {g.point};
             } else {
                 return {g.lineA, g.lineB};
             }
@@ -111,6 +114,8 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
             } else if constexpr (std::is_same_v<T, BlobGeometry>) {
                 return {g.center,
                         g.center + cv::Point2f(g.width / 2.0F, g.height / 2.0F)};
+            } else if constexpr (std::is_same_v<T, PositionGeometry>) {
+                return {g.point};  // una sola manija: el rasgo marcado
             } else {  // PolyBlobGeometry
                 return g.vertices;
             }
@@ -165,6 +170,8 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
                     g.width = std::max(8.0F, 2.0F * std::abs(q.x - g.center.x));
                     g.height = std::max(8.0F, 2.0F * std::abs(q.y - g.center.y));
                 }
+            } else if constexpr (std::is_same_v<T, PositionGeometry>) {
+                g.point = q;
             } else {  // PolyBlobGeometry
                 if (handle >= 0 && handle < static_cast<int>(g.vertices.size())) {
                     g.vertices[static_cast<std::size_t>(handle)] = q;
@@ -581,6 +588,8 @@ int EditorCanvas::hitTest(const cv::Point2f& p) const {
                         d = std::min(d, distanceToSegment(p, toImg(g.vertices[k]),
                                                           toImg(g.vertices[(k + 1) % n])));
                     }
+                } else if constexpr (std::is_same_v<T, PositionGeometry>) {
+                    d = cv::norm(p - toImg(g.point));  // un punto: distancia directa
                 }
             },
             tool.geometry);
@@ -979,6 +988,11 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         case ToolType::Ruler:
             geometry = RulerGeometry{a, b};
             break;
+        case ToolType::Position:
+            // Un solo punto: se marca donde empieza el trazo (el arrastre solo
+            // sirve para confirmar; el extremo no aporta nada aquí).
+            geometry = PositionGeometry{a, PositionAxis::Radial};
+            break;
         case ToolType::Blob: {
             BlobGeometry g;
             g.center = (a + b) / 2.0F;
@@ -1107,6 +1121,24 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 }
                 painter.drawPolygon(poly);
                 labelPos = poly.boundingRect().topLeft() + QPointF(2, -4);
+            } else if constexpr (std::is_same_v<T, PositionGeometry>) {
+                // Diana sobre el rasgo vigilado y línea punteada hasta el cero
+                // del tablero: se ve de un vistazo QUÉ desviación se está
+                // midiendo y respecto a qué origen.
+                const QPointF p = imageToWidget(toImg(g.point));
+                painter.drawEllipse(p, 7.0, 7.0);
+                painter.drawLine(p + QPointF(-11, 0), p + QPointF(11, 0));
+                painter.drawLine(p + QPointF(0, -11), p + QPointF(0, 11));
+                if (boardVisible_) {
+                    const vision::BoardFrame board = boardFrame();
+                    const QPointF zero = imageToWidget(board.origin);
+                    QPen link = painter.pen();
+                    link.setStyle(Qt::DashLine);
+                    link.setWidthF(1.2);
+                    painter.setPen(link);
+                    painter.drawLine(zero, p);
+                }
+                labelPos = p + QPointF(8, -10);
             }
         },
         tool.geometry);

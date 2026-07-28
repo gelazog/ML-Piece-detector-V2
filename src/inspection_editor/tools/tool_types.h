@@ -16,7 +16,8 @@ enum class ToolType {
     Ruler,
     LineToLine,
     Angle,
-    PolyBlob
+    PolyBlob,
+    Position
 };
 
 const char* toolTypeName(ToolType type);
