@@ -121,6 +121,10 @@ private:
     void applyMeasurement(const repositories::PieceMeasurement& measurement);
     void loadMeasurementForSelectedPiece();
     void updateModeChip();  // etiqueta del modo activo (M3)
+    [[nodiscard]] int positionToolCount() const;
+    // Avisa si cambiar el cero deja las herramientas de Posición midiendo otra
+    // cosa (sus tolerancias se sugirieron respecto al origen anterior).
+    void warnIfPositionToolsAffected(vision::BoardOrigin previousOrigin);
     void buildMenuBar();
     void buildShortcuts();
     void commitUndoState();

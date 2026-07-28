@@ -5,6 +5,7 @@
 #include "repositories/piece_repository.h"
 
 class QCheckBox;
+class QLabel;
 class QRadioButton;
 
 namespace pci::ui {
@@ -31,6 +32,7 @@ private:
     QRadioButton* originImage_ = nullptr;
     QRadioButton* originFixed_ = nullptr;
     QCheckBox* followAngle_ = nullptr;
+    QLabel* warning_ = nullptr;  // aviso de la combinación que no mide posición
     // El punto fijado no se teclea aquí: se marca con un clic sobre la imagen
     // (Ver ▸ Origen del tablero ▸ Punto fijado a mano…). Se conserva tal cual.
     cv::Point2f fixedPoint_{0.0F, 0.0F};

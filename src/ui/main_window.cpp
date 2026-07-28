@@ -1644,6 +1644,33 @@ void MainWindow::updateModeChip() {
                           tr("\n\nSe cambia en Pieza ▸ Modo de medición…"));
 }
 
+// Herramientas de Posición dibujadas ahora mismo. Sus tolerancias se sugieren
+// respecto al cero del tablero, así que cambiar el origen las deja midiendo
+// otra cosa: hay que avisar en vez de invalidarlas en silencio (revisión de
+// diseño previa a M4).
+int MainWindow::positionToolCount() const {
+    int count = 0;
+    for (const auto& tool : liveTools_) {
+        if (!tool.deleted && tool.config.type == inspection::ToolType::Position) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+void MainWindow::warnIfPositionToolsAffected(vision::BoardOrigin previousOrigin) {
+    const int count = positionToolCount();
+    if (count == 0 || previousOrigin == boardConfig_.origin) {
+        return;
+    }
+    QMessageBox::information(
+        this, tr("El cero del tablero ha cambiado"),
+        tr("Hay %n herramienta(s) de Posición dibujada(s). Sus tolerancias se "
+           "calcularon respecto al cero anterior, así que ahora miden otra cosa: "
+           "revísalas (o vuelve a crearlas) antes de dar por buena la inspección.",
+           nullptr, count));
+}
+
 void MainWindow::loadMeasurementForSelectedPiece() {
     const std::int64_t pieceId = selectedPieceId();
     if (pieceId < 0 || repos_.pieces == nullptr) {
@@ -1664,8 +1691,10 @@ void MainWindow::onMeasurementModeClicked() {
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
+    const vision::BoardOrigin previousOrigin = boardConfig_.origin;
     applyMeasurement(dialog.measurement());
     persistBoardConfig();  // guarda en la pieza (si hay) y en el ajuste global
+    warnIfPositionToolsAffected(previousOrigin);
 
     const QString modeName = QString::fromUtf8(domain::modeLabel(measurementMode_));
     statusBar()->showMessage(
@@ -1680,10 +1709,12 @@ void MainWindow::onBoardOriginChanged(QAction* action) {
     if (action == nullptr) {
         return;
     }
+    const vision::BoardOrigin previousOrigin = boardConfig_.origin;
     boardConfig_.origin = static_cast<vision::BoardOrigin>(action->data().toInt());
     video_->setBoardConfig(boardConfig_);
     persistBoardConfig();
     updateBoardReadout();
+    warnIfPositionToolsAffected(previousOrigin);
     if (boardConfig_.origin == vision::BoardOrigin::FixedPoint) {
         // El punto se marca con el ratón; el canvas sale del modo al primer clic.
         boardPointPick_ = true;

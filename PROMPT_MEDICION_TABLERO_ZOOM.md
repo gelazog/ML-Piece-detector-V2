@@ -366,12 +366,36 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
 
 ### G. Cierre de la ronda
 
-- [ ] **G-A — Revisión de diseño antes de M4**. Antes de cerrar el bloque M,
+- [x] **G-A — Revisión de diseño antes de M4**. HECHO. Antes de cerrar el bloque M,
   pasar el diseño de los dos modos por `grill-me` (desafiar supuestos: ¿qué pasa
   con piezas simétricas? ¿el tablero se ancla a la imagen o a la pieza? ¿qué ve
   el operador si cambia de modo con herramientas ya dibujadas?) y por
   `qt-cpp-review` los widgets nuevos.
   Skills: `grill-me`, `qt-cpp-review`.
+
+  **Nota de método**: la skill `grill-me` es una *entrevista* con
+  `disable-model-invocation: true` — la lanza el usuario, no el agente. La
+  revisión se hizo igualmente, respondiendo a las tres preguntas del plan, y
+  **dos hallazgos se corrigieron en el acto**:
+
+  1. *¿Qué pasa con piezas simétricas?* Con «ejes girados con la pieza», el
+     ángulo del fixture puede saltar 180° en piezas simétricas y la desviación
+     angular daría ±180 espurios. Ya hay tres mitigaciones en el proyecto
+     (rasgo distintivo, `FixtureStabilizer` y la anisotropía del fixture), pero
+     **`buildOverlay` construye `liveFixture_` sin propagar `anisotropy`**, así
+     que la UI no puede saber si el ángulo es de fiar. → **Pendiente para M4**:
+     propagar la anisotropía y no aplicar la tolerancia angular cuando el eje no
+     está definido, en vez de dar NG falsos.
+  2. *¿El tablero se ancla a la imagen o a la pieza?* Es elegible, pero la
+     combinación **Especial + cero en la pieza no mide desviación de posición**
+     (es 0 por definición). → **CORREGIDO**: el diálogo de modo muestra un aviso
+     naranja en cuanto se elige esa combinación, explicando qué usar en su lugar.
+  3. *¿Qué ve el operador si cambia de modo con herramientas ya dibujadas?* Las
+     herramientas siguen midiendo, pero las de **Posición** tenían tolerancias
+     sugeridas respecto al cero anterior: al cambiar el origen medirían otra cosa
+     **en silencio**. → **CORREGIDO**: al cambiar el origen (desde el diálogo o
+     desde Ver ▸ Origen del tablero) se avisa con un cuadro de diálogo indicando
+     cuántas herramientas de Posición hay que revisar.
 
 - [ ] **G-B — README + memoria + limpieza**. Documentar zoom, tablero y modos en
   el README (sección de uso, con los atajos), y una pasada de coherencia sobre

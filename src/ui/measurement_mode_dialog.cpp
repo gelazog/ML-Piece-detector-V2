@@ -73,8 +73,22 @@ MeasurementModeDialog::MeasurementModeDialog(const repositories::PieceMeasuremen
     boardLayout->addWidget(followAngle_);
     root->addWidget(boardBox);
 
-    connect(realRadio_, &QRadioButton::toggled, this,
-            [this](bool) { syncBoardEnabled(); });
+    // Aviso de la combinación que no mide nada (hallazgo de la revisión de
+    // diseño): Especial + cero en la propia pieza deja la desviación en 0 por
+    // definición, así que el modo no aportaría reglas de posición.
+    warning_ = new QLabel(this);
+    warning_->setWordWrap(true);
+    warning_->setStyleSheet(QStringLiteral("color:#ffb454;"));
+    warning_->setText(
+        tr("⚠ Con el cero en el centro de la pieza, su desviación es cero por "
+           "definición: el modo Especial solo aportará el giro. Para vigilar el "
+           "centrado, usa el centro de la imagen o un punto fijado a mano."));
+    root->addWidget(warning_);
+
+    connect(realRadio_, &QRadioButton::toggled, this, [this](bool) { syncBoardEnabled(); });
+    for (auto* radio : {originPiece_, originImage_, originFixed_}) {
+        connect(radio, &QRadioButton::toggled, this, [this](bool) { syncBoardEnabled(); });
+    }
     syncBoardEnabled();
 
     auto* buttons =
@@ -94,6 +108,7 @@ void MeasurementModeDialog::syncBoardEnabled() {
                             static_cast<QWidget*>(followAngle_)}) {
         widget->setEnabled(special);
     }
+    warning_->setVisible(special && originPiece_->isChecked());
 }
 
 repositories::PieceMeasurement MeasurementModeDialog::measurement() const {
