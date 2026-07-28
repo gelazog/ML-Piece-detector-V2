@@ -129,7 +129,8 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    Con el tablero encendido aparece además una **lectura continua** sobre el
    vídeo: `dx`, `dy`, radio y giro de la pieza respecto al cero. Si el cero está
    en la propia pieza, la desviación es cero por definición y solo se muestra el
-   giro.
+   giro. Y al pasar el ratón por encima, un recuadro muestra las **coordenadas
+   del punto bajo el cursor** en ese mismo sistema centrado.
 
    **Snap al borde al dibujar**: mientras trazas un Caliper, Regla o Borde liso,
    un marcador amarillo resalta el borde detectado más cercano al cursor (usa la

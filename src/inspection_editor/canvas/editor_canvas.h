@@ -127,6 +127,7 @@ protected:
     void mouseDoubleClickEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
+    void leaveEvent(QEvent* event) override;
 
 private:
     // Encuadre base (imagen ajustada a la ventana, sin zoom ni desplazamiento).
@@ -159,6 +160,8 @@ private:
     void paintCreationPreview(QPainter& painter) const;
     void paintLiveOverlay(QPainter& painter) const;
     void paintBoard(QPainter& painter) const;
+    // Valor del tablero (px de imagen) en la unidad activa, compacto.
+    [[nodiscard]] QString boardValueText(double px, bool signPrefix) const;
     [[nodiscard]] bool interactive() const;
     [[nodiscard]] bool isSelected(int index) const;
     void finishMarquee(const cv::Point2f& releasePoint);
@@ -187,6 +190,8 @@ private:
     // Tablero de referencia (T2): visibilidad y elección de origen/ejes.
     bool boardVisible_ = false;
     vision::BoardConfig boardConfig_;
+    // Cursor sobre el lienzo (T4): solo se sigue con el tablero encendido.
+    std::optional<QPointF> cursorWidget_;
 
     bool creating_ = false;
     bool moving_ = false;

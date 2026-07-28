@@ -311,7 +311,35 @@ bool EditorCanvas::isSelected(int index) const {
 
 void EditorCanvas::setBoardVisible(bool visible) {
     boardVisible_ = visible;
+    // El seguimiento del ratón solo hace falta para la lectura del cursor (T4):
+    // se enciende con el tablero y se apaga con él, para no repintar de más en
+    // el modo vivo.
+    setMouseTracking(visible);
+    if (!visible) {
+        cursorWidget_.reset();
+    }
     update();
+}
+
+void EditorCanvas::leaveEvent(QEvent* event) {
+    cursorWidget_.reset();  // sin cursor sobre el lienzo no hay lectura que dar
+    if (boardVisible_) {
+        update();
+    }
+    QWidget::leaveEvent(event);
+}
+
+QString EditorCanvas::boardValueText(double px, bool signPrefix) const {
+    QString text;
+    if (mmPerPixel_ > 0.0 && unit_ != LengthUnit::Pixels) {
+        const double mm = px * mmPerPixel_;
+        text = (unit_ == LengthUnit::Centimeters)
+                   ? QStringLiteral("%1 cm").arg(mm / 10.0, 0, 'f', 2)
+                   : QStringLiteral("%1 mm").arg(mm, 0, 'f', 1);
+    } else {
+        text = QStringLiteral("%1 px").arg(px, 0, 'f', 0);
+    }
+    return (signPrefix && px > 0.0) ? QStringLiteral("+") + text : text;
 }
 
 void EditorCanvas::setBoardConfig(const vision::BoardConfig& config) {
@@ -711,6 +739,13 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
 }
 
 void EditorCanvas::mouseMoveEvent(QMouseEvent* event) {
+    // Coordenadas bajo el cursor (T4). El seguimiento del ratón solo está
+    // activo con el tablero encendido, así que fuera de ese modo esto no
+    // añade repintados.
+    if (boardVisible_ && !image_.isNull()) {
+        cursorWidget_ = event->position();
+        update();
+    }
     if (panning_) {
         pan_ = clampedPan(panStartOffset_ + (event->position() - panStartWidget_));
         update();
@@ -1278,18 +1313,7 @@ void EditorCanvas::paintBoard(QPainter& painter) const {
 
     // Etiqueta compacta: la de las herramientas (formatLength) añade el
     // equivalente en px entre paréntesis y aquí satura la grilla.
-    const auto tickLabel = [this](double valuePx) {
-        QString text;
-        if (mmPerPixel_ > 0.0 && unit_ != LengthUnit::Pixels) {
-            const double mm = valuePx * mmPerPixel_;
-            text = (unit_ == LengthUnit::Centimeters)
-                       ? QStringLiteral("%1 cm").arg(mm / 10.0, 0, 'f', 2)
-                       : QStringLiteral("%1 mm").arg(mm, 0, 'f', 1);
-        } else {
-            text = QStringLiteral("%1 px").arg(valuePx, 0, 'f', 0);
-        }
-        return (valuePx > 0.0 ? QStringLiteral("+") : QString()) + text;
-    };
+    const auto tickLabel = [this](double valuePx) { return boardValueText(valuePx, true); };
     // Posición de los ejes en pantalla, para colgar de ellos las etiquetas; si
     // el eje queda fuera de la vista, se pegan al borde.
     const QPointF originWidget = imageToWidget(vision::toImagePoint(frame, 0.0, 0.0));
@@ -1371,6 +1395,28 @@ void EditorCanvas::paintBoard(QPainter& painter) const {
         // de la última división de cada eje.
         painter.drawText(edgePoint(dirX) + QPointF(0.0, -8.0), QStringLiteral("+X"));
         painter.drawText(edgePoint(dirY) + QPointF(12.0, 0.0), QStringLiteral("+Y"));
+    }
+
+    // Lectura del punto bajo el cursor en el sistema centrado (T4).
+    if (cursorWidget_.has_value() && view.contains(*cursorWidget_)) {
+        const vision::BoardReading at = vision::readPoint(frame, widgetToImage(*cursorWidget_));
+        const QString text = QStringLiteral("x %1   y %2")
+                                 .arg(boardValueText(at.dx, true), boardValueText(at.dy, true));
+        QRectF box = painter.fontMetrics().boundingRect(text).adjusted(-5.0, -3.0, 5.0, 3.0);
+        box.moveTopLeft(*cursorWidget_ + QPointF(14.0, -box.height() - 8.0));
+        // Si la caja se saldría de la vista, se voltea al otro lado del cursor.
+        if (box.right() > view.right()) {
+            box.moveRight(cursorWidget_->x() - 14.0);
+        }
+        if (box.top() < view.top()) {
+            box.moveTop(cursorWidget_->y() + 16.0);
+        }
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(10, 34, 43, 210));
+        painter.drawRoundedRect(box, 3.0, 3.0);
+        painter.setPen(QColor(160, 225, 255));
+        painter.drawText(box, Qt::AlignCenter, text);
+        painter.setBrush(Qt::NoBrush);
     }
 
     painter.restore();

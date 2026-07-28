@@ -227,12 +227,27 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
   No hizo falta tocar `AnalysisOverlay`: el centroide y el ángulo ya viajaban en
   él y `liveFixture_` ya se construye con ellos.
 
-- [ ] **T4 — Coordenadas bajo el cursor**. Mientras el ratón está sobre el
+- [x] **T4 — Coordenadas bajo el cursor**. HECHO. Mientras el ratón está sobre el
   lienzo con el tablero activo, mostrar las coordenadas del punto en el sistema
   centrado (`x=+12.4 mm  y=−3.1 mm`). Requiere `setMouseTracking(true)` (hoy
   está en `false`) — comprobar que no penaliza el repintado en vivo.
   Skills: `qt-cpp-review`, `systematic-debugging`.
   Archivos: `editor_canvas.{h,cpp}`.
+
+  **Cómo quedó**: recuadro junto al cursor con `x` e `y` en el sistema centrado
+  y en la unidad activa, dibujado al final de `paintBoard` (se voltea al otro
+  lado si se saldría de la vista). **`setMouseTracking` se enciende y se apaga
+  con el tablero**, no de forma permanente: sin tablero no hay ni un repintado
+  extra, y con tablero en vivo el lienzo ya se repinta por frame. `leaveEvent`
+  borra la lectura al salir del lienzo. El formateo compacto de T2 se extrajo a
+  `boardValueText()` y ahora lo comparten la grilla y el cursor. Verificado con
+  el mismo render offscreen inyectando un `QMouseEvent`: con origen en el centro
+  de la imagen y ejes a 20°, el cursor sobre (620, 200) del widget da
+  `x +22.3 mm  y +32.0 mm`, que coincide con el cálculo a mano.
+
+  **Limitación conocida (a revisar en G-B)**: el tablero solo se enciende desde
+  la ventana principal; el diálogo del editor de plantilla no tiene barra de
+  menú y de momento se queda sin él.
 
 - [ ] **T5 — Herramienta "Posición" (`ToolType::Position`)**. Herramienta nueva
   siguiendo el patrón ya establecido (T1–T6 del backlog anterior): marca un
