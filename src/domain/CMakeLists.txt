@@ -2,6 +2,7 @@
 add_library(pci_domain STATIC
   calibration.cpp
   capture_quality.cpp
+  measurement_mode.cpp
   verdict.cpp
 )
 target_include_directories(pci_domain PUBLIC ${CMAKE_SOURCE_DIR}/src)

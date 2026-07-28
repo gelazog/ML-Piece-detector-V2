@@ -189,6 +189,60 @@ core::Result<double> PieceRepository::loadOrientationOffset(std::int64_t pieceId
     return core::Result<double>::ok(stmt.value().columnDouble(0));
 }
 
+core::Result<void> PieceRepository::saveMeasurement(std::int64_t pieceId,
+                                                    const PieceMeasurement& measurement) {
+    auto stmt = db_.prepare(
+        "UPDATE Pieces SET measurement_mode = ?, board_origin = ?, board_fixed_x = ?, "
+        "board_fixed_y = ?, board_follow_angle = ? WHERE id = ?;");
+    if (!stmt.isOk()) {
+        return core::Result<void>::err(stmt.error().message);
+    }
+    auto& s = stmt.value();
+    if (auto b = s.bindText(1, std::string(domain::modeKey(measurement.mode))); !b.isOk()) {
+        return b;
+    }
+    if (auto b = s.bindText(2, std::string(vision::originKey(measurement.board.origin)));
+        !b.isOk()) {
+        return b;
+    }
+    if (auto b = s.bindDouble(3, measurement.board.fixedPoint.x); !b.isOk()) return b;
+    if (auto b = s.bindDouble(4, measurement.board.fixedPoint.y); !b.isOk()) return b;
+    if (auto b = s.bindInt(5, measurement.board.followPieceAngle ? 1 : 0); !b.isOk()) return b;
+    if (auto b = s.bindInt(6, pieceId); !b.isOk()) return b;
+    auto step = s.step();
+    if (!step.isOk()) {
+        return core::Result<void>::err(step.error().message);
+    }
+    return core::Result<void>::ok();
+}
+
+core::Result<PieceMeasurement> PieceRepository::loadMeasurement(std::int64_t pieceId) {
+    using ResultT = core::Result<PieceMeasurement>;
+    auto stmt = db_.prepare(
+        "SELECT measurement_mode, board_origin, board_fixed_x, board_fixed_y, "
+        "board_follow_angle FROM Pieces WHERE id = ?;");
+    if (!stmt.isOk()) {
+        return ResultT::err(stmt.error().message);
+    }
+    if (auto b = stmt.value().bindInt(1, pieceId); !b.isOk()) {
+        return ResultT::err(b.error().message);
+    }
+    auto row = stmt.value().step();
+    if (!row.isOk()) {
+        return ResultT::err(row.error().message);
+    }
+    if (!row.value()) {
+        return ResultT::err("La pieza " + std::to_string(pieceId) + " no existe");
+    }
+    PieceMeasurement measurement;
+    measurement.mode = domain::modeFromKey(stmt.value().columnText(0));
+    measurement.board.origin = vision::originFromKey(stmt.value().columnText(1));
+    measurement.board.fixedPoint = {static_cast<float>(stmt.value().columnDouble(2)),
+                                    static_cast<float>(stmt.value().columnDouble(3))};
+    measurement.board.followPieceAngle = stmt.value().columnInt(4) != 0;
+    return ResultT::ok(measurement);
+}
+
 core::Result<void> PieceRepository::saveAnchor(std::int64_t pieceId,
                                                const vision::OrientationAnchor& anchor) {
     auto stmt = db_.prepare(

@@ -7,7 +7,9 @@
 
 #include "core/result.h"
 #include "database/db.h"
+#include "domain/measurement_mode.h"
 #include "ml/reference.h"
+#include "vision/board_frame.h"
 #include "vision/orientation_anchor.h"
 
 namespace pci::repositories {
@@ -16,6 +18,14 @@ struct PieceInfo {
     std::int64_t id = 0;
     std::string name;
     std::string createdAt;
+};
+
+// Cómo se mide una pieza: el modo elegido y, con él, el tablero de referencia
+// (que solo tiene efecto en el modo Especial, pero se guarda siempre para no
+// perder la configuración al cambiar de modo y volver).
+struct PieceMeasurement {
+    domain::MeasurementMode mode = domain::MeasurementMode::Real;
+    vision::BoardConfig board;
 };
 
 struct StoredReference {
@@ -42,6 +52,13 @@ public:
     // quiera. Aplica en vivo, registro e inspección.
     core::Result<void> saveOrientationOffset(std::int64_t pieceId, double offsetDeg);
     core::Result<double> loadOrientationOffset(std::int64_t pieceId);
+
+    // Modo de medición y tablero de la pieza (v5). Una pieza guardada antes de
+    // la migración devuelve modo Real y tablero centrado en la pieza, que es
+    // exactamente como se comportaba.
+    core::Result<void> saveMeasurement(std::int64_t pieceId,
+                                       const PieceMeasurement& measurement);
+    core::Result<PieceMeasurement> loadMeasurement(std::int64_t pieceId);
 
     // Miniatura JPEG de la pieza registrada (recorte normalizado), para la
     // comparación visual referencia vs pieza actual.

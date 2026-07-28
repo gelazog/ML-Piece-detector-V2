@@ -279,8 +279,8 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
 
 ### M. Modos de medición y registro
 
-- [ ] **M1 — Modo de medición por pieza (esquema + dominio)** *(pide
-  confirmación de nomenclatura)*. Enum `MeasurementMode { Real, Special }`
+- [x] **M1 — Modo de medición por pieza (esquema + dominio)**. HECHO *(la
+  nomenclatura y el alcance los confirmó el usuario, ver abajo)*. Enum `MeasurementMode { Real, Special }`
   (nombres visibles a confirmar con el usuario: p. ej. *"Posición real
   (personalizada)"* vs *"Especial (tablero centrado)"*). Persistir por pieza con
   **`kMigrationV5`** (`ALTER TABLE Pieces ADD COLUMN measurement_mode TEXT NOT
@@ -289,6 +289,26 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
   Skills: `sqlite-database-expert`, `cpp-testing`.
   Archivos: `database/schema.cpp`, `repositories/piece_repository.*`,
   `domain/` (enum + nombres legibles), `tests/test_database.cpp`.
+
+  **DECIDIDO por el usuario (2026-07-27)**: los modos se llaman **«Posición real
+  (personalizada)»** y **«Especial (tablero centrado)»**, y el tablero
+  (origen, punto fijado y ejes) se guarda **por pieza**, junto al modo — no como
+  ajuste global. Al elegir la pieza, la UI se configurará sola (eso es M2).
+
+  **Cómo quedó**: `domain/measurement_mode.{h,cpp}` con
+  `MeasurementMode{Real, Special}`, `modeKey`/`modeFromKey` (claves estables
+  `real`/`special`, con caída a Real si la clave es desconocida) y
+  `modeLabel`/`modeDescription` para la UI. Lógica pura: `domain` NO puede
+  depender de `vision` (es al revés), así que la pareja modo + tablero vive en
+  `repositories::PieceMeasurement{mode, board}` con
+  `savemeasurement`/`loadMeasurement`. `kMigrationV5` añade a `Pieces`:
+  `measurement_mode`, `board_origin`, `board_fixed_x/y` y `board_follow_angle`,
+  con valores por defecto que **reproducen exactamente el comportamiento
+  anterior**. `pci_repositories` pasa a enlazar `pci_vision` en PUBLIC porque su
+  cabecera ya expone `vision::BoardConfig`.
+  Verificado además sobre la **base de datos real** del build (que estaba en
+  v4 con piezas guardadas): migró a v5 y las columnas nuevas están ahí.
+  3 tests nuevos → 151/151.
 
 - [ ] **M2 — Elegir el modo al registrar** *(pide confirmación de flujo)*. El
   registro (`onRegisterLiveClicked`) pregunta el modo junto con el nombre —o en

@@ -8,6 +8,7 @@ target_include_directories(pci_repositories PUBLIC ${CMAKE_SOURCE_DIR}/src)
 # database, ml e inspection son PUBLIC: los headers exponen Db&, ml::Reference
 # y ToolConfig.
 target_link_libraries(pci_repositories
-  PUBLIC pci_database pci_domain pci_ml pci_inspection
+  # pci_vision es PUBLIC: piece_repository.h expone vision::BoardConfig.
+  PUBLIC pci_database pci_domain pci_ml pci_inspection pci_vision
   PRIVATE pci_core project_warnings
 )

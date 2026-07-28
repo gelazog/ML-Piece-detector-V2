@@ -11,6 +11,7 @@
 #include "database/statement.h"
 #include "inspection_editor/tools/tool_geometry.h"
 #include "ml/reference.h"
+#include "domain/measurement_mode.h"
 #include "repositories/piece_repository.h"
 #include "repositories/settings_repository.h"
 #include "repositories/tool_repository.h"
@@ -488,4 +489,58 @@ TEST_F(DatabaseTest, SettingsSetGetOverwriteAndDefaults) {
     EXPECT_DOUBLE_EQ(settings.getDouble("calib_mm_per_px", 0.0).value(), 0.0);
     ASSERT_TRUE(settings.setDouble("calib_mm_per_px", 0.253).isOk());
     EXPECT_NEAR(settings.getDouble("calib_mm_per_px", 0.0).value(), 0.253, 1e-9);
+}
+
+// --- v5: modo de medición y tablero por pieza (M1) ---
+
+TEST_F(DatabaseTest, MeasurementModeDefaultsToRealAndRoundTrips) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    const auto id = pieces.createPiece("pieza-modo");
+    ASSERT_TRUE(id.isOk());
+
+    // Una pieza recién creada se comporta como siempre: modo Real y tablero
+    // centrado en la propia pieza.
+    auto initial = pieces.loadMeasurement(id.value());
+    ASSERT_TRUE(initial.isOk());
+    EXPECT_EQ(initial.value().mode, domain::MeasurementMode::Real);
+    EXPECT_EQ(initial.value().board.origin, vision::BoardOrigin::PieceCenter);
+    EXPECT_FALSE(initial.value().board.followPieceAngle);
+
+    repositories::PieceMeasurement special;
+    special.mode = domain::MeasurementMode::Special;
+    special.board.origin = vision::BoardOrigin::FixedPoint;
+    special.board.fixedPoint = {123.5F, 77.25F};
+    special.board.followPieceAngle = true;
+    ASSERT_TRUE(pieces.saveMeasurement(id.value(), special).isOk());
+
+    auto loaded = pieces.loadMeasurement(id.value());
+    ASSERT_TRUE(loaded.isOk());
+    EXPECT_EQ(loaded.value().mode, domain::MeasurementMode::Special);
+    EXPECT_EQ(loaded.value().board.origin, vision::BoardOrigin::FixedPoint);
+    EXPECT_FLOAT_EQ(loaded.value().board.fixedPoint.x, 123.5F);
+    EXPECT_FLOAT_EQ(loaded.value().board.fixedPoint.y, 77.25F);
+    EXPECT_TRUE(loaded.value().board.followPieceAngle);
+
+    // Volver al modo Real no borra el tablero configurado.
+    repositories::PieceMeasurement back = loaded.value();
+    back.mode = domain::MeasurementMode::Real;
+    ASSERT_TRUE(pieces.saveMeasurement(id.value(), back).isOk());
+    auto again = pieces.loadMeasurement(id.value());
+    ASSERT_TRUE(again.isOk());
+    EXPECT_EQ(again.value().mode, domain::MeasurementMode::Real);
+    EXPECT_EQ(again.value().board.origin, vision::BoardOrigin::FixedPoint);
+
+    EXPECT_FALSE(pieces.loadMeasurement(9999).isOk());
+}
+
+TEST(MeasurementMode, KeysRoundTripAndLabelsExist) {
+    for (const auto mode : {domain::MeasurementMode::Real, domain::MeasurementMode::Special}) {
+        EXPECT_EQ(domain::modeFromKey(domain::modeKey(mode)), mode);
+        EXPECT_NE(std::string(domain::modeLabel(mode)), std::string());
+        EXPECT_NE(std::string(domain::modeDescription(mode)), std::string());
+    }
+    // Clave desconocida (BD de otra versión o corrupta): se cae al modo de
+    // siempre en vez de fallar.
+    EXPECT_EQ(domain::modeFromKey("lo-que-sea"), domain::MeasurementMode::Real);
 }

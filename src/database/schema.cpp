@@ -121,12 +121,25 @@ const char* const kMigrationV4 = R"sql(
 ALTER TABLE InspectionTools ADD COLUMN template TEXT NOT NULL DEFAULT 'principal';
 )sql";
 
+// v5: modo de medición por pieza (Real / Especial) y el tablero de referencia
+// con el que se mide en el modo Especial (origen, punto fijado y si los ejes
+// giran con la pieza). Los valores por defecto reproducen el comportamiento
+// anterior: modo Real y tablero centrado en la pieza.
+const char* const kMigrationV5 = R"sql(
+ALTER TABLE Pieces ADD COLUMN measurement_mode TEXT NOT NULL DEFAULT 'real';
+ALTER TABLE Pieces ADD COLUMN board_origin TEXT NOT NULL DEFAULT 'piece';
+ALTER TABLE Pieces ADD COLUMN board_fixed_x REAL NOT NULL DEFAULT 0;
+ALTER TABLE Pieces ADD COLUMN board_fixed_y REAL NOT NULL DEFAULT 0;
+ALTER TABLE Pieces ADD COLUMN board_follow_angle INTEGER NOT NULL DEFAULT 0;
+)sql";
+
 const char* migrationFor(int targetVersion) {
     switch (targetVersion) {
         case 1: return kSchemaV1;
         case 2: return kMigrationV2;
         case 3: return kMigrationV3;
         case 4: return kMigrationV4;
+        case 5: return kMigrationV5;
     }
     return nullptr;
 }
