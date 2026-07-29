@@ -126,10 +126,19 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    dibujan ejes y grilla con el **cero en el origen que elijas**, para medir la
    *posición* de la pieza (cuánto se desvía y cuánto gira) y no solo distancias
    sueltas. +X a la derecha y **+Y hacia arriba**, como en metrología. En **Ver ▸
-   Origen del tablero** eliges entre **centro de la pieza** (el cero viaja con
-   ella), **centro de la imagen** (el cero queda fijo en pantalla, útil para
-   centrar la pieza en un soporte) o un **punto fijado a mano** (se marca con un
-   clic), y si los **ejes giran con la pieza** o quedan alineados con la imagen.
+   Origen del tablero** eliges cómo se centra:
+   - **Automático — centro del contorno** (recomendado): el cero cae en el
+     centro geométrico de la pieza, que es el que se ve centrado.
+   - **Automático — centro de masa**: el centroide del contorno. En piezas
+     asimétricas (una L, por ejemplo) queda visiblemente desplazado del centro
+     que uno ve; se mantiene por si te interesa esa referencia.
+   - **Automático — centro de la imagen**: el cero queda fijo en pantalla, útil
+     para centrar la pieza en un soporte.
+   - **Manual — punto fijado a mano**: lo marcas con un clic sobre la imagen.
+
+   Además, el diálogo de modo de medición trae un **ajuste fino** en X/Y para
+   correr el cero a mano sobre cualquiera de esas opciones, y una casilla para
+   que los **ejes giren con la pieza** o queden alineados con la imagen.
    El paso de la grilla se adapta al zoom y las etiquetas salen en la unidad
    activa (mm/cm si hay escala calibrada, px si no). Todo queda guardado.
    Con el tablero encendido aparece además una **lectura continua** sobre el
