@@ -162,11 +162,15 @@ AnalysisOverlay buildOverlay(const QImage& frame,
         }
         overlay.centroid = QPointF(analysis.value().fixture.origin.x,
                                    analysis.value().fixture.origin.y);
+        overlay.boundsCenter = QPointF(analysis.value().contour.rotatedRect.center.x,
+                                       analysis.value().contour.rotatedRect.center.y);
         overlay.angleDeg = analysis.value().fixture.angleDeg;
         overlay.normalized = camera::matToQImage(analysis.value().normalized);
         if (!tools.empty()) {
-            const vision::BoardFrame board = vision::resolveBoardFrame(
-                boardConfig, analysis.value().fixture, true, cv::Size(image.cols, image.rows));
+            const cv::Point2f bounds = analysis.value().contour.rotatedRect.center;
+            const vision::BoardFrame board =
+                vision::resolveBoardFrame(boardConfig, analysis.value().fixture, true,
+                                          cv::Size(image.cols, image.rows), &bounds);
             overlay.toolResults = inspection::runTools(image, analysis.value().fixture, tools,
                                                        mmPerPixel, unit, imageToMm, &board);
         }
@@ -600,11 +604,14 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     if (repos_.settings != nullptr) {
         boardVisible_ = repos_.settings->getInt("board_visible", 0).value() != 0;
         boardConfig_.origin = vision::originFromKey(
-            repos_.settings->getString("board_origin", std::string("piece")).value());
+            repos_.settings->getString("board_origin", std::string("bounds")).value());
         boardConfig_.followPieceAngle = repos_.settings->getInt("board_follow", 0).value() != 0;
         boardConfig_.fixedPoint = {
             static_cast<float>(repos_.settings->getDouble("board_fixed_x", 0.0).value()),
             static_cast<float>(repos_.settings->getDouble("board_fixed_y", 0.0).value())};
+        boardConfig_.manualOffset = {
+            static_cast<float>(repos_.settings->getDouble("board_offset_x", 0.0).value()),
+            static_cast<float>(repos_.settings->getDouble("board_offset_y", 0.0).value())};
     }
     video_->setBoardVisible(boardVisible_);
     video_->setBoardConfig(boardConfig_);
@@ -789,14 +796,19 @@ void MainWindow::buildMenuBar() {
         QString tip;
         vision::BoardOrigin origin;
     } origins[] = {
-        {tr("Centro de la pieza"),
-         tr("El cero viaja con la pieza: mide desviaciones respecto a su propio centro."),
+        {tr("Automático: centro del contorno"),
+         tr("Centra el cero en el centro geométrico de la pieza — el que se ve\n"
+            "centrado. Es la opción recomendada para centrar automáticamente."),
+         vision::BoardOrigin::PieceBounds},
+        {tr("Automático: centro de masa"),
+         tr("Centro de masa del contorno. En piezas asimétricas (una L, por\n"
+            "ejemplo) queda visiblemente desplazado respecto al centro que se ve."),
          vision::BoardOrigin::PieceCenter},
-        {tr("Centro de la imagen"),
+        {tr("Automático: centro de la imagen"),
          tr("El cero queda fijo en pantalla: mide cuánto se desvía la pieza del centro\n"
             "del campo de visión (útil para centrarla en un soporte)."),
          vision::BoardOrigin::ImageCenter},
-        {tr("Punto fijado a mano…"),
+        {tr("Manual: punto fijado a mano…"),
          tr("Marca un punto de la imagen con el ratón y todo se mide respecto a él."),
          vision::BoardOrigin::FixedPoint},
     };
@@ -1270,6 +1282,9 @@ void MainWindow::onAnalysisFinished() {
             liveFixture_ = vision::Fixture{{static_cast<float>(overlay.centroid.x()),
                                             static_cast<float>(overlay.centroid.y())},
                                            overlay.angleDeg};
+            video_->setPieceBoundsCenter(
+                true, {static_cast<float>(overlay.boundsCenter.x()),
+                       static_cast<float>(overlay.boundsCenter.y())});
             video_->setLivePiece(true, overlay.contour, overlay.centroid,
                                  overlay.angleDeg, status);
             currentThumbLabel_->setPixmap(QPixmap::fromImage(overlay.normalized)
@@ -1722,10 +1737,23 @@ void MainWindow::onBoardOriginChanged(QAction* action) {
         statusBar()->showMessage(tr("Haz clic en el punto que será el cero del tablero."));
         return;
     }
-    statusBar()->showMessage(
-        boardConfig_.origin == vision::BoardOrigin::PieceCenter
-            ? tr("Tablero centrado en la pieza: el cero la acompaña.")
-            : tr("Tablero centrado en la imagen: el cero queda fijo en pantalla."));
+    switch (boardConfig_.origin) {
+        case vision::BoardOrigin::PieceBounds:
+            statusBar()->showMessage(
+                tr("Centrado automático en el centro del contorno de la pieza."));
+            break;
+        case vision::BoardOrigin::PieceCenter:
+            statusBar()->showMessage(
+                tr("Centrado automático en el centro de masa (puede no verse centrado en "
+                   "piezas asimétricas)."));
+            break;
+        case vision::BoardOrigin::ImageCenter:
+            statusBar()->showMessage(
+                tr("Tablero centrado en la imagen: el cero queda fijo en pantalla."));
+            break;
+        case vision::BoardOrigin::FixedPoint:
+            break;  // gestionado arriba
+    }
 }
 
 void MainWindow::persistBoardConfig() {
@@ -1755,6 +1783,8 @@ void MainWindow::persistBoardConfig() {
     repos_.settings->setInt("board_follow", boardConfig_.followPieceAngle ? 1 : 0);
     repos_.settings->setDouble("board_fixed_x", boardConfig_.fixedPoint.x);
     repos_.settings->setDouble("board_fixed_y", boardConfig_.fixedPoint.y);
+    repos_.settings->setDouble("board_offset_x", boardConfig_.manualOffset.x);
+    repos_.settings->setDouble("board_offset_y", boardConfig_.manualOffset.y);
 }
 
 void MainWindow::onAnchorPicked(const cv::Point2f& imagePoint) {

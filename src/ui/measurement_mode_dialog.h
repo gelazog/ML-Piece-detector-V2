@@ -5,6 +5,7 @@
 #include "repositories/piece_repository.h"
 
 class QCheckBox;
+class QDoubleSpinBox;
 class QLabel;
 class QRadioButton;
 
@@ -28,9 +29,12 @@ private:
 
     QRadioButton* realRadio_ = nullptr;
     QRadioButton* specialRadio_ = nullptr;
+    QRadioButton* originBounds_ = nullptr;
     QRadioButton* originPiece_ = nullptr;
     QRadioButton* originImage_ = nullptr;
     QRadioButton* originFixed_ = nullptr;
+    QDoubleSpinBox* offsetX_ = nullptr;
+    QDoubleSpinBox* offsetY_ = nullptr;
     QCheckBox* followAngle_ = nullptr;
     QLabel* warning_ = nullptr;  // aviso de la combinación que no mide posición
     // El punto fijado no se teclea aquí: se marca con un clic sobre la imagen

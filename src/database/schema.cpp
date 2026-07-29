@@ -127,10 +127,21 @@ ALTER TABLE InspectionTools ADD COLUMN template TEXT NOT NULL DEFAULT 'principal
 // anterior: modo Real y tablero centrado en la pieza.
 const char* const kMigrationV5 = R"sql(
 ALTER TABLE Pieces ADD COLUMN measurement_mode TEXT NOT NULL DEFAULT 'real';
-ALTER TABLE Pieces ADD COLUMN board_origin TEXT NOT NULL DEFAULT 'piece';
+ALTER TABLE Pieces ADD COLUMN board_origin TEXT NOT NULL DEFAULT 'bounds';
 ALTER TABLE Pieces ADD COLUMN board_fixed_x REAL NOT NULL DEFAULT 0;
 ALTER TABLE Pieces ADD COLUMN board_fixed_y REAL NOT NULL DEFAULT 0;
 ALTER TABLE Pieces ADD COLUMN board_follow_angle INTEGER NOT NULL DEFAULT 0;
+)sql";
+
+// v6: ajuste fino del cero del tablero y corrección del centrado automático.
+// El origen 'piece' guardado por la v5 es el centro de MASA, que en piezas
+// asimétricas no cae donde el operador ve el centro; el centrado automático
+// pasa a ser 'bounds' (centro del contorno) y las piezas existentes se
+// convierten, que es lo que se pretendía al elegir "centro de la pieza".
+const char* const kMigrationV6 = R"sql(
+ALTER TABLE Pieces ADD COLUMN board_offset_x REAL NOT NULL DEFAULT 0;
+ALTER TABLE Pieces ADD COLUMN board_offset_y REAL NOT NULL DEFAULT 0;
+UPDATE Pieces SET board_origin = 'bounds' WHERE board_origin = 'piece';
 )sql";
 
 const char* migrationFor(int targetVersion) {
@@ -140,6 +151,7 @@ const char* migrationFor(int targetVersion) {
         case 3: return kMigrationV3;
         case 4: return kMigrationV4;
         case 5: return kMigrationV5;
+        case 6: return kMigrationV6;
     }
     return nullptr;
 }

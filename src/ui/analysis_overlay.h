@@ -17,7 +17,11 @@ namespace pci::ui {
 struct AnalysisOverlay {
     bool valid = false;
     QPolygonF contour;
-    QPointF centroid;
+    QPointF centroid;      // centro de MASA (fixture.origin)
+    // Centro GEOMÉTRICO del contorno (minAreaRect): es el que se ve centrado y
+    // el que usa el tablero cuando se centra automáticamente. En piezas
+    // asimétricas no coincide con el centroide.
+    QPointF boundsCenter;
     double angleDeg = 0.0;
     QSize frameSize;
     QString error;

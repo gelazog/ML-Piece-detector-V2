@@ -354,12 +354,21 @@ void EditorCanvas::setBoardConfig(const vision::BoardConfig& config) {
     update();
 }
 
+void EditorCanvas::setPieceBoundsCenter(bool known, const cv::Point2f& center) {
+    hasBoundsCenter_ = known;
+    boundsCenter_ = center;
+    if (boardVisible_) {
+        update();
+    }
+}
+
 vision::BoardFrame EditorCanvas::boardFrame() const {
     // Con imagen fija (editor) el fixture siempre es válido; en vivo depende de
     // que la pieza se esté detectando ahora mismo.
     const bool pieceFound = hasFixture_ && (!liveMode_ || pieceVisible_);
     return vision::resolveBoardFrame(boardConfig_, fixture_, pieceFound,
-                                     cv::Size(image_.width(), image_.height()));
+                                     cv::Size(image_.width(), image_.height()),
+                                     hasBoundsCenter_ ? &boundsCenter_ : nullptr);
 }
 
 void EditorCanvas::setLengthUnit(LengthUnit unit) {

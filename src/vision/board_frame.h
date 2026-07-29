@@ -23,16 +23,27 @@ namespace pci::vision {
 // estas funciones calculan.
 
 enum class BoardOrigin {
-    PieceCenter,  // sigue a la pieza (Fixture.origin): desviaciones internas
+    // Automáticos (el cero se recalcula en cada frame):
+    PieceBounds,  // centro GEOMÉTRICO del contorno (minAreaRect): el que se ve
+                  // centrado. Es el que corresponde a "centrar automáticamente".
+    PieceCenter,  // centro de MASA de la pieza (Fixture.origin). En piezas
+                  // asimétricas (una L, por ejemplo) queda visiblemente
+                  // desplazado respecto al centro del contorno: útil para
+                  // metrología de inercia, no para "centrar".
     ImageCenter,  // fijo en pantalla: cuánto se desvía la pieza del campo de visión
+    // Manual:
     FixedPoint,   // punto marcado a mano por el operador (coords de imagen)
 };
 
 // Elección del operador, persistible con la pieza.
 struct BoardConfig {
-    BoardOrigin origin = BoardOrigin::PieceCenter;
+    BoardOrigin origin = BoardOrigin::PieceBounds;
     // Solo se usa con origin == FixedPoint; en coordenadas de imagen.
     cv::Point2f fixedPoint{0.0F, 0.0F};
+    // Ajuste fino en píxeles, aplicado SIEMPRE sobre el origen resuelto (+X a
+    // la derecha, +Y hacia arriba, como el resto del tablero). Permite corregir
+    // a mano un centrado automático que no cae donde el operador quiere.
+    cv::Point2f manualOffset{0.0F, 0.0F};
     // Si es true los ejes giran con la pieza (mide en el marco de la pieza); si
     // es false quedan alineados con la imagen (mide en el marco de la máquina).
     bool followPieceAngle = false;
@@ -59,8 +70,13 @@ struct BoardReading {
 // la pieza NO se detectó, cae al centro de la imagen: el tablero se sigue
 // pudiendo dibujar y leer en vez de desaparecer justo cuando falla la
 // detección (que es cuando el operador más lo necesita).
+//
+// pieceBoundsCenter (opcional): centro geométrico del contorno de la pieza en
+// coordenadas de imagen, necesario para el origen PieceBounds. Si no se pasa,
+// ese modo cae al centro de masa (Fixture.origin), que siempre está disponible.
 [[nodiscard]] BoardFrame resolveBoardFrame(const BoardConfig& config, const Fixture& fixture,
-                                           bool pieceFound, const cv::Size& imageSize);
+                                           bool pieceFound, const cv::Size& imageSize,
+                                           const cv::Point2f* pieceBoundsCenter = nullptr);
 
 // Punto de imagen -> lectura en el tablero, y su inversa exacta.
 [[nodiscard]] BoardReading readPoint(const BoardFrame& frame, const cv::Point2f& imagePoint);
@@ -86,6 +102,6 @@ struct BoardReading {
 // Claves estables para persistir la elección (BD/Settings).
 [[nodiscard]] std::string_view originKey(BoardOrigin origin);
 [[nodiscard]] BoardOrigin originFromKey(std::string_view key,
-                                        BoardOrigin fallback = BoardOrigin::PieceCenter);
+                                        BoardOrigin fallback = BoardOrigin::PieceBounds);
 
 }  // namespace pci::vision

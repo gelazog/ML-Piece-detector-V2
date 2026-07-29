@@ -624,10 +624,60 @@ TEST(BoardFrame, GridStepIsRoundAndProportional) {
 }
 
 TEST(BoardFrame, OriginKeysRoundTrip) {
-    for (const BoardOrigin origin :
-         {BoardOrigin::PieceCenter, BoardOrigin::ImageCenter, BoardOrigin::FixedPoint}) {
+    for (const BoardOrigin origin : {BoardOrigin::PieceBounds, BoardOrigin::PieceCenter,
+                                     BoardOrigin::ImageCenter, BoardOrigin::FixedPoint}) {
         EXPECT_EQ(originFromKey(originKey(origin)), origin);
     }
-    EXPECT_EQ(originFromKey("desconocido"), BoardOrigin::PieceCenter);
+    // Clave desconocida: se cae al centrado automático recomendado.
+    EXPECT_EQ(originFromKey("desconocido"), BoardOrigin::PieceBounds);
     EXPECT_EQ(originFromKey("", BoardOrigin::ImageCenter), BoardOrigin::ImageCenter);
+    // La clave 'piece' de la v5 sigue leyéndose como centro de masa: las piezas
+    // ya guardadas las convierte la migración v6, no el parser.
+    EXPECT_EQ(originFromKey("piece"), BoardOrigin::PieceCenter);
+}
+
+// El centro de MASA y el centro del CONTORNO no coinciden en piezas
+// asimétricas: es justo el motivo de que el centrado automático se viera
+// descentrado, así que la diferencia se fija en un test.
+TEST(BoardFrame, BoundsOriginUsesGeometricCenterNotMass) {
+    Fixture fixture;
+    fixture.origin = {100.0F, 100.0F};  // centro de masa
+    const cv::Point2f boundsCenter{140.0F, 130.0F};
+    const cv::Size imageSize(640, 480);
+
+    BoardConfig cfg;
+    cfg.origin = BoardOrigin::PieceBounds;
+    EXPECT_EQ(resolveBoardFrame(cfg, fixture, true, imageSize, &boundsCenter).origin,
+              boundsCenter);
+    // Sin centro de contorno conocido cae al de masa (siempre disponible).
+    EXPECT_EQ(resolveBoardFrame(cfg, fixture, true, imageSize).origin, fixture.origin);
+    // Sin pieza, al centro de la imagen: el tablero sigue siendo utilizable.
+    EXPECT_EQ(resolveBoardFrame(cfg, fixture, false, imageSize, &boundsCenter).origin,
+              cv::Point2f(320.0F, 240.0F));
+}
+
+TEST(BoardFrame, ManualOffsetShiftsZeroInBoardAxes) {
+    Fixture fixture;
+    fixture.origin = {200.0F, 150.0F};
+    const cv::Size imageSize(640, 480);
+
+    BoardConfig cfg;
+    cfg.origin = BoardOrigin::PieceCenter;
+    cfg.manualOffset = {10.0F, 4.0F};  // +X derecha, +Y ARRIBA
+    const BoardFrame shifted = resolveBoardFrame(cfg, fixture, true, imageSize);
+    EXPECT_NEAR(shifted.origin.x, 210.0, 1e-4);
+    EXPECT_NEAR(shifted.origin.y, 146.0, 1e-4);  // y de imagen crece hacia abajo
+
+    // Con los ejes girados con la pieza, el ajuste acompaña al giro.
+    Fixture rotated = fixture;
+    rotated.angleDeg = 90.0;
+    cfg.followPieceAngle = true;
+    cfg.manualOffset = {10.0F, 0.0F};
+    const BoardFrame turned = resolveBoardFrame(cfg, rotated, true, imageSize);
+    EXPECT_NEAR(turned.origin.x, 200.0, 1e-4);
+    EXPECT_NEAR(turned.origin.y, 160.0, 1e-4);  // +X del tablero apunta hacia abajo
+
+    // El ajuste mueve el cero, así que un punto en el cero nuevo lee (0,0).
+    const BoardReading atZero = readPoint(turned, turned.origin);
+    EXPECT_NEAR(atZero.radius, 0.0, 1e-6);
 }

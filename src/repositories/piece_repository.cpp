@@ -193,7 +193,8 @@ core::Result<void> PieceRepository::saveMeasurement(std::int64_t pieceId,
                                                     const PieceMeasurement& measurement) {
     auto stmt = db_.prepare(
         "UPDATE Pieces SET measurement_mode = ?, board_origin = ?, board_fixed_x = ?, "
-        "board_fixed_y = ?, board_follow_angle = ? WHERE id = ?;");
+        "board_fixed_y = ?, board_follow_angle = ?, board_offset_x = ?, "
+        "board_offset_y = ? WHERE id = ?;");
     if (!stmt.isOk()) {
         return core::Result<void>::err(stmt.error().message);
     }
@@ -208,7 +209,9 @@ core::Result<void> PieceRepository::saveMeasurement(std::int64_t pieceId,
     if (auto b = s.bindDouble(3, measurement.board.fixedPoint.x); !b.isOk()) return b;
     if (auto b = s.bindDouble(4, measurement.board.fixedPoint.y); !b.isOk()) return b;
     if (auto b = s.bindInt(5, measurement.board.followPieceAngle ? 1 : 0); !b.isOk()) return b;
-    if (auto b = s.bindInt(6, pieceId); !b.isOk()) return b;
+    if (auto b = s.bindDouble(6, measurement.board.manualOffset.x); !b.isOk()) return b;
+    if (auto b = s.bindDouble(7, measurement.board.manualOffset.y); !b.isOk()) return b;
+    if (auto b = s.bindInt(8, pieceId); !b.isOk()) return b;
     auto step = s.step();
     if (!step.isOk()) {
         return core::Result<void>::err(step.error().message);
@@ -220,7 +223,7 @@ core::Result<PieceMeasurement> PieceRepository::loadMeasurement(std::int64_t pie
     using ResultT = core::Result<PieceMeasurement>;
     auto stmt = db_.prepare(
         "SELECT measurement_mode, board_origin, board_fixed_x, board_fixed_y, "
-        "board_follow_angle FROM Pieces WHERE id = ?;");
+        "board_follow_angle, board_offset_x, board_offset_y FROM Pieces WHERE id = ?;");
     if (!stmt.isOk()) {
         return ResultT::err(stmt.error().message);
     }
@@ -240,6 +243,8 @@ core::Result<PieceMeasurement> PieceRepository::loadMeasurement(std::int64_t pie
     measurement.board.fixedPoint = {static_cast<float>(stmt.value().columnDouble(2)),
                                     static_cast<float>(stmt.value().columnDouble(3))};
     measurement.board.followPieceAngle = stmt.value().columnInt(4) != 0;
+    measurement.board.manualOffset = {static_cast<float>(stmt.value().columnDouble(5)),
+                                      static_cast<float>(stmt.value().columnDouble(6))};
     return ResultT::ok(measurement);
 }
 

@@ -104,6 +104,9 @@ public:
     void setBoardVisible(bool visible);
     [[nodiscard]] bool boardVisible() const { return boardVisible_; }
     void setBoardConfig(const vision::BoardConfig& config);
+    // Centro geométrico del contorno de la pieza (coords de imagen). Es el que
+    // usa el centrado automático del tablero; sin él se cae al centro de masa.
+    void setPieceBoundsCenter(bool known, const cv::Point2f& center = {});
     [[nodiscard]] const vision::BoardConfig& boardConfig() const { return boardConfig_; }
     // Tablero resuelto para el frame actual (lo reutilizan las lecturas de T3/T4).
     [[nodiscard]] vision::BoardFrame boardFrame() const;
@@ -190,6 +193,8 @@ private:
     // Tablero de referencia (T2): visibilidad y elección de origen/ejes.
     bool boardVisible_ = false;
     vision::BoardConfig boardConfig_;
+    bool hasBoundsCenter_ = false;
+    cv::Point2f boundsCenter_{0.0F, 0.0F};
     // Cursor sobre el lienzo (T4): solo se sigue con el tablero encendido.
     std::optional<QPointF> cursorWidget_;
 

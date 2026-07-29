@@ -29,11 +29,18 @@ double normalizeAngle(double degrees) {
 }
 
 BoardFrame resolveBoardFrame(const BoardConfig& config, const Fixture& fixture, bool pieceFound,
-                             const cv::Size& imageSize) {
+                             const cv::Size& imageSize, const cv::Point2f* pieceBoundsCenter) {
     const cv::Point2f imageCenter{static_cast<float>(imageSize.width) / 2.0F,
                                   static_cast<float>(imageSize.height) / 2.0F};
     BoardFrame frame;
     switch (config.origin) {
+        case BoardOrigin::PieceBounds:
+            // Centro del contorno si se conoce; si no, el de masa; sin pieza, el
+            // de la imagen. Siempre hay algo utilizable que dibujar.
+            frame.origin = !pieceFound            ? imageCenter
+                           : pieceBoundsCenter != nullptr ? *pieceBoundsCenter
+                                                          : fixture.origin;
+            break;
         case BoardOrigin::PieceCenter:
             // Sin pieza no hay centro de pieza: se cae al centro de la imagen
             // para que el tablero siga siendo utilizable.
@@ -49,6 +56,13 @@ BoardFrame resolveBoardFrame(const BoardConfig& config, const Fixture& fixture, 
     // El giro solo puede seguir a la pieza si hay pieza detectada.
     frame.angleDeg =
         (config.followPieceAngle && pieceFound) ? normalizeAngle(fixture.angleDeg) : 0.0;
+
+    // Ajuste fino del operador: se expresa en los ejes del tablero (+Y arriba),
+    // así que se convierte a la imagen con el mismo giro que los ejes.
+    if (config.manualOffset.x != 0.0F || config.manualOffset.y != 0.0F) {
+        const BoardFrame axes{frame.origin, frame.angleDeg};
+        frame.origin = toImagePoint(axes, config.manualOffset.x, config.manualOffset.y);
+    }
     return frame;
 }
 
@@ -128,6 +142,8 @@ double niceGridStep(double span, int targetDivisions) {
 
 std::string_view originKey(BoardOrigin origin) {
     switch (origin) {
+        case BoardOrigin::PieceBounds:
+            return "bounds";
         case BoardOrigin::PieceCenter:
             return "piece";
         case BoardOrigin::ImageCenter:
@@ -135,10 +151,13 @@ std::string_view originKey(BoardOrigin origin) {
         case BoardOrigin::FixedPoint:
             return "fixed";
     }
-    return "piece";
+    return "bounds";
 }
 
 BoardOrigin originFromKey(std::string_view key, BoardOrigin fallback) {
+    if (key == originKey(BoardOrigin::PieceBounds)) {
+        return BoardOrigin::PieceBounds;
+    }
     if (key == originKey(BoardOrigin::PieceCenter)) {
         return BoardOrigin::PieceCenter;
     }

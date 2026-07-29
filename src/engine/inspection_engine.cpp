@@ -104,9 +104,10 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
     // El tablero se resuelve con el fixture de ESTA inspección: las
     // herramientas de Posición se juzgan contra el mismo cero que ve el
     // operador en vivo.
+    const cv::Point2f boundsCenter = outcome.analysis.contour.rotatedRect.center;
     const vision::BoardFrame board = vision::resolveBoardFrame(
         options_.board, outcome.analysis.fixture, true,
-        cv::Size(frameBgr.cols, frameBgr.rows));
+        cv::Size(frameBgr.cols, frameBgr.rows), &boundsCenter);
     outcome.toolResults =
         inspection::runTools(frameBgr, outcome.analysis.fixture, toolConfigs,
                              options_.mmPerPixel, options_.unit, cv::Mat(), &board);

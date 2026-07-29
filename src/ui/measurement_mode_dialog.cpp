@@ -1,6 +1,8 @@
 #include "ui/measurement_mode_dialog.h"
 
 #include <QCheckBox>
+#include <QDoubleSpinBox>
+#include <QHBoxLayout>
 #include <QDialogButtonBox>
 #include <QGroupBox>
 #include <QLabel>
@@ -37,23 +39,38 @@ MeasurementModeDialog::MeasurementModeDialog(const repositories::PieceMeasuremen
         ->setChecked(true);
     root->addWidget(modeBox);
 
-    auto* boardBox = new QGroupBox(tr("Tablero de referencia (modo Especial)"), this);
+    auto* boardBox = new QGroupBox(tr("Centrado del tablero (modo Especial)"), this);
     auto* boardLayout = new QVBoxLayout(boardBox);
-    originPiece_ = new QRadioButton(tr("Cero en el centro de la pieza"), boardBox);
+
+    boardLayout->addWidget(
+        new QLabel(tr("<b>Automático</b> — el cero se recalcula en cada frame:"), boardBox));
+    originBounds_ = new QRadioButton(tr("Centro de la pieza (contorno) — recomendado"), boardBox);
+    originBounds_->setToolTip(
+        tr("Centro geométrico del contorno: el punto que se ve centrado en la pieza.\n"
+           "Es el centrado automático correcto para poner el cero sobre ella."));
+    originPiece_ = new QRadioButton(tr("Centro de masa de la pieza"), boardBox);
     originPiece_->setToolTip(
-        tr("El cero viaja con la pieza: mide desviaciones respecto a su propio centro."));
-    originImage_ = new QRadioButton(tr("Cero en el centro de la imagen"), boardBox);
+        tr("Centroide de la máscara. En piezas asimétricas (una L, por ejemplo) queda\n"
+           "visiblemente desplazado respecto al centro del contorno."));
+    originImage_ = new QRadioButton(tr("Centro de la imagen"), boardBox);
     originImage_->setToolTip(
         tr("El cero queda fijo en pantalla: mide cuánto se desvía la pieza del centro\n"
            "del campo de visión (para centrarla en un soporte)."));
-    originFixed_ = new QRadioButton(tr("Cero en un punto fijado a mano"), boardBox);
-    originFixed_->setToolTip(
-        tr("Usa el punto que hayas marcado con Ver ▸ Origen del tablero ▸\n"
-           "Punto fijado a mano… (se conserva el que ya estuviera guardado)."));
+    boardLayout->addWidget(originBounds_);
     boardLayout->addWidget(originPiece_);
     boardLayout->addWidget(originImage_);
+
+    boardLayout->addWidget(new QLabel(tr("<b>Manual</b>:"), boardBox));
+    originFixed_ = new QRadioButton(tr("Punto fijado a mano (se marca con un clic)"), boardBox);
+    originFixed_->setToolTip(
+        tr("Usa el punto que marques con Ver ▸ Origen del tablero ▸\n"
+           "Punto fijado a mano… (se conserva el que ya estuviera guardado)."));
     boardLayout->addWidget(originFixed_);
+
     switch (current.board.origin) {
+        case vision::BoardOrigin::PieceBounds:
+            originBounds_->setChecked(true);
+            break;
         case vision::BoardOrigin::PieceCenter:
             originPiece_->setChecked(true);
             break;
@@ -64,6 +81,29 @@ MeasurementModeDialog::MeasurementModeDialog(const repositories::PieceMeasuremen
             originFixed_->setChecked(true);
             break;
     }
+
+    // Ajuste fino: se suma a cualquiera de los centrados anteriores, para
+    // corregir a mano un cero que no cae exactamente donde el operador quiere.
+    auto* offsetLayout = new QHBoxLayout();
+    offsetLayout->addWidget(new QLabel(tr("Ajuste fino:"), boardBox));
+    offsetX_ = new QDoubleSpinBox(boardBox);
+    offsetY_ = new QDoubleSpinBox(boardBox);
+    for (auto* spin : {offsetX_, offsetY_}) {
+        spin->setRange(-5000.0, 5000.0);
+        spin->setDecimals(1);
+        spin->setSingleStep(1.0);
+        spin->setSuffix(tr(" px"));
+    }
+    offsetX_->setValue(current.board.manualOffset.x);
+    offsetY_->setValue(current.board.manualOffset.y);
+    offsetX_->setToolTip(tr("Mueve el cero a la derecha (+) o a la izquierda (−)."));
+    offsetY_->setToolTip(tr("Mueve el cero hacia arriba (+) o hacia abajo (−)."));
+    offsetLayout->addWidget(new QLabel(tr("X"), boardBox));
+    offsetLayout->addWidget(offsetX_);
+    offsetLayout->addWidget(new QLabel(tr("Y"), boardBox));
+    offsetLayout->addWidget(offsetY_);
+    offsetLayout->addStretch(1);
+    boardLayout->addLayout(offsetLayout);
 
     followAngle_ = new QCheckBox(tr("Los ejes giran con la pieza"), boardBox);
     followAngle_->setToolTip(
@@ -80,13 +120,13 @@ MeasurementModeDialog::MeasurementModeDialog(const repositories::PieceMeasuremen
     warning_->setWordWrap(true);
     warning_->setStyleSheet(QStringLiteral("color:#ffb454;"));
     warning_->setText(
-        tr("⚠ Con el cero en el centro de la pieza, su desviación es cero por "
+        tr("⚠ Con el cero puesto sobre la propia pieza, su desviación es cero por "
            "definición: el modo Especial solo aportará el giro. Para vigilar el "
            "centrado, usa el centro de la imagen o un punto fijado a mano."));
     root->addWidget(warning_);
 
     connect(realRadio_, &QRadioButton::toggled, this, [this](bool) { syncBoardEnabled(); });
-    for (auto* radio : {originPiece_, originImage_, originFixed_}) {
+    for (auto* radio : {originBounds_, originPiece_, originImage_, originFixed_}) {
         connect(radio, &QRadioButton::toggled, this, [this](bool) { syncBoardEnabled(); });
     }
     syncBoardEnabled();
@@ -102,13 +142,17 @@ void MeasurementModeDialog::syncBoardEnabled() {
     // En modo Real el tablero no interviene: se deja visible pero apagado para
     // que se entienda que pertenece al otro modo.
     const bool special = specialRadio_->isChecked();
-    for (QWidget* widget : {static_cast<QWidget*>(originPiece_),
+    for (QWidget* widget : {static_cast<QWidget*>(originBounds_),
+                            static_cast<QWidget*>(originPiece_),
                             static_cast<QWidget*>(originImage_),
                             static_cast<QWidget*>(originFixed_),
+                            static_cast<QWidget*>(offsetX_),
+                            static_cast<QWidget*>(offsetY_),
                             static_cast<QWidget*>(followAngle_)}) {
         widget->setEnabled(special);
     }
-    warning_->setVisible(special && originPiece_->isChecked());
+    warning_->setVisible(special &&
+                         (originBounds_->isChecked() || originPiece_->isChecked()));
 }
 
 repositories::PieceMeasurement MeasurementModeDialog::measurement() const {
@@ -119,10 +163,14 @@ repositories::PieceMeasurement MeasurementModeDialog::measurement() const {
         result.board.origin = vision::BoardOrigin::ImageCenter;
     } else if (originFixed_->isChecked()) {
         result.board.origin = vision::BoardOrigin::FixedPoint;
-    } else {
+    } else if (originPiece_->isChecked()) {
         result.board.origin = vision::BoardOrigin::PieceCenter;
+    } else {
+        result.board.origin = vision::BoardOrigin::PieceBounds;
     }
     result.board.fixedPoint = fixedPoint_;
+    result.board.manualOffset = {static_cast<float>(offsetX_->value()),
+                                 static_cast<float>(offsetY_->value())};
     result.board.followPieceAngle = followAngle_->isChecked();
     return result;
 }

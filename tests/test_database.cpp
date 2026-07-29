@@ -504,13 +504,16 @@ TEST_F(DatabaseTest, MeasurementModeDefaultsToRealAndRoundTrips) {
     auto initial = pieces.loadMeasurement(id.value());
     ASSERT_TRUE(initial.isOk());
     EXPECT_EQ(initial.value().mode, domain::MeasurementMode::Real);
-    EXPECT_EQ(initial.value().board.origin, vision::BoardOrigin::PieceCenter);
+    EXPECT_EQ(initial.value().board.origin, vision::BoardOrigin::PieceBounds);
+    EXPECT_FLOAT_EQ(initial.value().board.manualOffset.x, 0.0F);
+    EXPECT_FLOAT_EQ(initial.value().board.manualOffset.y, 0.0F);
     EXPECT_FALSE(initial.value().board.followPieceAngle);
 
     repositories::PieceMeasurement special;
     special.mode = domain::MeasurementMode::Special;
     special.board.origin = vision::BoardOrigin::FixedPoint;
     special.board.fixedPoint = {123.5F, 77.25F};
+    special.board.manualOffset = {-3.5F, 2.25F};
     special.board.followPieceAngle = true;
     ASSERT_TRUE(pieces.saveMeasurement(id.value(), special).isOk());
 
@@ -520,6 +523,8 @@ TEST_F(DatabaseTest, MeasurementModeDefaultsToRealAndRoundTrips) {
     EXPECT_EQ(loaded.value().board.origin, vision::BoardOrigin::FixedPoint);
     EXPECT_FLOAT_EQ(loaded.value().board.fixedPoint.x, 123.5F);
     EXPECT_FLOAT_EQ(loaded.value().board.fixedPoint.y, 77.25F);
+    EXPECT_FLOAT_EQ(loaded.value().board.manualOffset.x, -3.5F);
+    EXPECT_FLOAT_EQ(loaded.value().board.manualOffset.y, 2.25F);
     EXPECT_TRUE(loaded.value().board.followPieceAngle);
 
     // Volver al modo Real no borra el tablero configurado.

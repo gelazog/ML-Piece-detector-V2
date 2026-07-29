@@ -277,6 +277,40 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
   recomienda centro de imagen o punto fijado. 3 tests nuevos (149/149) y render
   offscreen para comprobar el dibujo (diana + línea punteada al cero).
 
+### T-C. Centrado del tablero: automático / manual (petición del usuario, 2026-07-27)
+
+- [x] **T-C — El cero no caía donde el operador ve el centro, y faltaba elegir
+  centrado automático o manual**. HECHO.
+
+  **Diagnóstico medido, no supuesto**: hasta ahora «centro de la pieza» era
+  `Fixture.origin`, que es el **centro de MASA** del contorno. Con una pieza en
+  L de 4×3 unidades a escala 40 px, el centro de masa cae en **(320, 240)** y el
+  centro geométrico del contorno en **(340, 260)**: **20 px de desvío en cada
+  eje**, perfectamente visible. No era un fallo de dibujo (el zoom, el paneo y
+  las conversiones estaban bien): era la *definición* de centro.
+
+  **Corrección**: nuevo origen `BoardOrigin::PieceBounds` — centro geométrico
+  del contorno (`minAreaRect`) — que pasa a ser el **centrado automático por
+  defecto**; el centro de masa se conserva como opción aparte y bien etiquetada.
+  El centro del contorno viaja desde el análisis hasta el lienzo
+  (`AnalysisOverlay::boundsCenter` → `EditorCanvas::setPieceBoundsCenter`) y
+  hasta el motor, para que **la lectura en vivo, el dibujo y el veredicto usen
+  el mismo cero**.
+
+  **Centrado manual**: además del punto fijado con un clic, ahora hay **ajuste
+  fino** (`BoardConfig::manualOffset`, en X/Y y en los ejes del tablero, así que
+  acompaña al giro si los ejes siguen a la pieza). Sirve para corregir a mano
+  cualquier centrado automático.
+
+  **Persistencia**: `kMigrationV6` añade `board_offset_x/y` y **convierte las
+  piezas existentes de `piece` a `bounds`**, que es lo que el operador quería
+  decir al elegir "centro de la pieza". Verificado sobre la BD real (v5 → v6,
+  origen convertido). El diálogo de modo agrupa las opciones en **Automático**
+  (contorno / masa / imagen) y **Manual** (punto fijado + ajuste fino), y el
+  menú Ver ▸ Origen del tablero usa las mismas etiquetas.
+  5 tests nuevos/actualizados → **153/153**, más render offscreen comparando
+  ambos centrados sobre una pieza en L.
+
 ### M. Modos de medición y registro
 
 - [x] **M1 — Modo de medición por pieza (esquema + dominio)**. HECHO *(la
