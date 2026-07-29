@@ -26,6 +26,9 @@ struct PieceInfo {
 struct PieceMeasurement {
     domain::MeasurementMode mode = domain::MeasurementMode::Real;
     vision::BoardConfig board;
+    // Reglas del modo Especial (M4). 0 = no vigilar esa desviación.
+    double maxOffsetPx = 0.0;   // distancia máxima del centro al cero
+    double maxAngleDeg = 0.0;   // giro máximo respecto a los ejes del tablero
 };
 
 struct StoredReference {

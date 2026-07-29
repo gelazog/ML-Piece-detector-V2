@@ -507,6 +507,9 @@ TEST_F(DatabaseTest, MeasurementModeDefaultsToRealAndRoundTrips) {
     EXPECT_EQ(initial.value().board.origin, vision::BoardOrigin::PieceBounds);
     EXPECT_FLOAT_EQ(initial.value().board.manualOffset.x, 0.0F);
     EXPECT_FLOAT_EQ(initial.value().board.manualOffset.y, 0.0F);
+    // Sin reglas de posición: una pieza nueva no puede dar NG por colocación.
+    EXPECT_DOUBLE_EQ(initial.value().maxOffsetPx, 0.0);
+    EXPECT_DOUBLE_EQ(initial.value().maxAngleDeg, 0.0);
     EXPECT_FALSE(initial.value().board.followPieceAngle);
 
     repositories::PieceMeasurement special;
@@ -515,6 +518,8 @@ TEST_F(DatabaseTest, MeasurementModeDefaultsToRealAndRoundTrips) {
     special.board.fixedPoint = {123.5F, 77.25F};
     special.board.manualOffset = {-3.5F, 2.25F};
     special.board.followPieceAngle = true;
+    special.maxOffsetPx = 12.5;
+    special.maxAngleDeg = 3.0;
     ASSERT_TRUE(pieces.saveMeasurement(id.value(), special).isOk());
 
     auto loaded = pieces.loadMeasurement(id.value());
@@ -526,6 +531,8 @@ TEST_F(DatabaseTest, MeasurementModeDefaultsToRealAndRoundTrips) {
     EXPECT_FLOAT_EQ(loaded.value().board.manualOffset.x, -3.5F);
     EXPECT_FLOAT_EQ(loaded.value().board.manualOffset.y, 2.25F);
     EXPECT_TRUE(loaded.value().board.followPieceAngle);
+    EXPECT_DOUBLE_EQ(loaded.value().maxOffsetPx, 12.5);
+    EXPECT_DOUBLE_EQ(loaded.value().maxAngleDeg, 3.0);
 
     // Volver al modo Real no borra el tablero configurado.
     repositories::PieceMeasurement back = loaded.value();

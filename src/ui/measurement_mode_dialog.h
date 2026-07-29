@@ -6,6 +6,7 @@
 
 class QCheckBox;
 class QDoubleSpinBox;
+class QGroupBox;
 class QLabel;
 class QRadioButton;
 
@@ -36,6 +37,9 @@ private:
     QDoubleSpinBox* offsetX_ = nullptr;
     QDoubleSpinBox* offsetY_ = nullptr;
     QCheckBox* followAngle_ = nullptr;
+    QDoubleSpinBox* maxOffset_ = nullptr;  // reglas del modo Especial (M4)
+    QDoubleSpinBox* maxAngle_ = nullptr;
+    QGroupBox* rulesBox_ = nullptr;
     QLabel* warning_ = nullptr;  // aviso de la combinación que no mide posición
     // El punto fijado no se teclea aquí: se marca con un clic sobre la imagen
     // (Ver ▸ Origen del tablero ▸ Punto fijado a mano…). Se conserva tal cual.

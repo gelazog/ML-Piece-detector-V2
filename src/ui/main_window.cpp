@@ -1595,16 +1595,44 @@ void MainWindow::updateBoardReadout() {
         return (px > 0.0 ? QStringLiteral("+") : QString()) + len(px);
     };
 
-    if (boardConfig_.origin == vision::BoardOrigin::PieceCenter) {
+    // Reglas activas (M4): se muestran junto a la lectura para que el operador
+    // pueda colocar la pieza ANTES de inspeccionar, y la banda se pone en rojo
+    // cuando la posición actual daría NG.
+    QString limits;
+    bool outOfTolerance = false;
+    if (measurementMode_ == domain::MeasurementMode::Special) {
+        if (maxOffsetPx_ > 0.0) {
+            limits += tr("  ·  máx %1").arg(len(maxOffsetPx_));
+            outOfTolerance = outOfTolerance || reading.radius > maxOffsetPx_;
+        }
+        if (maxAngleDeg_ > 0.0) {
+            limits += tr("  ·  máx %1°").arg(maxAngleDeg_, 0, 'f', 1);
+            outOfTolerance = outOfTolerance || std::abs(offsetDeg) > maxAngleDeg_;
+        }
+    }
+    boardReadoutLabel_->setStyleSheet(
+        outOfTolerance
+            ? QStringLiteral("color:#ffdede; background:#7a1f1f; padding:3px;"
+                             " border-radius:3px; font-weight:bold;")
+            : QStringLiteral("color:#7fd6ff; background:#10222b; padding:3px;"
+                             " border-radius:3px;"));
+
+    const bool zeroOnPiece = boardConfig_.origin == vision::BoardOrigin::PieceCenter ||
+                             boardConfig_.origin == vision::BoardOrigin::PieceBounds;
+    if (zeroOnPiece && boardConfig_.manualOffset.x == 0.0F &&
+        boardConfig_.manualOffset.y == 0.0F) {
+        // El cero está sobre la pieza: su desviación es 0 por definición.
         boardReadoutLabel_->setText(
-            tr("Tablero — el cero viaja con la pieza · giro %1°")
-                .arg(offsetDeg, 0, 'f', 1));
+            tr("Tablero — el cero viaja con la pieza · giro %1°%2")
+                .arg(offsetDeg, 0, 'f', 1)
+                .arg(limits));
         return;
     }
-    boardReadoutLabel_->setText(tr("Tablero — dx %1 · dy %2 · radio %3 · giro %4°")
+    boardReadoutLabel_->setText(tr("Tablero — dx %1 · dy %2 · radio %3 · giro %4°%5")
                                     .arg(signedLen(reading.dx), signedLen(reading.dy),
                                          len(reading.radius))
-                                    .arg(offsetDeg, 0, 'f', 1));
+                                    .arg(offsetDeg, 0, 'f', 1)
+                                    .arg(limits));
 }
 
 // Aplica a toda la UI el modo y el tablero de una pieza. Decisión del usuario
@@ -1613,6 +1641,8 @@ void MainWindow::updateBoardReadout() {
 void MainWindow::applyMeasurement(const repositories::PieceMeasurement& measurement) {
     measurementMode_ = measurement.mode;
     boardConfig_ = measurement.board;
+    maxOffsetPx_ = measurement.maxOffsetPx;
+    maxAngleDeg_ = measurement.maxAngleDeg;
     boardVisible_ = measurement.mode == domain::MeasurementMode::Special;
 
     video_->setBoardConfig(boardConfig_);
@@ -1700,6 +1730,8 @@ void MainWindow::onMeasurementModeClicked() {
     repositories::PieceMeasurement current;
     current.mode = measurementMode_;
     current.board = boardConfig_;
+    current.maxOffsetPx = maxOffsetPx_;
+    current.maxAngleDeg = maxAngleDeg_;
 
     const std::int64_t pieceId = selectedPieceId();
     MeasurementModeDialog dialog(current, pieceCombo_->currentText(), this);
@@ -1770,6 +1802,8 @@ void MainWindow::persistBoardConfig() {
         repositories::PieceMeasurement measurement;
         measurement.mode = measurementMode_;
         measurement.board = boardConfig_;
+        measurement.maxOffsetPx = maxOffsetPx_;
+        measurement.maxAngleDeg = maxAngleDeg_;
         if (auto saved = repos_.pieces->saveMeasurement(pieceId, measurement); !saved.isOk()) {
             core::logWarning("No se pudo guardar el modo de medición: " +
                              saved.error().message);
@@ -2468,6 +2502,8 @@ void MainWindow::onRegisterLiveClicked() {
         repositories::PieceMeasurement current;
         current.mode = measurementMode_;
         current.board = boardConfig_;
+        current.maxOffsetPx = maxOffsetPx_;
+        current.maxAngleDeg = maxAngleDeg_;
         MeasurementModeDialog modeDialog(current, name, this);
         if (modeDialog.exec() != QDialog::Accepted) {
             return;

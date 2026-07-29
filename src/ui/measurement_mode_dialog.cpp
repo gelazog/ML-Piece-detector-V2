@@ -4,6 +4,7 @@
 #include <QDoubleSpinBox>
 #include <QHBoxLayout>
 #include <QDialogButtonBox>
+#include <QFormLayout>
 #include <QGroupBox>
 #include <QLabel>
 #include <QRadioButton>
@@ -113,6 +114,34 @@ MeasurementModeDialog::MeasurementModeDialog(const repositories::PieceMeasuremen
     boardLayout->addWidget(followAngle_);
     root->addWidget(boardBox);
 
+    // Reglas que entran en el veredicto OK/NG (M4). 0 = no vigilar, así que
+    // quien no las toque sigue inspeccionando exactamente como antes.
+    rulesBox_ = new QGroupBox(tr("Reglas de posición (entran en el OK/NG)"), this);
+    auto* rulesLayout = new QFormLayout(rulesBox_);
+    maxOffset_ = new QDoubleSpinBox(rulesBox_);
+    maxOffset_->setRange(0.0, 5000.0);
+    maxOffset_->setDecimals(1);
+    maxOffset_->setSuffix(tr(" px"));
+    maxOffset_->setSpecialValueText(tr("no vigilar"));
+    maxOffset_->setValue(current.maxOffsetPx);
+    maxOffset_->setToolTip(
+        tr("Distancia máxima entre el centro de la pieza y el cero del tablero.\n"
+           "Si se supera, la inspección da NG por pieza descentrada."));
+    rulesLayout->addRow(tr("Desviación máxima:"), maxOffset_);
+
+    maxAngle_ = new QDoubleSpinBox(rulesBox_);
+    maxAngle_->setRange(0.0, 180.0);
+    maxAngle_->setDecimals(1);
+    maxAngle_->setSuffix(tr(" °"));
+    maxAngle_->setSpecialValueText(tr("no vigilar"));
+    maxAngle_->setValue(current.maxAngleDeg);
+    maxAngle_->setToolTip(
+        tr("Giro máximo de la pieza respecto a los ejes del tablero.\n"
+           "En piezas casi simétricas el eje no es fiable y esta regla se salta\n"
+           "sola, avisando en el detalle, en vez de dar NG falsos."));
+    rulesLayout->addRow(tr("Giro máximo:"), maxAngle_);
+    root->addWidget(rulesBox_);
+
     // Aviso de la combinación que no mide nada (hallazgo de la revisión de
     // diseño): Especial + cero en la propia pieza deja la desviación en 0 por
     // definición, así que el modo no aportaría reglas de posición.
@@ -153,6 +182,9 @@ void MeasurementModeDialog::syncBoardEnabled() {
     }
     warning_->setVisible(special &&
                          (originBounds_->isChecked() || originPiece_->isChecked()));
+    if (rulesBox_ != nullptr) {
+        rulesBox_->setEnabled(special);  // las reglas son del modo Especial
+    }
 }
 
 repositories::PieceMeasurement MeasurementModeDialog::measurement() const {
@@ -169,6 +201,8 @@ repositories::PieceMeasurement MeasurementModeDialog::measurement() const {
         result.board.origin = vision::BoardOrigin::PieceBounds;
     }
     result.board.fixedPoint = fixedPoint_;
+    result.maxOffsetPx = maxOffset_->value();
+    result.maxAngleDeg = maxAngle_->value();
     result.board.manualOffset = {static_cast<float>(offsetX_->value()),
                                  static_cast<float>(offsetY_->value())};
     result.board.followPieceAngle = followAngle_->isChecked();

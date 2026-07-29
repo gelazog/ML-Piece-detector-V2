@@ -173,6 +173,9 @@ private:
     // Modo de medición de la pieza activa (M1/M2). Sin pieza seleccionada actúa
     // como valor por defecto de la sesión.
     domain::MeasurementMode measurementMode_ = domain::MeasurementMode::Real;
+    // Reglas del modo Especial de la pieza activa (M4); 0 = no vigilar.
+    double maxOffsetPx_ = 0.0;
+    double maxAngleDeg_ = 0.0;
     // Modo elegido durante un registro en curso, para guardarlo al terminar.
     repositories::PieceMeasurement pendingMeasurement_;
     // Fila 1: cámara (controles de uso constante).

@@ -171,3 +171,68 @@ TEST(CaptureQuality, RejectionsWithReasons) {
     ASSERT_FALSE(result.isOk());
     EXPECT_NE(result.error().message.find("saturada"), std::string::npos);
 }
+
+// --- Reglas de posición del modo Especial (M4) ---
+
+TEST(PositionRules, TolerancesOffMeanNothingIsWatched) {
+    const auto check = evaluatePosition(120.0, 0.0, 45.0, 0.0, true);
+    EXPECT_FALSE(check.evaluated);
+    EXPECT_TRUE(check.ok);  // sin tolerancias no se juzga nada
+
+    // Y no cambia el veredicto: sigue mandando lo de siempre.
+    const auto verdict = combineVerdict({}, {}, check);
+    EXPECT_TRUE(verdict.ok);
+}
+
+TEST(PositionRules, OffCenterPieceFailsWithReason) {
+    const auto inside = evaluatePosition(8.0, 10.0, 0.0, 0.0, true);
+    EXPECT_TRUE(inside.evaluated);
+    EXPECT_TRUE(inside.radiusEvaluated);
+    EXPECT_TRUE(inside.ok);
+
+    const auto outside = evaluatePosition(14.5, 10.0, 0.0, 0.0, true);
+    EXPECT_FALSE(outside.ok);
+    const auto verdict = combineVerdict({}, {}, outside);
+    EXPECT_FALSE(verdict.ok);
+    EXPECT_NE(verdict.summary.find("descentrada"), std::string::npos) << verdict.summary;
+}
+
+TEST(PositionRules, RotatedPieceFailsAndSignIsIrrelevant) {
+    const auto positive = evaluatePosition(0.0, 0.0, 7.5, 5.0, true);
+    EXPECT_FALSE(positive.ok);
+    // Girar en el otro sentido es igual de malo: se juzga el valor absoluto.
+    const auto negative = evaluatePosition(0.0, 0.0, -7.5, 5.0, true);
+    EXPECT_FALSE(negative.ok);
+    EXPECT_TRUE(evaluatePosition(0.0, 0.0, -4.9, 5.0, true).ok);
+
+    const auto verdict = combineVerdict({}, {}, negative);
+    EXPECT_NE(verdict.summary.find("girada"), std::string::npos) << verdict.summary;
+}
+
+// Hallazgo de la revisión de diseño: en piezas casi simétricas el eje principal
+// salta y daría NG falsos, así que la regla de giro se salta con nota.
+TEST(PositionRules, UnreliableAxisSkipsAngleRuleInsteadOfFailing) {
+    const auto check = evaluatePosition(0.0, 0.0, 179.0, 5.0, false);
+    EXPECT_FALSE(check.angleEvaluated);
+    EXPECT_FALSE(check.evaluated);  // no había otra regla activa
+    EXPECT_TRUE(check.ok);
+    EXPECT_FALSE(check.note.empty());
+
+    // Con tolerancia de centrado activa, esa sí se sigue juzgando.
+    const auto mixed = evaluatePosition(20.0, 10.0, 179.0, 5.0, false);
+    EXPECT_TRUE(mixed.radiusEvaluated);
+    EXPECT_FALSE(mixed.angleEvaluated);
+    EXPECT_FALSE(mixed.ok);
+    const auto verdict = combineVerdict({}, {}, mixed);
+    EXPECT_NE(verdict.summary.find("descentrada"), std::string::npos) << verdict.summary;
+    EXPECT_EQ(verdict.summary.find("girada"), std::string::npos) << verdict.summary;
+}
+
+TEST(PositionRules, PositionFailureCombinesWithToolFailures) {
+    const std::vector<ToolCheck> tools{{"ancho", false, 12.0, "fuera"}};
+    const auto position = evaluatePosition(30.0, 10.0, 0.0, 0.0, true);
+    const auto verdict = combineVerdict({}, tools, position);
+    EXPECT_FALSE(verdict.ok);
+    EXPECT_NE(verdict.summary.find("herramienta"), std::string::npos) << verdict.summary;
+    EXPECT_NE(verdict.summary.find("descentrada"), std::string::npos) << verdict.summary;
+}

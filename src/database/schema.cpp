@@ -144,6 +144,14 @@ ALTER TABLE Pieces ADD COLUMN board_offset_y REAL NOT NULL DEFAULT 0;
 UPDATE Pieces SET board_origin = 'bounds' WHERE board_origin = 'piece';
 )sql";
 
+// v7: reglas del modo Especial (M4) por pieza — desviación máxima del centro
+// respecto al cero del tablero y giro máximo. 0 = no vigilar, así que las
+// piezas existentes se comportan exactamente como antes.
+const char* const kMigrationV7 = R"sql(
+ALTER TABLE Pieces ADD COLUMN board_tol_radius REAL NOT NULL DEFAULT 0;
+ALTER TABLE Pieces ADD COLUMN board_tol_angle REAL NOT NULL DEFAULT 0;
+)sql";
+
 const char* migrationFor(int targetVersion) {
     switch (targetVersion) {
         case 1: return kSchemaV1;
@@ -152,6 +160,7 @@ const char* migrationFor(int targetVersion) {
         case 4: return kMigrationV4;
         case 5: return kMigrationV5;
         case 6: return kMigrationV6;
+        case 7: return kMigrationV7;
     }
     return nullptr;
 }

@@ -155,6 +155,12 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    - **Especial (tablero centrado)**: además, la pieza se mide respecto al
      tablero (centro = 0). Al seleccionar una pieza en este modo, **su** tablero
      se aplica y se enciende solo; al volver a una pieza en modo real, se apaga.
+     En este modo puedes fijar **reglas de posición** que entran en el veredicto
+     OK/NG: **desviación máxima** del centro respecto al cero y **giro máximo**
+     (0 = no vigilar). La lectura en vivo muestra esos límites y se pone en rojo
+     cuando la pieza está fuera, así la colocas bien antes de inspeccionar. Si
+     la pieza es casi simétrica su eje no es fiable, así que la regla de giro se
+     salta sola y lo avisa, en vez de dar NG falsos.
    El modo y el tablero (origen, punto fijado y si los ejes giran) se guardan
    **con la pieza**, así que cada una recuerda cómo se mide. **Junto al combo de
    pieza hay una etiqueta con el modo activo** (gris = posición real, cian =

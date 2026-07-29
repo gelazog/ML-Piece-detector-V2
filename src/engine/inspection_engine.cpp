@@ -7,11 +7,21 @@
 #include <utility>
 
 #include "core/logging.h"
+#include "domain/measurement_mode.h"
 #include "ml/reference.h"
 #include "vision/orientation_anchor.h"
 #include "vision/pipeline.h"
 
 namespace pci::engine {
+
+namespace {
+
+// Por debajo de esta anisotropía el eje principal de la pieza no está definido
+// (pieza casi redonda o simétrica): el giro medido salta y no se puede usar
+// para dar NG. Mismo criterio que usa el estabilizador de fixture.
+constexpr double kMinAnisotropyForAngle = 0.15;
+
+}  // namespace
 
 std::vector<unsigned char> encodeThumbnailJpeg(const cv::Mat& image, int size, int quality) {
     if (image.empty() || size <= 0) {
@@ -118,10 +128,28 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
         toolChecks.push_back({result.name, result.ok, result.measured, result.detail});
     }
 
-    // 3. Veredicto combinado (lógica pura de domain/).
-    outcome.verdict = domain::combineVerdict(check, toolChecks);
+    // 3. Reglas del modo Especial (M4): centrado y giro respecto al tablero.
+    //    Solo se evalúan si la pieza está en modo Especial y con tolerancias
+    //    configuradas; el eje de una pieza casi simétrica no es de fiar, así que
+    //    la anisotropía decide si el giro se juzga o se deja pasar con nota.
+    domain::PositionCheck positionCheck;
+    if (auto measurement = pieces_.loadMeasurement(pieceId);
+        measurement.isOk() &&
+        measurement.value().mode == domain::MeasurementMode::Special) {
+        const vision::BoardReading reading =
+            vision::readPiece(board, outcome.analysis.fixture);
+        const double angleOffset =
+            vision::pieceAngleOffset(board, outcome.analysis.fixture);
+        positionCheck = domain::evaluatePosition(
+            reading.radius, measurement.value().maxOffsetPx, angleOffset,
+            measurement.value().maxAngleDeg,
+            outcome.analysis.fixture.anisotropy >= kMinAnisotropyForAngle);
+    }
 
-    // 4. Historial + estadísticas (fallo de BD = avisado, nunca oculta el
+    // 4. Veredicto combinado (lógica pura de domain/).
+    outcome.verdict = domain::combineVerdict(check, toolChecks, positionCheck);
+
+    // 5. Historial + estadísticas (fallo de BD = avisado, nunca oculta el
     //    veredicto ni tumba la inspección).
     const std::vector<unsigned char> thumbnail =
         encodeThumbnailJpeg(outcome.analysis.normalized, options_.thumbnailSize);

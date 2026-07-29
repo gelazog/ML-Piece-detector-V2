@@ -5,6 +5,7 @@
 #include <QLabel>
 #include <QPainter>
 #include <QPushButton>
+#include <QStringList>
 #include <QTableWidget>
 #include <QVBoxLayout>
 
@@ -82,6 +83,38 @@ InspectionResultDialog::InspectionResultDialog(
             tr("Apariencia no evaluada: %1")
                 .arg(QString::fromStdString(outcome_.verdict.embedding.note)),
             this));
+    }
+
+    // Reglas de posición del modo Especial (M4): se explican aquí para que el
+    // operador vea POR QUÉ una pieza bien medida puede salir NG.
+    if (const auto& position = outcome_.verdict.position; position.evaluated) {
+        QStringList parts;
+        if (position.radiusEvaluated) {
+            parts << tr("desviación %1 px (máx %2)")
+                         .arg(position.radius, 0, 'f', 1)
+                         .arg(position.maxRadius, 0, 'f', 1);
+        }
+        if (position.angleEvaluated) {
+            parts << tr("giro %1° (máx %2°)")
+                         .arg(position.angleDeg, 0, 'f', 1)
+                         .arg(position.maxAngleDeg, 0, 'f', 1);
+        }
+        auto* label = new QLabel(tr("Posición en el tablero: %1 — %2")
+                                     .arg(parts.join(QStringLiteral(", ")),
+                                          position.ok ? tr("dentro de tolerancia")
+                                                      : tr("FUERA DE TOLERANCIA")),
+                                 this);
+        label->setWordWrap(true);
+        if (!position.ok) {
+            label->setStyleSheet(QStringLiteral("color:#ff8080; font-weight:bold;"));
+        }
+        sideLayout->addWidget(label);
+    }
+    if (const auto& position = outcome_.verdict.position; !position.note.empty()) {
+        auto* note = new QLabel(QString::fromStdString(position.note), this);
+        note->setWordWrap(true);
+        note->setStyleSheet(QStringLiteral("color:#ffb454;"));
+        sideLayout->addWidget(note);
     }
 
     auto* table = new QTableWidget(static_cast<int>(outcome_.toolResults.size()), 4, this);

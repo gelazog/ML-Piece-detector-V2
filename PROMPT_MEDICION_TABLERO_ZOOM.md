@@ -387,7 +387,7 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
   es el único punto que cambia el estado, más una llamada al arrancar para que
   el chip no salga vacío cuando no hay pieza seleccionada.
 
-- [ ] **M4 — Reglas específicas del modo Especial**. Lo que hace que "especial"
+- [x] **M4 — Reglas específicas del modo Especial**. HECHO. Lo que hace que "especial"
   signifique algo: **tolerancias de centrado y orientación por pieza**
   (desviación máx. en X/Y o radial, y desviación angular máx.) que se evalúan en
   cada inspección y **entran en el veredicto OK/NG** junto a las herramientas.
@@ -397,6 +397,26 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
   (dónde guardar las tolerancias: columnas en `Pieces` o tabla propia).
   Archivos: `domain/verdict.*`, `engine/inspection_engine.*`,
   `repositories/piece_repository.*`, `ui/` (edición de esas tolerancias).
+
+  **Cómo quedó**: `domain::PositionCheck` + `evaluatePosition(radio, máx, giro,
+  máx, ejeFiable)` (lógica pura, 5 tests) y `combineVerdict` recibe un tercer
+  argumento **con valor por defecto**, así que el contrato con las herramientas
+  no cambia. `kMigrationV7` guarda `board_tol_radius` y `board_tol_angle` por
+  pieza (0 = no vigilar → quien no las toque inspecciona exactamente como
+  antes). El motor las evalúa **solo en modo Especial**, con el mismo tablero
+  que ve el operador.
+
+  **Hallazgo de G-A resuelto**: la tolerancia de giro **no se aplica cuando el
+  eje de la pieza no es fiable** (`fixture.anisotropy < 0.15`, el mismo criterio
+  del estabilizador): en piezas casi simétricas el ángulo salta y habría dado NG
+  falsos. En ese caso el veredicto lo dice con una nota en vez de callarlo.
+
+  **UI**: las dos tolerancias se editan en el diálogo de modo (grupo *Reglas de
+  posición*, deshabilitado en modo Real, con "no vigilar" como valor 0); el
+  resultado aparece en el diálogo de inspección explicando **por qué** una pieza
+  bien medida sale NG; y la banda de lectura en vivo muestra los límites y **se
+  pone en rojo** cuando la posición actual daría NG, para poder colocar la pieza
+  antes de inspeccionar. 158/158 y migración verificada sobre la BD real.
 
 ### G. Cierre de la ronda
 
