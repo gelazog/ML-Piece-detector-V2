@@ -23,7 +23,7 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    prepara el modelo de embeddings, compila y lanza la app. Si algo no puede
    instalarse solo, **dice exactamente qué falta y cómo resolverlo a mano**.
    Variantes: `-NoRun` (solo preparar), `-Rebuild` (recompilar), `-Test`
-   (correr los 87 tests).
+   (correr los 158 tests).
    La ventana tiene una **barra de menú** (Cámara / Pieza / Inspección / Ver /
    Ayuda) para las acciones de configuración, y deja en la vista solo los
    controles de uso constante (combos de cámara/pieza/plantilla, Iniciar,
@@ -281,10 +281,12 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    **editable** — haz clic en el atajo y pulsa la combinación nueva; se
    guardan en la BD. Por defecto: `Ctrl+Z`/`Ctrl+Y` deshacer/rehacer las
    herramientas dibujadas (crear, mover, borrar — también dentro del editor),
-   `Supr` borrar la seleccionada, `Esc` volver a Mover/Elegir, `1`–`5` elegir
-   herramienta de dibujo, `V` iniciar/detener cámara, `R` registrar y
-   activar, `A` auto-inspección, `I` inspeccionar, `P` plantilla, `C`
-   calibrar, `D` rasgo distintivo.
+   `Supr` borrar la seleccionada, `Esc` volver a Mover/Elegir, `1`–`9` y `0`
+   elegir herramienta de dibujo (`0` = Posición), `V` iniciar/detener cámara,
+   `R` registrar y activar, `A` auto-inspección, `I` inspeccionar, `P`
+   plantilla, `C` calibrar, `D` rasgo distintivo, `Ctrl+S` guardar la
+   plantilla. Vista: `Ctrl++`/`Ctrl+-` acercar/alejar, `Ctrl+0` ajustar,
+   `Ctrl+1` 100 % y `Ctrl+2` zoom máximo.
 
    **Rasgo distintivo** (piezas simétricas o para robustez extra): con el
    botón *Rasgo distintivo*, haz clic sobre un punto visualmente único de la
@@ -295,7 +297,9 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    al registro, al video en vivo y a la inspección.
 4. **Registrar y activar**: un solo botón — pide el nombre **validando
    duplicados al instante** (si la pieza ya existe ofrece guardar como nueva
-   versión de su referencia o renombrar), captura automáticamente 30
+   versión de su referencia o renombrar), pregunta el **modo de medición** de
+   la pieza (y lo aplica ya, para que captures viendo el tablero con el que se
+   va a medir), captura automáticamente 30
    referencias válidas del video (cada frame se valida: nitidez, exposición,
    pieza completa; los rechazos muestran el motivo en el progreso), guarda la
    referencia de embeddings, la miniatura **y las herramientas dibujadas**, y
@@ -399,10 +403,13 @@ Limitaciones conocidas:
   irregular degradará la segmentación.
 - **Orientación inestable en piezas casi circulares o con simetría de
   rotación** — inherente al método de momentos; irrelevante para la
-  comparación por embeddings de la fase 3.
+  comparación por embeddings de la fase 3. En el modo Especial, la regla de
+  giro **se salta sola** cuando el eje no es fiable (y lo avisa), para no dar
+  NG falsos; para fijar la orientación de una pieza simétrica, usa el rasgo
+  distintivo.
 - **La pieza debe estar completa dentro del encuadre**; si toca el borde el
   recorte normalizado puede recortarse.
-- El overlay se verificó con imágenes sintéticas (31 tests); con cámara real
+- El overlay se verificó con imágenes sintéticas; con cámara real
   queda pendiente de prueba manual del usuario.
 
 ## Fase 3 — Módulo `ml/` (embeddings)

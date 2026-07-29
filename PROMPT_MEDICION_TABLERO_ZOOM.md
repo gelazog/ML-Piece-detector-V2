@@ -451,7 +451,7 @@ Formato: casilla, ID, tarea, por qué, skills, archivos.
      desde Ver ▸ Origen del tablero) se avisa con un cuadro de diálogo indicando
      cuántas herramientas de Posición hay que revisar.
 
-- [ ] **G-B — README + memoria + limpieza**. Documentar zoom, tablero y modos en
+- [x] **G-B — README + memoria + limpieza**. HECHO. Documentar zoom, tablero y modos en
   el README (sección de uso, con los atajos), y una pasada de coherencia sobre
   lo añadido.
   Skills: `qt-cpp-docs` (si `board_frame` crece lo suficiente).
