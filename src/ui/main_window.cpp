@@ -1462,6 +1462,11 @@ void MainWindow::onStreamStopped() {
     if (cameraControlsAction_ != nullptr) {
         cameraControlsAction_->setEnabled(false);  // sin cámara no hay qué ajustar
     }
+    // El diálogo de controles es no modal: si sigue abierto tras detener la
+    // cámara, sus deslizadores no harían nada. Se cierra en vez de mentir.
+    for (auto* dialog : findChildren<CameraControlsDialog*>()) {
+        dialog->close();
+    }
     updateBoardReadout();      // "sin pieza detectada" al cortar la transmisión
     updateStatusIndicators();  // cámara vuelve a rojo (S4)
 }

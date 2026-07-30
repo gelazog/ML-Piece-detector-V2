@@ -513,8 +513,16 @@ void EditorCanvas::wheelEvent(QWheelEvent* event) {
 
 void EditorCanvas::mouseDoubleClickEvent(QMouseEvent* event) {
     // Doble clic = volver al encuadre completo: la salida rápida cuando uno se
-    // pierde con el zoom. No interfiere con el dibujo (que usa arrastre).
-    if (event->button() == Qt::LeftButton && !image_.isNull()) {
+    // pierde con el zoom.
+    //
+    // OJO (corregido tras la auditoría): NO basta con suponer que dibujar es
+    // siempre por arrastre. El Blob poligonal, la Línea-Línea y el Ángulo se
+    // construyen por CLICS sucesivos, y marcar el rasgo distintivo, el cero del
+    // tablero o la zona de detección también son clics. En esos modos, un doble
+    // clic añadía vértices y además reencuadraba la vista de golpe. Mientras hay
+    // un modo de clic activo, el doble clic no toca la vista.
+    const bool clickDrivenMode = pickMode_ || regionPick_ || createType_.has_value();
+    if (event->button() == Qt::LeftButton && !image_.isNull() && !clickDrivenMode) {
         resetView();
         event->accept();
         return;

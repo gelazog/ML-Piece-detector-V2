@@ -322,11 +322,57 @@ archivos principales que toca.
   enumera la cámara. El zip pesa ~178 MB, de los cuales 50 MB son el modelo y
   buena parte del resto es OpenCV con sus códecs.
 
-- [ ] **G4 — Auditoría con `/code-review`**. Antes de seguir sumando
+- [x] **G4 — Auditoría del código acumulado**. HECHO. Antes de seguir sumando
   features, correr `/code-review` (o el skill `qt-cpp-review`) sobre el diff
   acumulado de todas las rondas anteriores. Puramente de revisión — no
   implementa nada nuevo, solo confirma que no se acumuló deuda técnica.
   Skills: `code-review`, `qt-cpp-review`.
+
+  **Cómo se hizo**: con la skill `qt-cpp-review` sobre los 21 archivos nuevos o
+  muy tocados de estas rondas. Fase 1 (linter determinista) completa; la fase 2
+  del skill pide lanzar seis subagentes en paralelo y **eso no se hizo**: el
+  entorno tiene instrucción explícita de no lanzar agentes sin pedirlo el
+  usuario, así que las seis misiones (contratos de modelo, propiedad y ciclo de
+  vida, hilos, API y corrección C++, errores y validación, rendimiento) se
+  revisaron **en línea**, leyendo el código. `/code-review` y `/ultrareview` los
+  lanza el usuario: son interactivos y facturables, no puedo dispararlos yo.
+
+  **Resultado: 1 defecto real, corregido en el momento.**
+  **Doble clic para ajustar la vista (Z3) pisaba los modos de clic.** El Blob
+  poligonal, la Línea-Línea y el Ángulo se construyen por **clics sucesivos**, y
+  marcar el rasgo distintivo, el cero del tablero o la zona de detección también
+  son clics: un doble clic añadía vértices *y además* reencuadraba la vista de
+  golpe. El comentario que yo mismo había escrito ("no interfiere con el dibujo,
+  que usa arrastre") era **falso**. Ahora el doble clic solo reencuadra si no
+  hay modo de clic activo, y el comentario dice la verdad.
+
+  **Mejora de coherencia aplicada**: el diálogo de controles de cámara es no
+  modal; si la cámara se detenía con él abierto, sus deslizadores dejaban de
+  hacer efecto sin decirlo. Ahora se cierra al detener la transmisión.
+
+  **Hallazgos del linter revisados y descartados con motivo** (no son defectos
+  de este código):
+  - 35 × `HDR-3` (`std::min/max` sin paréntesis defensivos): la regla protege
+    contra las macros `min`/`max` de `windows.h`. Donde el proyecto incluye
+    cabeceras de Windows ya define `NOMINMAX` (`core/crash_guard.cpp`,
+    `camera/native_cameras.cpp`), y estos archivos no las incluyen. Cambiar 35
+    sitios añadiría ruido sin arreglar nada.
+  - 3 × `PAT-1` (`.value()` de `std::optional` puede lanzar): son llamadas a
+    `core::Result<T>::value()` y a `database::Statement::value()`, tipos propios
+    del proyecto, no `std::optional`. Falso positivo del patrón textual.
+  - 4 × `PAT-12` (range-for no const y COW de Qt): recorren `std::vector`
+    propios (`liveTools_`, `savedCameraControls_`, herramientas cargadas) y
+    **modifican** los elementos. No hay COW ni copia que evitar.
+  - 2 × `VAR-3` y 4 × `PAT-2` (estilo de inicialización y `std::optional` por
+    defecto): son convenciones de estilo del wiki de Qt que chocan con el estilo
+    ya establecido en todo el repositorio; cambiarlas solo aquí sería
+    incoherente.
+  - 1 × `TMO-1` (intervalo entero): `autoIntervalMs_` se persiste como entero en
+    `Settings` y se pasa a `QTimer::setInterval(int)`; envolverlo en
+    `std::chrono` no aporta seguridad aquí.
+
+  **Conclusión**: no se detectó deuda técnica acumulada más allá del defecto
+  corregido. 170/170 tras el arreglo.
 
 ---
 
