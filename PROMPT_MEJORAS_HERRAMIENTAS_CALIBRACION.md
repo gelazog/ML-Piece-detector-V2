@@ -114,7 +114,7 @@ archivos principales que toca.
   Archivos: `ui/preferences_dialog.*` (nuevo), `engine/*Options` (quitar
   los defaults hardcodeados donde tenga sentido parametrizar).
 
-- [ ] **O2 — Controles reales de cámara (brillo/exposición/enfoque)**. Hoy no
+- [x] **O2 — Controles reales de cámara (brillo/exposición/enfoque)**. HECHO. Hoy no
   existe ningún control de la fuente: solo el post-proceso de
   `Detección…`. Exponer `CAP_PROP_BRIGHTNESS`, `EXPOSURE`, `FOCUS`,
   `AUTOFOCUS` de `cv::VideoCapture` en un panel simple; fallar en silencio
@@ -123,6 +123,28 @@ archivos principales que toca.
   Skills: `computer-vision-opencv`, `systematic-debugging` (las propiedades
   de `VideoCapture` fallan distinto según el backend, hay que probarlo).
   Archivos: `camera/camera_controller.*`, `ui/main_window.cpp` (panel nuevo).
+
+  **Cómo quedó**: `camera/camera_controls.{h,cpp}` (lógica pura, con tests)
+  define los siete controles — brillo, contraste, ganancia, exposición,
+  exposición automática, enfoque y enfoque automático — con su `CAP_PROP_*`,
+  su clave de persistencia y su texto de ayuda. Nuevo diálogo **no modal**
+  `ui/camera_controls_dialog.*` (Cámara ▸ Controles de la cámara…), para poder
+  mover un deslizador y ver el efecto en el vídeo.
+
+  **Decisiones que importan**:
+  - `cv::VideoCapture` **no es thread-safe**: los cambios se encolan y los
+    aplica el **hilo de captura** (`requestControls` + `drainControlRequests`),
+    nunca la UI. Tocar la cámara desde el hilo de UI puede colgar el driver.
+  - OpenCV **no dice qué propiedades existen ni sus rangos**. El soporte se
+    sondea leyendo cada propiedad al abrir (no soportada si devuelve −1 o algo
+    no finito) y lo no soportado sale **deshabilitado y explicado**, no oculto.
+    El rango se deduce de la escala del valor devuelto (0..1 de MSMF vs 0..255
+    de DirectShow; exposición en log2 segundos, que es negativa) — probado.
+  - Un `set()` que devuelve false **no se convierte en error visible**: muchas
+    cámaras lo devuelven aunque apliquen el valor. Queda en el log.
+  - Los valores tocados se guardan en `Settings` y **se reaplican al abrir la
+    cámara**, para que la línea conserve su exposición y su enfoque.
+  3 tests nuevos → 161/161.
 
 - [ ] **O3 — Perfiles de detección guardables**. Los ajustes de
   `Detección…` (umbral, polaridad, kernels) son un único set global. Permitir

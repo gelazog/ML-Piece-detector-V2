@@ -43,6 +43,16 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    guardada. *Sin cámara, todos los pasos siguientes aceptan imágenes desde
    archivo* (`sample_images/pieza_demo.png` sirve para probar).
 
+   **Controles de la cámara** (Cámara ▸ *Controles de la cámara…*, con la
+   transmisión en marcha): brillo, contraste, ganancia, exposición y enfoque de
+   la **propia cámara**, no del procesado. El diálogo no bloquea la ventana, así
+   que mueves un deslizador y ves el efecto en el vídeo al instante. Lo que tu
+   cámara no soporta aparece deshabilitado y dicho explícitamente. Para una
+   línea estable conviene **desactivar la exposición y el enfoque automáticos**
+   y fijarlos: si no, la cámara cambia el brillo o "bombea" el foco entre
+   frames y las medidas bailan. Los valores que toques se guardan y se
+   reaplican la próxima vez que inicies la cámara.
+
    **Orientación**: por defecto la pieza se muestra **vertical** (tal como la
    ve la cámara) — más estable y sin la inclinación arbitraria que daba el eje
    principal. Si tus piezas llegan giradas y quieres que las herramientas las

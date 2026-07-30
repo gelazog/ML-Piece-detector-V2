@@ -1,5 +1,6 @@
 add_library(pci_camera STATIC
   camera_controller.cpp
+  camera_controls.cpp
   camera_enumerator.cpp
   native_cameras.cpp
   frame_utils.cpp

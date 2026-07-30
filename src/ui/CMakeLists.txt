@@ -1,5 +1,6 @@
 add_library(pci_ui STATIC
   calibration_dialog.cpp
+  camera_controls_dialog.cpp
   detection_dialog.cpp
   history_dialog.cpp
   inspection_result_dialog.cpp

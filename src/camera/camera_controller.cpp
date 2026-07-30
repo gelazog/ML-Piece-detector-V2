@@ -3,6 +3,7 @@
 #include <opencv2/videoio.hpp>
 
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <string>
 
@@ -49,16 +50,58 @@ std::string toHex(unsigned long value) {
 
 }  // namespace
 
-CameraController::CameraController(QObject* parent) : QObject(parent) {}
+CameraController::CameraController(QObject* parent) : QObject(parent) {
+    qRegisterMetaType<std::vector<CameraControlState>>();
+}
 
 CameraController::~CameraController() {
     stop();
 }
 
-void CameraController::start(const CameraInfo& camera) {
+void CameraController::start(const CameraInfo& camera,
+                             const std::vector<CameraControlValue>& initialControls) {
     stop();
+    {
+        std::lock_guard<std::mutex> lock(controlsMutex_);
+        pendingControls_ = initialControls;
+    }
     running_ = true;
     worker_ = std::thread(&CameraController::captureLoop, this, camera);
+}
+
+void CameraController::requestControls(const std::vector<CameraControlValue>& controls) {
+    std::lock_guard<std::mutex> lock(controlsMutex_);
+    for (const auto& control : controls) {
+        pendingControls_.push_back(control);
+    }
+}
+
+void CameraController::drainControlRequests(cv::VideoCapture& capture) {
+    std::vector<CameraControlValue> pending;
+    {
+        std::lock_guard<std::mutex> lock(controlsMutex_);
+        if (pendingControls_.empty()) {
+            return;
+        }
+        pending.swap(pendingControls_);
+    }
+    for (const auto& control : pending) {
+        bool applied = false;
+        try {
+            applied = capture.set(captureProperty(control.property), control.value);
+        } catch (const cv::Exception& e) {
+            core::logWarning(std::string("OpenCV lanzó al fijar un control de cámara: ") +
+                             e.what());
+        }
+        if (!applied) {
+            // Falla en silencio a propósito: muchas cámaras devuelven false
+            // aunque el valor sí se aplique, y otras no soportan la propiedad.
+            // Queda en el log y la UI muestra lo que la cámara devuelve.
+            core::logWarning(std::string("La cámara rechazó el control ") +
+                             std::string(propertyKey(control.property)) + " = " +
+                             std::to_string(control.value));
+        }
+    }
 }
 
 void CameraController::stop() {
@@ -128,6 +171,27 @@ void CameraController::captureLoopBody(CameraInfo camera) {
     capture.set(cv::CAP_PROP_BUFFERSIZE, 1);
     core::logInfo("Captura iniciada en " + camera.name);
 
+    // Controles pedidos antes de abrir (los guardados de la sesión anterior).
+    drainControlRequests(capture);
+
+    // Sondeo: OpenCV no dice qué propiedades existen, así que se lee cada una y
+    // se considera no soportada si devuelve -1 o algo no finito. Es la única
+    // comprobación posible que no toca la cámara.
+    std::vector<CameraControlState> probed;
+    for (const CameraProperty property : allCameraProperties()) {
+        CameraControlState state;
+        state.property = property;
+        try {
+            state.value = capture.get(captureProperty(property));
+        } catch (const cv::Exception& e) {
+            core::logWarning(std::string("OpenCV lanzó al leer un control: ") + e.what());
+            state.value = -1.0;
+        }
+        state.supported = std::isfinite(state.value) && state.value != -1.0;
+        probed.push_back(state);
+    }
+    emit controlsProbed(probed);
+
     cv::Mat frame;  // reutilizado entre iteraciones, sin allocar por frame
     core::FpsCounter fpsCounter;
     int consecutiveFailures = 0;
@@ -152,6 +216,7 @@ void CameraController::captureLoopBody(CameraInfo camera) {
         }
 
         consecutiveFailures = 0;
+        drainControlRequests(capture);  // cambios pedidos desde la UI
         const auto now = std::chrono::steady_clock::now();
         fpsCounter.tick(now);
         emit frameReady(matToQImage(frame));

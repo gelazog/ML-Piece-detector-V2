@@ -98,6 +98,8 @@ private slots:
     void onManageTemplatesClicked();  // gestor de plantillas (M1)
     void onShowHistoryClicked();      // pantalla de historial (S1)
     void onPreferencesClicked();      // diálogo de preferencias (O1)
+    void onCameraControlsClicked();   // controles de la fuente (O2)
+    void onControlsProbed(const std::vector<pci::camera::CameraControlState>& controls);
     void onMeasurementModeClicked();  // modo de medición de la pieza (M2)
     void onToolRightClicked(int index);
 
@@ -157,6 +159,7 @@ private:
     QAction* refreshAction_ = nullptr;
     QAction* calibrateAction_ = nullptr;
     QAction* detectionAction_ = nullptr;
+    QAction* cameraControlsAction_ = nullptr;  // Cámara > Controles… (O2)
     QAction* registerWizardAction_ = nullptr;
     QAction* managePiecesAction_ = nullptr;
     QAction* editorAction_ = nullptr;
@@ -173,6 +176,10 @@ private:
     // Modo de medición de la pieza activa (M1/M2). Sin pieza seleccionada actúa
     // como valor por defecto de la sesión.
     domain::MeasurementMode measurementMode_ = domain::MeasurementMode::Real;
+    // Controles de la fuente (O2): lo que la cámara reportó al abrirse y los
+    // valores elegidos por el operador, que se reaplican en cada arranque.
+    std::vector<camera::CameraControlState> cameraControls_;
+    std::vector<camera::CameraControlValue> savedCameraControls_;
     // Reglas del modo Especial de la pieza activa (M4); 0 = no vigilar.
     double maxOffsetPx_ = 0.0;
     double maxAngleDeg_ = 0.0;

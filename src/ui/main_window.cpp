@@ -38,6 +38,7 @@
 #include "inspection_editor/canvas/tool_icons.h"
 #include "repositories/tool_repository.h"
 #include "ui/calibration_dialog.h"
+#include "ui/camera_controls_dialog.h"
 #include "ui/detection_dialog.h"
 #include "ui/inspection_result_dialog.h"
 #include "ui/history_dialog.h"
@@ -509,6 +510,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(&controller_, &camera::CameraController::cameraError, this,
             &MainWindow::onCameraError);
     connect(&controller_, &camera::CameraController::stopped, this, &MainWindow::onStreamStopped);
+    connect(&controller_, &camera::CameraController::controlsProbed, this,
+            &MainWindow::onControlsProbed);
 
     connect(toolModeGroup_, &QButtonGroup::idClicked, this, &MainWindow::onToolModeChanged);
     connect(video_, &inspection::EditorCanvas::toolCreated, this,
@@ -600,6 +603,18 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     }
     updateRoiButton();
 
+    // Controles de la cámara guardados (O2): se reaplican al abrirla. Solo se
+    // recuerdan los que el operador tocó alguna vez.
+    if (repos_.settings != nullptr) {
+        for (const camera::CameraProperty property : camera::allCameraProperties()) {
+            const std::string key(camera::propertyKey(property));
+            if (auto stored = repos_.settings->getDouble(key, -1e9);
+                stored.isOk() && stored.value() > -1e9) {
+                savedCameraControls_.push_back({property, stored.value()});
+            }
+        }
+    }
+
     // Tablero de referencia (T2): visibilidad y origen elegidos por el operador.
     if (repos_.settings != nullptr) {
         boardVisible_ = repos_.settings->getInt("board_visible", 0).value() != 0;
@@ -688,6 +703,12 @@ void MainWindow::buildMenuBar() {
                                              &MainWindow::onCalibrateClicked);
     detectionAction_ = cameraMenu->addAction(tr("Ajustes de detección…"), this,
                                              &MainWindow::onDetectionClicked);
+    cameraControlsAction_ = cameraMenu->addAction(tr("Controles de la cámara…"), this,
+                                                  &MainWindow::onCameraControlsClicked);
+    cameraControlsAction_->setEnabled(false);  // necesita la cámara en marcha
+    cameraControlsAction_->setToolTip(
+        tr("Brillo, contraste, ganancia, exposición y enfoque de la propia cámara\n"
+           "(no del procesado). Requiere la transmisión en marcha."));
     cameraMenu->addAction(tr("Preferencias…"), this, &MainWindow::onPreferencesClicked);
     cameraMenu->addSeparator();
     auto* arucoAction = cameraMenu->addAction(tr("Escala por marcador ArUco (en vivo)"));
@@ -1251,7 +1272,9 @@ void MainWindow::onStartStopClicked() {
                                  .arg(QString::fromStdString(cameras_[comboIndex].name)));
     updateCalibrationLabel();  // reevalúa obsolescencia con la cámara nueva
     updateStatusIndicators();  // cámara ahora en verde (S4)
-    controller_.start(cameras_[comboIndex]);
+    // Los controles guardados se reaplican al abrir: la línea conserva su
+    // exposición y su enfoque entre sesiones (O2).
+    controller_.start(cameras_[comboIndex], savedCameraControls_);
 }
 
 void MainWindow::onFrame(const QImage& frame) {
@@ -1387,6 +1410,10 @@ void MainWindow::onStreamStopped() {
     lastFrame_ = QImage();
     video_->clearLive();
     liveFixture_.reset();
+    cameraControls_.clear();
+    if (cameraControlsAction_ != nullptr) {
+        cameraControlsAction_->setEnabled(false);  // sin cámara no hay qué ajustar
+    }
     updateBoardReadout();      // "sin pieza detectada" al cortar la transmisión
     updateStatusIndicators();  // cámara vuelve a rojo (S4)
 }
@@ -2071,6 +2098,56 @@ void MainWindow::onTemplateChanged(int index) {
     }
     autoInspectButton_->setChecked(false);
     loadToolsForSelectedPiece();
+}
+
+// La cámara acaba de decir qué controles soporta (O2): se habilita el menú y
+// se recuerda el estado para poblar el diálogo.
+void MainWindow::onControlsProbed(const std::vector<camera::CameraControlState>& controls) {
+    cameraControls_ = controls;
+    bool anySupported = false;
+    for (const auto& control : controls) {
+        anySupported = anySupported || control.supported;
+    }
+    if (cameraControlsAction_ != nullptr) {
+        cameraControlsAction_->setEnabled(anySupported);
+    }
+    if (!anySupported) {
+        core::logInfo("La cámara no expone ningún control ajustable");
+    }
+}
+
+void MainWindow::onCameraControlsClicked() {
+    if (!streaming_ || cameraControls_.empty()) {
+        QMessageBox::information(
+            this, tr("Sin cámara"),
+            tr("Inicia la transmisión para ajustar los controles de la cámara."));
+        return;
+    }
+    // No modal: el operador mueve un deslizador y ve el efecto en el vídeo.
+    auto* dialog = new CameraControlsDialog(controller_, cameraControls_, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &CameraControlsDialog::controlChanged, this,
+            [this](const camera::CameraControlValue& control) {
+                // Se recuerda el último valor de cada propiedad para reaplicarlo
+                // en el próximo arranque.
+                for (auto& saved : savedCameraControls_) {
+                    if (saved.property == control.property) {
+                        saved.value = control.value;
+                        if (repos_.settings != nullptr) {
+                            repos_.settings->setDouble(
+                                std::string(camera::propertyKey(control.property)),
+                                control.value);
+                        }
+                        return;
+                    }
+                }
+                savedCameraControls_.push_back(control);
+                if (repos_.settings != nullptr) {
+                    repos_.settings->setDouble(
+                        std::string(camera::propertyKey(control.property)), control.value);
+                }
+            });
+    dialog->show();
 }
 
 void MainWindow::onPreferencesClicked() {
