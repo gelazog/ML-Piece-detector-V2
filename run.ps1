@@ -7,10 +7,12 @@
 #   .\run.ps1 -Rebuild   fuerza reconfigurar y recompilar
 #   .\run.ps1 -NoRun     solo verifica/instala/compila, sin lanzar la app
 #   .\run.ps1 -Test      además corre la suite de tests (ctest)
+#   .\run.ps1 -Package   arma un .zip portable (no necesita MSYS2 para correr)
 param(
     [switch]$Rebuild,
     [switch]$NoRun,
-    [switch]$Test
+    [switch]$Test,
+    [switch]$Package
 )
 
 $ErrorActionPreference = 'Stop'
@@ -198,7 +200,99 @@ if ($Test) {
     Write-Ok 'Todos los tests pasaron.'
 }
 
-# --- 6. Ejecutar ---
+# --- 6. Paquete portable (opcional) ---
+# La PC de produccion no tiene MSYS2: hay que llevarse las DLL de Qt (con sus
+# plugins, que windeployqt resuelve) y las de OpenCV/onnxruntime/runtime GCC,
+# que se descubren con ldd sobre el propio ejecutable en vez de listarlas a
+# mano — asi el paquete no se queda corto al cambiar de version.
+if ($Package) {
+    Write-Step 'Armando el paquete portable...'
+    $stage = Join-Path $root 'build\package\PCInspector'
+    if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+    New-Item -ItemType Directory -Path $stage -Force | Out-Null
+
+    Copy-Item $exe $stage
+    foreach ($extra in @('onnxruntime.dll', 'onnxruntime_providers_shared.dll')) {
+        $dll = Join-Path (Split-Path $exe) $extra
+        if (Test-Path $dll) { Copy-Item $dll $stage }
+    }
+
+    # Modelo e imagenes de ejemplo: sin el modelo la app arranca igual, pero
+    # solo mide (modo solo herramientas), asi que se avisa si falta.
+    $stageModels = Join-Path $stage 'models'
+    New-Item -ItemType Directory -Path $stageModels -Force | Out-Null
+    if (Test-Path $model) {
+        Copy-Item $model $stageModels
+    } else {
+        Write-Warn 'El paquete va sin modelo de embeddings: la app medira, pero no comparara apariencia.'
+    }
+    $samples = Join-Path $root 'sample_images'
+    if (Test-Path $samples) { Copy-Item $samples $stage -Recurse }
+
+    $windeployqt = Join-Path $ucrtBin 'windeployqt6.exe'
+    if (-not (Test-Path $windeployqt)) {
+        Write-Host 'X Falta windeployqt6.exe: instala mingw-w64-ucrt-x86_64-qt6-tools.' -ForegroundColor Red
+        exit 1
+    }
+    $env:PATH = "$ucrtBin;$env:PATH"
+    & $windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw `
+        (Join-Path $stage 'pc_inspector.exe') | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host 'X windeployqt6 fallo: revisa la salida de arriba.' -ForegroundColor Red
+        exit 1
+    }
+
+    # DLL que no son de Qt (OpenCV, libstdc++, zlib, libpng...): se recorren los
+    # IMPORTS del binario con objdump y se resuelven contra ucrt64\bin, en
+    # cascada (OpenCV a su vez depende de zlib, etc.).
+    #
+    # Se descarto ldd: resuelve segun el PATH del shell que lo ejecuta y en esta
+    # maquina devolvia las DLL de \mingw64 (otro runtime), que son las
+    # equivocadas. Los imports son propiedad del binario, no del entorno.
+    $objdump = Join-Path $ucrtBin 'objdump.exe'
+    if (-not (Test-Path $objdump)) {
+        Write-Host 'X Falta objdump.exe (paquete binutils de MSYS2).' -ForegroundColor Red
+        exit 1
+    }
+    $pending = [System.Collections.Queue]::new()
+    $pending.Enqueue((Join-Path $stage 'pc_inspector.exe'))
+    $seen = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    $copied = 0
+    while ($pending.Count -gt 0) {
+        $binary = $pending.Dequeue()
+        foreach ($line in (& $objdump -p $binary)) {
+            if ($line -notmatch 'DLL Name:\s+(\S+)') { continue }
+            $name = $Matches[1]
+            if (-not $seen.Add($name)) { continue }
+            # Solo lo que vive en ucrt64: las DLL del sistema ya estan en la PC
+            # de destino y copiarlas seria un error.
+            $source = Join-Path $ucrtBin $name
+            if (-not (Test-Path $source)) { continue }
+            $target = Join-Path $stage $name
+            if (-not (Test-Path $target)) {
+                Copy-Item $source $target -Force
+                $copied++
+            }
+            $pending.Enqueue($target)
+        }
+    }
+    if ($copied -eq 0) {
+        # Sin estas DLL el paquete no arranca fuera de MSYS2: es un fallo, no
+        # un detalle. Mejor parar que entregar un zip que no abre.
+        Write-Host 'X No se resolvio ninguna DLL de ucrt64: el paquete no funcionaria.' -ForegroundColor Red
+        exit 1
+    }
+    Write-Ok "Dependencias copiadas: $copied DLL de ucrt64 (Qt incluido)."
+
+    $zip = Join-Path $root 'build\package\PCInspector.zip'
+    if (Test-Path $zip) { Remove-Item $zip -Force }
+    Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
+    $sizeMb = [math]::Round((Get-Item $zip).Length / 1MB, 1)
+    Write-Ok "Paquete listo: $zip ($sizeMb MB). Descomprime y ejecuta pc_inspector.exe."
+}
+
+# --- 7. Ejecutar ---
 if (-not $NoRun) {
     Write-Step 'Lanzando PC Inspector...'
     # El PATH con ucrt64\bin es necesario para las DLL de Qt/OpenCV/onnxruntime.

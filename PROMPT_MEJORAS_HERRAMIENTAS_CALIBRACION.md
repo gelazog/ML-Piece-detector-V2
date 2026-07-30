@@ -298,13 +298,29 @@ archivos principales que toca.
   `kswdmcap.ax`. Ver `core/crash_guard.*`, `tests/test_crash_guard.cpp` y la
   sección de limitaciones del README.
 
-- [ ] **G3 — Empaquetado con `windeployqt6`**. Generar un `.zip`/instalador
+- [x] **G3 — Empaquetado con `windeployqt6`**. HECHO. Generar un `.zip`/instalador
   liviano que no dependa de tener MSYS2 en la PC de producción — el
   `CMakeLists.txt` ya tiene la lógica de copiar `onnxruntime.dll`, falta
   extender el mismo patrón a las DLL de Qt/OpenCV vía `windeployqt6` como
   paso de post-build opcional.
   Skills: `cmake`.
   Archivos: `CMakeLists.txt`, `run.ps1` (target `-Package`).
+
+  **Cómo quedó**: `.un.ps1 -Package` arma `build/package/PCInspector/` y su
+  `.zip`: ejecutable, `windeployqt6` (plugins de Qt incluidos), modelo, imágenes
+  de ejemplo y las DLL de `onnxruntime`.
+  **Lo que costó, y por qué el primer intento estaba mal**: la idea inicial era
+  resolver las DLL restantes con `ldd`, pero `ldd` resuelve **según el PATH del
+  shell que lo ejecuta** y en esta máquina devolvía las de `\mingw64` —otro
+  runtime, las equivocadas— además de fallar el escapado de `awk` entre
+  PowerShell y bash (copiaba 0 DLL). Se cambió por un **recorrido recursivo de
+  los imports con `objdump -p`**, resueltos contra `ucrt64in`: los imports son
+  propiedad del binario, no del entorno. Si no se resuelve ninguna DLL el script
+  **falla** en vez de entregar un zip que no abre.
+  **Verificado de verdad**: 199 DLL copiadas y el ejecutable **arranca con un
+  PATH sin MSYS2** (solo `System32`) — migra la BD, carga el modelo ONNX y
+  enumera la cámara. El zip pesa ~178 MB, de los cuales 50 MB son el modelo y
+  buena parte del resto es OpenCV con sus códecs.
 
 - [ ] **G4 — Auditoría con `/code-review`**. Antes de seguir sumando
   features, correr `/code-review` (o el skill `qt-cpp-review`) sobre el diff

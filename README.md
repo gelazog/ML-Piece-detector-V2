@@ -23,7 +23,10 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    prepara el modelo de embeddings, compila y lanza la app. Si algo no puede
    instalarse solo, **dice exactamente qué falta y cómo resolverlo a mano**.
    Variantes: `-NoRun` (solo preparar), `-Rebuild` (recompilar), `-Test`
-   (correr la batería de tests).
+   (correr la batería de tests) y **`-Package`** (arma
+   `build/package/PCInspector.zip`, un paquete portable con Qt, OpenCV,
+   onnxruntime y el modelo: se descomprime y se ejecuta `pc_inspector.exe` en
+   una PC **sin MSYS2**; ~178 MB, la mitad es el modelo).
    La ventana tiene una **barra de menú** (Cámara / Pieza / Inspección / Ver /
    Ayuda) para las acciones de configuración, y deja en la vista solo los
    controles de uso constante (combos de cámara/pieza/plantilla, Iniciar,
