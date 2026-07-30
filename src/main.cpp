@@ -11,6 +11,7 @@
 #include "database/schema.h"
 #include "engine/inspection_engine.h"
 #include "ml/embedding_extractor.h"
+#include "repositories/detection_profile_repository.h"
 #include "repositories/inspection_repository.h"
 #include "repositories/piece_repository.h"
 #include "repositories/settings_repository.h"
@@ -39,6 +40,7 @@ int main(int argc, char* argv[]) {
     std::optional<pci::repositories::PieceRepository> pieces;
     std::optional<pci::repositories::ToolRepository> tools;
     std::optional<pci::repositories::InspectionRepository> inspections;
+    std::optional<pci::repositories::DetectionProfileRepository> detectionProfiles;
     {
         auto opened = pci::database::Db::open(
             (appDir + QStringLiteral("/pc_inspector.db")).toStdString());
@@ -49,6 +51,7 @@ int main(int argc, char* argv[]) {
                 pieces.emplace(*db);
                 tools.emplace(*db);
                 inspections.emplace(*db);
+                detectionProfiles.emplace(*db);
             } else {
                 pci::core::logError("Migración de BD fallida: " + migrated.error().message);
                 db.reset();
@@ -98,6 +101,8 @@ int main(int argc, char* argv[]) {
     repositories.pieces = pieces.has_value() ? &pieces.value() : nullptr;
     repositories.tools = tools.has_value() ? &tools.value() : nullptr;
     repositories.inspections = inspections.has_value() ? &inspections.value() : nullptr;
+    repositories.detectionProfiles =
+        detectionProfiles.has_value() ? &detectionProfiles.value() : nullptr;
     repositories.engine = engine.has_value() ? &engine.value() : nullptr;
     repositories.embedFn = embedFn;
 

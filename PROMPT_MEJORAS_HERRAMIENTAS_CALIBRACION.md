@@ -146,7 +146,7 @@ archivos principales que toca.
     cámara**, para que la línea conserve su exposición y su enfoque.
   3 tests nuevos → 161/161.
 
-- [ ] **O3 — Perfiles de detección guardables**. Los ajustes de
+- [x] **O3 — Perfiles de detección guardables**. HECHO. Los ajustes de
   `Detección…` (umbral, polaridad, kernels) son un único set global. Permitir
   guardar/nombrar perfiles ("luz brillante", "contraluz") y elegir uno por
   pieza — reutiliza `SegmentationOptions`, solo cambia la persistencia (de
@@ -155,6 +155,22 @@ archivos principales que toca.
   `kMigrationV5` de `database/schema.cpp`), `cpp-testing`.
   Archivos: `database/schema.*`, `repositories/` (repositorio nuevo o
   extender `SettingsRepository`), `ui/detection_dialog.*`.
+
+  **Cómo quedó**: tabla `DetectionProfiles` (nombre único + umbral, polaridad,
+  suavizado y morfología) y columna `detection_profile_id` en `Pieces`, ambas en
+  `kMigrationV8`; **0 = sin perfil**, que es el comportamiento de siempre.
+  Repositorio propio `repositories/detection_profile_repository.*` en vez de
+  estirar `SettingsRepository`, porque esto ya no es clave/valor.
+  En `Detección…` hay una fila de perfil: elegirlo vuelca sus ajustes en los
+  controles, **Guardar como…** hace *upsert* por nombre (guardar dos veces con
+  la misma etiqueta sobrescribe, que es lo que el operador espera) y
+  **Eliminar** pregunta antes.
+  **Detalles que evitan fallos silenciosos**: borrar un perfil **devuelve a los
+  ajustes globales** las piezas que lo usaban (si no, quedarían apuntando a una
+  fila inexistente), y los valores se **sanean al leerlos** de la BD; si el
+  perfil de una pieza ya no existe, se sigue con los ajustes globales sin
+  romper nada. Al seleccionar una pieza se carga su perfil y se reanaliza.
+  4 tests nuevos → 164/164, migración verificada sobre la BD real.
 
 - [ ] **O4 — Exportar/Importar configuración**. Volcar a un `.json` toda la
   config no ligada a una pieza concreta (calibración, detección, atajos,

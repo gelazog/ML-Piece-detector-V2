@@ -4,6 +4,12 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QHBoxLayout>
+#include <QInputDialog>
+#include <QLineEdit>
+#include <QMessageBox>
+#include <QPushButton>
+#include <QSignalBlocker>
 #include <QLabel>
 #include <QSlider>
 #include <QSpinBox>
@@ -11,8 +17,10 @@
 
 namespace pci::ui {
 
-DetectionDialog::DetectionDialog(vision::SegmentationOptions current, QWidget* parent)
-    : QDialog(parent) {
+DetectionDialog::DetectionDialog(vision::SegmentationOptions current, QWidget* parent,
+                                 repositories::DetectionProfileRepository* profiles,
+                                 std::int64_t selectedProfileId)
+    : QDialog(parent), profiles_(profiles) {
     setWindowTitle(tr("Ajustes de detección del contorno"));
     resize(460, 360);
 
@@ -24,6 +32,28 @@ DetectionDialog::DetectionDialog(vision::SegmentationOptions current, QWidget* p
         this);
     help->setWordWrap(true);
     rootLayout->addWidget(help);
+
+    // Perfiles con nombre (O3): la misma pelea contra la luz se repite en cada
+    // línea, así que se guarda con etiqueta y se reutiliza.
+    if (profiles_ != nullptr) {
+        auto* profileRow = new QHBoxLayout();
+        profileRow->addWidget(new QLabel(tr("Perfil:"), this));
+        profileCombo_ = new QComboBox(this);
+        profileCombo_->setMinimumWidth(180);
+        profileCombo_->setToolTip(
+            tr("Juegos de ajustes guardados con nombre (p. ej. 'luz brillante').\n"
+               "El perfil elegido se guarda con la pieza seleccionada."));
+        profileRow->addWidget(profileCombo_, 1);
+        auto* saveButton = new QPushButton(tr("Guardar como…"), this);
+        auto* deleteButton = new QPushButton(tr("Eliminar"), this);
+        profileRow->addWidget(saveButton);
+        profileRow->addWidget(deleteButton);
+        rootLayout->addLayout(profileRow);
+        connect(saveButton, &QPushButton::clicked, this, &DetectionDialog::onSaveProfile);
+        connect(deleteButton, &QPushButton::clicked, this, &DetectionDialog::onDeleteProfile);
+        connect(profileCombo_, &QComboBox::currentIndexChanged, this,
+                &DetectionDialog::onProfileChosen);
+    }
 
     auto* form = new QFormLayout();
 
@@ -75,6 +105,101 @@ DetectionDialog::DetectionDialog(vision::SegmentationOptions current, QWidget* p
     connect(threshold_, &QSlider::valueChanged, this, &DetectionDialog::onThresholdMoved);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
+    if (profiles_ != nullptr) {
+        reloadProfiles(selectedProfileId);
+    }
+}
+
+void DetectionDialog::reloadProfiles(std::int64_t selectId) {
+    QSignalBlocker blocker(profileCombo_);
+    profileCombo_->clear();
+    profileCombo_->addItem(tr("(ajustes sueltos, sin perfil)"), QVariant::fromValue<qint64>(0));
+    auto listed = profiles_->list();
+    if (!listed.isOk()) {
+        return;  // sin perfiles utilizables: el diálogo sigue sirviendo igual
+    }
+    for (const auto& profile : listed.value()) {
+        profileCombo_->addItem(QString::fromStdString(profile.name),
+                               QVariant::fromValue<qint64>(profile.id));
+    }
+    const int index = profileCombo_->findData(QVariant::fromValue<qint64>(selectId));
+    profileCombo_->setCurrentIndex(index >= 0 ? index : 0);
+}
+
+void DetectionDialog::applyOptions(const vision::SegmentationOptions& options) {
+    autoThreshold_->setChecked(options.manualThreshold < 0);
+    threshold_->setValue(options.manualThreshold >= 0 ? options.manualThreshold : 128);
+    threshold_->setEnabled(options.manualThreshold >= 0);
+    polarity_->setCurrentIndex(static_cast<int>(options.polarity));
+    blur_->setValue(options.blurKernel);
+    morph_->setValue(options.morphKernel);
+}
+
+void DetectionDialog::onProfileChosen(int index) {
+    if (profiles_ == nullptr || index < 0) {
+        return;
+    }
+    const auto id = profileCombo_->itemData(index).toLongLong();
+    if (id <= 0) {
+        return;  // "sin perfil": se conservan los valores que haya en pantalla
+    }
+    if (auto profile = profiles_->load(id); profile.isOk()) {
+        applyOptions(profile.value().options);
+    }
+}
+
+void DetectionDialog::onSaveProfile() {
+    if (profiles_ == nullptr) {
+        return;
+    }
+    const QString suggestion = profileCombo_->currentData().toLongLong() > 0
+                                   ? profileCombo_->currentText()
+                                   : QString();
+    bool ok = false;
+    const QString name =
+        QInputDialog::getText(this, tr("Guardar perfil de detección"),
+                              tr("Nombre del perfil (p. ej. 'luz brillante'):"),
+                              QLineEdit::Normal, suggestion, &ok)
+            .trimmed();
+    if (!ok || name.isEmpty()) {
+        return;
+    }
+    auto saved = profiles_->save(name.toStdString(), options());
+    if (!saved.isOk()) {
+        QMessageBox::warning(this, tr("No se pudo guardar"),
+                             QString::fromStdString(saved.error().message));
+        return;
+    }
+    reloadProfiles(saved.value());
+}
+
+void DetectionDialog::onDeleteProfile() {
+    if (profiles_ == nullptr) {
+        return;
+    }
+    const auto id = profileCombo_->currentData().toLongLong();
+    if (id <= 0) {
+        return;
+    }
+    const QString name = profileCombo_->currentText();
+    if (QMessageBox::question(
+            this, tr("Eliminar perfil"),
+            tr("¿Eliminar el perfil '%1'? Las piezas que lo usaban volverán a los "
+               "ajustes globales.")
+                .arg(name)) != QMessageBox::Yes) {
+        return;
+    }
+    if (auto removed = profiles_->remove(id); !removed.isOk()) {
+        QMessageBox::warning(this, tr("No se pudo eliminar"),
+                             QString::fromStdString(removed.error().message));
+        return;
+    }
+    reloadProfiles(0);
+}
+
+std::int64_t DetectionDialog::selectedProfileId() const {
+    return profileCombo_ != nullptr ? profileCombo_->currentData().toLongLong() : 0;
 }
 
 void DetectionDialog::onAutoThresholdToggled(bool automatic) {

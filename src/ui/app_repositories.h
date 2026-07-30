@@ -3,6 +3,7 @@
 #include "engine/embed_fn.h"
 
 namespace pci::repositories {
+class DetectionProfileRepository;
 class InspectionRepository;
 class PieceRepository;
 class SettingsRepository;
@@ -22,6 +23,7 @@ struct AppRepositories {
     repositories::PieceRepository* pieces = nullptr;
     repositories::ToolRepository* tools = nullptr;
     repositories::InspectionRepository* inspections = nullptr;
+    repositories::DetectionProfileRepository* detectionProfiles = nullptr;
     engine::InspectionEngine* engine = nullptr;
     engine::EmbedFn embedFn;  // nula si el modelo no está disponible
 };

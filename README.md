@@ -287,6 +287,12 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    persisten y aplican al video en vivo, al registro y a la inspección. Las
    herramientas de dibujo ahora usan **iconos** (el tooltip explica cada una).
 
+   **Perfiles de detección**: en *Detección…* puedes guardar el juego de
+   ajustes con un nombre ("luz brillante", "contraluz", "pieza negra") y
+   reutilizarlo. El perfil elegido **se guarda con la pieza seleccionada**, así
+   que al cambiar de pieza se aplican sus ajustes de detección solos. Si borras
+   un perfil, las piezas que lo usaban vuelven a los ajustes globales.
+
    **Atajos de teclado** (botón *Atajos (F1)* o tecla `F1`): guía completa y
    **editable** — haz clic en el atajo y pulsa la combinación nueva; se
    guardan en la BD. Por defecto: `Ctrl+Z`/`Ctrl+Y` deshacer/rehacer las

@@ -665,6 +665,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // Al arrancar con una pieza ya seleccionada, su modo y su tablero mandan
     // sobre el ajuste global (M2); loadPieceList puede no disparar la señal.
     loadMeasurementForSelectedPiece();
+    loadDetectionProfileForSelectedPiece();
 }
 
 inspection::LengthUnit MainWindow::currentUnit() const {
@@ -901,14 +902,53 @@ void MainWindow::updateRoiButton() {
 }
 
 void MainWindow::onDetectionClicked() {
-    DetectionDialog dialog(pipelineConfig_.segmentation, this);
+    DetectionDialog dialog(pipelineConfig_.segmentation, this, repos_.detectionProfiles,
+                           currentProfileId_);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
     pipelineConfig_.segmentation = dialog.options();
     persistPipelineConfig();
+
+    // El perfil elegido se guarda CON LA PIEZA: cada pieza puede necesitar una
+    // iluminación distinta y así no hay que reajustar al cambiar de una a otra.
+    currentProfileId_ = dialog.selectedProfileId();
+    const std::int64_t pieceId = selectedPieceId();
+    if (pieceId >= 0 && repos_.detectionProfiles != nullptr) {
+        if (auto saved = repos_.detectionProfiles->assignToPiece(pieceId, currentProfileId_);
+            !saved.isOk()) {
+            core::logWarning("No se pudo guardar el perfil de la pieza: " +
+                             saved.error().message);
+        }
+    }
     statusBar()->showMessage(
-        tr("Ajustes de detección aplicados: el contorno en vivo ya los usa."));
+        currentProfileId_ > 0
+            ? tr("Ajustes de detección aplicados y guardados en el perfil de la pieza.")
+            : tr("Ajustes de detección aplicados: el contorno en vivo ya los usa."));
+    maybeStartAnalysis();
+}
+
+// Perfil de detección de la pieza seleccionada (O3): si tiene uno, sus ajustes
+// mandan sobre los globales; si no, todo sigue como antes.
+void MainWindow::loadDetectionProfileForSelectedPiece() {
+    currentProfileId_ = 0;
+    const std::int64_t pieceId = selectedPieceId();
+    if (pieceId < 0 || repos_.detectionProfiles == nullptr) {
+        return;
+    }
+    auto assigned = repos_.detectionProfiles->profileForPiece(pieceId);
+    if (!assigned.isOk() || assigned.value() <= 0) {
+        return;
+    }
+    auto profile = repos_.detectionProfiles->load(assigned.value());
+    if (!profile.isOk()) {
+        return;  // perfil borrado a mano: se sigue con los ajustes globales
+    }
+    currentProfileId_ = profile.value().id;
+    pipelineConfig_.segmentation = profile.value().options;
+    statusBar()->showMessage(tr("Detección: perfil '%1' de esta pieza.")
+                                 .arg(QString::fromStdString(profile.value().name)));
+    maybeStartAnalysis();
 }
 
 void MainWindow::onRoiButtonToggled(bool enabled) {
@@ -2426,6 +2466,7 @@ void MainWindow::onPieceSelectionChanged(int index) {
     autoInspectButton_->setChecked(false);
     video_->resetView();  // otra pieza, encuadre limpio (Z3)
     loadMeasurementForSelectedPiece();  // modo y tablero de ESTA pieza (M2)
+    loadDetectionProfileForSelectedPiece();  // perfil de detección de la pieza (O3)
     loadTemplateList();       // repuebla plantillas de la pieza
     loadToolsForSelectedPiece();
 

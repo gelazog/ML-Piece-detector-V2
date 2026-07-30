@@ -152,6 +152,22 @@ ALTER TABLE Pieces ADD COLUMN board_tol_radius REAL NOT NULL DEFAULT 0;
 ALTER TABLE Pieces ADD COLUMN board_tol_angle REAL NOT NULL DEFAULT 0;
 )sql";
 
+// v8: perfiles de detección con nombre ("luz brillante", "contraluz"...) y la
+// posibilidad de asignar uno a cada pieza. detection_profile_id = 0 significa
+// "usar los ajustes globales", que es como se comportaba hasta ahora.
+const char* const kMigrationV8 = R"sql(
+CREATE TABLE IF NOT EXISTS DetectionProfiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    manual_threshold INTEGER NOT NULL DEFAULT -1,
+    polarity INTEGER NOT NULL DEFAULT 0,
+    blur_kernel INTEGER NOT NULL DEFAULT 5,
+    morph_kernel INTEGER NOT NULL DEFAULT 5,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+ALTER TABLE Pieces ADD COLUMN detection_profile_id INTEGER NOT NULL DEFAULT 0;
+)sql";
+
 const char* migrationFor(int targetVersion) {
     switch (targetVersion) {
         case 1: return kSchemaV1;
@@ -161,6 +177,7 @@ const char* migrationFor(int targetVersion) {
         case 5: return kMigrationV5;
         case 6: return kMigrationV6;
         case 7: return kMigrationV7;
+        case 8: return kMigrationV8;
     }
     return nullptr;
 }

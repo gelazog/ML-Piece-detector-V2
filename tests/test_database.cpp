@@ -12,6 +12,7 @@
 #include "inspection_editor/tools/tool_geometry.h"
 #include "ml/reference.h"
 #include "domain/measurement_mode.h"
+#include "repositories/detection_profile_repository.h"
 #include "repositories/piece_repository.h"
 #include "repositories/settings_repository.h"
 #include "repositories/tool_repository.h"
@@ -555,4 +556,85 @@ TEST(MeasurementMode, KeysRoundTripAndLabelsExist) {
     // Clave desconocida (BD de otra versión o corrupta): se cae al modo de
     // siempre en vez de fallar.
     EXPECT_EQ(domain::modeFromKey("lo-que-sea"), domain::MeasurementMode::Real);
+}
+
+// --- Perfiles de detección (O3) ---
+
+TEST_F(DatabaseTest, DetectionProfilesSaveListAndAssign) {
+    auto& db = openAndMigrate();
+    repositories::DetectionProfileRepository profiles(db);
+    repositories::PieceRepository pieces(db);
+
+    vision::SegmentationOptions bright;
+    bright.manualThreshold = 180;
+    bright.polarity = vision::SegmentationPolarity::DarkPiece;
+    bright.blurKernel = 7;
+    bright.morphKernel = 3;
+    const auto brightId = profiles.save("luz brillante", bright);
+    ASSERT_TRUE(brightId.isOk());
+
+    vision::SegmentationOptions backlit;
+    backlit.manualThreshold = -1;  // Otsu
+    backlit.polarity = vision::SegmentationPolarity::LightPiece;
+    ASSERT_TRUE(profiles.save("contraluz", backlit).isOk());
+
+    auto listed = profiles.list();
+    ASSERT_TRUE(listed.isOk());
+    ASSERT_EQ(listed.value().size(), 2U);
+    // Orden alfabético: "contraluz" antes que "luz brillante".
+    EXPECT_EQ(listed.value()[0].name, "contraluz");
+
+    auto loaded = profiles.load(brightId.value());
+    ASSERT_TRUE(loaded.isOk());
+    EXPECT_EQ(loaded.value().options.manualThreshold, 180);
+    EXPECT_EQ(loaded.value().options.polarity, vision::SegmentationPolarity::DarkPiece);
+    EXPECT_EQ(loaded.value().options.blurKernel, 7);
+
+    // Guardar con el mismo nombre sobrescribe en vez de duplicar.
+    bright.manualThreshold = 200;
+    const auto again = profiles.save("luz brillante", bright);
+    ASSERT_TRUE(again.isOk());
+    EXPECT_EQ(again.value(), brightId.value());
+    EXPECT_EQ(profiles.list().value().size(), 2U);
+    EXPECT_EQ(profiles.load(brightId.value()).value().options.manualThreshold, 200);
+
+    // Asignación por pieza; sin asignar es 0 (ajustes globales).
+    const auto pieceId = pieces.createPiece("con perfil");
+    ASSERT_TRUE(pieceId.isOk());
+    EXPECT_EQ(profiles.profileForPiece(pieceId.value()).value(), 0);
+    ASSERT_TRUE(profiles.assignToPiece(pieceId.value(), brightId.value()).isOk());
+    EXPECT_EQ(profiles.profileForPiece(pieceId.value()).value(), brightId.value());
+}
+
+// Borrar un perfil no puede dejar piezas apuntando a una fila inexistente.
+TEST_F(DatabaseTest, DeletingProfileResetsPiecesToGlobalSettings) {
+    auto& db = openAndMigrate();
+    repositories::DetectionProfileRepository profiles(db);
+    repositories::PieceRepository pieces(db);
+
+    const auto profileId = profiles.save("temporal", vision::SegmentationOptions{});
+    ASSERT_TRUE(profileId.isOk());
+    const auto pieceId = pieces.createPiece("huérfana");
+    ASSERT_TRUE(pieceId.isOk());
+    ASSERT_TRUE(profiles.assignToPiece(pieceId.value(), profileId.value()).isOk());
+
+    ASSERT_TRUE(profiles.remove(profileId.value()).isOk());
+    EXPECT_EQ(profiles.profileForPiece(pieceId.value()).value(), 0);
+    EXPECT_TRUE(profiles.list().value().empty());
+    EXPECT_FALSE(profiles.load(profileId.value()).isOk());
+}
+
+TEST_F(DatabaseTest, ProfileNeedsANameAndRenameRejectsDuplicates) {
+    auto& db = openAndMigrate();
+    repositories::DetectionProfileRepository profiles(db);
+
+    EXPECT_FALSE(profiles.save("", vision::SegmentationOptions{}).isOk());
+    const auto first = profiles.save("uno", vision::SegmentationOptions{});
+    ASSERT_TRUE(first.isOk());
+    ASSERT_TRUE(profiles.save("dos", vision::SegmentationOptions{}).isOk());
+
+    EXPECT_FALSE(profiles.rename(first.value(), "").isOk());
+    EXPECT_FALSE(profiles.rename(first.value(), "dos").isOk());  // nombre repetido
+    ASSERT_TRUE(profiles.rename(first.value(), "uno bis").isOk());
+    EXPECT_EQ(profiles.load(first.value()).value().name, "uno bis");
 }

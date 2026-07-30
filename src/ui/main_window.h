@@ -122,6 +122,7 @@ private:
     // de medición, para que no se desincronicen.
     void applyMeasurement(const repositories::PieceMeasurement& measurement);
     void loadMeasurementForSelectedPiece();
+    void loadDetectionProfileForSelectedPiece();  // perfil de detección (O3)
     void updateModeChip();  // etiqueta del modo activo (M3)
     [[nodiscard]] int positionToolCount() const;
     // Avisa si cambiar el cero deja las herramientas de Posición midiendo otra
@@ -173,6 +174,7 @@ private:
     bool boardVisible_ = false;
     bool boardPointPick_ = false;  // el próximo clic fija el cero del tablero
     vision::BoardConfig boardConfig_;
+    std::int64_t currentProfileId_ = 0;  // perfil de detección de la pieza (O3)
     // Modo de medición de la pieza activa (M1/M2). Sin pieza seleccionada actúa
     // como valor por defecto de la sesión.
     domain::MeasurementMode measurementMode_ = domain::MeasurementMode::Real;
