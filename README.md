@@ -330,6 +330,11 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    arranca la auto-inspección. El panel derecho muestra desde entonces la
    **comparación en vivo: pieza registrada vs pieza actual** (recortes
    normalizados) con la similitud y su umbral durante la auto-inspección.
+
+   **Sin el modelo ONNX** (no descargado, o si prefieres usar la app como
+   medidor puro) también puedes registrar: se avisa una vez y la pieza queda
+   registrada **solo con herramientas** — se mide con las que dibujes, pero no
+   hay comparación de apariencia que detecte defectos inesperados.
 5. **Auto-inspección**: el botón queda activo y la app inspecciona el video
    continuamente (~1/s): banner **OK/NG** en vivo, resultados por herramienta
    dibujados sobre el video y estadísticas del día en la barra de estado.

@@ -19,10 +19,6 @@ core::Result<RegistrationSession::SampleFeedback> RegistrationSession::addFrame(
     const cv::Mat& frameBgr) {
     using ResultT = core::Result<SampleFeedback>;
 
-    if (!embedFn_) {
-        return ResultT::err("Modelo de embeddings no disponible: no se puede registrar");
-    }
-
     SampleFeedback feedback;
     auto analysis = vision::analyzeFrame(frameBgr, pipelineConfig_);
     if (analysis.isOk() && anchor_.has_value() && pipelineConfig_.autoOrient) {
@@ -44,16 +40,22 @@ core::Result<RegistrationSession::SampleFeedback> RegistrationSession::addFrame(
     if (const auto quality = domain::validateQuality(feedback.metrics); !quality.isOk()) {
         feedback.accepted = false;
         feedback.reason = quality.error().message;
-        feedback.count = builder_.count();
+        feedback.count = count();
         return ResultT::ok(std::move(feedback));
     }
 
-    auto embedding = embedFn_(analysis.value().normalized);
-    if (!embedding.isOk()) {
-        return ResultT::err("Fallo extrayendo embedding: " + embedding.error().message);
-    }
-    if (auto added = builder_.add(embedding.value()); !added.isOk()) {
-        return ResultT::err(added.error().message);
+    // Sin modelo (G1) se acepta la captura por calidad: sirve para la
+    // miniatura y para dar por buena la puesta a punto, pero no hay embedding.
+    if (embedFn_) {
+        auto embedding = embedFn_(analysis.value().normalized);
+        if (!embedding.isOk()) {
+            return ResultT::err("Fallo extrayendo embedding: " + embedding.error().message);
+        }
+        if (auto added = builder_.add(embedding.value()); !added.isOk()) {
+            return ResultT::err(added.error().message);
+        }
+    } else {
+        ++accepted_;
     }
 
     if (firstNormalized_.empty()) {
@@ -61,15 +63,21 @@ core::Result<RegistrationSession::SampleFeedback> RegistrationSession::addFrame(
     }
 
     feedback.accepted = true;
-    feedback.count = builder_.count();
+    feedback.count = count();
     return ResultT::ok(std::move(feedback));
 }
 
 core::Result<ml::Reference> RegistrationSession::finish() const {
-    if (builder_.count() < minimumCount_) {
+    if (count() < minimumCount_) {
         return core::Result<ml::Reference>::err(
             "Se necesitan al menos " + std::to_string(minimumCount_) +
-            " capturas válidas (hay " + std::to_string(builder_.count()) + ")");
+            " capturas válidas (hay " + std::to_string(count()) + ")");
+    }
+    if (!embedFn_) {
+        // Referencia vacía a propósito: NO debe guardarse. Si se guardara, la
+        // inspección creería que hay apariencia con la que comparar y daría NG
+        // sistemático (similitud 0 contra un vector vacío).
+        return core::Result<ml::Reference>::ok(ml::Reference{});
     }
     return builder_.build();
 }

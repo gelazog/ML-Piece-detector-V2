@@ -2632,11 +2632,22 @@ void MainWindow::onRegisterLiveClicked() {
                                     "registrar desde imágenes)."));
         return;
     }
-    if (repos_.pieces == nullptr || !repos_.embedFn) {
+    if (repos_.pieces == nullptr) {
         QMessageBox::warning(this, tr("No disponible"),
-                             tr("El registro necesita la base de datos y el modelo de "
-                                "embeddings (ejecuta run.ps1)."));
+                             tr("El registro necesita la base de datos."));
         return;
+    }
+    // Sin modelo ONNX se puede registrar igual (G1): la pieza queda como
+    // medidor puro. Se avisa una vez de lo que se pierde, no se bloquea.
+    if (!repos_.embedFn) {
+        if (QMessageBox::question(
+                this, tr("Sin modelo de apariencia"),
+                tr("El modelo ONNX no está disponible, así que esta pieza se "
+                   "registrará SOLO CON HERRAMIENTAS: se medirá con las que dibujes, "
+                   "pero no habrá comparación de apariencia que detecte defectos "
+                   "inesperados.\n\n¿Registrar de todos modos?")) != QMessageBox::Yes) {
+            return;
+        }
     }
 
     // Pedir el nombre validando duplicados ANTES de capturar nada: si ya
@@ -2811,12 +2822,20 @@ void MainWindow::finishLiveRegistration() {
         pieceId = created.value();
     }
 
-    const auto savedVersion = repos_.pieces->saveReference(pieceId, reference.value());
-    if (!savedVersion.isOk()) {
-        stopLiveCapture();
-        QMessageBox::warning(this, tr("No se pudo guardar la referencia"),
-                             QString::fromStdString(savedVersion.error().message));
-        return;
+    // Modo "solo herramientas" (G1): la referencia viene vacía a propósito y NO
+    // se guarda. Guardarla haría creer a la inspección que hay apariencia con
+    // la que comparar, y daría NG sistemático.
+    const bool toolsOnly = reference.value().mean.empty();
+    int referenceVersion = 0;
+    if (!toolsOnly) {
+        const auto savedVersion = repos_.pieces->saveReference(pieceId, reference.value());
+        if (!savedVersion.isOk()) {
+            stopLiveCapture();
+            QMessageBox::warning(this, tr("No se pudo guardar la referencia"),
+                                 QString::fromStdString(savedVersion.error().message));
+            return;
+        }
+        referenceVersion = savedVersion.value();
     }
 
     // Miniatura del recorte normalizado: alimenta el panel "Pieza registrada".
@@ -2877,16 +2896,24 @@ void MainWindow::finishLiveRegistration() {
                                               Qt::SmoothTransformation));
     }
 
-    statusBar()->showMessage(
-        toolErrors == 0
-            ? tr("'%1' registrada (referencia v%2) con %3 herramienta(s). "
-                 "Auto-inspección activa.")
-                  .arg(pendingPieceName_)
-                  .arg(savedVersion.value())
-                  .arg(liveTools_.size())
-            : tr("'%1' registrada, pero %2 herramienta(s) no se guardaron (ver log).")
-                  .arg(pendingPieceName_)
-                  .arg(toolErrors));
+    if (toolErrors > 0) {
+        statusBar()->showMessage(
+            tr("'%1' registrada, pero %2 herramienta(s) no se guardaron (ver log).")
+                .arg(pendingPieceName_)
+                .arg(toolErrors));
+    } else if (toolsOnly) {
+        statusBar()->showMessage(
+            tr("'%1' registrada SOLO CON HERRAMIENTAS (%2): sin comparación de "
+               "apariencia. Auto-inspección activa.")
+                .arg(pendingPieceName_)
+                .arg(liveTools_.size()));
+    } else {
+        statusBar()->showMessage(tr("'%1' registrada (referencia v%2) con %3 "
+                                    "herramienta(s). Auto-inspección activa.")
+                                     .arg(pendingPieceName_)
+                                     .arg(referenceVersion)
+                                     .arg(liveTools_.size()));
+    }
 
     autoInspectButton_->setChecked(true);
 }

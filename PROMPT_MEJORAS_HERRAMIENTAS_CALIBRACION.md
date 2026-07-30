@@ -265,7 +265,7 @@ archivos principales que toca.
 
 ### E. Otras mejoras (cierre de huecos de rondas anteriores)
 
-- [ ] **G1 — Registro "solo herramientas" sin modelo ONNX**. Hoy
+- [x] **G1 — Registro "solo herramientas" sin modelo ONNX**. HECHO. Hoy
   `onRegisterLiveClicked` exige `repos_.embedFn`; un operador que solo quiere
   medir (sin comparación de apariencia) no puede registrar una pieza. Permitir
   registrar sin embeddings cuando el modelo no esté disponible (guardar
@@ -273,6 +273,22 @@ archivos principales que toca.
   `InspectionEngine::inspect`).
   Skills: `cpp-testing`.
   Archivos: `engine/registration_session.*`, `ui/main_window.cpp`.
+
+  **Cómo quedó**: `RegistrationSession` acepta `embedFn` nula y entra en modo
+  **solo herramientas**: sigue validando la calidad de cada frame (un frame malo
+  se rechaza igual, la calidad no depende de ONNX) y guarda el recorte para la
+  miniatura, pero no construye referencia. `finish()` devuelve una referencia
+  **vacía a propósito** y la ventana **no la guarda**.
+  **Por qué no guardarla**: una referencia con `mean` vacío haría que la
+  similitud fuese 0 y la pieza saldría **NG siempre**. El repositorio ya la
+  rechaza (lo descubrí porque mi primer test asumía lo contrario y falló: la
+  protección real ya existía), y el motor tiene además una guarda por si una
+  fila llegara corrupta. Sin referencia guardada, `InspectionEngine` degrada
+  solo a herramientas, que es justo lo que se busca.
+  El registro ya **no exige el modelo**: avisa una vez de que no habrá
+  comparación de apariencia y deja seguir; el mensaje final dice claramente que
+  la pieza quedó registrada SOLO CON HERRAMIENTAS.
+  4 tests nuevos → 170/170.
 
 - [x] **G2 — Nombres reales de cámara**. HECHO (2026-07-21), resuelto junto con
   el blindaje anti-crash de cámara que pidió el usuario. En vez de Media

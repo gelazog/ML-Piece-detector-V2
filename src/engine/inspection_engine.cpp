@@ -85,8 +85,14 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
         if (!stored.isOk()) {
             check.note = stored.error().message;
         } else {
-            auto embedding = embedFn_(outcome.analysis.normalized);
-            if (!embedding.isOk()) {
+            const auto& storedReference = stored.value().reference;
+            if (storedReference.mean.empty()) {
+                // Pieza registrada en modo "solo herramientas" (G1): no hay
+                // apariencia con la que comparar. Sin esta guarda, la similitud
+                // contra un vector vacío sería 0 y todo saldría NG.
+                check.note = "pieza registrada sin apariencia (solo herramientas)";
+            } else if (auto embedding = embedFn_(outcome.analysis.normalized);
+                       !embedding.isOk()) {
                 check.note = embedding.error().message;
             } else {
                 const auto& reference = stored.value().reference;

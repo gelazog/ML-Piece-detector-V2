@@ -312,3 +312,76 @@ TEST_F(EngineTest, NoModelDegradesToToolsOnly) {
     EXPECT_TRUE(outcome.value().verdict.ok) << outcome.value().verdict.summary;
     ASSERT_EQ(outcome.value().toolResults.size(), 1U);
 }
+
+// --- Registro sin modelo ONNX (G1) ---
+
+// Sin modelo, la sesion acepta capturas por CALIDAD: la pieza se puede
+// registrar como medidor puro en vez de quedarse fuera del sistema.
+TEST_F(EngineTest, RegistrationWithoutModelAcceptsFramesAndHasNoReference) {
+    vision::PipelineConfig cfg;
+    cfg.autoOrient = true;
+    engine::RegistrationSession session(nullptr, 30, 5, std::nullopt, cfg);
+    EXPECT_TRUE(session.toolsOnly());
+
+    for (int i = 0; i < 6; ++i) {
+        cv::Mat bgr;
+        cv::cvtColor(drawLPiece({640, 480}, {300.0F + static_cast<float>(i * 3), 240.0F},
+                                10.0 + i * 5.0, 40.0F, 40, 220),
+                     bgr, cv::COLOR_GRAY2BGR);
+        const auto feedback = session.addFrame(bgr);
+        ASSERT_TRUE(feedback.isOk()) << feedback.error().message;
+        EXPECT_TRUE(feedback.value().accepted) << feedback.value().reason;
+        EXPECT_EQ(feedback.value().count, i + 1);
+    }
+    EXPECT_EQ(session.count(), 6);
+    EXPECT_TRUE(session.readyToFinish());
+    EXPECT_FALSE(session.firstNormalized().empty());  // sirve para la miniatura
+
+    auto reference = session.finish();
+    ASSERT_TRUE(reference.isOk());
+    // Referencia VACIA a proposito: la UI no debe guardarla.
+    EXPECT_TRUE(reference.value().mean.empty());
+}
+
+// Un frame malo se sigue rechazando sin modelo: la calidad no depende de ONNX.
+TEST_F(EngineTest, RegistrationWithoutModelStillRejectsBadFrames) {
+    engine::RegistrationSession session(nullptr, 30, 5);
+    const cv::Mat uniform(480, 640, CV_8UC3, cv::Scalar(128, 128, 128));
+    const auto feedback = session.addFrame(uniform);
+    ASSERT_TRUE(feedback.isOk()) << feedback.error().message;
+    EXPECT_FALSE(feedback.value().accepted);
+    EXPECT_EQ(session.count(), 0);
+    EXPECT_FALSE(session.finish().isOk());  // no llega al minimo
+}
+
+// Guardar una referencia vacia haria que la similitud fuese 0 y todo saliese
+// NG. La primera barrera es el repositorio, que ni siquiera la acepta; el
+// motor tiene ademas una guarda por si una fila llegara corrupta.
+TEST_F(EngineTest, EmptyReferenceIsRejectedBeforeItCanBeStored) {
+    const auto pieceId = registerLPiece();
+    EXPECT_FALSE(pieces_->saveReference(pieceId, ml::Reference{}).isOk());
+
+    // La pieza sigue con su referencia buena y se inspecciona normalmente.
+    cv::Mat frame;
+    cv::cvtColor(drawLPiece({640, 480}, {300.0F, 240.0F}, 15.0, 40.0F, 40, 220), frame,
+                 cv::COLOR_GRAY2BGR);
+    const auto outcome = engine_->inspect(frame, pieceId);
+    ASSERT_TRUE(outcome.isOk()) << outcome.error().message;
+    EXPECT_TRUE(outcome.value().verdict.embedding.evaluated);
+}
+
+// Una pieza registrada en modo "solo herramientas" no tiene NINGUNA referencia
+// guardada: la inspeccion debe seguir funcionando con las herramientas.
+TEST_F(EngineTest, PieceWithoutReferenceInspectsWithToolsOnly) {
+    const auto pieceId = pieces_->createPiece("solo-herramientas");
+    ASSERT_TRUE(pieceId.isOk());
+
+    cv::Mat frame;
+    cv::cvtColor(drawLPiece({640, 480}, {300.0F, 240.0F}, 15.0, 40.0F, 40, 220), frame,
+                 cv::COLOR_GRAY2BGR);
+    const auto outcome = engine_->inspect(frame, pieceId.value());
+    ASSERT_TRUE(outcome.isOk()) << outcome.error().message;
+    EXPECT_FALSE(outcome.value().verdict.embedding.evaluated);
+    EXPECT_FALSE(outcome.value().verdict.embedding.note.empty());
+    EXPECT_TRUE(outcome.value().verdict.ok) << outcome.value().verdict.summary;
+}
