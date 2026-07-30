@@ -1,6 +1,8 @@
 #pragma once
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "core/result.h"
 #include "database/db.h"
@@ -22,6 +24,9 @@ public:
 
     core::Result<void> setDouble(const std::string& key, double value);
     core::Result<double> getDouble(const std::string& key, double defaultValue = 0.0);
+
+    // Todos los ajustes tal cual están guardados, para exportarlos (O4).
+    core::Result<std::vector<std::pair<std::string, std::string>>> listAll();
 
 private:
     database::Db& db_;

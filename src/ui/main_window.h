@@ -99,6 +99,8 @@ private slots:
     void onShowHistoryClicked();      // pantalla de historial (S1)
     void onPreferencesClicked();      // diálogo de preferencias (O1)
     void onCameraControlsClicked();   // controles de la fuente (O2)
+    void onExportConfigClicked();     // exportar configuración (O4)
+    void onImportConfigClicked();
     void onControlsProbed(const std::vector<pci::camera::CameraControlState>& controls);
     void onMeasurementModeClicked();  // modo de medición de la pieza (M2)
     void onToolRightClicked(int index);

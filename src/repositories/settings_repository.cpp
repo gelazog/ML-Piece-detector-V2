@@ -86,4 +86,24 @@ core::Result<double> SettingsRepository::getDouble(const std::string& key,
     return core::Result<double>::ok(value);
 }
 
+core::Result<std::vector<std::pair<std::string, std::string>>> SettingsRepository::listAll() {
+    using ResultT = core::Result<std::vector<std::pair<std::string, std::string>>>;
+    auto stmt = db_.prepare("SELECT key, value FROM Settings ORDER BY key;");
+    if (!stmt.isOk()) {
+        return ResultT::err(stmt.error().message);
+    }
+    std::vector<std::pair<std::string, std::string>> entries;
+    while (true) {
+        auto row = stmt.value().step();
+        if (!row.isOk()) {
+            return ResultT::err(row.error().message);
+        }
+        if (!row.value()) {
+            break;
+        }
+        entries.emplace_back(stmt.value().columnText(0), stmt.value().columnText(1));
+    }
+    return ResultT::ok(std::move(entries));
+}
+
 }  // namespace pci::repositories

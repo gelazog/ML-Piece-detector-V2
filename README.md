@@ -287,6 +287,14 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    persisten y aplican al video en vivo, al registro y a la inspección. Las
    herramientas de dibujo ahora usan **iconos** (el tooltip explica cada una).
 
+   **Clonar la configuración a otra PC** (menú **Archivo**): *Exportar
+   configuración…* vuelca a un `.json` la calibración, los ajustes y perfiles de
+   detección, los atajos y las preferencias; *Importar configuración…* los
+   aplica en otra máquina. No incluye piezas ni plantillas (esas se comparten
+   con el export de plantillas). Ojo: la **calibración de escala depende de la
+   cámara y la resolución**, así que en la otra PC la app te avisará si ya no es
+   válida.
+
    **Perfiles de detección**: en *Detección…* puedes guardar el juego de
    ajustes con un nombre ("luz brillante", "contraluz", "pieza negra") y
    reutilizarlo. El perfil elegido **se guarda con la pieza seleccionada**, así

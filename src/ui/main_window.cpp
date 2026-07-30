@@ -32,6 +32,7 @@
 #include "camera/frame_utils.h"
 #include "core/logging.h"
 #include "inspection_editor/editor_window.h"
+#include "repositories/config_io.h"
 #include "repositories/inspection_repository.h"
 #include "repositories/piece_repository.h"
 #include "repositories/settings_repository.h"
@@ -696,6 +697,13 @@ void MainWindow::onUnitChanged() {
 // Barra de menú: agrupa las acciones de baja frecuencia que antes saturaban
 // las filas de botones. Las combos y botones de uso constante siguen visibles.
 void MainWindow::buildMenuBar() {
+    // Archivo: clonar la puesta a punto a otra PC de la línea (O4).
+    auto* fileMenu = menuBar()->addMenu(tr("&Archivo"));
+    fileMenu->addAction(tr("Exportar configuración…"), this,
+                        &MainWindow::onExportConfigClicked);
+    fileMenu->addAction(tr("Importar configuración…"), this,
+                        &MainWindow::onImportConfigClicked);
+
     auto* cameraMenu = menuBar()->addMenu(tr("&Cámara"));
     refreshAction_ = cameraMenu->addAction(tr("Actualizar cámaras"), this,
                                            &MainWindow::refreshCameras);
@@ -2188,6 +2196,72 @@ void MainWindow::onCameraControlsClicked() {
                 }
             });
     dialog->show();
+}
+
+// Exportar/importar la configuración de la máquina (O4): calibración, ajustes
+// y perfiles de detección, atajos y preferencias. No incluye piezas ni
+// plantillas a propósito (esas se comparten con el export de plantillas).
+void MainWindow::onExportConfigClicked() {
+    if (repos_.settings == nullptr || repos_.detectionProfiles == nullptr) {
+        QMessageBox::warning(this, tr("Sin base de datos"),
+                             tr("No hay configuración que exportar sin base de datos."));
+        return;
+    }
+    const QString path = QFileDialog::getSaveFileName(
+        this, tr("Exportar configuración"), QStringLiteral("pc_inspector_config.json"),
+        tr("Configuración (*.json)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    auto result = repositories::exportConfig(path.toStdString(), *repos_.settings,
+                                             *repos_.detectionProfiles);
+    if (!result.isOk()) {
+        QMessageBox::warning(this, tr("No se pudo exportar"),
+                             QString::fromStdString(result.error().message));
+        return;
+    }
+    statusBar()->showMessage(tr("Configuración exportada: %1 ajustes y %2 perfil(es).")
+                                 .arg(result.value().settings)
+                                 .arg(result.value().profiles));
+}
+
+void MainWindow::onImportConfigClicked() {
+    if (repos_.settings == nullptr || repos_.detectionProfiles == nullptr) {
+        QMessageBox::warning(this, tr("Sin base de datos"),
+                             tr("No se puede importar configuración sin base de datos."));
+        return;
+    }
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Importar configuración"), QString(), tr("Configuración (*.json)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    // Sobrescribe ajustes: se avisa antes, y se recuerda que la calibración
+    // depende de la cámara y la resolución de ESTA máquina.
+    if (QMessageBox::question(
+            this, tr("Importar configuración"),
+            tr("Se sobrescribirán los ajustes actuales (calibración, detección, atajos "
+               "y preferencias) y se añadirán los perfiles del archivo.\n\n"
+               "La calibración de escala depende de la cámara y la resolución: si aquí "
+               "usas otra, la app te avisará de que ya no es válida.\n\n"
+               "¿Continuar?")) !=
+        QMessageBox::Yes) {
+        return;
+    }
+    auto result = repositories::importConfig(path.toStdString(), *repos_.settings,
+                                             *repos_.detectionProfiles);
+    if (!result.isOk()) {
+        QMessageBox::warning(this, tr("No se pudo importar"),
+                             QString::fromStdString(result.error().message));
+        return;
+    }
+    QMessageBox::information(
+        this, tr("Configuración importada"),
+        tr("Se aplicaron %1 ajustes y %2 perfil(es).\n\nReinicia la aplicación para que "
+           "todo (atajos incluidos) quede cargado.")
+            .arg(result.value().settings)
+            .arg(result.value().profiles));
+    statusBar()->showMessage(tr("Configuración importada desde %1").arg(path));
 }
 
 void MainWindow::onPreferencesClicked() {

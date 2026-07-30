@@ -172,12 +172,31 @@ archivos principales que toca.
   romper nada. Al seleccionar una pieza se carga su perfil y se reanaliza.
   4 tests nuevos → 164/164, migración verificada sobre la BD real.
 
-- [ ] **O4 — Exportar/Importar configuración**. Volcar a un `.json` toda la
+- [x] **O4 — Exportar/Importar configuración**. HECHO. Volcar a un `.json` toda la
   config no ligada a una pieza concreta (calibración, detección, atajos,
   preferencias) para clonarla a otra PC de la línea sin repetir todo a mano.
   Skills: `cpp-coding-standards`.
   Archivos: `repositories/settings_repository.*` (método de export/import),
   `ui/main_window.cpp` (acciones de menú Archivo).
+
+  **Cómo quedó**: `repositories/config_io.{h,cpp}` con `exportConfig` /
+  `importConfig` (JSON indentado, se revisa a mano en la línea) y
+  `SettingsRepository::listAll()`. Menú **Archivo ▸ Exportar/Importar
+  configuración…**. Se exportan **todos los ajustes** (calibración, detección,
+  atajos `key_*`, preferencias, controles de cámara) **y los perfiles de
+  detección**; los perfiles se importan por nombre, así que reimportar
+  actualiza en vez de duplicar.
+  **Decisiones**: el archivo lleva marca `app` y `config_version`, y un JSON de
+  otra aplicación o de una versión más nueva **se rechaza entero** en vez de
+  aplicarse a medias (probado); una clave corrupta suelta sí se salta sin
+  abortar el resto. **No se exportan piezas, plantillas, referencias ni
+  historial** a propósito: eso ya se comparte con el export de plantillas, y
+  copiar la BD entera es más honesto que un import parcial. Al importar se
+  avisa de que la **calibración depende de la cámara y la resolución** de esa
+  máquina (el aviso de D1 sigue cubriendo el caso) y de que conviene reiniciar
+  para recargar los atajos. Se usa QtCore (QJsonDocument) en `repositories`,
+  no un parser a mano. 2 tests nuevos (ida y vuelta entre dos BD, y rechazo de
+  archivos ajenos/rotos) → 166/166.
 
 ### C. Secciones de la interfaz
 

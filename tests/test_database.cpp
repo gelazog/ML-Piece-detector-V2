@@ -12,6 +12,7 @@
 #include "inspection_editor/tools/tool_geometry.h"
 #include "ml/reference.h"
 #include "domain/measurement_mode.h"
+#include "repositories/config_io.h"
 #include "repositories/detection_profile_repository.h"
 #include "repositories/piece_repository.h"
 #include "repositories/settings_repository.h"
@@ -637,4 +638,95 @@ TEST_F(DatabaseTest, ProfileNeedsANameAndRenameRejectsDuplicates) {
     EXPECT_FALSE(profiles.rename(first.value(), "dos").isOk());  // nombre repetido
     ASSERT_TRUE(profiles.rename(first.value(), "uno bis").isOk());
     EXPECT_EQ(profiles.load(first.value()).value().name, "uno bis");
+}
+
+// --- Exportar/importar configuración (O4) ---
+
+TEST_F(DatabaseTest, ConfigExportImportRoundTrip) {
+    const std::string jsonPath =
+        (std::filesystem::temp_directory_path() / "pci_config_roundtrip.json").string();
+    std::filesystem::remove(jsonPath);
+
+    {
+        auto& db = openAndMigrate();
+        repositories::SettingsRepository settings(db);
+        repositories::DetectionProfileRepository profiles(db);
+        ASSERT_TRUE(settings.setDouble("calib_mm_per_px", 0.125).isOk());
+        ASSERT_TRUE(settings.setString("key_undo", "Ctrl+Z").isOk());
+        ASSERT_TRUE(settings.setInt("pref_auto_interval_ms", 750).isOk());
+
+        vision::SegmentationOptions options;
+        options.manualThreshold = 173;
+        options.polarity = vision::SegmentationPolarity::LightPiece;
+        options.blurKernel = 9;
+        ASSERT_TRUE(profiles.save("contraluz", options).isOk());
+
+        auto exported = repositories::exportConfig(jsonPath, settings, profiles);
+        ASSERT_TRUE(exported.isOk()) << exported.error().message;
+        EXPECT_GE(exported.value().settings, 3);
+        EXPECT_EQ(exported.value().profiles, 1);
+    }
+
+    // Otra "PC de la línea": base de datos nueva y vacía.
+    const std::string otherPath =
+        (std::filesystem::temp_directory_path() / "pci_config_other.db").string();
+    std::filesystem::remove(otherPath);
+    {
+        auto opened = database::Db::open(otherPath);
+        ASSERT_TRUE(opened.isOk());
+        ASSERT_TRUE(database::migrate(*opened.value()).isOk());
+        repositories::SettingsRepository settings(*opened.value());
+        repositories::DetectionProfileRepository profiles(*opened.value());
+
+        auto imported = repositories::importConfig(jsonPath, settings, profiles);
+        ASSERT_TRUE(imported.isOk()) << imported.error().message;
+        EXPECT_GE(imported.value().settings, 3);
+        EXPECT_EQ(imported.value().profiles, 1);
+
+        EXPECT_DOUBLE_EQ(settings.getDouble("calib_mm_per_px", 0.0).value(), 0.125);
+        EXPECT_EQ(settings.getString("key_undo", "").value(), "Ctrl+Z");
+        EXPECT_EQ(settings.getInt("pref_auto_interval_ms", 0).value(), 750);
+
+        auto listed = profiles.list();
+        ASSERT_TRUE(listed.isOk());
+        ASSERT_EQ(listed.value().size(), 1U);
+        EXPECT_EQ(listed.value()[0].name, "contraluz");
+        EXPECT_EQ(listed.value()[0].options.manualThreshold, 173);
+        EXPECT_EQ(listed.value()[0].options.blurKernel, 9);
+    }
+
+    for (const char* suffix : {"", "-wal", "-shm"}) {
+        std::filesystem::remove(otherPath + suffix);
+    }
+    std::filesystem::remove(jsonPath);
+}
+
+TEST_F(DatabaseTest, ConfigImportRejectsForeignOrBrokenFiles) {
+    auto& db = openAndMigrate();
+    repositories::SettingsRepository settings(db);
+    repositories::DetectionProfileRepository profiles(db);
+
+    const auto write = [](const std::string& path, const std::string& content) {
+        std::ofstream out(path, std::ios::binary);
+        out << content;
+    };
+    const std::string path =
+        (std::filesystem::temp_directory_path() / "pci_config_bad.json").string();
+
+    write(path, "esto no es json");
+    EXPECT_FALSE(repositories::importConfig(path, settings, profiles).isOk());
+
+    // JSON válido pero de otra aplicación: no se aplica nada.
+    write(path, R"({"app":"otra-cosa","settings":{"calib_mm_per_px":"9.0"}})");
+    EXPECT_FALSE(repositories::importConfig(path, settings, profiles).isOk());
+    EXPECT_DOUBLE_EQ(settings.getDouble("calib_mm_per_px", -1.0).value(), -1.0);
+
+    // De una versión futura: mejor no aplicar a medias.
+    write(path, R"({"app":"pc-inspector","config_version":99,"settings":{}})");
+    EXPECT_FALSE(repositories::importConfig(path, settings, profiles).isOk());
+
+    // Un archivo que no existe falla de forma controlada.
+    EXPECT_FALSE(repositories::importConfig(path + ".ausente", settings, profiles).isOk());
+
+    std::filesystem::remove(path);
 }
