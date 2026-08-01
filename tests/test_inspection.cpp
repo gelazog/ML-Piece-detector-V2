@@ -846,3 +846,441 @@ TEST(ToolExecutorStress, HostileGeometryJsonIsRejected) {
     EXPECT_FALSE(geometryFromJson(ToolType::PolyBlob, R"({"verts":[1,2],"minArea":5,"dark":1})")
                      .isOk());
 }
+
+// ===========================================================================
+//  Bateria por herramienta: exactitud contra una verdad conocida, invariancia
+//  al giro de la pieza, limites y coherencia entre herramientas.
+//
+//  La invariancia al fixture es LA promesa del producto (las herramientas
+//  siguen a la pieza): hasta ahora solo estaba probada para el Caliper.
+// ===========================================================================
+
+namespace {
+
+// Escena con una barra oscura vertical de ancho conocido sobre fondo claro,
+// dibujada YA GIRADA y desplazada. Devuelve el fixture con el que la
+// herramienta, definida en coordenadas de pieza, debe seguir midiendo igual.
+cv::Mat drawRotatedBar(cv::Size size, cv::Point2f center, double angleDeg, float barWidth,
+                       float barLength, Fixture& fixtureOut) {
+    cv::Mat gray(size, CV_8UC1, cv::Scalar(220));
+    cv::RotatedRect bar(center, cv::Size2f(barWidth, barLength),
+                        static_cast<float>(angleDeg));
+    cv::Point2f corners[4];
+    bar.points(corners);
+    std::vector<cv::Point> poly;
+    for (const auto& corner : corners) {
+        poly.emplace_back(cvRound(corner.x), cvRound(corner.y));
+    }
+    cv::fillPoly(gray, std::vector<std::vector<cv::Point>>{poly}, cv::Scalar(40));
+    fixtureOut.origin = center;
+    fixtureOut.angleDeg = angleDeg;
+    return gray;
+}
+
+// Disco oscuro de radio conocido, centrado en la pieza.
+cv::Mat drawDisc(cv::Size size, cv::Point2f center, int radius, Fixture& fixtureOut,
+                 double angleDeg = 0.0) {
+    cv::Mat gray(size, CV_8UC1, cv::Scalar(220));
+    cv::circle(gray, cv::Point(cvRound(center.x), cvRound(center.y)), radius, cv::Scalar(40),
+               cv::FILLED, cv::LINE_AA);
+    fixtureOut.origin = center;
+    fixtureOut.angleDeg = angleDeg;
+    return gray;
+}
+
+double runMeasure(const cv::Mat& gray, const Fixture& fixture, ToolType type,
+                  const ToolGeometry& geometry, bool* okOut = nullptr) {
+    const auto result = runTool(gray, fixture, makeConfig(type, geometry, 0.0, 1.0e9));
+    EXPECT_TRUE(result.isOk());
+    if (!result.isOk()) {
+        return -1.0;
+    }
+    if (okOut != nullptr) {
+        *okOut = result.value().ok;
+    }
+    return result.value().measured;
+}
+
+}  // namespace
+
+// --- Caliper: exactitud, anchos distintos e invariancia al giro ---
+
+TEST(CaliperSuite, MeasuresSeveralWidthsAccurately) {
+    for (const float width : {12.0F, 25.0F, 40.0F, 70.0F}) {
+        cv::Mat gray(300, 300, CV_8UC1, cv::Scalar(220));
+        const int half = static_cast<int>(width / 2.0F);
+        gray.colRange(150 - half, 150 + half).setTo(40);
+        const CaliperGeometry g{{60.0F, 150.0F}, {240.0F, 150.0F}, 10.0F};
+        const double measured =
+            runMeasure(gray, kIdentity, ToolType::Caliper, ToolGeometry(g));
+        EXPECT_NEAR(measured, width, 2.0) << "ancho nominal " << width;
+    }
+}
+
+TEST(CaliperSuite, SameBarMeasuredEqualAtEveryRotation) {
+    // La herramienta se define UNA vez en coordenadas de pieza y la pieza se
+    // presenta girada: la medida no puede cambiar.
+    const CaliperGeometry g{{-70.0F, 0.0F}, {70.0F, 0.0F}, 8.0F};
+    double reference = 0.0;
+    for (const double angle : {0.0, 20.0, 45.0, 70.0, 120.0}) {
+        Fixture fixture;
+        const cv::Mat gray =
+            drawRotatedBar({400, 400}, {200.0F, 200.0F}, angle, 36.0F, 220.0F, fixture);
+        const double measured = runMeasure(gray, fixture, ToolType::Caliper, ToolGeometry(g));
+        if (angle == 0.0) {
+            reference = measured;
+            EXPECT_NEAR(reference, 36.0, 2.5);
+        } else {
+            EXPECT_NEAR(measured, reference, 3.0) << "a " << angle << " grados";
+        }
+    }
+}
+
+TEST(CaliperSuite, BandWidthAveragesNoisyEdges) {
+    // Con ruido, una banda ancha promedia varios perfiles y estabiliza la
+    // medida: es justo para lo que existe el parámetro.
+    cv::Mat gray(200, 200, CV_8UC1, cv::Scalar(220));
+    gray.colRange(80, 120).setTo(40);
+    cv::Mat noise(gray.size(), CV_8UC1);
+    cv::randn(noise, 0, 12);
+    gray += noise;
+
+    const CaliperGeometry narrow{{40.0F, 100.0F}, {160.0F, 100.0F}, 1.0F};
+    const CaliperGeometry wide{{40.0F, 100.0F}, {160.0F, 100.0F}, 20.0F};
+    const double narrowMeasure =
+        runMeasure(gray, kIdentity, ToolType::Caliper, ToolGeometry(narrow));
+    const double wideMeasure = runMeasure(gray, kIdentity, ToolType::Caliper,
+                                          ToolGeometry(wide));
+    EXPECT_NEAR(wideMeasure, 40.0, 3.0);
+    EXPECT_GT(narrowMeasure, 0.0);  // la estrecha mide, aunque sea menos estable
+}
+
+// --- Circulo: diametros, invariancia al giro y redondez ---
+
+TEST(CircleSuite, DiameterScalesWithRadius) {
+    for (const int radius : {15, 30, 55}) {
+        Fixture fixture;
+        const cv::Mat gray = drawDisc({300, 300}, {150.0F, 150.0F}, radius, fixture);
+        const CircleGeometry g{{0.0F, 0.0F}, static_cast<float>(radius), 12.0F, 36};
+        const double measured =
+            runMeasure(gray, fixture, ToolType::Circle, ToolGeometry(g));
+        EXPECT_NEAR(measured, radius * 2.0, 3.0) << "radio " << radius;
+    }
+}
+
+TEST(CircleSuite, DiameterIsTheSameOnARotatedPiece) {
+    // Un círculo es simétrico: girar la pieza no puede cambiar su diámetro.
+    const CircleGeometry g{{0.0F, 0.0F}, 40.0F, 12.0F, 36};
+    double reference = 0.0;
+    for (const double angle : {0.0, 30.0, 60.0, 90.0}) {
+        Fixture fixture;
+        const cv::Mat gray = drawDisc({300, 300}, {150.0F, 150.0F}, 40, fixture, angle);
+        const double measured = runMeasure(gray, fixture, ToolType::Circle, ToolGeometry(g));
+        if (angle == 0.0) {
+            reference = measured;
+        } else {
+            EXPECT_NEAR(measured, reference, 1.5) << "a " << angle << " grados";
+        }
+    }
+}
+
+TEST(CircleSuite, MoreRaysDoNotChangeTheDiameter) {
+    Fixture fixture;
+    const cv::Mat gray = drawDisc({300, 300}, {150.0F, 150.0F}, 40, fixture);
+    double previous = -1.0;
+    for (const int rays : {12, 36, 72}) {
+        const CircleGeometry g{{0.0F, 0.0F}, 40.0F, 12.0F, rays};
+        const double measured = runMeasure(gray, fixture, ToolType::Circle, ToolGeometry(g));
+        EXPECT_NEAR(measured, 80.0, 3.0) << rays << " rayos";
+        if (previous > 0.0) {
+            EXPECT_NEAR(measured, previous, 2.0);
+        }
+        previous = measured;
+    }
+}
+
+// --- Regla: es geometria pura, asi que debe ser exacta ---
+
+TEST(RulerSuite, LengthIsExactAndIndependentOfThePose) {
+    const cv::Mat gray(300, 300, CV_8UC1, cv::Scalar(128));
+    const RulerGeometry g{{-30.0F, -40.0F}, {30.0F, 40.0F}};  // 3-4-5 -> 100 px
+    for (const double angle : {0.0, 17.0, 45.0, 90.0, 200.0}) {
+        for (const cv::Point2f origin : {cv::Point2f(150.0F, 150.0F),
+                                         cv::Point2f(40.0F, 260.0F)}) {
+            const Fixture fixture{origin, angle};
+            const double measured =
+                runMeasure(gray, fixture, ToolType::Ruler, ToolGeometry(g));
+            EXPECT_NEAR(measured, 100.0, 1e-3) << "angulo " << angle;
+        }
+    }
+}
+
+TEST(RulerSuite, ZeroLengthMeasuresZeroWithoutFailing) {
+    const cv::Mat gray(100, 100, CV_8UC1, cv::Scalar(128));
+    const RulerGeometry g{{10.0F, 10.0F}, {10.0F, 10.0F}};
+    bool ok = false;
+    const double measured =
+        runMeasure(gray, kIdentity, ToolType::Ruler, ToolGeometry(g), &ok);
+    EXPECT_DOUBLE_EQ(measured, 0.0);
+}
+
+// --- Angulo: varios angulos conocidos ---
+
+TEST(AngleSuite, MeasuresKnownCorners) {
+    const cv::Mat gray(300, 300, CV_8UC1, cv::Scalar(128));
+    const struct { double degrees; cv::Point2f end1; } cases[] = {
+        {90.0, {0.0F, 60.0F}},
+        {45.0, {42.4F, 42.4F}},
+        {135.0, {-42.4F, 42.4F}},
+        {180.0, {-60.0F, 0.0F}},
+    };
+    for (const auto& testCase : cases) {
+        const AngleGeometry g{{0.0F, 0.0F}, {60.0F, 0.0F}, testCase.end1};
+        const double measured = runMeasure(gray, kIdentity, ToolType::Angle, ToolGeometry(g));
+        EXPECT_NEAR(measured, testCase.degrees, 0.5)
+            << "esquina de " << testCase.degrees << " grados";
+    }
+}
+
+TEST(AngleSuite, RotatingThePieceDoesNotChangeTheInteriorAngle) {
+    const cv::Mat gray(300, 300, CV_8UC1, cv::Scalar(128));
+    const AngleGeometry g{{0.0F, 0.0F}, {50.0F, 0.0F}, {0.0F, 50.0F}};
+    for (const double angle : {0.0, 33.0, 90.0, 154.0}) {
+        const Fixture fixture{{150.0F, 150.0F}, angle};
+        const double measured = runMeasure(gray, fixture, ToolType::Angle, ToolGeometry(g));
+        EXPECT_NEAR(measured, 90.0, 0.5) << "pieza a " << angle << " grados";
+    }
+}
+
+// --- Linea-Linea: paralelas, perpendiculares y giro de la pieza ---
+
+TEST(LineToLineSuite, ParallelAndPerpendicularCases) {
+    const cv::Mat gray(300, 300, CV_8UC1, cv::Scalar(128));
+
+    const LineToLineGeometry parallel{{-50.0F, -20.0F}, {50.0F, -20.0F},
+                                      {-50.0F, 20.0F},  {50.0F, 20.0F}};
+    EXPECT_NEAR(runMeasure(gray, kIdentity, ToolType::LineToLine, ToolGeometry(parallel)), 0.0,
+                0.5);
+
+    const LineToLineGeometry perpendicular{{-50.0F, 0.0F}, {50.0F, 0.0F},
+                                           {0.0F, -50.0F}, {0.0F, 50.0F}};
+    EXPECT_NEAR(
+        runMeasure(gray, kIdentity, ToolType::LineToLine, ToolGeometry(perpendicular)), 90.0,
+        0.5);
+
+    // 30 grados exactos.
+    const LineToLineGeometry thirty{{0.0F, 0.0F},  {100.0F, 0.0F},
+                                    {0.0F, 20.0F}, {86.6F, 70.0F}};
+    EXPECT_NEAR(runMeasure(gray, kIdentity, ToolType::LineToLine, ToolGeometry(thirty)), 30.0,
+                1.0);
+}
+
+TEST(LineToLineSuite, AngleSurvivesPieceRotation) {
+    const cv::Mat gray(300, 300, CV_8UC1, cv::Scalar(128));
+    const LineToLineGeometry perpendicular{{-50.0F, 0.0F}, {50.0F, 0.0F},
+                                           {0.0F, -50.0F}, {0.0F, 50.0F}};
+    for (const double angle : {0.0, 25.0, 75.0, 130.0}) {
+        const Fixture fixture{{150.0F, 150.0F}, angle};
+        EXPECT_NEAR(
+            runMeasure(gray, fixture, ToolType::LineToLine, ToolGeometry(perpendicular)), 90.0,
+            0.5);
+    }
+}
+
+// --- Blob y Blob poligonal: conteo, area minima y region ---
+
+TEST(BlobSuite, MinAreaFiltersTheSmallOnes) {
+    cv::Mat gray(300, 300, CV_8UC1, cv::Scalar(220));
+    cv::circle(gray, {120, 150}, 12, cv::Scalar(30), cv::FILLED);  // ~452 px2
+    cv::circle(gray, {160, 150}, 12, cv::Scalar(30), cv::FILLED);
+    cv::circle(gray, {200, 150}, 3, cv::Scalar(30), cv::FILLED);   // ~28 px2, mota
+
+    const BlobGeometry big{{160.0F, 150.0F}, 200.0F, 120.0F, 100.0F, true};
+    EXPECT_NEAR(runMeasure(gray, kIdentity, ToolType::Blob, ToolGeometry(big)), 2.0, 0.01)
+        << "con area minima 100 la mota no cuenta";
+
+    const BlobGeometry small{{160.0F, 150.0F}, 200.0F, 120.0F, 10.0F, true};
+    EXPECT_NEAR(runMeasure(gray, kIdentity, ToolType::Blob, ToolGeometry(small)), 3.0, 0.01)
+        << "con area minima 10 la mota si cuenta";
+}
+
+TEST(BlobSuite, OnlyCountsWhatIsInsideTheRegion) {
+    cv::Mat gray(300, 300, CV_8UC1, cv::Scalar(220));
+    cv::circle(gray, {100, 100}, 10, cv::Scalar(30), cv::FILLED);  // dentro
+    cv::circle(gray, {250, 250}, 10, cv::Scalar(30), cv::FILLED);  // fuera
+
+    const BlobGeometry region{{100.0F, 100.0F}, 80.0F, 80.0F, 20.0F, true};
+    EXPECT_NEAR(runMeasure(gray, kIdentity, ToolType::Blob, ToolGeometry(region)), 1.0, 0.01);
+}
+
+TEST(BlobSuite, PolaritySelectsDarkOrLightSpots) {
+    cv::Mat gray(300, 300, CV_8UC1, cv::Scalar(128));
+    cv::circle(gray, {130, 150}, 12, cv::Scalar(20), cv::FILLED);   // oscura
+    cv::circle(gray, {180, 150}, 12, cv::Scalar(240), cv::FILLED);  // clara
+
+    const BlobGeometry dark{{155.0F, 150.0F}, 160.0F, 100.0F, 50.0F, true};
+    const BlobGeometry light{{155.0F, 150.0F}, 160.0F, 100.0F, 50.0F, false};
+    EXPECT_NEAR(runMeasure(gray, kIdentity, ToolType::Blob, ToolGeometry(dark)), 1.0, 0.01);
+    EXPECT_NEAR(runMeasure(gray, kIdentity, ToolType::Blob, ToolGeometry(light)), 1.0, 0.01);
+}
+
+TEST(PolyBlobSuite, ConcaveRegionExcludesWhatIsOutside) {
+    cv::Mat gray(300, 300, CV_8UC1, cv::Scalar(220));
+    cv::circle(gray, {80, 80}, 10, cv::Scalar(30), cv::FILLED);    // dentro del brazo
+    cv::circle(gray, {200, 200}, 10, cv::Scalar(30), cv::FILLED);  // en la escotadura
+
+    // Polígono en L (cóncavo): el segundo punto queda fuera.
+    PolyBlobGeometry poly;
+    poly.vertices = {{40.0F, 40.0F},  {150.0F, 40.0F}, {150.0F, 150.0F},
+                     {40.0F, 150.0F}};
+    poly.minArea = 20.0F;
+    poly.darkBlobs = true;
+    EXPECT_NEAR(runMeasure(gray, kIdentity, ToolType::PolyBlob, ToolGeometry(poly)), 1.0, 0.01);
+}
+
+// --- Borde liso: la desviacion crece con la muesca, dentro de su ventana ---
+
+TEST(EdgeFlawSuite, DeviationGrowsWithTheNotchDepth) {
+    // Las profundidades caben en la ventana de escaneo (scanLength 20 = +-10).
+    double previous = -1.0;
+    for (const int depth : {0, 4, 8}) {
+        cv::Mat gray(200, 200, CV_8UC1, cv::Scalar(220));
+        cv::rectangle(gray, {20, 100}, {180, 190}, cv::Scalar(40), cv::FILLED);
+        if (depth > 0) {
+            cv::rectangle(gray, {95, 100}, {115, 100 + depth}, cv::Scalar(220), cv::FILLED);
+        }
+        const EdgeFlawGeometry g{{30.0F, 100.0F}, {170.0F, 100.0F}, 20.0F, 30};
+        const double measured =
+            runMeasure(gray, kIdentity, ToolType::EdgeFlaw, ToolGeometry(g));
+        if (previous >= 0.0) {
+            EXPECT_GT(measured, previous - 1.0)
+                << "una muesca mas profunda no puede dar menos desviacion (prof " << depth
+                << ")";
+        }
+        previous = measured;
+    }
+    EXPECT_GT(previous, 2.0) << "una muesca de 8 px debe verse claramente";
+}
+
+// LIMITE REAL del Borde liso, encontrado al escribir estas pruebas: la
+// herramienta busca el borde dentro de una ventana de +-scanLength/2 alrededor
+// de la linea trazada. Una muesca MAS PROFUNDA que esa ventana deja de
+// encontrarse y la desviacion vuelve a salir baja — no es un fallo, es el
+// parametro, pero hay que conocerlo (queda dicho en el tooltip y el README).
+TEST(EdgeFlawSuite, NotchDeeperThanTheScanWindowIsMissed) {
+    cv::Mat gray(200, 200, CV_8UC1, cv::Scalar(220));
+    cv::rectangle(gray, {20, 100}, {180, 190}, cv::Scalar(40), cv::FILLED);
+    cv::rectangle(gray, {95, 100}, {115, 130}, cv::Scalar(220), cv::FILLED);  // 30 px
+
+    const EdgeFlawGeometry narrow{{30.0F, 100.0F}, {170.0F, 100.0F}, 20.0F, 30};  // +-10
+    const double missed =
+        runMeasure(gray, kIdentity, ToolType::EdgeFlaw, ToolGeometry(narrow));
+
+    // Con una ventana suficiente, la MISMA muesca si aparece.
+    const EdgeFlawGeometry wide{{30.0F, 100.0F}, {170.0F, 100.0F}, 80.0F, 30};  // +-40
+    const double found = runMeasure(gray, kIdentity, ToolType::EdgeFlaw, ToolGeometry(wide));
+
+    EXPECT_LT(missed, 2.0) << "fuera de la ventana la muesca no se ve";
+    EXPECT_GT(found, 10.0) << "ampliando la ventana, la misma muesca se detecta";
+}
+
+// --- Punto-Linea ---
+
+TEST(PointToLineSuite, DistanceMatchesTheGeometry) {
+    for (const int edgeY : {120, 140, 160}) {
+        cv::Mat gray(220, 220, CV_8UC1, cv::Scalar(220));
+        cv::rectangle(gray, {40, edgeY}, {180, 210}, cv::Scalar(40), cv::FILLED);
+        const PointToLineGeometry g{{40.0F, 60.0F},  {180.0F, 60.0F},
+                                    {110.0F, 70.0F}, {110.0F, 200.0F}};
+        const double measured =
+            runMeasure(gray, kIdentity, ToolType::PointToLine, ToolGeometry(g));
+        EXPECT_NEAR(measured, edgeY - 60.0, 3.0) << "borde en y=" << edgeY;
+    }
+}
+
+// --- Coherencia entre herramientas: dos caminos, la misma verdad ---
+
+TEST(ToolCoherence, RulerAndCaliperAgreeOnTheSameBar) {
+    cv::Mat gray(300, 300, CV_8UC1, cv::Scalar(220));
+    gray.colRange(130, 170).setTo(40);  // barra de 40 px
+
+    const CaliperGeometry caliper{{60.0F, 150.0F}, {240.0F, 150.0F}, 10.0F};
+    const double byCaliper =
+        runMeasure(gray, kIdentity, ToolType::Caliper, ToolGeometry(caliper));
+    // La Regla mide lo que se traza: se traza justo de borde a borde.
+    const RulerGeometry ruler{{130.0F, 150.0F}, {170.0F, 150.0F}};
+    const double byRuler = runMeasure(gray, kIdentity, ToolType::Ruler, ToolGeometry(ruler));
+    EXPECT_NEAR(byCaliper, byRuler, 2.5);
+}
+
+TEST(ToolCoherence, CircleDiameterMatchesACaliperAcrossIt) {
+    Fixture fixture;
+    const cv::Mat gray = drawDisc({300, 300}, {150.0F, 150.0F}, 45, fixture);
+    const CircleGeometry circle{{0.0F, 0.0F}, 45.0F, 14.0F, 48};
+    const CaliperGeometry across{{-90.0F, 0.0F}, {90.0F, 0.0F}, 6.0F};
+    const double byCircle = runMeasure(gray, fixture, ToolType::Circle, ToolGeometry(circle));
+    const double byCaliper = runMeasure(gray, fixture, ToolType::Caliper,
+                                        ToolGeometry(across));
+    EXPECT_NEAR(byCircle, byCaliper, 3.0)
+        << "el diametro y un caliper que cruza el disco deben coincidir";
+}
+
+TEST(ToolCoherence, AngleAndLineToLineAgreeOnTheSameCorner) {
+    const cv::Mat gray(300, 300, CV_8UC1, cv::Scalar(128));
+    // Mismo par de direcciones descritas de dos maneras: esquina y dos rectas.
+    const AngleGeometry corner{{0.0F, 0.0F}, {80.0F, 0.0F}, {56.6F, 56.6F}};
+    const LineToLineGeometry lines{{0.0F, 0.0F},  {80.0F, 0.0F},
+                                   {0.0F, 0.0F},  {56.6F, 56.6F}};
+    const double byAngle = runMeasure(gray, kIdentity, ToolType::Angle, ToolGeometry(corner));
+    const double byLines =
+        runMeasure(gray, kIdentity, ToolType::LineToLine, ToolGeometry(lines));
+    EXPECT_NEAR(byAngle, 45.0, 1.0);
+    EXPECT_NEAR(byLines, 45.0, 1.0);
+    EXPECT_NEAR(byAngle, byLines, 1.0);
+}
+
+// --- Tolerancias: el veredicto por tipo de herramienta ---
+
+TEST(ToolVerdicts, EveryToolRespectsItsToleranceBand) {
+    cv::Mat gray(300, 300, CV_8UC1, cv::Scalar(220));
+    gray.colRange(130, 170).setTo(40);
+    const CaliperGeometry caliper{{60.0F, 150.0F}, {240.0F, 150.0F}, 10.0F};
+
+    // Dentro de banda -> OK; fuera -> NG. El valor medido es el mismo.
+    const auto inside =
+        runTool(gray, kIdentity, makeConfig(ToolType::Caliper, ToolGeometry(caliper), 35, 45));
+    const auto outside =
+        runTool(gray, kIdentity, makeConfig(ToolType::Caliper, ToolGeometry(caliper), 5, 20));
+    ASSERT_TRUE(inside.isOk());
+    ASSERT_TRUE(outside.isOk());
+    EXPECT_TRUE(inside.value().ok);
+    EXPECT_FALSE(outside.value().ok);
+    EXPECT_NEAR(inside.value().measured, outside.value().measured, 1e-6)
+        << "la tolerancia no puede cambiar la MEDIDA, solo el veredicto";
+
+    // Un conteo exacto: 2 manchas con banda [2,2] es OK y con [3,3] es NG.
+    cv::Mat spots(300, 300, CV_8UC1, cv::Scalar(220));
+    cv::circle(spots, {120, 150}, 12, cv::Scalar(30), cv::FILLED);
+    cv::circle(spots, {170, 150}, 12, cv::Scalar(30), cv::FILLED);
+    const BlobGeometry blob{{145.0F, 150.0F}, 160.0F, 100.0F, 50.0F, true};
+    EXPECT_TRUE(runTool(spots, kIdentity, makeConfig(ToolType::Blob, ToolGeometry(blob), 2, 2))
+                    .value()
+                    .ok);
+    EXPECT_FALSE(runTool(spots, kIdentity, makeConfig(ToolType::Blob, ToolGeometry(blob), 3, 3))
+                     .value()
+                     .ok);
+}
+
+// Con escala calibrada, el detalle debe hablar en milimetros aunque la medida
+// principal siga en pixeles (las tolerancias se definen en px).
+TEST(ToolVerdicts, CalibratedDetailShowsMillimetres) {
+    cv::Mat gray(300, 300, CV_8UC1, cv::Scalar(220));
+    gray.colRange(130, 170).setTo(40);
+    const CaliperGeometry caliper{{60.0F, 150.0F}, {240.0F, 150.0F}, 10.0F};
+    const auto result = runTool(gray, kIdentity,
+                                makeConfig(ToolType::Caliper, ToolGeometry(caliper), 0, 1e9),
+                                0.5 /* mm por pixel */, LengthUnit::Millimeters);
+    ASSERT_TRUE(result.isOk());
+    EXPECT_NEAR(result.value().measured, 40.0, 2.0);  // sigue en pixeles
+    EXPECT_NE(result.value().detail.find("mm"), std::string::npos) << result.value().detail;
+}

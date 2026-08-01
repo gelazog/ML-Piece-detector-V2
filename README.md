@@ -77,6 +77,9 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    - *Círculo*: arrastra del centro al borde → diámetro y redondez.
    - *Punto-Línea*: línea de referencia → distancia perpendicular del borde.
    - *Borde liso*: línea sobre un borde recto → desviación máxima (muescas).
+     Solo ve lo que cae dentro de su **ventana de escaneo**: una muesca más
+     profunda que esa ventana pasa desapercibida, así que súbela si esperas
+     defectos grandes.
    - *Blob*: rectángulo sobre una zona → conteo de manchas/agujeros.
    - *Blob poligonal*: región de forma libre (clic para marcar vértices, clic
      sobre el primero para cerrar) → mismo conteo que el Blob pero para zonas

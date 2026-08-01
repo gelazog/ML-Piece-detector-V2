@@ -55,7 +55,10 @@ const char* toolTypeDescription(ToolType type) {
         case ToolType::EdgeFlaw:
             return "Borde liso — detecta irregularidades (muescas, rebabas, golpes) en\n"
                    "un borde que debería ser recto. Dibuja una línea SOBRE el borde a\n"
-                   "vigilar; se mide la desviación máxima respecto a la recta ideal.";
+                   "vigilar; se mide la desviación máxima respecto a la recta ideal.\n"
+                   "OJO: solo ve lo que cae dentro del largo de escaneo (campo\n"
+                   "Escaneos/largo); una muesca más profunda que esa ventana pasa\n"
+                   "desapercibida — súbelo si esperas defectos grandes.";
         case ToolType::Blob:
             return "Blob — cuenta manchas, agujeros o elementos dentro de una región.\n"
                    "Arrastra un rectángulo sobre la zona a vigilar; por defecto busca\n"
