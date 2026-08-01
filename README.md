@@ -549,10 +549,11 @@ valor medido para ajustar tolerancias.
 
 Limitaciones conocidas:
 
-- La interacción del editor (ratón) se verifica a mano y con renders fuera de
-  pantalla del lienzo; el resto de la lógica de medición sí tiene pruebas
-  automáticas (una batería por herramienta, con invariancia al giro de la pieza
-  y coherencia cruzada entre herramientas).
+- La interacción del editor (ratón) sí tiene pruebas automáticas: `pci_gui_tests`
+  renderiza el lienzo fuera de pantalla y le inyecta clics y arrastres, y
+  `test_canvas_geometry` cubre la aritmética del trazado (vista, zoom,
+  desplazamiento, manijas y selección) sin necesidad de ventana. Lo que sigue
+  verificándose a mano es la vista en vivo con cámara física.
 - El **Borde liso** solo detecta lo que cae dentro de su ventana de escaneo: una
   muesca más profunda pasa desapercibida (súbela si esperas defectos grandes).
 
