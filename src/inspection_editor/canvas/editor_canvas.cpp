@@ -767,13 +767,32 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         return;
     }
 
-    // También en píxeles de pantalla: con el zoom alto, un trazo corto pero
-    // intencionado (una herramienta pequeña dibujada con precisión) superaba
-    // los 8 px de pantalla pero no los 8 de imagen, y se descartaba en silencio.
-    if (!createType_.has_value() ||
-        cv::norm(p - dragStart_) < pickTolerance(8.0, displayScale())) {
+    // Dos mínimos distintos, cada uno por su motivo:
+    //
+    //  - En píxeles de PANTALLA: separar un clic de un arrastre depende de
+    //    cuánto movió la mano. Por debajo fue un clic y se ignora sin más.
+    //  - En píxeles de IMAGEN: una herramienta más corta que esto no tiene
+    //    muestras suficientes para medir nada (el perfil del calíper, los rayos
+    //    del círculo). El gesto fue intencionado, así que aquí NO se calla: se
+    //    avisa, que es lo que faltaba.
+    constexpr double kMinDragOnScreen = 8.0;
+    constexpr double kMinTraceInImage = 8.0;
+    if (!createType_.has_value()) {
         snapImg_.reset();
-        return;  // arrastre demasiado corto: ignorado
+        return;
+    }
+    const double traced = cv::norm(p - dragStart_);
+    if (traced < pickTolerance(kMinDragOnScreen, displayScale())) {
+        snapImg_.reset();
+        return;  // fue un clic, no un trazo
+    }
+    if (traced < kMinTraceInImage) {
+        snapImg_.reset();
+        emit traceRejected(tr("Trazo demasiado corto para medir (%1 px de imagen; "
+                              "hacen falta %2). Aléjate con el zoom o traza más largo.")
+                               .arg(traced, 0, 'f', 1)
+                               .arg(kMinTraceInImage, 0, 'f', 0));
+        return;
     }
 
     // Si hay un borde resaltado bajo el cursor, el extremo se pega a él.

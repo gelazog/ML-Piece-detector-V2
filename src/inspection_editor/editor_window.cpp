@@ -252,6 +252,8 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
         canvas_->clearResults();
         commitUndoState();
     });
+    connect(canvas_, &EditorCanvas::traceRejected, this,
+            [this](const QString& reason) { statusLabel_->setText(reason); });
     connect(list_, &QListWidget::currentRowChanged, this, &EditorWindow::onListRowChanged);
     connect(nameEdit_, &QLineEdit::editingFinished, this, &EditorWindow::onPanelEdited);
     connect(tolMin_, &QDoubleSpinBox::valueChanged, this, &EditorWindow::onPanelEdited);

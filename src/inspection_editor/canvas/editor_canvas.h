@@ -129,6 +129,10 @@ signals:
     void pointPicked(const cv::Point2f& imagePoint);
     void regionPicked(const cv::Rect& imageRect);
     void toolRightClicked(int index);
+    // Un gesto claramente intencionado que no pudo convertirse en herramienta.
+    // Existe para que nada se descarte en silencio: si el operador traza y no
+    // aparece nada, tiene que saber por qué.
+    void traceRejected(const QString& reason);
 
 protected:
     void paintEvent(QPaintEvent* event) override;

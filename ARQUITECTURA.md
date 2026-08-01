@@ -222,6 +222,18 @@ imagen**, de modo que:
 - un trazo intencionado de 30 px no llegaba al mínimo de 8 px de imagen (75 de
   pantalla) y la herramienta **no se creaba, sin aviso**.
 
+Ese último caso destapó que ahí había **dos reglas confundidas en un solo
+número**, y ahora están separadas porque responden a preguntas distintas:
+
+| Mínimo | En qué se mide | Qué decide | Si no se cumple |
+|---|---|---|---|
+| 8 px de **pantalla** | movimiento de la mano | ¿fue un clic o un arrastre? | se ignora, sin ruido |
+| 8 px de **imagen** | tamaño de la herramienta | ¿hay muestras para medir? | se avisa en la barra de estado |
+
+Una herramienta de 3 px de imagen no tiene perfil que promediar ni rayos que
+lanzar: no se puede crear. Pero el gesto fue deliberado, así que la señal
+`traceRejected` lo dice con el número concreto en vez de tragárselo.
+
 Con una imagen grande en una ventana pequeña pasaba lo contrario: la manija que
 se ve no se podía agarrar. Los cuatro umbrales (selección, manija, cierre del
 polígono y mínimo de arrastre) están ahora en píxeles de pantalla, y hay
