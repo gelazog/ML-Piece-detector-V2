@@ -227,11 +227,23 @@ se ve no se podía agarrar. Los cuatro umbrales (selección, manija, cierre del
 polígono y mínimo de arrastre) están ahora en píxeles de pantalla, y hay
 pruebas que fijan que la zona de agarre sea la misma con cualquier zoom.
 
-Otro contrato que se cerró aquí: **`setHandlePoint` con un índice fuera de rango
-no toca nada**. Antes caía en la rama por defecto de cada tipo y movía la última
-manija (cambiaba el radio, redimensionaba el blob), que es el fallo silencioso
-que aparece cuando un arrastre sobrevive a un cambio de selección o a un
-deshacer y el índice ya no corresponde a esa geometría.
+El **imán al borde** sigue la misma lógica, pero solo hacia abajo: su alcance se
+acota por lo que se ve **sin superar nunca los 14 px de imagen originales** y con
+un suelo de 6, para que la ventana de escaneo siga dando de sí. Al zoom de
+ajuste no cambia nada; al máximo deja de arrastrar el extremo hasta un borde que
+está a 112 px de pantalla de donde se soltó. Comprobado sobre el widget con un
+borde sintético: soltando en x=991 con el ajuste, aterriza en 999,5 (subpíxel);
+soltando en x=988 al máximo, se queda en 988.
+
+Dos contratos más que se cerraron aquí:
+
+- **`setHandlePoint` con un índice fuera de rango no toca nada.** Antes caía en
+  la rama por defecto de cada tipo y movía la última manija (cambiaba el radio,
+  redimensionaba el blob).
+- **Un arrastre de manija pertenece a la herramienta en la que empezó.** Si la
+  selección cambia desde fuera a media faena —la lista del panel, un deshacer—
+  el arrastre se cancela; era la vía real por la que llegaba un índice de manija
+  a una geometría de otro tipo.
 
 ---
 

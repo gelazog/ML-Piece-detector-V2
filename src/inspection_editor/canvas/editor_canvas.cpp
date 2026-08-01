@@ -170,6 +170,12 @@ void EditorCanvas::clearResults() {
 }
 
 void EditorCanvas::setSelectedIndex(int index) {
+    // Un arrastre de manija pertenece a la herramienta en la que empezó. Si la
+    // selección cambia desde fuera a media faena (la lista del panel, un
+    // deshacer), el arrastre se cancela: si no, el índice de manija seguiría
+    // vivo sobre otra geometría, que puede tener menos manijas o de otro tipo.
+    draggingHandle_ = false;
+    handleIndex_ = -1;
     selected_ = index;
     multiSelected_.clear();
     if (index >= 0) {
@@ -471,9 +477,18 @@ std::optional<cv::Point2f> EditorCanvas::snapEdge(const cv::Point2f& cursor,
     // Escaneo corto centrado en el cursor y alineado con el trazo: el borde más
     // fuerte en esa ventana es el candidato al que "pegar" el extremo.
     const cv::Point2f u = dir / static_cast<float>(len);
-    constexpr float kReach = 14.0F;
+    // El alcance del imán es cuánto puede saltar el extremo respecto a donde se
+    // soltó, así que se acota por lo que se ve: 14 px de imagen son 131 px de
+    // PANTALLA al zoom máximo, y el extremo aterrizaba en un borde lejísimos.
+    // Solo se recorta (nunca se amplía sobre el valor original) y con un suelo
+    // para que la ventana de escaneo siga dando de sí para detectar el borde.
+    constexpr float kReachOnScreen = 14.0F;
+    constexpr float kMinReach = 6.0F;
+    const auto reach = static_cast<float>(
+        std::clamp(pickTolerance(kReachOnScreen, displayScale()),
+                   static_cast<double>(kMinReach), static_cast<double>(kReachOnScreen)));
     const auto edges =
-        detectEdges(dragGray_, cursor - u * kReach, cursor + u * kReach, 3.0F, 1);
+        detectEdges(dragGray_, cursor - u * reach, cursor + u * reach, 3.0F, 1);
     if (edges.empty()) {
         return std::nullopt;
     }
