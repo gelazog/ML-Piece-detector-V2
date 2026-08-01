@@ -106,36 +106,82 @@ TEST(CameraControls, TogglesAreOnlyTheAutomaticOnes) {
     EXPECT_FALSE(pci::camera::isToggle(pci::camera::CameraProperty::Exposure));
 }
 
-// El rango se deduce del valor que devuelve la cámara porque OpenCV no expone
-// mínimo ni máximo y cada backend usa su propia escala.
-TEST(CameraControls, RangeAdaptsToTheBackendScale) {
+// El rango ya no se adivina del valor: se MIDE al abrir la camara (probeControls)
+// y rangeFor solo decide un paso de ajuste usable para ese recorrido.
+//
+// Motivo del cambio: sondeando una camara real, get(BRIGHTNESS) devolvia 91
+// pero set() lo rechazaba, y la exposicion aceptaba solo [-11, -3] en vez del
+// [-15, 5] que se suponia. Adivinar producia deslizadores muertos o con topes
+// falsos.
+TEST(CameraControls, RangeUsesTheMeasuredSpan) {
     using pci::camera::CameraProperty;
-    using pci::camera::suggestedRange;
+    using pci::camera::rangeFor;
 
-    // Escala normalizada (MSMF suele devolver 0..1).
-    const auto normalized = suggestedRange(CameraProperty::Brightness, 0.5);
-    EXPECT_DOUBLE_EQ(normalized.min, 0.0);
-    EXPECT_DOUBLE_EQ(normalized.max, 1.0);
-    EXPECT_LT(normalized.step, 1.0);  // hace falta paso decimal
+    // Recorrido en unidades (0..255 de DirectShow): paso entero.
+    const auto wide = rangeFor(CameraProperty::Brightness, 0.0, 255.0);
+    EXPECT_DOUBLE_EQ(wide.min, 0.0);
+    EXPECT_DOUBLE_EQ(wide.max, 255.0);
+    EXPECT_DOUBLE_EQ(wide.step, 1.0);
 
-    // Escala 0..255 (DirectShow).
-    const auto bytes = suggestedRange(CameraProperty::Brightness, 128.0);
-    EXPECT_DOUBLE_EQ(bytes.max, 255.0);
-    EXPECT_DOUBLE_EQ(bytes.step, 1.0);
+    // Rango real medido en la camara de pruebas: exposicion de -11 a -3.
+    const auto exposure = rangeFor(CameraProperty::Exposure, -11.0, -3.0);
+    EXPECT_DOUBLE_EQ(exposure.min, -11.0);
+    EXPECT_DOUBLE_EQ(exposure.max, -3.0);
+    EXPECT_DOUBLE_EQ(exposure.step, 1.0);
 
-    // Un valor mayor que 255 no debe quedar fuera del deslizador.
-    EXPECT_GE(suggestedRange(CameraProperty::Brightness, 900.0).max, 900.0);
+    // Escala normalizada (0..1 de MSMF): hace falta paso decimal o el
+    // deslizador solo tendria dos posiciones.
+    const auto normalized = rangeFor(CameraProperty::Contrast, 0.0, 1.0);
+    EXPECT_LT(normalized.step, 1.0);
+    EXPECT_GT(normalized.step, 0.0);
 
-    // Exposición en log2 segundos (negativa) frente a microsegundos.
-    const auto logExposure = suggestedRange(CameraProperty::Exposure, -6.0);
-    EXPECT_LT(logExposure.min, 0.0);
-    EXPECT_GE(logExposure.max, 0.0);
-    const auto microseconds = suggestedRange(CameraProperty::Exposure, 5000.0);
-    EXPECT_GE(microseconds.max, 5000.0);
+    // Los extremos pueden llegar invertidos (se empuja primero al alto): se
+    // ordenan solos.
+    const auto swapped = rangeFor(CameraProperty::Gain, 128.0, 8.0);
+    EXPECT_DOUBLE_EQ(swapped.min, 8.0);
+    EXPECT_DOUBLE_EQ(swapped.max, 128.0);
 
-    // Las casillas son binarias.
-    const auto toggle = suggestedRange(CameraProperty::AutoFocus, 1.0);
+    // Rango degenerado (la camara no dijo nada util): nunca un rango vacio que
+    // deje el deslizador atascado.
+    const auto degenerate = rangeFor(CameraProperty::Gain, 5.0, 5.0);
+    EXPECT_GT(degenerate.max, degenerate.min);
+    EXPECT_GT(degenerate.step, 0.0);
+
+    // Las casillas son binarias pase lo que pase.
+    const auto toggle = rangeFor(CameraProperty::AutoFocus, -50.0, 900.0);
     EXPECT_DOUBLE_EQ(toggle.min, 0.0);
     EXPECT_DOUBLE_EQ(toggle.max, 1.0);
     EXPECT_DOUBLE_EQ(toggle.step, 1.0);
+}
+
+// Arrastrar un deslizador encola decenas de valores por segundo; aplicarlos
+// todos bloqueaba el hilo de captura (cada set() cuesta milisegundos) y de los
+// intermedios no queda nada visible.
+TEST(CameraControls, CoalescingKeepsOnlyTheLastValuePerProperty) {
+    using pci::camera::CameraProperty;
+    using pci::camera::CameraControlValue;
+
+    std::vector<CameraControlValue> pending;
+    // Simula un arrastre de 200 pasos sobre el brillo mientras la exposicion se
+    // toca dos veces.
+    for (int i = 0; i < 200; ++i) {
+        pci::camera::coalesceControls(pending,
+                                      {{CameraProperty::Brightness, static_cast<double>(i)}});
+    }
+    pci::camera::coalesceControls(pending, {{CameraProperty::Exposure, -7.0}});
+    pci::camera::coalesceControls(pending, {{CameraProperty::Exposure, -5.0}});
+
+    ASSERT_EQ(pending.size(), 2U) << "la cola debe tener una entrada por propiedad";
+    EXPECT_EQ(pending[0].property, CameraProperty::Brightness);
+    EXPECT_DOUBLE_EQ(pending[0].value, 199.0);  // el ultimo valor del arrastre
+    EXPECT_EQ(pending[1].property, CameraProperty::Exposure);
+    EXPECT_DOUBLE_EQ(pending[1].value, -5.0);
+
+    // El orden de llegada de propiedades distintas se conserva.
+    std::vector<CameraControlValue> other;
+    pci::camera::coalesceControls(other, {{CameraProperty::AutoFocus, 1.0},
+                                          {CameraProperty::Focus, 30.0}});
+    ASSERT_EQ(other.size(), 2U);
+    EXPECT_EQ(other[0].property, CameraProperty::AutoFocus);
+    EXPECT_EQ(other[1].property, CameraProperty::Focus);
 }

@@ -111,6 +111,13 @@ public:
     // Tablero resuelto para el frame actual (lo reutilizan las lecturas de T3/T4).
     [[nodiscard]] vision::BoardFrame boardFrame() const;
 
+    // --- regla graduada ---
+    // Reglas en los bordes superior e izquierdo, con marcas y números en la
+    // unidad activa, más una barra de escala. Sirven para leer una medida de un
+    // vistazo sin tener que dibujar una herramienta.
+    void setRulerVisible(bool visible);
+    [[nodiscard]] bool rulerVisible() const { return rulerVisible_; }
+
 signals:
     // El zoom, el desplazamiento o el tamaño del lienzo cambiaron: quien
     // muestre el porcentaje debe releer displayScale().
@@ -160,9 +167,16 @@ private:
 
     void paintTool(QPainter& painter, const EditedTool& tool, bool selected) const;
     void paintResults(QPainter& painter) const;
+    // ¿Hay un resultado medido para esta herramienta? Si lo hay, su etiqueta ya
+    // incluye el nombre y no hay que pintarlo por duplicado.
+    [[nodiscard]] bool hasResultFor(const ToolConfig& config) const;
+    // Medida formateada según su tipo (conteo, grados o longitud en la unidad
+    // activa).
+    [[nodiscard]] QString measureText(const ToolRunResult& result) const;
     void paintCreationPreview(QPainter& painter) const;
     void paintLiveOverlay(QPainter& painter) const;
     void paintBoard(QPainter& painter) const;
+    void paintRuler(QPainter& painter) const;
     // Valor del tablero (px de imagen) en la unidad activa, compacto.
     [[nodiscard]] QString boardValueText(double px, bool signPrefix) const;
     [[nodiscard]] bool interactive() const;
@@ -192,6 +206,7 @@ private:
 
     // Tablero de referencia (T2): visibilidad y elección de origen/ejes.
     bool boardVisible_ = false;
+    bool rulerVisible_ = false;
     vision::BoardConfig boardConfig_;
     bool hasBoundsCenter_ = false;
     cv::Point2f boundsCenter_{0.0F, 0.0F};

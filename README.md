@@ -49,8 +49,12 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    **Controles de la cámara** (Cámara ▸ *Controles de la cámara…*, con la
    transmisión en marcha): brillo, contraste, ganancia, exposición y enfoque de
    la **propia cámara**, no del procesado. El diálogo no bloquea la ventana, así
-   que mueves un deslizador y ves el efecto en el vídeo al instante. Lo que tu
-   cámara no soporta aparece deshabilitado y dicho explícitamente. Para una
+   que mueves un deslizador y ves el efecto en el vídeo al instante. Al abrir la
+   cámara se **sondea de verdad qué admite**: se intenta escribir cada control y
+   se mide su rango real, así que solo quedan activos los que la cámara deja
+   cambiar (con su recorrido correcto en el tooltip) y el resto sale
+   deshabilitado con el motivo. Los controles manuales de exposición y enfoque
+   se bloquean mientras su automático está encendido, porque ahí no harían nada. Para una
    línea estable conviene **desactivar la exposición y el enfoque automáticos**
    y fijarlos: si no, la cámara cambia el brillo o "bombea" el foco entre
    frames y las medidas bailan. Los valores que toques se guardan y se
@@ -154,6 +158,13 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
    que los **ejes giren con la pieza** o queden alineados con la imagen.
    El paso de la grilla se adapta al zoom y las etiquetas salen en la unidad
    activa (mm/cm si hay escala calibrada, px si no). Todo queda guardado.
+   **Regla graduada** (**Ver ▸ Regla graduada**): reglas en los bordes superior
+   e izquierdo con marcas y números en la unidad activa, una **barra de escala**
+   ("20 mm") abajo y la marca de la posición del cursor sobre ambas reglas. Con
+   el tablero encendido las reglas miden desde su cero; con el tablero apagado,
+   desde la esquina de la imagen. Sirve para leer un tamaño de un vistazo sin
+   tener que dibujar una herramienta.
+
    Con el tablero encendido aparece además una **lectura continua** sobre el
    vídeo: `dx`, `dy`, radio y giro de la pieza respecto al cero. Si el cero está
    en la propia pieza, la desviación es cero por definición y solo se muestra el

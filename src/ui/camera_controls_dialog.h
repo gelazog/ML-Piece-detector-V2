@@ -40,9 +40,14 @@ private:
         camera::CameraProperty property = camera::CameraProperty::Brightness;
         QSlider* slider = nullptr;
         QCheckBox* toggle = nullptr;
+        bool supported = false;
     };
 
     void apply(camera::CameraProperty property, double value);
+    // Un control manual no hace nada mientras su automático está activo: se
+    // deshabilita en vez de dejar que el operador mueva algo inerte.
+    void syncAutoDependencies();
+    [[nodiscard]] bool autoActive(camera::CameraProperty autoProperty) const;
 
     camera::CameraController& controller_;
     std::vector<Row> rows_;

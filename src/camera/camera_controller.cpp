@@ -2,6 +2,7 @@
 
 #include <opencv2/videoio.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -71,9 +72,7 @@ void CameraController::start(const CameraInfo& camera,
 
 void CameraController::requestControls(const std::vector<CameraControlValue>& controls) {
     std::lock_guard<std::mutex> lock(controlsMutex_);
-    for (const auto& control : controls) {
-        pendingControls_.push_back(control);
-    }
+    coalesceControls(pendingControls_, controls);
 }
 
 void CameraController::drainControlRequests(cv::VideoCapture& capture) {
@@ -174,21 +173,15 @@ void CameraController::captureLoopBody(CameraInfo camera) {
     // Controles pedidos antes de abrir (los guardados de la sesión anterior).
     drainControlRequests(capture);
 
-    // Sondeo: OpenCV no dice qué propiedades existen, así que se lee cada una y
-    // se considera no soportada si devuelve -1 o algo no finito. Es la única
-    // comprobación posible que no toca la cámara.
-    std::vector<CameraControlState> probed;
-    for (const CameraProperty property : allCameraProperties()) {
-        CameraControlState state;
-        state.property = property;
-        try {
-            state.value = capture.get(captureProperty(property));
-        } catch (const cv::Exception& e) {
-            core::logWarning(std::string("OpenCV lanzó al leer un control: ") + e.what());
-            state.value = -1.0;
-        }
-        state.supported = std::isfinite(state.value) && state.value != -1.0;
-        probed.push_back(state);
+    // Sondeo real de los controles: qué acepta la cámara y con qué rango.
+    // (Antes se miraba solo get() y salían deslizadores muertos: hay cámaras
+    // que informan el brillo pero rechazan cambiarlo.)
+    const std::vector<CameraControlState> probed = probeControls(capture);
+    for (const auto& state : probed) {
+        core::logInfo(std::string("Control ") + std::string(propertyKey(state.property)) +
+                      (state.supported ? ": ajustable [" + std::to_string(state.min) + ", " +
+                                             std::to_string(state.max) + "]"
+                                       : ": no ajustable"));
     }
     emit controlsProbed(probed);
 

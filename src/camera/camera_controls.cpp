@@ -2,6 +2,7 @@
 
 #include <opencv2/videoio.hpp>
 
+#include <algorithm>
 #include <cmath>
 
 namespace pci::camera {
@@ -102,24 +103,100 @@ bool isToggle(CameraProperty property) {
     return property == CameraProperty::AutoExposure || property == CameraProperty::AutoFocus;
 }
 
-PropertyRange suggestedRange(CameraProperty property, double currentValue) {
+PropertyRange rangeFor(CameraProperty property, double min, double max) {
+    PropertyRange range;
     if (isToggle(property)) {
         return {0.0, 1.0, 1.0};
     }
-    if (property == CameraProperty::Exposure) {
-        // DirectShow expone la exposición como log2(segundos): valores
-        // negativos pequeños. MSMF y V4L2 usan microsegundos o pasos enteros.
-        if (currentValue <= 0.0 && currentValue >= -20.0) {
-            return {-15.0, 5.0, 1.0};
+    range.min = std::min(min, max);
+    range.max = std::max(min, max);
+    if (!(range.max > range.min)) {
+        // Rango degenerado (la camara no dijo nada util): deja al menos un
+        // recorrido usable alrededor del valor.
+        range.max = range.min + 1.0;
+    }
+    const double span = range.max - range.min;
+    // Escala normalizada (0..1 de MSMF) o recorridos muy cortos necesitan paso
+    // decimal; los recorridos en unidades (0..255, -11..-3) van de uno en uno.
+    range.step = (span <= 4.0) ? span / 100.0 : 1.0;
+    if (range.step <= 0.0) {
+        range.step = 1.0;
+    }
+    return range;
+}
+
+namespace {
+
+// Lee una propiedad sin dejar que una excepcion de OpenCV rompa el sondeo.
+double readProperty(cv::VideoCapture& capture, int id) {
+    try {
+        return capture.get(id);
+    } catch (const cv::Exception&) {
+        return -1.0;
+    }
+}
+
+bool writeProperty(cv::VideoCapture& capture, int id, double value) {
+    try {
+        return capture.set(id, value);
+    } catch (const cv::Exception&) {
+        return false;
+    }
+}
+
+}  // namespace
+
+void coalesceControls(std::vector<CameraControlValue>& pending,
+                      const std::vector<CameraControlValue>& incoming) {
+    for (const auto& control : incoming) {
+        auto existing = std::find_if(pending.begin(), pending.end(),
+                                     [&control](const CameraControlValue& queued) {
+                                         return queued.property == control.property;
+                                     });
+        if (existing != pending.end()) {
+            existing->value = control.value;
+        } else {
+            pending.push_back(control);
         }
-        return {0.0, std::max(1000.0, currentValue * 4.0), 1.0};
     }
-    // Escala normalizada (0..1) frente a la escala 0..255 clásica: se decide
-    // por el valor actual, que es lo único que la cámara nos dice.
-    if (std::abs(currentValue) <= 1.0) {
-        return {0.0, 1.0, 0.01};
+}
+
+std::vector<CameraControlState> probeControls(cv::VideoCapture& capture) {
+    std::vector<CameraControlState> states;
+    for (const CameraProperty property : allCameraProperties()) {
+        const int id = captureProperty(property);
+        CameraControlState state;
+        state.property = property;
+        state.value = readProperty(capture, id);
+
+        // Empujar a los extremos revela el rango real; la camara recorta al
+        // maximo y al minimo que admite. Despues se restaura el valor original.
+        const bool wroteHigh = writeProperty(capture, id, 1.0e5);
+        const double high = readProperty(capture, id);
+        const bool wroteLow = writeProperty(capture, id, -1.0e5);
+        const double low = readProperty(capture, id);
+        const bool restored = writeProperty(capture, id, state.value);
+
+        // Soportado = la camara acepta ESCRIBIR. Un get() valido no basta: hay
+        // camaras que informan el brillo pero rechazan cambiarlo.
+        state.supported = (wroteHigh || wroteLow || restored) && high != low;
+        if (isToggle(property)) {
+            state.supported = wroteHigh || wroteLow || restored;
+            state.min = 0.0;
+            state.max = 1.0;
+            if (state.value < 0.0) {
+                state.value = 0.0;  // -1 = la camara no informa; se asume apagado
+            }
+        } else {
+            state.min = std::min(low, high);
+            state.max = std::max(low, high);
+            if (state.value < state.min || state.value > state.max) {
+                state.value = std::clamp(state.value, state.min, state.max);
+            }
+        }
+        states.push_back(state);
     }
-    return {0.0, std::max(255.0, std::ceil(currentValue)), 1.0};
+    return states;
 }
 
 }  // namespace pci::camera

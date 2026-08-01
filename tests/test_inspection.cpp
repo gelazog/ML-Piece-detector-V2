@@ -2,7 +2,9 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include <chrono>
 #include <cmath>
+#include <string>
 
 #include "inspection_editor/execution/edge_detection.h"
 #include "inspection_editor/execution/tool_executor.h"
@@ -682,4 +684,165 @@ TEST(ToolGeometry, PositionRoundTripAndAxisDefault) {
     translateGeometry(moved, {2.0F, 3.0F});
     EXPECT_FLOAT_EQ(std::get<PositionGeometry>(moved).point.x, 14.5F);
     EXPECT_FLOAT_EQ(std::get<PositionGeometry>(moved).point.y, -5.25F);
+}
+
+// --- Pruebas de estres y validacion del sistema de medicion ---
+
+namespace {
+
+// Construye una herramienta de cada tipo alrededor de un punto, para poblar
+// escenas con muchas herramientas mezcladas.
+ToolConfig makeToolAt(int index, float x, float y) {
+    const ToolType types[] = {ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine,
+                              ToolType::EdgeFlaw, ToolType::Blob,     ToolType::Ruler,
+                              ToolType::LineToLine, ToolType::Angle,  ToolType::PolyBlob,
+                              ToolType::Position};
+    const ToolType type = types[index % 10];
+    ToolGeometry geometry;
+    switch (type) {
+        case ToolType::Caliper:
+            geometry = CaliperGeometry{{x - 20.0F, y}, {x + 20.0F, y}, 10.0F};
+            break;
+        case ToolType::Circle:
+            geometry = CircleGeometry{{x, y}, 18.0F, 6.0F, 24};
+            break;
+        case ToolType::PointToLine:
+            geometry = PointToLineGeometry{{x - 20.0F, y}, {x + 20.0F, y},
+                                           {x, y - 15.0F}, {x, y + 15.0F}};
+            break;
+        case ToolType::EdgeFlaw:
+            geometry = EdgeFlawGeometry{{x - 20.0F, y}, {x + 20.0F, y}, 12.0F, 8};
+            break;
+        case ToolType::Blob:
+            geometry = BlobGeometry{{x, y}, 40.0F, 30.0F, 20.0F, true};
+            break;
+        case ToolType::Ruler:
+            geometry = RulerGeometry{{x - 15.0F, y - 10.0F}, {x + 15.0F, y + 10.0F}};
+            break;
+        case ToolType::LineToLine:
+            geometry = LineToLineGeometry{{x - 20.0F, y}, {x + 20.0F, y},
+                                          {x - 20.0F, y + 12.0F}, {x + 20.0F, y + 16.0F}};
+            break;
+        case ToolType::Angle:
+            geometry = AngleGeometry{{x, y}, {x + 25.0F, y}, {x, y + 25.0F}};
+            break;
+        case ToolType::PolyBlob: {
+            PolyBlobGeometry poly;
+            poly.vertices = {{x - 18.0F, y - 14.0F}, {x + 18.0F, y - 14.0F},
+                             {x + 18.0F, y + 14.0F}, {x - 18.0F, y + 14.0F}};
+            geometry = poly;
+            break;
+        }
+        case ToolType::Position:
+            geometry = PositionGeometry{{x, y}, PositionAxis::Radial};
+            break;
+    }
+    ToolConfig config = makeConfig(type, geometry, 0.0, 1.0e9);
+    config.id = index;
+    config.name = "t" + std::to_string(index);
+    return config;
+}
+
+}  // namespace
+
+// La garantia que impide que las medidas "se mezclen": runTools devuelve UN
+// resultado por herramienta habilitada, en el MISMO orden y con su identidad
+// (id y nombre) intacta, pase lo que pase con cada medicion individual.
+TEST(ToolExecutorStress, ThreeHundredToolsKeepTheirIdentityAndOrder) {
+    cv::Mat gray(600, 800, CV_8UC1, cv::Scalar(60));
+    cv::rectangle(gray, {150, 120}, {650, 480}, cv::Scalar(220), cv::FILLED);
+    cv::circle(gray, {400, 300}, 40, cv::Scalar(30), cv::FILLED);
+
+    std::vector<ToolConfig> tools;
+    for (int i = 0; i < 300; ++i) {
+        const float x = 180.0F + static_cast<float>((i * 37) % 600);
+        const float y = 150.0F + static_cast<float>((i * 53) % 300);
+        tools.push_back(makeToolAt(i, x, y));
+    }
+
+    const auto started = std::chrono::steady_clock::now();
+    const auto results = runTools(gray, kIdentity, tools);
+    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::steady_clock::now() - started)
+                               .count();
+
+    ASSERT_EQ(results.size(), tools.size());
+    for (std::size_t i = 0; i < results.size(); ++i) {
+        EXPECT_EQ(results[i].toolId, tools[i].id) << "resultado " << i << " fuera de sitio";
+        EXPECT_EQ(results[i].name, tools[i].name);
+        EXPECT_EQ(results[i].type, tools[i].type);
+        EXPECT_FALSE(std::isnan(results[i].measured)) << "medida NaN en " << results[i].name;
+    }
+    // Con 300 herramientas la inspeccion debe seguir siendo utilizable en vivo.
+    EXPECT_LT(elapsedMs, 5000) << "300 herramientas tardaron " << elapsedMs << " ms";
+}
+
+// Una herramienta deshabilitada se salta, pero las demas NO pueden correrse de
+// sitio ni heredar su nombre: es justo el escenario donde las medidas
+// aparecerian intercambiadas.
+TEST(ToolExecutorStress, DisabledToolsDoNotShiftTheOthers) {
+    const cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(128));
+    std::vector<ToolConfig> tools;
+    for (int i = 0; i < 12; ++i) {
+        ToolConfig config = makeToolAt(i, 120.0F + i * 10.0F, 200.0F);
+        config.enabled = (i % 3 != 0);  // uno de cada tres, apagado
+        tools.push_back(config);
+    }
+
+    const auto results = runTools(gray, kIdentity, tools);
+    ASSERT_EQ(results.size(), 8U);  // 12 menos los 4 deshabilitados
+    std::size_t next = 0;
+    for (const auto& tool : tools) {
+        if (!tool.enabled) {
+            continue;
+        }
+        EXPECT_EQ(results[next].toolId, tool.id);
+        EXPECT_EQ(results[next].name, tool.name);
+        ++next;
+    }
+}
+
+// Geometrias degeneradas o absurdas: la medicion puede fallar, pero nunca
+// colgarse, lanzar ni devolver un resultado sin identidad.
+TEST(ToolExecutorStress, DegenerateGeometryFailsCleanly) {
+    const cv::Mat gray(200, 200, CV_8UC1, cv::Scalar(100));
+    const std::vector<ToolGeometry> nasty = {
+        CaliperGeometry{{50.0F, 50.0F}, {50.0F, 50.0F}, 0.0F},          // longitud cero
+        CircleGeometry{{100.0F, 100.0F}, 0.0F, 0.0F, 1},                // radio cero
+        RulerGeometry{{-1.0e6F, -1.0e6F}, {1.0e6F, 1.0e6F}},            // fuera de la imagen
+        AngleGeometry{{10.0F, 10.0F}, {10.0F, 10.0F}, {10.0F, 10.0F}},  // lados nulos
+        BlobGeometry{{100.0F, 100.0F}, 0.0F, 0.0F, 0.0F, true},         // region vacia
+        LineToLineGeometry{{0, 0}, {0, 0}, {0, 0}, {0, 0}},             // dos lineas nulas
+        PositionGeometry{{1.0e7F, -1.0e7F}, PositionAxis::Radial},      // rasgo lejisimos
+    };
+    for (const auto& geometry : nasty) {
+        const ToolConfig config = makeConfig(typeOf(geometry), geometry, 0.0, 1.0e9);
+        const auto result = runTool(gray, kIdentity, config);
+        ASSERT_TRUE(result.isOk()) << "una geometria degenerada no debe romper la medicion";
+        EXPECT_EQ(result.value().name, config.name);
+        EXPECT_FALSE(std::isnan(result.value().measured));
+    }
+}
+
+// El JSON de geometria puede venir de una BD tocada a mano o de otra version:
+// nunca debe colgar ni producir una geometria con valores no finitos.
+TEST(ToolExecutorStress, HostileGeometryJsonIsRejected) {
+    const std::vector<std::string> hostile = {
+        "", "{}", "no es json", "[1,2,3]",
+        R"({"x0":1e400,"y0":0,"x1":10,"y1":0,"band":5})",     // desbordamiento
+        R"({"x0":"texto","y0":0,"x1":10,"y1":0,"band":5})",   // tipo equivocado
+        R"({"x0":0,"y0":0})",                                  // campos ausentes
+        std::string(R"({"x0":0,"y0":0,"x1":10,"y1":0,"band":)") + std::string(2000, '9') + "}",
+    };
+    for (const auto& json : hostile) {
+        auto parsed = geometryFromJson(ToolType::Caliper, json);
+        if (parsed.isOk()) {
+            // Si acepta el JSON, al menos los valores han de ser finitos.
+            const auto& g = std::get<CaliperGeometry>(parsed.value());
+            EXPECT_TRUE(std::isfinite(g.p0.x) && std::isfinite(g.p1.x)) << json;
+        }
+    }
+    // Un polígono con menos de 3 vertices no es una region: debe rechazarse.
+    EXPECT_FALSE(geometryFromJson(ToolType::PolyBlob, R"({"verts":[1,2],"minArea":5,"dark":1})")
+                     .isOk());
 }

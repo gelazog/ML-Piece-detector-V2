@@ -3,6 +3,7 @@
 #include <opencv2/core.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <type_traits>
 
@@ -219,7 +220,15 @@ public:
                                                  key + "'");
             }
         }
-        return core::Result<double>::ok(static_cast<double>(node.real()));
+        const double value = static_cast<double>(node.real());
+        // Un JSON con 1e400 desborda a infinito y OpenCV lo acepta sin rechistar.
+        // Si se dejara pasar, la herramienta quedaría en el infinito y todas sus
+        // medidas saldrían NaN: es preferible rechazar la geometría entera.
+        if (!std::isfinite(value)) {
+            return core::Result<double>::err(std::string("Geometría corrupta: '") + key +
+                                             "' no es un número finito");
+        }
+        return core::Result<double>::ok(value);
     }
 
     // Clave opcional (campos añadidos después de la v1 del formato).
@@ -228,7 +237,8 @@ public:
         if (node.empty() || (!node.isReal() && !node.isInt())) {
             return fallback;
         }
-        return static_cast<double>(node.real());
+        const double value = static_cast<double>(node.real());
+        return std::isfinite(value) ? value : fallback;
     }
 
     // Secuencia plana [x0,y0,x1,y1,...] como lista de puntos.
@@ -245,6 +255,9 @@ public:
             }
         }
         for (std::size_t i = 0; i + 1 < flat.size(); i += 2) {
+            if (!std::isfinite(flat[i]) || !std::isfinite(flat[i + 1])) {
+                return {};  // un vértice no finito invalida el polígono entero
+            }
             pts.emplace_back(static_cast<float>(flat[i]), static_cast<float>(flat[i + 1]));
         }
         return pts;

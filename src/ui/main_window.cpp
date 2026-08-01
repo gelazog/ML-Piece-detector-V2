@@ -629,6 +629,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             static_cast<float>(repos_.settings->getDouble("board_offset_x", 0.0).value()),
             static_cast<float>(repos_.settings->getDouble("board_offset_y", 0.0).value())};
     }
+    if (repos_.settings != nullptr) {
+        rulerVisible_ = repos_.settings->getInt("ruler_visible", 0).value() != 0;
+    }
+    video_->setRulerVisible(rulerVisible_);
     video_->setBoardVisible(boardVisible_);
     video_->setBoardConfig(boardConfig_);
     if (repos_.engine != nullptr) {
@@ -817,6 +821,21 @@ void MainWindow::buildMenuBar() {
         updateBoardReadout();
         statusBar()->showMessage(on ? tr("Tablero de referencia activo (centro = 0).")
                                     : tr("Tablero de referencia oculto."));
+    });
+
+    rulerAction_ = viewMenu->addAction(tr("Regla graduada"));
+    rulerAction_->setCheckable(true);
+    rulerAction_->setChecked(rulerVisible_);
+    rulerAction_->setToolTip(
+        tr("Reglas en los bordes con marcas y números en la unidad activa, barra de\n"
+           "escala y marca de la posición del cursor. Sirve para leer una medida de\n"
+           "un vistazo sin dibujar una herramienta."));
+    connect(rulerAction_, &QAction::toggled, this, [this](bool on) {
+        rulerVisible_ = on;
+        video_->setRulerVisible(on);
+        if (repos_.settings != nullptr) {
+            repos_.settings->setInt("ruler_visible", on ? 1 : 0);
+        }
     });
 
     auto* boardMenu = viewMenu->addMenu(tr("Origen del tablero"));
@@ -1690,12 +1709,18 @@ void MainWindow::updateBoardReadout() {
             outOfTolerance = outOfTolerance || std::abs(offsetDeg) > maxAngleDeg_;
         }
     }
-    boardReadoutLabel_->setStyleSheet(
-        outOfTolerance
-            ? QStringLiteral("color:#ffdede; background:#7a1f1f; padding:3px;"
-                             " border-radius:3px; font-weight:bold;")
-            : QStringLiteral("color:#7fd6ff; background:#10222b; padding:3px;"
-                             " border-radius:3px;"));
+    // setStyleSheet reanaliza el CSS y repule el widget: llamarlo en cada
+    // análisis (unas 30 veces por segundo) costaba CPU y hacía parpadear la
+    // banda. Solo se cambia cuando cambia de estado.
+    if (outOfTolerance != boardReadoutAlarm_) {
+        boardReadoutAlarm_ = outOfTolerance;
+        boardReadoutLabel_->setStyleSheet(
+            outOfTolerance
+                ? QStringLiteral("color:#ffdede; background:#7a1f1f; padding:3px;"
+                                 " border-radius:3px; font-weight:bold;")
+                : QStringLiteral("color:#7fd6ff; background:#10222b; padding:3px;"
+                                 " border-radius:3px;"));
+    }
 
     const bool zeroOnPiece = boardConfig_.origin == vision::BoardOrigin::PieceCenter ||
                              boardConfig_.origin == vision::BoardOrigin::PieceBounds;
@@ -1788,11 +1813,20 @@ void MainWindow::warnIfPositionToolsAffected(vision::BoardOrigin previousOrigin)
     if (count == 0 || previousOrigin == boardConfig_.origin) {
         return;
     }
+    if (positionWarningShown_) {
+        // Ya se avisó en esta sesión: repetir el diálogo cada vez que se toca el
+        // origen es molesto y deja de leerse. Basta la barra de estado.
+        statusBar()->showMessage(
+            tr("Cambió el cero: revisa las %n herramienta(s) de Posición.", nullptr, count));
+        return;
+    }
+    positionWarningShown_ = true;
     QMessageBox::information(
         this, tr("El cero del tablero ha cambiado"),
         tr("Hay %n herramienta(s) de Posición dibujada(s). Sus tolerancias se "
            "calcularon respecto al cero anterior, así que ahora miden otra cosa: "
-           "revísalas (o vuelve a crearlas) antes de dar por buena la inspección.",
+           "revísalas (o vuelve a crearlas) antes de dar por buena la inspección.\n\n"
+           "(Este aviso no se repetirá en esta sesión.)",
            nullptr, count));
 }
 
@@ -2644,15 +2678,19 @@ void MainWindow::onRegisterLiveClicked() {
     }
     // Sin modelo ONNX se puede registrar igual (G1): la pieza queda como
     // medidor puro. Se avisa una vez de lo que se pierde, no se bloquea.
-    if (!repos_.embedFn) {
+    if (!repos_.embedFn && !toolsOnlyAccepted_) {
+        // Se pregunta UNA vez por sesión: si el operador ya dijo que sí, repetir
+        // el diálogo en cada registro solo estorba.
         if (QMessageBox::question(
                 this, tr("Sin modelo de apariencia"),
-                tr("El modelo ONNX no está disponible, así que esta pieza se "
-                   "registrará SOLO CON HERRAMIENTAS: se medirá con las que dibujes, "
+                tr("El modelo ONNX no está disponible, así que las piezas se "
+                   "registrarán SOLO CON HERRAMIENTAS: se medirán con las que dibujes, "
                    "pero no habrá comparación de apariencia que detecte defectos "
-                   "inesperados.\n\n¿Registrar de todos modos?")) != QMessageBox::Yes) {
+                   "inesperados.\n\n¿Registrar así durante esta sesión?")) !=
+            QMessageBox::Yes) {
             return;
         }
+        toolsOnlyAccepted_ = true;
     }
 
     // Pedir el nombre validando duplicados ANTES de capturar nada: si ya

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <opencv2/videoio.hpp>
+
 #include <string_view>
 #include <vector>
 
@@ -34,28 +36,48 @@ enum class CameraProperty {
 // Los controles de encendido/apagado se pintan como casilla, no como deslizador.
 [[nodiscard]] bool isToggle(CameraProperty property);
 
-// Rango sugerido para el control. OpenCV NO expone mínimo ni máximo, y cada
-// backend usa su propia escala (brillo 0..255 en DirectShow pero 0..1 en MSMF,
-// exposición en log2 segundos y negativa...). Se deduce del valor que la cámara
-// devuelve al abrirse: es lo único fiable sin tocar la cámara.
+// Rango de un control. OpenCV NO expone mínimo ni máximo y cada backend usa su
+// propia escala (0..255 en DirectShow, 0..1 en MSMF, exposición en log2
+// segundos y negativa...), así que el rango se MIDE empujando la propiedad a
+// los extremos (ver probeControls) en vez de adivinarlo.
 struct PropertyRange {
     double min = 0.0;
     double max = 255.0;
     double step = 1.0;
 };
-[[nodiscard]] PropertyRange suggestedRange(CameraProperty property, double currentValue);
+// Paso de ajuste razonable para un rango medido (decimal si el recorrido es
+// pequeño, entero si va en unidades).
+[[nodiscard]] PropertyRange rangeFor(CameraProperty property, double min, double max);
 
-// Estado de un control tal y como lo reportó la cámara al abrirla.
+// Estado de un control tal y como lo reportó la cámara al abrirla, con su
+// rango REAL medido (ver probeControls).
 struct CameraControlState {
     CameraProperty property = CameraProperty::Brightness;
-    bool supported = false;  // false = la cámara no expone la propiedad
+    bool supported = false;  // false = la cámara no deja CAMBIAR la propiedad
     double value = 0.0;
+    double min = 0.0;
+    double max = 0.0;
 };
+
+// Sondea de VERDAD qué controles acepta la cámara y con qué rango: lee el valor
+// actual, intenta empujarlo a los extremos, anota dónde se queda y lo restaura.
+// Es la única forma fiable — se comprobó con una cámara real que `get()` puede
+// devolver un valor perfectamente válido (brillo 91) mientras `set()` lo
+// rechaza y no cambia nada, así que mirar solo `get()` presentaba deslizadores
+// muertos. Debe llamarse desde el hilo dueño de la captura.
+[[nodiscard]] std::vector<CameraControlState> probeControls(cv::VideoCapture& capture);
 
 // Valor que el operador quiere aplicar (se envía al hilo de captura).
 struct CameraControlValue {
     CameraProperty property = CameraProperty::Brightness;
     double value = 0.0;
 };
+
+// Mezcla peticiones nuevas en la cola pendiente dejando SOLO el último valor de
+// cada propiedad. Arrastrar un deslizador genera decenas de valores por segundo
+// y cada capture.set() cuesta milisegundos en el hilo de captura: aplicarlos
+// todos atascaba el vídeo, y de los intermedios no queda nada visible.
+void coalesceControls(std::vector<CameraControlValue>& pending,
+                      const std::vector<CameraControlValue>& incoming);
 
 }  // namespace pci::camera

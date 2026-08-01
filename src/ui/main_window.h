@@ -172,9 +172,16 @@ private:
     // Tablero de referencia centrado (T2).
     QAction* boardAction_ = nullptr;          // Ver > Tablero de referencia
     QAction* boardFollowAction_ = nullptr;    // ejes girados con la pieza
+    QAction* rulerAction_ = nullptr;          // Ver > Regla graduada
+    bool rulerVisible_ = false;
     QActionGroup* boardOriginGroup_ = nullptr;
     bool boardVisible_ = false;
     bool boardPointPick_ = false;  // el próximo clic fija el cero del tablero
+    // Avisos que solo tienen sentido una vez por sesión (repetirlos molesta y
+    // hace que se dejen de leer).
+    bool positionWarningShown_ = false;
+    bool toolsOnlyAccepted_ = false;
+    bool boardReadoutAlarm_ = false;  // estado pintado de la banda de lectura
     vision::BoardConfig boardConfig_;
     std::int64_t currentProfileId_ = 0;  // perfil de detección de la pieza (O3)
     // Modo de medición de la pieza activa (M1/M2). Sin pieza seleccionada actúa

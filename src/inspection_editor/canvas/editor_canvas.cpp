@@ -321,8 +321,8 @@ void EditorCanvas::setBoardVisible(bool visible) {
     // El seguimiento del ratón solo hace falta para la lectura del cursor (T4):
     // se enciende con el tablero y se apaga con él, para no repintar de más en
     // el modo vivo.
-    setMouseTracking(visible);
-    if (!visible) {
+    setMouseTracking(visible || rulerVisible_);
+    if (!visible && !rulerVisible_) {
         cursorWidget_.reset();
     }
     update();
@@ -347,6 +347,15 @@ QString EditorCanvas::boardValueText(double px, bool signPrefix) const {
         text = QStringLiteral("%1 px").arg(px, 0, 'f', 0);
     }
     return (signPrefix && px > 0.0) ? QStringLiteral("+") + text : text;
+}
+
+void EditorCanvas::setRulerVisible(bool visible) {
+    rulerVisible_ = visible;
+    setMouseTracking(visible || boardVisible_);
+    if (!visible && !boardVisible_) {
+        cursorWidget_.reset();
+    }
+    update();
 }
 
 void EditorCanvas::setBoardConfig(const vision::BoardConfig& config) {
@@ -768,7 +777,7 @@ void EditorCanvas::mouseMoveEvent(QMouseEvent* event) {
     // Coordenadas bajo el cursor (T4). El seguimiento del ratón solo está
     // activo con el tablero encendido, así que fuera de ese modo esto no
     // añade repintados.
-    if (boardVisible_ && !image_.isNull()) {
+    if ((boardVisible_ || rulerVisible_) && !image_.isNull()) {
         cursorWidget_ = event->position();
         update();
     }
@@ -1160,9 +1169,14 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
         },
         tool.geometry);
 
-    painter.setPen(selected ? Qt::white : color);
-    painter.drawText(labelPos + QPointF(6, -4),
-                     QString::fromStdString(tool.config.name));
+    // El nombre solo se pinta si NO hay resultado para esta herramienta: cuando
+    // lo hay, paintResults dibuja "nombre: medida" en el mismo sitio y las dos
+    // etiquetas quedaban una encima de otra, ilegibles.
+    if (!hasResultFor(tool.config)) {
+        painter.setPen(selected ? Qt::white : color);
+        painter.drawText(labelPos + QPointF(6, -4),
+                         QString::fromStdString(tool.config.name));
+    }
 
     // Manijas de edición: cuadraditos blancos en cada extremo editable de la
     // herramienta seleccionada (arrástralos para afinar sin volver a dibujar).
@@ -1180,11 +1194,40 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
     }
 }
 
+bool EditorCanvas::hasResultFor(const ToolConfig& config) const {
+    return std::any_of(results_.begin(), results_.end(), [&config](const ToolRunResult& r) {
+        return r.toolId == config.id && r.name == config.name;
+    });
+}
+
+QString EditorCanvas::measureText(const ToolRunResult& result) const {
+    if (result.measuredIsAngle) {
+        return QStringLiteral("%1°").arg(result.measured, 0, 'f', 1);
+    }
+    // Blob y Blob poligonal miden un CONTEO, no una longitud: mostrarlo en mm
+    // era sencillamente una medida equivocada.
+    if (result.type == ToolType::Blob || result.type == ToolType::PolyBlob) {
+        return QStringLiteral("n=%1").arg(result.measured, 0, 'f', 0);
+    }
+    if (mmPerPixel_ > 0.0 && unit_ != LengthUnit::Pixels) {
+        const double mm = result.measured * mmPerPixel_;
+        const bool useCm =
+            unit_ == LengthUnit::Centimeters || (unit_ == LengthUnit::Auto && mm >= 100.0);
+        return useCm ? QStringLiteral("%1 cm").arg(mm / 10.0, 0, 'f', 2)
+                     : QStringLiteral("%1 mm").arg(mm, 0, 'f', 2);
+    }
+    return QStringLiteral("%1 px").arg(result.measured, 0, 'f', 1);
+}
+
 void EditorCanvas::paintResults(QPainter& painter) const {
     painter.save();
     QFont measureFont = painter.font();
     measureFont.setBold(true);
     painter.setFont(measureFont);
+
+    // Rectángulos ya ocupados por otras etiquetas: sin esto, dos herramientas
+    // cercanas escriben una encima de otra y no se lee ninguna medida.
+    std::vector<QRectF> taken;
     for (const auto& result : results_) {
         const QColor color = result.ok ? QColor(0, 220, 0) : QColor(255, 70, 70);
         QPen pen(color);
@@ -1200,34 +1243,37 @@ void EditorCanvas::paintResults(QPainter& painter) const {
             painter.drawLine(p + QPointF(0, -5), p + QPointF(0, 5));
         }
 
-        // Etiqueta con la medida junto a la herramienta (px o mm calibrados).
+        // Ancla de la etiqueta: el ÚLTIMO punto del overlay, que es el que
+        // pertenece a la herramienta. Con el primero, la herramienta Posición
+        // (cuyo overlay empieza en el cero del tablero) apilaba todas sus
+        // etiquetas sobre el mismo punto.
         QPointF labelPos;
-        if (!result.overlaySegments.empty()) {
+        if (!result.overlayPoints.empty()) {
+            labelPos = imageToWidget(result.overlayPoints.back());
+        } else if (!result.overlaySegments.empty()) {
             labelPos = imageToWidget(result.overlaySegments.front()[0]);
-        } else if (!result.overlayPoints.empty()) {
-            labelPos = imageToWidget(result.overlayPoints.front());
         } else {
             continue;
         }
-        QString measure;
-        if (result.measuredIsAngle) {
-            measure = QStringLiteral("%1°").arg(result.measured, 0, 'f', 1);
-        } else if (result.type == ToolType::Blob) {
-            measure = QStringLiteral("n=%1").arg(result.measured, 0, 'f', 0);
-        } else if (mmPerPixel_ > 0.0 && unit_ != LengthUnit::Pixels) {
-            const double mm = result.measured * mmPerPixel_;
-            const bool useCm = unit_ == LengthUnit::Centimeters ||
-                               (unit_ == LengthUnit::Auto && mm >= 100.0);
-            measure = useCm ? QStringLiteral("%1 cm").arg(mm / 10.0, 0, 'f', 2)
-                            : QStringLiteral("%1 mm").arg(mm, 0, 'f', 2);
-        } else {
-            measure = QStringLiteral("%1 px").arg(result.measured, 0, 'f', 1);
-        }
-        const QString text =
-            QString::fromStdString(result.name) + QStringLiteral(": ") + measure;
+
+        const QString text = QString::fromStdString(result.name) + QStringLiteral(": ") +
+                             measureText(result);
         const QFontMetricsF metrics(painter.font());
-        const QRectF box = metrics.boundingRect(text).adjusted(-4, -2, 4, 2)
-                               .translated(labelPos + QPointF(8, -10));
+        QRectF box = metrics.boundingRect(text).adjusted(-4, -2, 4, 2)
+                         .translated(labelPos + QPointF(8, -10));
+        // Si choca con otra etiqueta, se baja hasta encontrar hueco (con tope,
+        // para no empujarla fuera de la vista).
+        for (int attempt = 0; attempt < 12; ++attempt) {
+            const bool overlaps = std::any_of(
+                taken.begin(), taken.end(),
+                [&box](const QRectF& other) { return other.intersects(box); });
+            if (!overlaps) {
+                break;
+            }
+            box.translate(0.0, box.height() + 2.0);
+        }
+        taken.push_back(box);
+
         painter.setPen(Qt::NoPen);
         painter.setBrush(QColor(0, 0, 0, 170));
         painter.drawRect(box);
@@ -1471,6 +1517,161 @@ void EditorCanvas::paintBoard(QPainter& painter) const {
     painter.restore();
 }
 
+
+void EditorCanvas::paintRuler(QPainter& painter) const {
+    if (!rulerVisible_ || image_.isNull()) {
+        return;
+    }
+    const QRectF view = QRectF(rect()).intersected(targetRect());
+    if (view.isEmpty()) {
+        return;
+    }
+
+    // Las reglas miden en el MISMO sistema que el resto: si el tablero está
+    // encendido, el 0 es su cero y la Y crece hacia arriba (convenio del
+    // tablero); si está apagado, se miden coordenadas de imagen desde la
+    // esquina, con la Y hacia abajo — que es lo que espera quien mira una regla
+    // sin tablero (si no, todos los números de la regla vertical salían
+    // negativos).
+    const bool boardMode = boardVisible_;
+    const vision::BoardFrame frame = boardMode ? boardFrame() : vision::BoardFrame{};
+    const double unitsPerPx = mmPerPixel_ > 0.0 ? mmPerPixel_ : 1.0;
+    const QString suffix = (mmPerPixel_ > 0.0 && unit_ != LengthUnit::Pixels)
+                               ? (unit_ == LengthUnit::Centimeters ? QStringLiteral("cm")
+                                                                   : QStringLiteral("mm"))
+                               : QStringLiteral("px");
+    const double unitScale =
+        (suffix == QStringLiteral("cm")) ? unitsPerPx / 10.0 : unitsPerPx;
+
+    constexpr double kBand = 18.0;  // grosor de la banda de la regla
+    const QRectF top(view.left(), view.top(), view.width(), kBand);
+    const QRectF left(view.left(), view.top(), kBand, view.height());
+
+    painter.save();
+    painter.setClipRect(view);
+    QFont small = painter.font();
+    small.setPointSizeF(std::max(7.0, small.pointSizeF() - 1.5));
+    small.setBold(false);
+    painter.setFont(small);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(18, 18, 18, 205));
+    painter.drawRect(top);
+    painter.drawRect(left);
+
+    // Paso: el mismo criterio 1-2-5 del tablero, calculado sobre lo que se ve.
+    // Conversión punto de imagen -> par de valores de la regla, y su inversa.
+    const auto readAt = [this, boardMode, &frame](const cv::Point2f& imagePoint) {
+        if (boardMode) {
+            const vision::BoardReading r = vision::readPoint(frame, imagePoint);
+            return QPointF(r.dx, r.dy);
+        }
+        return QPointF(imagePoint.x, imagePoint.y);
+    };
+    const auto pointAt = [this, boardMode, &frame](double vx, double vy) {
+        if (boardMode) {
+            return imageToWidget(vision::toImagePoint(frame, vx, vy));
+        }
+        return imageToWidget(cv::Point2f(static_cast<float>(vx), static_cast<float>(vy)));
+    };
+
+    const QPointF readA = readAt(widgetToImage(view.topLeft()));
+    const QPointF readB = readAt(widgetToImage(view.bottomRight()));
+    const double spanX = std::abs(readB.x() - readA.x()) * unitScale;
+    const double spanY = std::abs(readB.y() - readA.y()) * unitScale;
+    const int divisions =
+        std::max(2, static_cast<int>(std::lround(std::min(view.width(), view.height()) / 80.0)));
+    const double stepUnits = vision::niceGridStep(std::max(spanX, spanY), divisions);
+    const double stepPx = stepUnits / (unitScale > 0.0 ? unitScale : 1.0);
+    if (!(stepPx > 0.0) || !std::isfinite(stepPx)) {
+        painter.restore();
+        return;
+    }
+
+    QPen tickPen(QColor(200, 200, 200, 200));
+    tickPen.setCosmetic(true);
+    const QPen textPen(QColor(225, 225, 225));
+
+    // Regla horizontal: se recorren los múltiplos del paso en X del sistema
+    // activo y se marcan donde caen en pantalla.
+    const double minDx = std::min(readA.x(), readB.x());
+    const double maxDx = std::max(readA.x(), readB.x());
+    const long long firstX = static_cast<long long>(std::ceil(minDx / stepPx));
+    const long long lastX = static_cast<long long>(std::floor(maxDx / stepPx));
+    if (lastX - firstX < 500) {
+        for (long long k = firstX; k <= lastX; ++k) {
+            const double value = static_cast<double>(k) * stepPx;
+            const double x = pointAt(value, readA.y()).x();
+            painter.setPen(tickPen);
+            painter.drawLine(QPointF(x, top.top()), QPointF(x, top.bottom()));
+            painter.setPen(textPen);
+            painter.drawText(QPointF(x + 2.0, top.top() + 11.0),
+                             QStringLiteral("%1").arg(value * unitScale, 0, 'f',
+                                                      stepUnits < 1.0 ? 1 : 0));
+        }
+    }
+
+    const double minDy = std::min(readA.y(), readB.y());
+    const double maxDy = std::max(readA.y(), readB.y());
+    const long long firstY = static_cast<long long>(std::ceil(minDy / stepPx));
+    const long long lastY = static_cast<long long>(std::floor(maxDy / stepPx));
+    if (lastY - firstY < 500) {
+        for (long long k = firstY; k <= lastY; ++k) {
+            const double value = static_cast<double>(k) * stepPx;
+            const double y = pointAt(readA.x(), value).y();
+            painter.setPen(tickPen);
+            painter.drawLine(QPointF(left.left(), y), QPointF(left.right(), y));
+            painter.save();
+            painter.setPen(textPen);
+            // Texto girado para que quepa en la banda vertical.
+            painter.translate(left.left() + 12.0, y - 2.0);
+            painter.rotate(-90.0);
+            painter.drawText(QPointF(0.0, 0.0),
+                             QStringLiteral("%1").arg(value * unitScale, 0, 'f',
+                                                      stepUnits < 1.0 ? 1 : 0));
+            painter.restore();
+        }
+    }
+
+    // Barra de escala: un segmento rotulado con lo que mide de verdad. Es lo
+    // que permite juzgar un tamaño de un vistazo, incluso en una captura.
+    const QPointF zero = pointAt(0.0, 0.0);
+    const QPointF oneStep = pointAt(stepPx, 0.0);
+    const double barLength = std::abs(oneStep.x() - zero.x());
+    if (barLength > 8.0 && barLength < view.width() * 0.8) {
+        const double barY = view.bottom() - 14.0;
+        const double barX = view.left() + kBand + 10.0;
+        QPen barPen(QColor(255, 255, 255, 230));
+        barPen.setWidthF(2.0);
+        barPen.setCosmetic(true);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(18, 18, 18, 205));
+        painter.drawRect(QRectF(barX - 6.0, barY - 14.0, barLength + 12.0, 22.0));
+        painter.setPen(barPen);
+        painter.drawLine(QPointF(barX, barY), QPointF(barX + barLength, barY));
+        painter.drawLine(QPointF(barX, barY - 4.0), QPointF(barX, barY + 4.0));
+        painter.drawLine(QPointF(barX + barLength, barY - 4.0),
+                         QPointF(barX + barLength, barY + 4.0));
+        painter.drawText(QPointF(barX, barY - 5.0),
+                         QStringLiteral("%1 %2")
+                             .arg(stepUnits, 0, 'f', stepUnits < 1.0 ? 2 : 0)
+                             .arg(suffix));
+    }
+
+    // Marca de la posición del cursor sobre ambas reglas: ubica al operador sin
+    // tener que leer números.
+    if (cursorWidget_.has_value() && view.contains(*cursorWidget_)) {
+        QPen cursorPen(QColor(255, 200, 0));
+        cursorPen.setWidthF(1.5);
+        cursorPen.setCosmetic(true);
+        painter.setPen(cursorPen);
+        painter.drawLine(QPointF(cursorWidget_->x(), top.top()),
+                         QPointF(cursorWidget_->x(), top.bottom()));
+        painter.drawLine(QPointF(left.left(), cursorWidget_->y()),
+                         QPointF(left.right(), cursorWidget_->y()));
+    }
+    painter.restore();
+}
+
 void EditorCanvas::paintLiveOverlay(QPainter& painter) const {
     if (!liveMode_) {
         return;
@@ -1569,6 +1770,8 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
         painter.drawRect(QRectF(imageToWidget(dragStart_), imageToWidget(dragCurrent_))
                              .normalized());
     }
+
+    paintRuler(painter);
 
     // Zona de detección: la guardada (amarillo punteado) y la que se está
     // arrastrando ahora mismo.
