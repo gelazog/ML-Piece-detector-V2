@@ -385,3 +385,98 @@ TEST_F(EngineTest, PieceWithoutReferenceInspectsWithToolsOnly) {
     EXPECT_FALSE(outcome.value().verdict.embedding.note.empty());
     EXPECT_TRUE(outcome.value().verdict.ok) << outcome.value().verdict.summary;
 }
+
+// ===========================================================================
+//  Motor bajo condiciones adversas y en tandas largas.
+// ===========================================================================
+
+TEST_F(EngineTest, InspectingWithoutAPieceInFrameFailsControlled) {
+    const auto pieceId = registerLPiece();
+    const cv::Mat empty(480, 640, CV_8UC3, cv::Scalar(128, 128, 128));
+    const auto outcome = engine_->inspect(empty, pieceId);
+    ASSERT_FALSE(outcome.isOk()) << "sin pieza no puede haber veredicto";
+    EXPECT_FALSE(outcome.error().message.empty());
+}
+
+TEST_F(EngineTest, InspectingAnUnknownPieceStillMeasuresWithoutAppearance) {
+    // Un id que no existe: no hay referencia ni herramientas, pero la
+    // inspeccion no puede reventar.
+    cv::Mat frame;
+    cv::cvtColor(drawLPiece({640, 480}, {300.0F, 240.0F}, 15.0, 40.0F, 40, 220), frame,
+                 cv::COLOR_GRAY2BGR);
+    const auto outcome = engine_->inspect(frame, 999999);
+    ASSERT_TRUE(outcome.isOk()) << outcome.error().message;
+    EXPECT_FALSE(outcome.value().verdict.embedding.evaluated);
+    EXPECT_TRUE(outcome.value().toolResults.empty());
+    // El historial SI falla (clave foranea: esa pieza no existe), pero eso se
+    // reporta aparte y no tumba la inspeccion ni oculta el veredicto.
+    EXPECT_EQ(outcome.value().historyId, -1);
+    EXPECT_FALSE(outcome.value().persistError.empty());
+}
+
+// Tanda larga: la linea inspecciona sin parar durante un turno. El historial y
+// las estadisticas tienen que cuadrar exactamente con lo inspeccionado.
+TEST_F(EngineTest, LongRunKeepsHistoryAndStatsConsistent) {
+    const auto pieceId = registerLPiece();
+    constexpr int kGood = 18;
+    constexpr int kBad = 7;
+
+    for (int i = 0; i < kGood; ++i) {
+        cv::Mat frame;
+        cv::cvtColor(drawLPiece({640, 480}, {300.0F + static_cast<float>(i % 5), 240.0F},
+                                15.0 + (i % 3), 40.0F, 40, 220),
+                     frame, cv::COLOR_GRAY2BGR);
+        const auto outcome = engine_->inspect(frame, pieceId);
+        ASSERT_TRUE(outcome.isOk()) << outcome.error().message;
+        EXPECT_TRUE(outcome.value().verdict.ok) << outcome.value().verdict.summary;
+    }
+    for (int i = 0; i < kBad; ++i) {
+        // Pieza claramente mas pequena: el caliper se sale de tolerancia.
+        cv::Mat frame;
+        cv::cvtColor(drawLPiece({640, 480}, {300.0F, 240.0F}, 15.0, 26.0F, 40, 220), frame,
+                     cv::COLOR_GRAY2BGR);
+        const auto outcome = engine_->inspect(frame, pieceId);
+        ASSERT_TRUE(outcome.isOk()) << outcome.error().message;
+        EXPECT_FALSE(outcome.value().verdict.ok);
+    }
+
+    const auto stats = history_->todayStats(pieceId);
+    ASSERT_TRUE(stats.isOk());
+    EXPECT_EQ(stats.value().okCount, kGood);
+    EXPECT_EQ(stats.value().ngCount, kBad);
+    EXPECT_EQ(stats.value().total, kGood + kBad);
+
+    const auto recent = history_->recentForPiece(pieceId, 100);
+    ASSERT_TRUE(recent.isOk());
+    EXPECT_EQ(static_cast<int>(recent.value().size()), kGood + kBad);
+}
+
+// El aprendizaje incremental se usa una y otra vez sobre la misma pieza: las
+// versiones deben subir de una en una y la referencia seguir siendo utilizable.
+TEST_F(EngineTest, RepeatedIncrementalLearningKeepsTheReferenceUsable) {
+    const auto pieceId = registerLPiece();
+    int previousVersion = pieces_->loadLatestReference(pieceId).value().version;
+
+    for (int i = 0; i < 5; ++i) {
+        cv::Mat frame;
+        cv::cvtColor(drawLPiece({640, 480}, {300.0F, 240.0F}, 15.0 + i * 2.0, 40.0F, 40, 220),
+                     frame, cv::COLOR_GRAY2BGR);
+        const auto outcome = engine_->inspect(frame, pieceId);
+        ASSERT_TRUE(outcome.isOk()) << outcome.error().message;
+        const auto version = engine_->updateReference(pieceId, outcome.value().embedding);
+        ASSERT_TRUE(version.isOk()) << version.error().message;
+        EXPECT_EQ(version.value(), previousVersion + 1);
+        previousVersion = version.value();
+    }
+
+    // Tras cinco actualizaciones, una pieza buena sigue saliendo OK.
+    cv::Mat frame;
+    cv::cvtColor(drawLPiece({640, 480}, {300.0F, 240.0F}, 15.0, 40.0F, 40, 220), frame,
+                 cv::COLOR_GRAY2BGR);
+    const auto outcome = engine_->inspect(frame, pieceId);
+    ASSERT_TRUE(outcome.isOk());
+    EXPECT_TRUE(outcome.value().verdict.ok) << outcome.value().verdict.summary;
+    const auto stored = pieces_->loadLatestReference(pieceId);
+    ASSERT_TRUE(stored.isOk());
+    EXPECT_GT(stored.value().reference.sampleCount, 0);
+}

@@ -681,3 +681,115 @@ TEST(BoardFrame, ManualOffsetShiftsZeroInBoardAxes) {
     const BoardReading atZero = readPoint(turned, turned.origin);
     EXPECT_NEAR(atZero.radius, 0.0, 1e-6);
 }
+
+// ===========================================================================
+//  Deteccion en escenas dificiles: lo que se encuentra de verdad en una linea
+//  (sombras, dos piezas, encuadres malos). Fija que la app se degrade de forma
+//  PREDECIBLE en vez de dar una pieza inventada.
+// ===========================================================================
+
+TEST(DetectionHardCases, ShadowGradientBreaksOtsuButManualThresholdSavesIt) {
+    // Fondo con un degradado fuerte (sombra lateral) mas la pieza oscura.
+    cv::Mat gray(480, 640, CV_8UC1);
+    for (int y = 0; y < gray.rows; ++y) {
+        for (int x = 0; x < gray.cols; ++x) {
+            gray.at<uchar>(y, x) = static_cast<uchar>(90 + (x * 150) / gray.cols);
+        }
+    }
+    const cv::Mat piece = drawLPiece({640, 480}, {430.0F, 240.0F}, 0.0, 40.0F, 255, 0);
+    gray.setTo(35, piece);  // pieza muy oscura en la zona clara del degradado
+
+    // Otsu global parte el degradado por la mitad: el "contorno" se come medio
+    // fondo, asi que el area sale disparada respecto a la pieza real.
+    const auto automatic = analyzeFrame(gray);
+    const double pieceArea = lPieceArea(40.0F);
+    if (automatic.isOk()) {
+        EXPECT_GT(automatic.value().contour.area, pieceArea * 2.0)
+            << "con degradado, Otsu global no deberia acertar el area de la pieza";
+    }
+
+    // Con umbral manual y polaridad forzada (lo que ofrecen Deteccion... y los
+    // perfiles) la pieza aparece limpia.
+    PipelineConfig manual;
+    manual.segmentation.manualThreshold = 60;
+    manual.segmentation.polarity = SegmentationPolarity::DarkPiece;
+    const auto fixed = analyzeFrame(gray, manual);
+    ASSERT_TRUE(fixed.isOk()) << fixed.error().message;
+    EXPECT_NEAR(fixed.value().contour.area, pieceArea, pieceArea * 0.25);
+    EXPECT_NEAR(fixed.value().fixture.origin.x, 430.0F, 12.0F);
+}
+
+TEST(DetectionHardCases, TwoPiecesKeepTheLargestPredictably) {
+    cv::Mat gray(480, 640, CV_8UC1, cv::Scalar(220));
+    const cv::Mat big = drawLPiece({640, 480}, {200.0F, 240.0F}, 0.0, 45.0F, 255, 0);
+    const cv::Mat small = drawLPiece({640, 480}, {480.0F, 240.0F}, 0.0, 20.0F, 255, 0);
+    gray.setTo(40, big);
+    gray.setTo(40, small);
+
+    const auto analysis = analyzeFrame(gray);
+    ASSERT_TRUE(analysis.isOk()) << analysis.error().message;
+    // Se queda con la mayor: comportamiento definido, no aleatorio.
+    EXPECT_NEAR(analysis.value().fixture.origin.x, 200.0F, 25.0F);
+    EXPECT_NEAR(analysis.value().contour.area, lPieceArea(45.0F), lPieceArea(45.0F) * 0.2);
+}
+
+TEST(DetectionHardCases, PieceTouchingTheBorderIsStillFoundButClipped) {
+    // Limitacion conocida y documentada en el README: si la pieza toca el
+    // borde, el recorte sale incompleto. Lo importante es que NO reviente y que
+    // el area detectada sea menor que la de la pieza entera.
+    cv::Mat gray(480, 640, CV_8UC1, cv::Scalar(220));
+    const cv::Mat piece = drawLPiece({640, 480}, {30.0F, 240.0F}, 0.0, 40.0F, 255, 0);
+    gray.setTo(40, piece);
+
+    const auto analysis = analyzeFrame(gray);
+    ASSERT_TRUE(analysis.isOk()) << analysis.error().message;
+    EXPECT_LT(analysis.value().contour.area, lPieceArea(40.0F))
+        << "una pieza cortada por el borde no puede medir mas que la entera";
+    EXPECT_FALSE(analysis.value().normalized.empty());
+}
+
+TEST(DetectionHardCases, AreaFractionLimitsRejectMotesAndFullFrameBlobs) {
+    // Una mota diminuta no es una pieza...
+    cv::Mat speck(480, 640, CV_8UC1, cv::Scalar(220));
+    cv::circle(speck, {320, 240}, 3, cv::Scalar(30), cv::FILLED);
+    EXPECT_FALSE(analyzeFrame(speck).isOk()) << "una mota no deberia pasar por pieza";
+
+    // ...y una mancha que ocupa casi todo el encuadre, tampoco.
+    cv::Mat huge(480, 640, CV_8UC1, cv::Scalar(220));
+    cv::rectangle(huge, {5, 5}, {635, 475}, cv::Scalar(30), cv::FILLED);
+    EXPECT_FALSE(analyzeFrame(huge).isOk())
+        << "algo que ocupa el encuadre entero no es una pieza aislada";
+}
+
+TEST(DetectionHardCases, TinyImagesAndDegenerateRoiFailWithoutCrashing) {
+    for (const cv::Size size : {cv::Size(1, 1), cv::Size(3, 3), cv::Size(16, 9)}) {
+        const cv::Mat tiny(size, CV_8UC1, cv::Scalar(128));
+        EXPECT_FALSE(analyzeFrame(tiny).isOk()) << size.width << "x" << size.height;
+    }
+
+    cv::Mat gray(480, 640, CV_8UC1, cv::Scalar(220));
+    const cv::Mat piece = drawLPiece({640, 480}, {320.0F, 240.0F}, 0.0, 40.0F, 255, 0);
+    gray.setTo(40, piece);
+
+    // ROI fuera de la imagen: se recorta contra el frame y no debe colgar.
+    PipelineConfig outside;
+    outside.roi = cv::Rect(5000, 5000, 100, 100);
+    const auto result = analyzeFrame(gray, outside);
+    EXPECT_TRUE(result.isOk() || !result.error().message.empty());
+
+    // ROI de 1 px: demasiado pequena para contener una pieza.
+    PipelineConfig sliver;
+    sliver.roi = cv::Rect(320, 240, 1, 1);
+    EXPECT_FALSE(analyzeFrame(gray, sliver).isOk());
+}
+
+TEST(DetectionHardCases, HeavyNoiseDoesNotInventAPiece) {
+    cv::Mat noise(480, 640, CV_8UC1);
+    cv::randu(noise, 0, 255);
+    const auto analysis = analyzeFrame(noise);
+    if (analysis.isOk()) {
+        // Si algo se detecta, no puede ser una pieza compacta y grande: el
+        // ruido da manchas dispersas.
+        EXPECT_LT(analysis.value().contour.area, 480.0 * 640.0 * 0.5);
+    }
+}

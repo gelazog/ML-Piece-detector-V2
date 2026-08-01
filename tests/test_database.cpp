@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -729,4 +730,155 @@ TEST_F(DatabaseTest, ConfigImportRejectsForeignOrBrokenFiles) {
     EXPECT_FALSE(repositories::importConfig(path + ".ausente", settings, profiles).isOk());
 
     std::filesystem::remove(path);
+}
+
+// ===========================================================================
+//  Persistencia bajo estres y con datos hostiles.
+// ===========================================================================
+
+TEST_F(DatabaseTest, FiveHundredToolsSurviveARoundTrip) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    repositories::ToolRepository tools(db);
+    const auto pieceId = pieces.createPiece("pieza-cargada");
+    ASSERT_TRUE(pieceId.isOk());
+
+    constexpr int kCount = 500;
+    for (int i = 0; i < kCount; ++i) {
+        inspection::ToolConfig config;
+        config.type = inspection::ToolType::Ruler;
+        config.name = "regla " + std::to_string(i);
+        config.geometryJson = inspection::toJson(inspection::ToolGeometry(
+            inspection::RulerGeometry{{static_cast<float>(i), 0.0F},
+                                      {static_cast<float>(i) + 10.0F, 5.0F}}));
+        config.toleranceMin = i;
+        config.toleranceMax = i + 10;
+        ASSERT_TRUE(tools.save(pieceId.value(), config, "principal").isOk()) << i;
+    }
+
+    const auto listed = tools.listForPiece(pieceId.value(), "principal");
+    ASSERT_TRUE(listed.isOk());
+    ASSERT_EQ(listed.value().size(), static_cast<std::size_t>(kCount));
+    // Cada herramienta conserva sus datos exactos: nada se mezcla ni se trunca.
+    for (int i = 0; i < kCount; ++i) {
+        const auto& config = listed.value()[static_cast<std::size_t>(i)];
+        EXPECT_EQ(config.name, "regla " + std::to_string(i));
+        EXPECT_DOUBLE_EQ(config.toleranceMin, i);
+        auto geometry = inspection::geometryFromJson(config.type, config.geometryJson);
+        ASSERT_TRUE(geometry.isOk()) << config.name;
+        EXPECT_FLOAT_EQ(std::get<inspection::RulerGeometry>(geometry.value()).p0.x,
+                        static_cast<float>(i));
+    }
+}
+
+// Nombres con comillas, punto y coma o acentos: si algo se concatenara en el
+// SQL en vez de ir por parametros, esto lo delataria.
+TEST_F(DatabaseTest, HostileTextIsStoredLiterally) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    repositories::ToolRepository tools(db);
+
+    const std::vector<std::string> names = {
+        "Robert'); DROP TABLE Pieces;--",
+        "pieza \"con comillas\"",
+        "acentuada ñáéíóú",
+        "tabulada\ty con salto\n",
+        std::string(400, 'x'),  // nombre larguisimo
+    };
+    for (const auto& name : names) {
+        const auto id = pieces.createPiece(name);
+        ASSERT_TRUE(id.isOk()) << "no se pudo crear: " << name;
+
+        inspection::ToolConfig config;
+        config.type = inspection::ToolType::Ruler;
+        config.name = name;
+        config.geometryJson = inspection::toJson(
+            inspection::ToolGeometry(inspection::RulerGeometry{{0, 0}, {10, 0}}));
+        ASSERT_TRUE(tools.save(id.value(), config, "principal").isOk());
+    }
+
+    const auto listed = pieces.listPieces();
+    ASSERT_TRUE(listed.isOk());
+    // Las tablas siguen ahi y los nombres se guardaron tal cual.
+    EXPECT_EQ(listed.value().size(), names.size());
+    for (const auto& name : names) {
+        const bool found =
+            std::any_of(listed.value().begin(), listed.value().end(),
+                        [&name](const repositories::PieceInfo& p) { return p.name == name; });
+        EXPECT_TRUE(found) << "no se recupero literal: " << name.substr(0, 30);
+    }
+}
+
+// Lo guardado tiene que seguir ahi tras cerrar y reabrir el archivo: es el
+// caso real de apagar la maquina al final del turno.
+TEST_F(DatabaseTest, DataSurvivesCloseAndReopen) {
+    std::int64_t pieceId = -1;
+    {
+        auto& db = openAndMigrate();
+        repositories::PieceRepository pieces(db);
+        repositories::DetectionProfileRepository profiles(db);
+        repositories::SettingsRepository settings(db);
+
+        const auto created = pieces.createPiece("persistente");
+        ASSERT_TRUE(created.isOk());
+        pieceId = created.value();
+        ASSERT_TRUE(settings.setDouble("calib_mm_per_px", 0.3125).isOk());
+
+        vision::SegmentationOptions options;
+        options.manualThreshold = 111;
+        const auto profileId = profiles.save("turno noche", options);
+        ASSERT_TRUE(profileId.isOk());
+        ASSERT_TRUE(profiles.assignToPiece(pieceId, profileId.value()).isOk());
+
+        repositories::PieceMeasurement measurement;
+        measurement.mode = domain::MeasurementMode::Special;
+        measurement.maxOffsetPx = 7.5;
+        ASSERT_TRUE(pieces.saveMeasurement(pieceId, measurement).isOk());
+    }
+
+    db_.reset();  // cierra el archivo, como al apagar la aplicacion
+
+    auto& reopened = openAndMigrate();
+    repositories::PieceRepository pieces(reopened);
+    repositories::DetectionProfileRepository profiles(reopened);
+    repositories::SettingsRepository settings(reopened);
+
+    EXPECT_DOUBLE_EQ(settings.getDouble("calib_mm_per_px", 0.0).value(), 0.3125);
+    const auto measurement = pieces.loadMeasurement(pieceId);
+    ASSERT_TRUE(measurement.isOk());
+    EXPECT_EQ(measurement.value().mode, domain::MeasurementMode::Special);
+    EXPECT_DOUBLE_EQ(measurement.value().maxOffsetPx, 7.5);
+    const auto assigned = profiles.profileForPiece(pieceId);
+    ASSERT_TRUE(assigned.isOk());
+    EXPECT_GT(assigned.value(), 0);
+    EXPECT_EQ(profiles.load(assigned.value()).value().options.manualThreshold, 111);
+}
+
+// Borrar una pieza tiene que llevarse SUS herramientas y no tocar las de las
+// demas: un fallo aqui deja herramientas huerfanas midiendo en la pieza que no
+// es.
+TEST_F(DatabaseTest, RemovingAPieceOnlyTakesItsOwnTools) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    repositories::ToolRepository tools(db);
+
+    const auto keep = pieces.createPiece("se queda");
+    const auto drop = pieces.createPiece("se borra");
+    ASSERT_TRUE(keep.isOk());
+    ASSERT_TRUE(drop.isOk());
+
+    for (const auto id : {keep.value(), drop.value()}) {
+        for (int i = 0; i < 5; ++i) {
+            inspection::ToolConfig config;
+            config.type = inspection::ToolType::Ruler;
+            config.name = "h" + std::to_string(i);
+            config.geometryJson = inspection::toJson(
+                inspection::ToolGeometry(inspection::RulerGeometry{{0, 0}, {10, 0}}));
+            ASSERT_TRUE(tools.save(id, config, "principal").isOk());
+        }
+    }
+
+    ASSERT_TRUE(pieces.removePiece(drop.value()).isOk());
+    EXPECT_EQ(tools.listForPiece(keep.value(), "principal").value().size(), 5U);
+    EXPECT_TRUE(tools.listForPiece(drop.value(), "principal").value().empty());
 }
