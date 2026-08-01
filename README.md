@@ -5,6 +5,10 @@ como referencia (embeddings) y detectar anomalías + mediciones geométricas,
 100 % offline. Especificación completa en
 [PROMPT_MAESTRO_PC_INSPECTOR.md](PROMPT_MAESTRO_PC_INSPECTOR.md).
 
+**¿Cómo funciona por dentro?** [ARQUITECTURA.md](ARQUITECTURA.md) explica cada
+subsistema, qué modelo se usa y cómo se llama cada técnica, e incluye una lista
+razonada de **cómo mejorarlo**. Este README es el manual de uso.
+
 ## Estado de fases
 
 | Fase | Contenido | Estado |
@@ -439,9 +443,11 @@ incompatible de Windows ML y gana al PATH).
 Segmentación por Otsu con polaridad automática, contorno mayor con centroide
 por momentos, orientación por momentos centrales (ambigüedad de 180° resuelta
 con el momento de tercer orden) y Position Fixture con `normalizePiece()` →
-recorte canónico 256×256 sin fondo, listo para embeddings. En la UI, el
-checkbox "Mostrar análisis" superpone contorno/centroide/eje en vivo (máximo
-un análisis en vuelo; nunca bloquea la UI).
+recorte canónico 256×256 sin fondo, listo para embeddings. En la UI,
+**Ver ▸ Mostrar contorno** superpone contorno/centroide/eje en vivo (máximo
+un análisis en vuelo; nunca bloquea la UI). El fixture pasa además por un
+**estabilizador temporal** (banda muerta, suavizado y anti-giro de 180°) para
+que las herramientas no tiemblen ni giren solas.
 
 Limitaciones conocidas:
 
@@ -487,9 +493,9 @@ Limitaciones conocidas:
 ## Fase 4 — Módulo `database/` + `repositories/`
 
 SQLite vía API C con wrapper RAII propio (`Db`/`Statement`, todo `Result<T>`,
-sin excepciones cruzando la frontera). Esquema v1 completo con las 9 tablas
-del prompt, migraciones por `PRAGMA user_version`, foreign keys, modo WAL y
-`busy_timeout`. Las referencias de embeddings (`Embeddings`) se **versionan
+sin excepciones cruzando la frontera). **Esquema en la v8** (10 tablas), con
+migraciones versionadas por `PRAGMA user_version` —una base de datos vieja se
+actualiza sola al abrirla—, foreign keys, modo WAL y `busy_timeout`. Las referencias de embeddings (`Embeddings`) se **versionan
 por pieza y nunca se borran**: el aprendizaje incremental inserta una versión
 nueva. `repositories/` es el puente domain↔database: `PieceRepository`
 (roundtrip exacto de `ml::Reference` como BLOB float32) y
@@ -502,22 +508,27 @@ Limitaciones conocidas:
   el log (nunca crash).
 - BLOBs float32 en orden nativo little-endian: la BD no es portable a
   arquitecturas big-endian (irrelevante para x86/x64).
-- Los repositorios de herramientas e inspecciones llegan con las fases 5/6
-  que los consumen; el esquema ya los soporta.
+- Las migraciones posteriores a la v1 añadieron: rasgo distintivo (v2), ajuste
+  de orientación (v3), plantillas múltiples (v4), modo de medición y tablero por
+  pieza (v5), centrado del tablero y ajuste fino (v6), tolerancias de posición
+  (v7) y perfiles de detección (v8).
 
 ## Fase 5 — `inspection_editor/` (editor de plantilla)
 
 Editor estilo VisionMaster: botón **"Plantilla…"** en la ventana principal
 (usa el último frame de la cámara o una imagen desde archivo —
-`sample_images/pieza_demo.png` sirve para probar sin cámara). Las 5
-herramientas se dibujan por arrastre, se seleccionan/mueven con el mouse, y
+`sample_images/pieza_demo.png` sirve para probar sin cámara). Las **diez**
+herramientas se dibujan sobre la imagen, se seleccionan y mueven con el ratón, y
 **"Probar sobre esta imagen"** las ejecuta al instante mostrando OK/NG y el
 valor medido para ajustar tolerancias.
 
-- **Caliper** (distancia entre 2 bordes), **Círculo** (diámetro + redondez por
-  ajuste de mínimos cuadrados sobre 36 rayos), **Punto-Línea** (distancia
-  perpendicular), **Borde liso / Edge Flaw** (desviación máxima respecto a la
-  recta ajustada) y **Blob** (conteo por área mínima y polaridad).
+- Las cinco iniciales — **Caliper** (distancia entre 2 bordes), **Círculo**
+  (diámetro + redondez por mínimos cuadrados sobre rayos), **Punto-Línea**
+  (distancia perpendicular), **Borde liso** (desviación máxima respecto a la
+  recta ajustada) y **Blob** (conteo por área mínima y polaridad) — más
+  **Regla**, **Línea-Línea**, **Ángulo**, **Blob poligonal** y **Posición**
+  (desviación respecto al cero del tablero). Ver la tabla completa con la
+  técnica de cada una en [ARQUITECTURA.md](ARQUITECTURA.md#5-herramientas-de-medición).
 - La geometría se guarda **en coordenadas del fixture** (tabla
   `InspectionTools`): si la pieza llega rotada, las herramientas se mueven con
   ella (verificado por test: misma medida ±1.5 px con la pieza a 20° y 125°).
@@ -526,13 +537,12 @@ valor medido para ajustar tolerancias.
 
 Limitaciones conocidas:
 
-- Canvas demo: crear, seleccionar, mover y eliminar — sin handles de
-  redimensionado ni undo (recrear la herramienta si se quiere otro tamaño).
-- El editor trabaja sobre la pieza "demo" auto-creada; el registro completo de
-  piezas con captura guiada llega en la fase 6.
-- Medidas en píxeles (sin calibración mm, como define el prompt para el demo).
-- La interacción del editor (mouse) se verificó compilando y abriendo la app;
-  el flujo visual completo queda para prueba manual del usuario.
+- La interacción del editor (ratón) se verifica a mano y con renders fuera de
+  pantalla del lienzo; el resto de la lógica de medición sí tiene pruebas
+  automáticas (una batería por herramienta, con invariancia al giro de la pieza
+  y coherencia cruzada entre herramientas).
+- El **Borde liso** solo detecta lo que cae dentro de su ventana de escaneo: una
+  muesca más profunda pasa desapercibida (súbela si esperas defectos grandes).
 
 ## Fase 6 — Motor de inspección completo
 
@@ -554,9 +564,13 @@ sin modelo la app degrada a inspección solo geométrica (avisado, nunca crash).
 
 Limitaciones conocidas:
 
-- El umbral de anomalía es `simMean − max(3σ, 0.02)` sobre similitud coseno;
-  con referencias de pocas muestras conviene registrar las 30 recomendadas.
-- El registro necesita el modelo ONNX (la referencia SON embeddings); sin
-  modelo el botón lo explica.
-- Flujos de cámara en vivo verificados solo con imágenes sintéticas/archivo en
-  esta PC (sin cámara detectable); pendiente de prueba manual con hardware.
+- El umbral de anomalía es `simMean − max(k·σ, 0.02)` sobre similitud coseno
+  (k configurable en Preferencias, 3 por defecto); con referencias de pocas
+  muestras conviene registrar las 30 recomendadas.
+- **Sin el modelo ONNX también se puede registrar**: la pieza queda en modo
+  "solo herramientas" (se mide, pero no hay comparación de apariencia). Se avisa
+  una vez por sesión.
+- En el modo **Especial**, el veredicto suma las reglas de posición (centrado y
+  giro) a la apariencia y las herramientas.
+- Los flujos con cámara en vivo se prueban a mano; la batería automática usa
+  imágenes sintéticas.
