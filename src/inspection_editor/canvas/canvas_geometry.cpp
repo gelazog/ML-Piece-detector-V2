@@ -291,6 +291,60 @@ double pickTolerance(double screenPixels, double displayScale) {
     return screenPixels / displayScale;
 }
 
+namespace {
+
+ViewRect clampInto(ViewRect box, const ViewRect& bounds) {
+    if (box.width <= bounds.width) {
+        box.x = std::clamp(box.x, bounds.left(), bounds.right() - box.width);
+    } else {
+        box.x = bounds.left();  // no cabe: al menos que se vea el principio
+    }
+    if (box.height <= bounds.height) {
+        box.y = std::clamp(box.y, bounds.top(), bounds.bottom() - box.height);
+    } else {
+        box.y = bounds.top();
+    }
+    return box;
+}
+
+bool freeSpot(const ViewRect& box, const std::vector<ViewRect>& taken) {
+    return std::none_of(taken.begin(), taken.end(),
+                        [&box](const ViewRect& other) { return box.intersects(other); });
+}
+
+}  // namespace
+
+ViewRect placeLabel(const ViewRect& preferred, const std::vector<ViewRect>& taken,
+                    const ViewRect& bounds) {
+    const ViewRect start = bounds.empty() ? preferred : clampInto(preferred, bounds);
+    if (freeSpot(start, taken)) {
+        return start;
+    }
+    // Se busca alejándose de la posición pedida a saltos de una etiqueta,
+    // primero abajo y luego arriba: junto al borde inferior la única salida es
+    // subir. El alcance está acotado a propósito: una etiqueta que se va al
+    // otro extremo del lienzo deja de pertenecer visualmente a su herramienta,
+    // y eso confunde más que un solape. Si con muchas medidas en el mismo punto
+    // no queda sitio cerca, se acepta el solape (se probó un barrido fino
+    // adicional para aprovechar huecos entre rejillas desalineadas y no mejoró
+    // el reparto: el límite es el alcance, no el tamaño del salto).
+    const double step = start.height + 2.0;
+    constexpr int kAttempts = 12;
+    for (const double direction : {1.0, -1.0}) {
+        for (int k = 1; k <= kAttempts; ++k) {
+            ViewRect candidate = start;
+            candidate.y += direction * step * k;
+            if (!bounds.empty() && !candidate.containedIn(bounds)) {
+                break;  // ese lado se agotó
+            }
+            if (freeSpot(candidate, taken)) {
+                return candidate;
+            }
+        }
+    }
+    return start;  // sin hueco: visible y solapada, mejor que invisible
+}
+
 int pickHandle(const ToolGeometry& geometry, const vision::Fixture& fixture,
                const cv::Point2f& imagePoint, double tolerance) {
     int best = -1;

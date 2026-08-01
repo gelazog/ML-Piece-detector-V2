@@ -248,6 +248,59 @@ TEST_F(CanvasGestureTest, ZoomStepsStayWithinTheirLimits) {
     EXPECT_TRUE(canvas.atMinZoom());
 }
 
+// ---------------------------------------------------------------------------
+// Etiquetas de medida sobre el lienzo pintado
+// ---------------------------------------------------------------------------
+
+TEST_F(CanvasGestureTest, MeasurementLabelsAreDrawnInsideTheView) {
+    // Comprueba el cableado real: que paintResults le pase al colocador el área
+    // visible. Anclas pegadas al borde inferior, que es donde la versión
+    // anterior empujaba las etiquetas fuera de la vista.
+    // Las etiquetas se pintan en verde (OK) o rojo (NG); contar píxeles de esos
+    // colores dice cuánta etiqueta hay realmente DENTRO del lienzo. Se compara
+    // una sola medida contra catorce: si se estuvieran yendo por el borde, la
+    // cuenta no crecería con ellas. Con la versión anterior la primera se veía
+    // igual, así que un umbral absoluto no habría probado nada.
+    const auto colouredPixels = [this](int count) {
+        std::vector<ToolRunResult> results;
+        for (int i = 0; i < count; ++i) {
+            ToolRunResult r;
+            r.toolId = i + 1;
+            r.name = "medida" + std::to_string(i);
+            r.type = ToolType::Ruler;
+            r.ok = (i % 2 == 0);
+            r.measured = 12.34 + i;
+            r.overlayPoints = {{1900.0F, 1070.0F}};  // esquina inferior derecha
+            results.push_back(r);
+        }
+        canvas.setResults(results);
+
+        QImage rendered(kWidgetWidth, kWidgetHeight, QImage::Format_ARGB32);
+        rendered.fill(Qt::black);
+        canvas.render(&rendered);
+
+        int coloured = 0;
+        for (int y = 0; y < rendered.height(); ++y) {
+            for (int x = 0; x < rendered.width(); ++x) {
+                const QColor c = rendered.pixelColor(x, y);
+                const bool greenish = c.green() > 150 && c.red() < 120 && c.blue() < 120;
+                const bool reddish = c.red() > 180 && c.green() < 120 && c.blue() < 120;
+                if (greenish || reddish) {
+                    ++coloured;
+                }
+            }
+        }
+        return coloured;
+    };
+
+    const int one = colouredPixels(1);
+    const int fourteen = colouredPixels(14);
+    ASSERT_GT(one, 100) << "ni siquiera una etiqueta suelta se ve";
+    EXPECT_GT(fourteen, one * 8)
+        << "catorce medidas en la esquina inferior pintan " << fourteen
+        << " px frente a " << one << " de una sola: se están yendo fuera de la vista";
+}
+
 int main(int argc, char** argv) {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);

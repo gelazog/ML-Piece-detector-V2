@@ -603,6 +603,103 @@ TEST(PickTolerance, HandlesAreFoundThroughARotatedFixture) {
 }
 
 // ---------------------------------------------------------------------------
+// Etiquetas de medida
+// ---------------------------------------------------------------------------
+
+namespace {
+
+constexpr ViewRect kCanvas{0.0, 0.0, 900.0, 640.0};
+
+ViewRect labelAt(double x, double y) { return {x, y, 120.0, 18.0}; }
+
+bool freeSpotForTest(const ViewRect& box, const std::vector<ViewRect>& taken) {
+    return std::none_of(taken.begin(), taken.end(),
+                        [&box](const ViewRect& other) { return box.intersects(other); });
+}
+
+}  // namespace
+
+TEST(LabelPlacement, AnUncontestedLabelStaysWhereItWasAsked) {
+    const ViewRect wanted = labelAt(300.0, 200.0);
+    const ViewRect placed = placeLabel(wanted, {}, kCanvas);
+    EXPECT_NEAR(placed.x, wanted.x, kEps);
+    EXPECT_NEAR(placed.y, wanted.y, kEps);
+}
+
+TEST(LabelPlacement, ACollidingLabelMovesAsideInsteadOfOverwriting) {
+    const ViewRect first = labelAt(300.0, 200.0);
+    const ViewRect placed = placeLabel(labelAt(300.0, 205.0), {first}, kCanvas);
+    EXPECT_FALSE(placed.intersects(first));
+    EXPECT_TRUE(placed.containedIn(kCanvas));
+}
+
+TEST(LabelPlacement, NearTheBottomEdgeItGoesUpInsteadOfOffScreen) {
+    // El defecto real: solo se empujaba hacia abajo y nadie miraba el borde,
+    // así que una medida anclada en la parte baja del lienzo se empujaba fuera
+    // de la vista y el operador no veía ninguna lectura.
+    const ViewRect blocker{300.0, 615.0, 120.0, 18.0};  // pegado al borde inferior
+    const ViewRect placed = placeLabel(labelAt(300.0, 618.0), {blocker}, kCanvas);
+    EXPECT_FALSE(placed.intersects(blocker));
+    EXPECT_TRUE(placed.containedIn(kCanvas)) << "y = " << placed.y;
+    EXPECT_LT(placed.y, blocker.y) << "no cabía abajo: tenía que subir";
+}
+
+TEST(LabelPlacement, ALabelAnchoredOutsideTheViewIsBroughtBackIn) {
+    // Una herramienta fuera de pantalla (con el zoom alto) ancla su etiqueta
+    // fuera; si se dibuja ahí, la medida no existe para el operador.
+    for (const auto& wanted : std::vector<ViewRect>{labelAt(-400.0, 300.0),
+                                                    labelAt(1500.0, 300.0),
+                                                    labelAt(300.0, -200.0),
+                                                    labelAt(300.0, 900.0)}) {
+        const ViewRect placed = placeLabel(wanted, {}, kCanvas);
+        EXPECT_TRUE(placed.containedIn(kCanvas))
+            << "pedida en (" << wanted.x << ", " << wanted.y << ")";
+    }
+}
+
+TEST(LabelPlacement, WithoutBoundsItKeepsTheOldBehaviour) {
+    // Lienzo aún sin tamaño (antes del primer resize): no hay área que respetar,
+    // pero la separación entre etiquetas debe seguir funcionando.
+    const ViewRect first = labelAt(0.0, 0.0);
+    const ViewRect placed = placeLabel(labelAt(0.0, 5.0), {first}, ViewRect{});
+    EXPECT_FALSE(placed.intersects(first));
+}
+
+TEST(LabelPlacement, ARealisticPlateOfMeasurementsHasNoOverlapAtAll) {
+    // Doce herramientas midiendo casi en el mismo punto: una plantilla cargada
+    // de verdad. Aquí sí se exige que TODAS se lean.
+    std::vector<ViewRect> taken;
+    for (int i = 0; i < 12; ++i) {
+        const ViewRect placed =
+            placeLabel(labelAt(400.0, 300.0 + i * 0.5), taken, kCanvas);
+        EXPECT_TRUE(freeSpotForTest(placed, taken)) << "etiqueta " << i;
+        EXPECT_TRUE(placed.containedIn(kCanvas)) << "etiqueta " << i;
+        taken.push_back(placed);
+    }
+}
+
+TEST(LabelPlacement, CrowdedMeasurementsNeverDisappearFromTheView) {
+    // Desgaste: 40 medidas en el mismo punto. La banda alcanzable son 12 saltos
+    // a cada lado (~24 huecos), así que por geometría 16 tienen que solaparse;
+    // el alcance está acotado a propósito para que la etiqueta no se aleje de
+    // su herramienta. Lo que NO se negocia es que ninguna se salga de la vista.
+    std::vector<ViewRect> taken;
+    int overlapping = 0;
+    for (int i = 0; i < 40; ++i) {
+        const ViewRect placed =
+            placeLabel(labelAt(400.0, 300.0 + i * 0.5), taken, kCanvas);
+        ASSERT_TRUE(placed.containedIn(kCanvas)) << "etiqueta " << i;
+        if (!freeSpotForTest(placed, taken)) {
+            ++overlapping;
+        }
+        taken.push_back(placed);
+    }
+    EXPECT_LE(overlapping, 16) << "de 40, se solapan " << overlapping;
+    EXPECT_GE(taken.size() - static_cast<std::size_t>(overlapping), 24U)
+        << "al menos las que caben en la banda deben quedar limpias";
+}
+
+// ---------------------------------------------------------------------------
 // Desgaste
 // ---------------------------------------------------------------------------
 

@@ -247,6 +247,21 @@ está a 112 px de pantalla de donde se soltó. Comprobado sobre el widget con un
 borde sintético: soltando en x=991 con el ajuste, aterriza en 999,5 (subpíxel);
 soltando en x=988 al máximo, se queda en 988.
 
+**Las etiquetas de medida** también se colocan con geometría probable
+(`placeLabel`): se busca hueco alejándose del ancla, primero hacia abajo y luego
+hacia arriba, y **siempre dentro del área visible**. Antes solo se empujaba
+hacia abajo sin mirar el borde, así que una medida anclada en la parte baja del
+lienzo se empujaba fuera de la vista y el operador **no veía ninguna lectura** —
+peor que un solape, porque no hay nada que sugiera que falta algo.
+
+El alcance de la búsqueda está acotado a propósito (12 saltos por lado): una
+etiqueta que se va al otro extremo deja de pertenecer visualmente a su
+herramienta. Con una plantilla realista (doce medidas casi en el mismo punto) no
+hay ni un solape; con cuarenta amontonadas, la banda alcanzable da para ~24 y
+las demás se solapan a sabiendas, pero **ninguna desaparece**. Se probó añadir un
+barrido fino para aprovechar huecos entre rejillas desalineadas y no mejoró el
+reparto: el límite es el alcance, no el tamaño del salto, así que se quitó.
+
 Dos contratos más que se cerraron aquí:
 
 - **`setHandlePoint` con un índice fuera de rango no toca nada.** Antes caía en

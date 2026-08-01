@@ -1083,7 +1083,9 @@ void EditorCanvas::paintResults(QPainter& painter) const {
 
     // Rectángulos ya ocupados por otras etiquetas: sin esto, dos herramientas
     // cercanas escriben una encima de otra y no se lee ninguna medida.
-    std::vector<QRectF> taken;
+    std::vector<ViewRect> taken;
+    const ViewRect visible{0.0, 0.0, static_cast<double>(width()),
+                           static_cast<double>(height())};
     for (const auto& result : results_) {
         const QColor color = result.ok ? QColor(0, 220, 0) : QColor(255, 70, 70);
         QPen pen(color);
@@ -1115,20 +1117,13 @@ void EditorCanvas::paintResults(QPainter& painter) const {
         const QString text = QString::fromStdString(result.name) + QStringLiteral(": ") +
                              measureText(result);
         const QFontMetricsF metrics(painter.font());
-        QRectF box = metrics.boundingRect(text).adjusted(-4, -2, 4, 2)
-                         .translated(labelPos + QPointF(8, -10));
-        // Si choca con otra etiqueta, se baja hasta encontrar hueco (con tope,
-        // para no empujarla fuera de la vista).
-        for (int attempt = 0; attempt < 12; ++attempt) {
-            const bool overlaps = std::any_of(
-                taken.begin(), taken.end(),
-                [&box](const QRectF& other) { return other.intersects(box); });
-            if (!overlaps) {
-                break;
-            }
-            box.translate(0.0, box.height() + 2.0);
-        }
-        taken.push_back(box);
+        const QRectF preferred = metrics.boundingRect(text).adjusted(-4, -2, 4, 2)
+                                     .translated(labelPos + QPointF(8, -10));
+        const ViewRect placed = placeLabel(
+            {preferred.x(), preferred.y(), preferred.width(), preferred.height()}, taken,
+            visible);
+        taken.push_back(placed);
+        const QRectF box(placed.x, placed.y, placed.width, placed.height);
 
         painter.setPen(Qt::NoPen);
         painter.setBrush(QColor(0, 0, 0, 170));

@@ -26,8 +26,20 @@ struct ViewRect {
     [[nodiscard]] bool empty() const { return width <= 0.0 || height <= 0.0; }
     [[nodiscard]] double left() const { return x; }
     [[nodiscard]] double top() const { return y; }
+    [[nodiscard]] double right() const { return x + width; }
+    [[nodiscard]] double bottom() const { return y + height; }
     [[nodiscard]] double centerX() const { return x + width / 2.0; }
     [[nodiscard]] double centerY() const { return y + height / 2.0; }
+
+    // Solapamiento estricto: tocarse por el borde no cuenta.
+    [[nodiscard]] bool intersects(const ViewRect& other) const {
+        return left() < other.right() && other.left() < right() && top() < other.bottom() &&
+               other.top() < bottom();
+    }
+    [[nodiscard]] bool containedIn(const ViewRect& bounds) const {
+        return left() >= bounds.left() && right() <= bounds.right() &&
+               top() >= bounds.top() && bottom() <= bounds.bottom();
+    }
 };
 
 // Transformación de la vista: imagen ajustada al widget, con zoom y
@@ -95,5 +107,19 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q);
 // índice corresponde al orden de handlePoints.
 [[nodiscard]] int pickHandle(const ToolGeometry& geometry, const vision::Fixture& fixture,
                              const cv::Point2f& imagePoint, double tolerance);
+
+// Sitio para la etiqueta de una medida: se busca el más cercano a `preferred`
+// que no pise ninguna de las ya colocadas, probando primero hacia abajo y luego
+// hacia arriba, y SIEMPRE dentro de `bounds`.
+//
+// Lo de quedarse dentro no es un detalle: la versión anterior solo empujaba
+// hacia abajo y no miraba el borde, así que una medida anclada en la parte baja
+// del lienzo se empujaba fuera de la vista y el operador no veía ninguna
+// lectura. Más vale una etiqueta visible que se solape con otra que una
+// etiqueta perfectamente colocada donde nadie la ve; si no hay hueco, se
+// devuelve la posición preferida metida dentro del área.
+[[nodiscard]] ViewRect placeLabel(const ViewRect& preferred,
+                                  const std::vector<ViewRect>& taken,
+                                  const ViewRect& bounds);
 
 }  // namespace pci::inspection
