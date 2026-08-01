@@ -935,3 +935,125 @@ TEST(OrientationAnchorSequences, HoldsOrientationThroughAFullTurn) {
         EXPECT_NEAR(recovered.y, anchor.piecePoint.y, 14.0F) << "theta " << theta;
     }
 }
+
+// ===========================================================================
+//  Escala por marcador ArUco en condiciones adversas. Aqui esta el riesgo de
+//  dar milimetros equivocados con cara de certeza, que es peor que no medir.
+// ===========================================================================
+
+namespace {
+
+// Imagen con un marcador ArUco de lado sidePx colocado en topLeft, sobre fondo
+// blanco (el detector necesita el margen claro alrededor).
+cv::Mat sceneWithMarker(cv::Size size, cv::Point topLeft, int sidePx) {
+    const auto dict = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_4X4_50);
+    cv::Mat marker;
+    cv::aruco::generateImageMarker(dict, 0, sidePx, marker);
+    cv::Mat image(size, CV_8UC1, cv::Scalar(255));
+    const cv::Rect target(topLeft.x, topLeft.y, sidePx, sidePx);
+    if ((target & cv::Rect(0, 0, size.width, size.height)) == target) {
+        marker.copyTo(image(target));
+    } else {
+        // Colocacion parcial: se copia solo el trozo que cabe.
+        const cv::Rect visible = target & cv::Rect(0, 0, size.width, size.height);
+        if (visible.area() > 0) {
+            marker(cv::Rect(visible.x - target.x, visible.y - target.y, visible.width,
+                            visible.height))
+                .copyTo(image(visible));
+        }
+    }
+    return image;
+}
+
+}  // namespace
+
+TEST(PlaneScaleHardCases, TiltedMarkerReportsLowQuality) {
+    // Vista fronto-paralela: calidad alta (ya cubierto). Aqui se inclina el
+    // plano con una homografia y la calidad debe CAER, que es el aviso de que
+    // una escala unica deja de ser fiable lejos del marcador.
+    const cv::Mat flat = sceneWithMarker({500, 500}, {200, 200}, 120);
+    const auto straight = detectMarkerScale(flat, 30.0);
+    ASSERT_TRUE(straight.has_value());
+
+    const std::array<cv::Point2f, 4> src = {cv::Point2f(0, 0), cv::Point2f(499, 0),
+                                            cv::Point2f(499, 499), cv::Point2f(0, 499)};
+    // Perspectiva fuerte: el lado derecho se acerca y el izquierdo se aleja.
+    const std::array<cv::Point2f, 4> dst = {cv::Point2f(60, 40), cv::Point2f(470, 0),
+                                            cv::Point2f(499, 499), cv::Point2f(10, 430)};
+    cv::Mat tilted;
+    cv::warpPerspective(flat, tilted,
+                        cv::getPerspectiveTransform(src.data(), dst.data()), flat.size(),
+                        cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(255));
+
+    const auto slanted = detectMarkerScale(tilted, 30.0);
+    if (slanted.has_value()) {
+        EXPECT_LT(slanted->quality, straight->quality)
+            << "una vista inclinada no puede puntuar igual que una perpendicular";
+        EXPECT_GE(slanted->quality, 0.0);
+        EXPECT_LE(slanted->quality, 1.0);
+    }
+}
+
+TEST(PlaneScaleHardCases, MarkerCutByTheFrameIsNotUsed) {
+    // Medio marcador fuera del encuadre: mejor no dar escala que darla mal.
+    const cv::Mat cut = sceneWithMarker({400, 400}, {-60, 150}, 120);
+    EXPECT_FALSE(detectMarkerScale(cut, 30.0).has_value());
+}
+
+TEST(PlaneScaleHardCases, InvalidMarkerSizeIsRejected) {
+    const cv::Mat scene = sceneWithMarker({400, 400}, {150, 150}, 100);
+    EXPECT_FALSE(detectMarkerScale(scene, 0.0).has_value());
+    EXPECT_FALSE(detectMarkerScale(scene, -30.0).has_value());
+}
+
+TEST(PlaneScaleHardCases, ScaleFollowsTheApparentSizeOfTheMarker) {
+    // El mismo marcador de 30 mm visto grande (cerca) y pequeno (lejos): la
+    // escala mm/px tiene que cambiar en proporcion inversa al tamano aparente.
+    const auto near = detectMarkerScale(sceneWithMarker({600, 600}, {200, 200}, 200), 30.0);
+    const auto far = detectMarkerScale(sceneWithMarker({600, 600}, {250, 250}, 100), 30.0);
+    ASSERT_TRUE(near.has_value());
+    ASSERT_TRUE(far.has_value());
+    EXPECT_NEAR(near->mmPerPixel, 30.0 / 200.0, 0.02);
+    EXPECT_NEAR(far->mmPerPixel, 30.0 / 100.0, 0.03);
+    EXPECT_LT(near->mmPerPixel, far->mmPerPixel)
+        << "de cerca cada pixel abarca menos milimetros";
+}
+
+// La escala local y la homografia tienen que contar lo mismo: si discrepan, una
+// misma medida daria un numero distinto segun por donde se calcule.
+TEST(PlaneScaleHardCases, LocalScaleAndHomographyAgree) {
+    const cv::Mat scene = sceneWithMarker({600, 600}, {240, 240}, 120);
+    const auto scale = detectMarkerScale(scene, 30.0);
+    ASSERT_TRUE(scale.has_value());
+
+    // 120 px a lo ancho del marcador deben ser ~30 mm por los dos caminos.
+    const double byHomography =
+        planeDistanceMm(scale->imageToMm, {240.0F, 300.0F}, {360.0F, 300.0F});
+    const double byLocalScale = 120.0 * scale->mmPerPixel;
+    EXPECT_NEAR(byHomography, 30.0, 2.0);
+    EXPECT_NEAR(byHomography, byLocalScale, 2.0);
+}
+
+TEST(PlaneScaleHardCases, EmptyHomographyGivesZeroInsteadOfGarbage) {
+    // Sin homografia valida, la distancia en mm es 0 (el llamador cae a la
+    // escala constante) en vez de un numero inventado.
+    EXPECT_DOUBLE_EQ(planeDistanceMm(cv::Mat(), {0.0F, 0.0F}, {100.0F, 0.0F}), 0.0);
+}
+
+TEST(PlaneScaleHardCases, TwoMarkersDoNotBreakTheDetection) {
+    cv::Mat scene = sceneWithMarker({700, 400}, {80, 140}, 110);
+    const auto dict = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_4X4_50);
+    cv::Mat second;
+    cv::aruco::generateImageMarker(dict, 7, 110, second);
+    second.copyTo(scene(cv::Rect(450, 140, 110, 110)));
+
+    const auto scale = detectMarkerScale(scene, 30.0);
+    ASSERT_TRUE(scale.has_value()) << "con dos marcadores debe usar uno, no fallar";
+    EXPECT_NEAR(scale->mmPerPixel, 30.0 / 110.0, 0.03);
+}
+
+TEST(PlaneScaleHardCases, NoisyBackgroundDoesNotInventAMarker) {
+    cv::Mat noise(400, 400, CV_8UC1);
+    cv::randu(noise, 0, 255);
+    EXPECT_FALSE(detectMarkerScale(noise, 30.0).has_value());
+}
