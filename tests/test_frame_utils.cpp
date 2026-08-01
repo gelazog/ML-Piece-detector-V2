@@ -185,3 +185,41 @@ TEST(CameraControls, CoalescingKeepsOnlyTheLastValuePerProperty) {
     EXPECT_EQ(other[0].property, CameraProperty::AutoFocus);
     EXPECT_EQ(other[1].property, CameraProperty::Focus);
 }
+
+// --- Resoluciones (O2) ---
+
+TEST(CameraControls, CandidateResolutionsAreSaneAndOrdered) {
+    const auto candidates = pci::camera::candidateResolutions();
+    ASSERT_FALSE(candidates.empty());
+    for (const auto& resolution : candidates) {
+        EXPECT_TRUE(resolution.valid());
+        EXPECT_GE(resolution.width, resolution.height) << "todas son apaisadas";
+    }
+    // De menor a mayor: el desplegable se lee mejor y el sondeo acaba en la
+    // mas grande, que es la mas cara de fijar.
+    for (std::size_t i = 1; i < candidates.size(); ++i) {
+        const int previous = candidates[i - 1].width * candidates[i - 1].height;
+        const int current = candidates[i].width * candidates[i].height;
+        EXPECT_LT(previous, current);
+    }
+    // Las clasicas de webcam tienen que estar.
+    const auto has = [&candidates](int w, int h) {
+        return std::any_of(candidates.begin(), candidates.end(),
+                           [w, h](const pci::camera::CameraResolution& r) {
+                               return r.width == w && r.height == h;
+                           });
+    };
+    EXPECT_TRUE(has(640, 480));
+    EXPECT_TRUE(has(1280, 720));
+    EXPECT_TRUE(has(1920, 1080));
+}
+
+TEST(CameraControls, ResolutionValidityAndEquality) {
+    using pci::camera::CameraResolution;
+    EXPECT_FALSE(CameraResolution{}.valid());
+    EXPECT_FALSE((CameraResolution{640, 0}).valid());
+    EXPECT_FALSE((CameraResolution{-1, 480}).valid());
+    EXPECT_TRUE((CameraResolution{640, 480}).valid());
+    EXPECT_TRUE((CameraResolution{640, 480}) == (CameraResolution{640, 480}));
+    EXPECT_FALSE((CameraResolution{640, 480}) == (CameraResolution{640, 481}));
+}

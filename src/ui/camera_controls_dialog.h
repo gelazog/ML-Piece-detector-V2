@@ -7,6 +7,8 @@
 #include "camera/camera_controls.h"
 
 class QCheckBox;
+class QComboBox;
+class QPushButton;
 class QSlider;
 
 namespace pci::camera {
@@ -27,13 +29,26 @@ class CameraControlsDialog : public QDialog {
     Q_OBJECT
 
 public:
+    // `knownResolutions` evita el sondeo cuando ya se hizo para esta cámara:
+    // preguntar resolución por resolución cuesta segundos y **detiene el vídeo**
+    // mientras dura, así que solo se paga la primera vez (o si se pide).
     CameraControlsDialog(camera::CameraController& controller,
                          const std::vector<camera::CameraControlState>& probed,
+                         const std::vector<camera::CameraResolution>& knownResolutions,
+                         const camera::CameraResolution& currentResolution,
                          QWidget* parent = nullptr);
 
 signals:
     // Valor cambiado por el operador, para que la ventana lo persista.
     void controlChanged(const pci::camera::CameraControlValue& control);
+    // Resolución elegida, para que la ventana la persista y reajuste lo que
+    // vive en píxeles (zona de detección, cero fijado del tablero).
+    void resolutionChosen(const pci::camera::CameraResolution& resolution);
+
+public slots:
+    // Llega desde el hilo de captura cuando termina el sondeo.
+    void onResolutionsProbed(const std::vector<pci::camera::CameraResolution>& available,
+                             const pci::camera::CameraResolution& current);
 
 private:
     struct Row {
@@ -51,6 +66,9 @@ private:
 
     camera::CameraController& controller_;
     std::vector<Row> rows_;
+    QComboBox* resolutionCombo_ = nullptr;
+    QPushButton* probeButton_ = nullptr;
+    bool comboWired_ = false;  // la señal del combo se conecta una sola vez
 };
 
 }  // namespace pci::ui

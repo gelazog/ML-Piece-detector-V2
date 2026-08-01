@@ -12,6 +12,7 @@
 #include "vision/board_frame.h"
 #include "vision/contour_analysis.h"
 #include "vision/fixture_stabilizer.h"
+#include "vision/frame_geometry.h"
 #include "vision/orientation.h"
 #include "vision/plane_scale.h"
 #include "vision/orientation_anchor.h"
@@ -1056,4 +1057,65 @@ TEST(PlaneScaleHardCases, NoisyBackgroundDoesNotInventAMarker) {
     cv::Mat noise(400, 400, CV_8UC1);
     cv::randu(noise, 0, 255);
     EXPECT_FALSE(detectMarkerScale(noise, 30.0).has_value());
+}
+
+// --- Reajuste de lo que vive en pixeles al cambiar de resolucion ---
+
+TEST(FrameGeometry, RectKeepsItsPlaceWhenTheFrameGrowsOrShrinks) {
+    const cv::Size vga(640, 480);
+    const cv::Size fullHd(1920, 1080);
+
+    // Una zona centrada debe seguir centrada tras el cambio.
+    const cv::Rect centered(160, 120, 320, 240);
+    const cv::Rect scaled = rescaleRect(centered, vga, fullHd);
+    EXPECT_NEAR(scaled.x + scaled.width / 2.0, fullHd.width / 2.0, 2.0);
+    EXPECT_NEAR(scaled.y + scaled.height / 2.0, fullHd.height / 2.0, 2.0);
+    // Y ocupar la misma fraccion del encuadre.
+    EXPECT_NEAR(static_cast<double>(scaled.width) / fullHd.width,
+                static_cast<double>(centered.width) / vga.width, 0.01);
+
+    // Ida y vuelta: se recupera practicamente el mismo rectangulo.
+    const cv::Rect back = rescaleRect(scaled, fullHd, vga);
+    EXPECT_NEAR(back.x, centered.x, 2);
+    EXPECT_NEAR(back.width, centered.width, 2);
+}
+
+TEST(FrameGeometry, RescaledRectNeverEscapesTheNewFrameNorVanishes) {
+    const cv::Size big(1920, 1080);
+    const cv::Size small(320, 240);
+
+    // Zona pegada a la esquina inferior derecha del frame grande.
+    const cv::Rect corner(1800, 1000, 120, 80);
+    const cv::Rect scaled = rescaleRect(corner, big, small);
+    EXPECT_GE(scaled.x, 0);
+    EXPECT_GE(scaled.y, 0);
+    EXPECT_LE(scaled.x + scaled.width, small.width);
+    EXPECT_LE(scaled.y + scaled.height, small.height);
+
+    // Una zona diminuta no puede desaparecer por redondeo: eso dejaria la
+    // deteccion mirando a la nada sin decir por que.
+    const cv::Rect tiny(100, 100, 3, 3);
+    const cv::Rect shrunk = rescaleRect(tiny, big, small);
+    EXPECT_GE(shrunk.width, 1);
+    EXPECT_GE(shrunk.height, 1);
+}
+
+TEST(FrameGeometry, DegenerateSizesLeaveTheValueUntouched) {
+    const cv::Rect roi(10, 10, 50, 50);
+    EXPECT_EQ(rescaleRect(roi, {0, 0}, {640, 480}), roi);
+    EXPECT_EQ(rescaleRect(roi, {640, 480}, {0, 0}), roi);
+    EXPECT_EQ(rescaleRect({}, {640, 480}, {1280, 720}), cv::Rect());
+
+    const cv::Point2f point(120.0F, 90.0F);
+    EXPECT_EQ(rescalePoint(point, {0, 0}, {640, 480}), point);
+}
+
+TEST(FrameGeometry, PointFollowsTheSameSpotOfTheScene) {
+    // El cero fijado del tablero estaba a un cuarto del ancho y a la mitad del
+    // alto: tras duplicar la resolucion debe seguir ahi.
+    const cv::Point2f fixed(160.0F, 240.0F);
+    const cv::Point2f scaled = rescalePoint(fixed, {640, 480}, {1280, 960});
+    EXPECT_FLOAT_EQ(scaled.x, 320.0F);
+    EXPECT_FLOAT_EQ(scaled.y, 480.0F);
+    EXPECT_NEAR(scaled.x / 1280.0, fixed.x / 640.0, 1e-6);
 }

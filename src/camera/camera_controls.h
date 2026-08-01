@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QMetaType>
+
 #include <opencv2/videoio.hpp>
 
 #include <string_view>
@@ -73,6 +75,32 @@ struct CameraControlValue {
     double value = 0.0;
 };
 
+// Resolución de captura ofrecida por la cámara.
+struct CameraResolution {
+    int width = 0;
+    int height = 0;
+
+    [[nodiscard]] bool valid() const { return width > 0 && height > 0; }
+    [[nodiscard]] bool operator==(const CameraResolution& other) const {
+        return width == other.width && height == other.height;
+    }
+};
+
+// Resoluciones candidatas que se prueban al sondear (de menor a mayor).
+[[nodiscard]] std::vector<CameraResolution> candidateResolutions();
+
+// Sondea qué resoluciones acepta REALMENTE la cámara: OpenCV no las lista, así
+// que se pide cada candidata y se lee la que la cámara acabó dando (los
+// backends ajustan a la más cercana admitida). Se devuelven las distintas que
+// se consiguieron, sin repetir, y se restaura la que estaba al empezar.
+// Cuesta un instante por candidata, así que se hace SOLO cuando el operador
+// abre los controles, no en cada arranque. Debe llamarse desde el hilo dueño
+// de la captura.
+[[nodiscard]] std::vector<CameraResolution> probeResolutions(cv::VideoCapture& capture);
+
+// Resolución con la que está trabajando la cámara ahora mismo.
+[[nodiscard]] CameraResolution currentResolution(cv::VideoCapture& capture);
+
 // Mezcla peticiones nuevas en la cola pendiente dejando SOLO el último valor de
 // cada propiedad. Arrastrar un deslizador genera decenas de valores por segundo
 // y cada capture.set() cuesta milisegundos en el hilo de captura: aplicarlos
@@ -81,3 +109,8 @@ void coalesceControls(std::vector<CameraControlValue>& pending,
                       const std::vector<CameraControlValue>& incoming);
 
 }  // namespace pci::camera
+
+// Declarados junto al tipo (no en el controlador): cualquier archivo que use
+// CameraResolution en un QVariant o en una señal encolada ve la declaración.
+Q_DECLARE_METATYPE(pci::camera::CameraResolution)
+Q_DECLARE_METATYPE(std::vector<pci::camera::CameraResolution>)

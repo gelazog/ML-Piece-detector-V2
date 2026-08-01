@@ -58,7 +58,19 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    se mide su rango real, así que solo quedan activos los que la cámara deja
    cambiar (con su recorrido correcto en el tooltip) y el resto sale
    deshabilitado con el motivo. Los controles manuales de exposición y enfoque
-   se bloquean mientras su automático está encendido, porque ahí no harían nada. Para una
+   se bloquean mientras su automático está encendido, porque ahí no harían nada.
+
+   Ahí mismo está el selector de **resolución**. OpenCV no sabe listar las que
+   admite una cámara, así que hay que preguntárselas una por una: el botón
+   **Buscar…** lo hace, tarda unos segundos y **el vídeo se detiene mientras
+   dura**, por eso el resultado se recuerda para esa cámara y no hay que
+   repetirlo. Más resolución = más detalle y medidas más finas, a cambio de más
+   CPU por frame. Al cambiarla, la **calibración en mm deja de ser válida** (la
+   app te avisa) y **la zona de detección y el cero fijado del tablero se
+   reajustan solos** a la nueva escala, para que sigan señalando el mismo sitio.
+   La resolución elegida se guarda y se reaplica al iniciar la cámara.
+
+   Para una
    línea estable conviene **desactivar la exposición y el enfoque automáticos**
    y fijarlos: si no, la cámara cambia el brillo o "bombea" el foco entre
    frames y las medidas bailan. Los valores que toques se guardan y se

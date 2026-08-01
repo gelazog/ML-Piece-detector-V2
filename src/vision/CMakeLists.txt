@@ -2,6 +2,7 @@ add_library(pci_vision STATIC
   board_frame.cpp
   contour_analysis.cpp
   fixture_stabilizer.cpp
+  frame_geometry.cpp
   orientation.cpp
   orientation_anchor.cpp
   pipeline.cpp

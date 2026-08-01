@@ -49,6 +49,7 @@
 #include "ui/registration_wizard.h"
 #include "ui/template_manager_dialog.h"
 #include "vision/fixture_stabilizer.h"
+#include "vision/frame_geometry.h"
 #include "vision/pipeline.h"
 #include "vision/plane_scale.h"
 #include "vision/position_fixture.h"
@@ -513,6 +514,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(&controller_, &camera::CameraController::stopped, this, &MainWindow::onStreamStopped);
     connect(&controller_, &camera::CameraController::controlsProbed, this,
             &MainWindow::onControlsProbed);
+    connect(&controller_, &camera::CameraController::resolutionsProbed, this,
+            &MainWindow::onResolutionsProbed);
 
     connect(toolModeGroup_, &QButtonGroup::idClicked, this, &MainWindow::onToolModeChanged);
     connect(video_, &inspection::EditorCanvas::toolCreated, this,
@@ -614,6 +617,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
                 savedCameraControls_.push_back({property, stored.value()});
             }
         }
+        savedResolution_.width = repos_.settings->getInt("cam_width", 0).value();
+        savedResolution_.height = repos_.settings->getInt("cam_height", 0).value();
     }
 
     // Tablero de referencia (T2): visibilidad y origen elegidos por el operador.
@@ -1332,6 +1337,7 @@ void MainWindow::onStartStopClicked() {
     // Identidad de la cámara en uso, para detectar si la calibración guardada
     // corresponde a otra cámara (D1).
     currentCameraKey_ = QString::fromStdString(cameras_[comboIndex].name);
+    loadCachedResolutions();  // lista sondeada antes para ESTA cámara
     startStopButton_->setText(tr("Detener"));
     cameraCombo_->setEnabled(false);
     refreshAction_->setEnabled(false);
@@ -1342,15 +1348,25 @@ void MainWindow::onStartStopClicked() {
     // Los controles guardados se reaplican al abrir: la línea conserva su
     // exposición y su enfoque entre sesiones (O2).
     controller_.start(cameras_[comboIndex], savedCameraControls_);
+    if (savedResolution_.valid()) {
+        // La resolución elegida se reaplica al abrir, igual que los controles.
+        controller_.requestResolution(savedResolution_);
+    }
 }
 
 void MainWindow::onFrame(const QImage& frame) {
     video_->setFrame(frame);
     // Si cambia la resolución del frame, reevaluar si la calibración sigue
     // siendo válida (D1); barato porque solo ocurre al cambiar de fuente.
-    const bool sizeChanged = lastFrame_.size() != frame.size();
+    const QSize previousSize = lastFrame_.size();
+    const bool sizeChanged = previousSize != frame.size();
     lastFrame_ = frame;
     if (sizeChanged) {
+        // Se reacciona al tamaño REAL del frame, no a lo que se pidió: la
+        // cámara puede dar otra resolución distinta de la solicitada.
+        if (previousSize.isValid() && !previousSize.isEmpty()) {
+            rescalePixelSettings(previousSize, frame.size());
+        }
         updateCalibrationLabel();
     }
     if (streaming_) {
@@ -1453,6 +1469,7 @@ void MainWindow::maybeStartAnalysis() {
 }
 
 void MainWindow::onStats(double fps, int width, int height) {
+    currentResolution_ = {width, height};
     statsLabel_->setText(QStringLiteral("%1x%2 — %3 fps")
                              .arg(width)
                              .arg(height)
@@ -2189,6 +2206,83 @@ void MainWindow::onTemplateChanged(int index) {
 
 // La cámara acaba de decir qué controles soporta (O2): se habilita el menú y
 // se recuerda el estado para poblar el diálogo.
+// Al cambiar la resolución, todo lo que el operador definió en PÍXELES DE
+// IMAGEN dejaría de señalar el mismo sitio: la zona de detección y el cero
+// fijado del tablero. Se reescalan proporcionalmente en vez de dejarlos
+// desplazados en silencio. Las herramientas no hacen falta: viven en
+// coordenadas de pieza.
+void MainWindow::rescalePixelSettings(const QSize& from, const QSize& to) {
+    const cv::Size before(from.width(), from.height());
+    const cv::Size after(to.width(), to.height());
+    QStringList adjusted;
+
+    if (pipelineConfig_.roi.area() > 0) {
+        pipelineConfig_.roi = vision::rescaleRect(pipelineConfig_.roi, before, after);
+        persistPipelineConfig();
+        updateRoiButton();
+        adjusted << tr("la zona de detección");
+    }
+    if (boardConfig_.origin == vision::BoardOrigin::FixedPoint) {
+        boardConfig_.fixedPoint = vision::rescalePoint(boardConfig_.fixedPoint, before, after);
+        video_->setBoardConfig(boardConfig_);
+        persistBoardConfig();
+        adjusted << tr("el cero del tablero");
+    }
+
+    const QString sizes = tr("%1×%2 → %3×%4")
+                              .arg(from.width())
+                              .arg(from.height())
+                              .arg(to.width())
+                              .arg(to.height());
+    statusBar()->showMessage(
+        adjusted.isEmpty()
+            ? tr("Resolución %1.").arg(sizes)
+            : tr("Resolución %1: se reajustó %2.").arg(sizes, adjusted.join(tr(" y "))));
+}
+
+// La lista de resoluciones se recuerda POR CÁMARA en Settings: sondearla cuesta
+// unos 15 s con una webcam real y detiene el vídeo, así que se paga una vez.
+void MainWindow::onResolutionsProbed(
+    const std::vector<camera::CameraResolution>& available,
+    const camera::CameraResolution& current) {
+    knownResolutions_ = available;
+    currentResolution_ = current;
+    if (repos_.settings == nullptr || currentCameraKey_.isEmpty()) {
+        return;
+    }
+    QStringList encoded;
+    for (const auto& resolution : available) {
+        encoded << QStringLiteral("%1x%2").arg(resolution.width).arg(resolution.height);
+    }
+    repos_.settings->setString(resolutionCacheKey(), encoded.join(QLatin1Char(';')).toStdString());
+}
+
+std::string MainWindow::resolutionCacheKey() const {
+    return "cam_res_" + currentCameraKey_.toStdString();
+}
+
+void MainWindow::loadCachedResolutions() {
+    knownResolutions_.clear();
+    if (repos_.settings == nullptr || currentCameraKey_.isEmpty()) {
+        return;
+    }
+    const auto stored = repos_.settings->getString(resolutionCacheKey(), std::string());
+    if (!stored.isOk() || stored.value().empty()) {
+        return;
+    }
+    for (const QString& item :
+         QString::fromStdString(stored.value()).split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
+        const QStringList parts = item.split(QLatin1Char('x'));
+        if (parts.size() != 2) {
+            continue;
+        }
+        camera::CameraResolution resolution{parts[0].toInt(), parts[1].toInt()};
+        if (resolution.valid()) {
+            knownResolutions_.push_back(resolution);
+        }
+    }
+}
+
 void MainWindow::onControlsProbed(const std::vector<camera::CameraControlState>& controls) {
     cameraControls_ = controls;
     bool anySupported = false;
@@ -2211,8 +2305,19 @@ void MainWindow::onCameraControlsClicked() {
         return;
     }
     // No modal: el operador mueve un deslizador y ve el efecto en el vídeo.
-    auto* dialog = new CameraControlsDialog(controller_, cameraControls_, this);
+    // Las resoluciones ya sondeadas de ESTA cámara se pasan hechas: volver a
+    // preguntarlas cuesta segundos y detiene el vídeo.
+    auto* dialog = new CameraControlsDialog(controller_, cameraControls_,
+                                            knownResolutions_, currentResolution_, this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &CameraControlsDialog::resolutionChosen, this,
+            [this](const camera::CameraResolution& resolution) {
+                savedResolution_ = resolution;
+                if (repos_.settings != nullptr) {
+                    repos_.settings->setInt("cam_width", resolution.width);
+                    repos_.settings->setInt("cam_height", resolution.height);
+                }
+            });
     connect(dialog, &CameraControlsDialog::controlChanged, this,
             [this](const camera::CameraControlValue& control) {
                 // Se recuerda el último valor de cada propiedad para reaplicarlo

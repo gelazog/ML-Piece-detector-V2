@@ -102,6 +102,10 @@ private slots:
     void onExportConfigClicked();     // exportar configuración (O4)
     void onImportConfigClicked();
     void onControlsProbed(const std::vector<pci::camera::CameraControlState>& controls);
+    void onResolutionsProbed(const std::vector<pci::camera::CameraResolution>& available,
+                             const pci::camera::CameraResolution& current);
+    // Reajusta lo que vive en píxeles cuando cambia la resolución del frame.
+    void rescalePixelSettings(const QSize& from, const QSize& to);
     void onMeasurementModeClicked();  // modo de medición de la pieza (M2)
     void onToolRightClicked(int index);
 
@@ -191,6 +195,11 @@ private:
     // valores elegidos por el operador, que se reaplican en cada arranque.
     std::vector<camera::CameraControlState> cameraControls_;
     std::vector<camera::CameraControlValue> savedCameraControls_;
+    camera::CameraResolution savedResolution_;   // resolución elegida (O2)
+    camera::CameraResolution currentResolution_;  // la que está dando la cámara
+    std::vector<camera::CameraResolution> knownResolutions_;  // sondeadas y cacheadas
+    [[nodiscard]] std::string resolutionCacheKey() const;
+    void loadCachedResolutions();
     // Reglas del modo Especial de la pieza activa (M4); 0 = no vigilar.
     double maxOffsetPx_ = 0.0;
     double maxAngleDeg_ = 0.0;

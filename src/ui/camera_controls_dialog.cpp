@@ -1,10 +1,13 @@
 #include "ui/camera_controls_dialog.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPushButton>
+#include <QSignalBlocker>
 #include <QSlider>
 #include <QVBoxLayout>
 
@@ -34,7 +37,9 @@ QString formatValue(double value, const camera::PropertyRange& range) {
 
 CameraControlsDialog::CameraControlsDialog(
     camera::CameraController& controller,
-    const std::vector<camera::CameraControlState>& probed, QWidget* parent)
+    const std::vector<camera::CameraControlState>& probed,
+    const std::vector<camera::CameraResolution>& knownResolutions,
+    const camera::CameraResolution& currentResolution, QWidget* parent)
     : QDialog(parent), controller_(controller) {
     setWindowTitle(tr("Controles de la cámara"));
 
@@ -46,6 +51,47 @@ CameraControlsDialog::CameraControlsDialog(
         this);
     intro->setWordWrap(true);
     root->addWidget(intro);
+
+    // Resolución: la lista tarda un instante en llegar porque hay que
+    // preguntarle a la cámara resolución por resolución (OpenCV no las lista).
+    auto* resolutionRow = new QHBoxLayout();
+    resolutionRow->addWidget(new QLabel(tr("Resolución:"), this));
+    resolutionCombo_ = new QComboBox(this);
+    resolutionCombo_->setToolTip(
+        tr("Resoluciones que esta cámara acepta de verdad.\n"
+           "Más resolución = más detalle y medidas más finas, pero más CPU por\n"
+           "frame. Al cambiarla, la calibración en mm deja de ser válida (se\n"
+           "avisa) y la zona de detección y el cero fijado se reajustan solos."));
+    resolutionRow->addWidget(resolutionCombo_, 1);
+    probeButton_ = new QPushButton(tr("Buscar…"), this);
+    probeButton_->setToolTip(
+        tr("Pregunta a la cámara resolución por resolución.\n"
+           "Tarda unos segundos y el vídeo se detiene mientras dura, por eso el\n"
+           "resultado se recuerda y no hace falta repetirlo."));
+    resolutionRow->addWidget(probeButton_);
+    root->addLayout(resolutionRow);
+
+    connect(&controller, &camera::CameraController::resolutionsProbed, this,
+            &CameraControlsDialog::onResolutionsProbed);
+    connect(probeButton_, &QPushButton::clicked, this, [this] {
+        probeButton_->setEnabled(false);
+        probeButton_->setText(tr("Buscando…"));
+        controller_.requestResolutionProbe();
+    });
+
+    if (!knownResolutions.empty()) {
+        onResolutionsProbed(knownResolutions, currentResolution);
+    } else {
+        // Sin lista conocida no se sondea solo: se muestra la actual y se deja
+        // que el operador decida pagar la pausa del vídeo.
+        resolutionCombo_->addItem(
+            currentResolution.valid()
+                ? QStringLiteral("%1 × %2").arg(currentResolution.width)
+                      .arg(currentResolution.height)
+                : tr("(desconocida)"),
+            QVariant::fromValue(currentResolution));
+        resolutionCombo_->setEnabled(false);
+    }
 
     auto* form = new QFormLayout();
     for (const auto& state : probed) {
@@ -107,6 +153,49 @@ CameraControlsDialog::CameraControlsDialog(
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::close);
     root->addWidget(buttons);
+}
+
+void CameraControlsDialog::onResolutionsProbed(
+    const std::vector<camera::CameraResolution>& available,
+    const camera::CameraResolution& current) {
+    if (probeButton_ != nullptr) {
+        probeButton_->setEnabled(true);
+        probeButton_->setText(tr("Buscar…"));
+    }
+    QSignalBlocker blocker(resolutionCombo_);
+    resolutionCombo_->clear();
+    for (const auto& resolution : available) {
+        resolutionCombo_->addItem(
+            QStringLiteral("%1 × %2").arg(resolution.width).arg(resolution.height),
+            QVariant::fromValue(resolution));
+        if (resolution == current) {
+            resolutionCombo_->setCurrentIndex(resolutionCombo_->count() - 1);
+        }
+    }
+    resolutionCombo_->setEnabled(resolutionCombo_->count() > 1);
+    if (resolutionCombo_->count() <= 1) {
+        // Una sola opcion: la camara no deja elegir, y decirlo evita que
+        // parezca que el desplegable esta roto.
+        resolutionCombo_->setToolTip(tr("Esta cámara solo ofrece una resolución."));
+    }
+    blocker.unblock();
+
+    if (comboWired_) {
+        return;
+    }
+    comboWired_ = true;
+    connect(resolutionCombo_, &QComboBox::currentIndexChanged, this, [this](int index) {
+        if (index < 0) {
+            return;
+        }
+        const auto resolution =
+            resolutionCombo_->itemData(index).value<camera::CameraResolution>();
+        if (!resolution.valid()) {
+            return;
+        }
+        controller_.requestResolution(resolution);
+        emit resolutionChosen(resolution);
+    });
 }
 
 bool CameraControlsDialog::autoActive(camera::CameraProperty autoProperty) const {

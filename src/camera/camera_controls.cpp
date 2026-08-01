@@ -146,6 +146,65 @@ bool writeProperty(cv::VideoCapture& capture, int id, double value) {
 
 }  // namespace
 
+std::vector<CameraResolution> candidateResolutions() {
+    return {{320, 240},   {640, 480},   {800, 600},   {1024, 768}, {1280, 720},
+            {1280, 960},  {1600, 1200}, {1920, 1080}, {2560, 1440}, {3840, 2160}};
+}
+
+CameraResolution currentResolution(cv::VideoCapture& capture) {
+    CameraResolution resolution;
+    try {
+        resolution.width = static_cast<int>(capture.get(cv::CAP_PROP_FRAME_WIDTH));
+        resolution.height = static_cast<int>(capture.get(cv::CAP_PROP_FRAME_HEIGHT));
+    } catch (const cv::Exception&) {
+        resolution = {};
+    }
+    return resolution;
+}
+
+std::vector<CameraResolution> probeResolutions(cv::VideoCapture& capture) {
+    const CameraResolution original = currentResolution(capture);
+    std::vector<CameraResolution> found;
+    const auto remember = [&found](const CameraResolution& resolution) {
+        if (!resolution.valid()) {
+            return;
+        }
+        if (std::find(found.begin(), found.end(), resolution) == found.end()) {
+            found.push_back(resolution);
+        }
+    };
+    remember(original);
+
+    for (const auto& candidate : candidateResolutions()) {
+        try {
+            capture.set(cv::CAP_PROP_FRAME_WIDTH, candidate.width);
+            capture.set(cv::CAP_PROP_FRAME_HEIGHT, candidate.height);
+        } catch (const cv::Exception&) {
+            continue;
+        }
+        // Lo que importa no es si set() dijo que si, sino lo que la camara
+        // acabo dando: los backends ajustan a la resolucion admitida mas
+        // cercana sin avisar.
+        remember(currentResolution(capture));
+    }
+
+    if (original.valid()) {
+        try {
+            capture.set(cv::CAP_PROP_FRAME_WIDTH, original.width);
+            capture.set(cv::CAP_PROP_FRAME_HEIGHT, original.height);
+        } catch (const cv::Exception&) {
+            // Si no se puede restaurar, el bucle de captura seguira con la
+            // ultima que haya quedado; se vera en la barra de estado.
+        }
+    }
+
+    std::sort(found.begin(), found.end(),
+              [](const CameraResolution& a, const CameraResolution& b) {
+                  return a.width * a.height < b.width * b.height;
+              });
+    return found;
+}
+
 void coalesceControls(std::vector<CameraControlValue>& pending,
                       const std::vector<CameraControlValue>& incoming) {
     for (const auto& control : incoming) {

@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -38,11 +39,20 @@ public:
     // colgar o corromper el driver. Sin transmisión en curso, no hace nada.
     void requestControls(const std::vector<CameraControlValue>& controls);
 
+    // Resolución (mismo camino que los controles: lo ejecuta el hilo de
+    // captura). El sondeo cuesta un instante por candidata, así que se pide
+    // solo cuando el operador abre los controles, nunca en cada arranque.
+    void requestResolutionProbe();
+    void requestResolution(const CameraResolution& resolution);
+
 signals:
     void frameReady(const QImage& frame);
     // Estado de los controles leído al abrir la cámara: qué soporta y con qué
     // valor arranca. La UI deshabilita lo no soportado en vez de mentir.
     void controlsProbed(const std::vector<pci::camera::CameraControlState>& controls);
+    // Resoluciones que la cámara acepta de verdad, y la que está usando ahora.
+    void resolutionsProbed(const std::vector<pci::camera::CameraResolution>& available,
+                           const pci::camera::CameraResolution& current);
     void statsUpdated(double fps, int width, int height);
     void cameraError(const QString& message);
     void stopped();
@@ -52,11 +62,14 @@ private:
     void captureLoopBody(CameraInfo camera);
     // Vacía la cola de peticiones sobre la cámara ya abierta (hilo de captura).
     void drainControlRequests(cv::VideoCapture& capture);
+    void drainResolutionRequests(cv::VideoCapture& capture);
 
     std::thread worker_;
     std::atomic<bool> running_{false};
     std::mutex controlsMutex_;
     std::vector<CameraControlValue> pendingControls_;
+    std::optional<CameraResolution> pendingResolution_;
+    bool resolutionProbePending_ = false;
 };
 
 }  // namespace pci::camera

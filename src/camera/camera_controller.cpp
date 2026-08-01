@@ -53,6 +53,8 @@ std::string toHex(unsigned long value) {
 
 CameraController::CameraController(QObject* parent) : QObject(parent) {
     qRegisterMetaType<std::vector<CameraControlState>>();
+    qRegisterMetaType<std::vector<CameraResolution>>();
+    qRegisterMetaType<CameraResolution>();
 }
 
 CameraController::~CameraController() {
@@ -73,6 +75,52 @@ void CameraController::start(const CameraInfo& camera,
 void CameraController::requestControls(const std::vector<CameraControlValue>& controls) {
     std::lock_guard<std::mutex> lock(controlsMutex_);
     coalesceControls(pendingControls_, controls);
+}
+
+void CameraController::requestResolutionProbe() {
+    std::lock_guard<std::mutex> lock(controlsMutex_);
+    resolutionProbePending_ = true;
+}
+
+void CameraController::requestResolution(const CameraResolution& resolution) {
+    if (!resolution.valid()) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(controlsMutex_);
+    // Solo la ultima pedida: cambiar de resolucion reinicia el flujo de la
+    // camara, encadenar varias no tiene sentido.
+    pendingResolution_ = resolution;
+}
+
+void CameraController::drainResolutionRequests(cv::VideoCapture& capture) {
+    std::optional<CameraResolution> wanted;
+    bool probe = false;
+    {
+        std::lock_guard<std::mutex> lock(controlsMutex_);
+        wanted.swap(pendingResolution_);
+        probe = resolutionProbePending_;
+        resolutionProbePending_ = false;
+    }
+
+    if (wanted.has_value()) {
+        try {
+            capture.set(cv::CAP_PROP_FRAME_WIDTH, wanted->width);
+            capture.set(cv::CAP_PROP_FRAME_HEIGHT, wanted->height);
+        } catch (const cv::Exception& e) {
+            core::logWarning(std::string("OpenCV lanzó al cambiar la resolución: ") +
+                             e.what());
+        }
+        const CameraResolution applied = currentResolution(capture);
+        core::logInfo("Resolución pedida " + std::to_string(wanted->width) + "x" +
+                      std::to_string(wanted->height) + ", la cámara dio " +
+                      std::to_string(applied.width) + "x" + std::to_string(applied.height));
+    }
+
+    if (probe) {
+        core::setBreadcrumb("sondeando resoluciones de la cámara");
+        const std::vector<CameraResolution> available = probeResolutions(capture);
+        emit resolutionsProbed(available, currentResolution(capture));
+    }
 }
 
 void CameraController::drainControlRequests(cv::VideoCapture& capture) {
@@ -209,7 +257,8 @@ void CameraController::captureLoopBody(CameraInfo camera) {
         }
 
         consecutiveFailures = 0;
-        drainControlRequests(capture);  // cambios pedidos desde la UI
+        drainControlRequests(capture);     // cambios pedidos desde la UI
+        drainResolutionRequests(capture);  // sondeo o cambio de resolución
         const auto now = std::chrono::steady_clock::now();
         fpsCounter.tick(now);
         emit frameReady(matToQImage(frame));

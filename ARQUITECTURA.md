@@ -79,6 +79,28 @@ Los cambios se **agrupan por propiedad** antes de aplicarse, porque cada
 `set()` cuesta milisegundos en el hilo de captura y arrastrar un deslizador
 llegaba a atascar el vídeo.
 
+**Resolución.** OpenCV tampoco sabe enumerar las resoluciones admitidas, así que
+se sondean igual: se pide cada candidata de una lista estándar y se lee **la que
+la cámara acabó dando** (los backends ajustan a la más cercana sin avisar), sin
+repetidos y restaurando la original al terminar. Medido con una webcam real:
+**~15 s para diez candidatas**, con el vídeo detenido mientras dura, porque cada
+cambio reinicia el flujo de captura. Por eso el sondeo **no es automático**: lo
+lanza el operador con un botón y **el resultado se cachea por cámara** en
+`Settings`, de modo que se paga una sola vez.
+
+Cambiar de resolución tiene efectos que hay que atender o se convierten en
+fallos silenciosos:
+
+- La **calibración px→mm deja de valer** (está sellada con la resolución) — ya
+  existía el aviso, y ahora se dispara también aquí.
+- La **zona de detección** y el **cero fijado del tablero** están en píxeles de
+  imagen: se **reescalan proporcionalmente** (`vision::rescaleRect` /
+  `rescalePoint`) para que sigan señalando el mismo punto de la escena. Las
+  herramientas no necesitan nada: viven en coordenadas de pieza.
+- El reajuste se dispara al detectar que **el frame recibido cambió de tamaño**,
+  no al pedir el cambio: la cámara puede dar una resolución distinta de la
+  solicitada, y así también se cubre que la cambie ella sola.
+
 ---
 
 ## 3. Detección de la pieza (visión clásica)
