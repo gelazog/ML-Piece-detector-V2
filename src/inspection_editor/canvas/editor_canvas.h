@@ -8,6 +8,7 @@
 #include <optional>
 #include <vector>
 
+#include "inspection_editor/canvas/canvas_geometry.h"
 #include "inspection_editor/execution/tool_executor.h"
 #include "vision/board_frame.h"
 #include "inspection_editor/tools/tool_geometry.h"
@@ -140,6 +141,8 @@ protected:
     void leaveEvent(QEvent* event) override;
 
 private:
+    // Estado de vista actual, como transformación probable sin ventana.
+    [[nodiscard]] ViewTransform view() const;
     // Encuadre base (imagen ajustada a la ventana, sin zoom ni desplazamiento).
     [[nodiscard]] QRectF fitRect() const;
     // Encuadre efectivo = fitRect con el zoom y el desplazamiento aplicados.

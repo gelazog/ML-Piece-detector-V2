@@ -1,5 +1,7 @@
 #include "inspection_editor/canvas/editor_canvas.h"
 
+#include "inspection_editor/canvas/canvas_geometry.h"
+
 #include <QFontMetrics>
 #include <QMouseEvent>
 #include <QPainter>
@@ -50,136 +52,6 @@ QColor toolColor(ToolType type) {
     return Qt::white;
 }
 
-double distanceToSegment(const cv::Point2f& p, const cv::Point2f& a, const cv::Point2f& b) {
-    const cv::Point2f ab = b - a;
-    const double len2 = static_cast<double>(ab.x) * ab.x + static_cast<double>(ab.y) * ab.y;
-    if (len2 < 1e-9) {
-        return cv::norm(p - a);
-    }
-    const double t = std::clamp(
-        (static_cast<double>(p.x - a.x) * ab.x + static_cast<double>(p.y - a.y) * ab.y) / len2,
-        0.0, 1.0);
-    const cv::Point2f proj = a + ab * static_cast<float>(t);
-    return cv::norm(p - proj);
-}
-
-// Puntos representativos de una geometría (coords de pieza) para el marco de
-// selección múltiple.
-std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
-    return std::visit(
-        [](const auto& g) -> std::vector<cv::Point2f> {
-            using T = std::decay_t<decltype(g)>;
-            if constexpr (std::is_same_v<T, CaliperGeometry> ||
-                          std::is_same_v<T, EdgeFlawGeometry> ||
-                          std::is_same_v<T, RulerGeometry>) {
-                return {g.p0, g.p1};
-            } else if constexpr (std::is_same_v<T, CircleGeometry> ||
-                                 std::is_same_v<T, BlobGeometry>) {
-                return {g.center};
-            } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
-                return {g.a0, g.a1, g.b0, g.b1};
-            } else if constexpr (std::is_same_v<T, AngleGeometry>) {
-                return {g.vertex, g.end0, g.end1};
-            } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
-                return g.vertices;
-            } else if constexpr (std::is_same_v<T, PositionGeometry>) {
-                return {g.point};
-            } else {
-                return {g.lineA, g.lineB};
-            }
-        },
-        geometry);
-}
-
-// Puntos-manija editables de una geometría (coords de pieza), en orden fijo.
-// Cada manija se puede arrastrar por separado. Casos especiales: la 2ª manija
-// del círculo es el radio (centro + (r,0)); la 2ª del blob es una esquina que
-// redimensiona el rectángulo de forma simétrica respecto al centro.
-std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
-    return std::visit(
-        [](const auto& g) -> std::vector<cv::Point2f> {
-            using T = std::decay_t<decltype(g)>;
-            if constexpr (std::is_same_v<T, CaliperGeometry> ||
-                          std::is_same_v<T, EdgeFlawGeometry> ||
-                          std::is_same_v<T, RulerGeometry>) {
-                return {g.p0, g.p1};
-            } else if constexpr (std::is_same_v<T, CircleGeometry>) {
-                return {g.center, g.center + cv::Point2f(g.radius, 0.0F)};
-            } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
-                return {g.lineA, g.lineB, g.scanA, g.scanB};
-            } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
-                return {g.a0, g.a1, g.b0, g.b1};
-            } else if constexpr (std::is_same_v<T, AngleGeometry>) {
-                return {g.vertex, g.end0, g.end1};
-            } else if constexpr (std::is_same_v<T, BlobGeometry>) {
-                return {g.center,
-                        g.center + cv::Point2f(g.width / 2.0F, g.height / 2.0F)};
-            } else if constexpr (std::is_same_v<T, PositionGeometry>) {
-                return {g.point};  // una sola manija: el rasgo marcado
-            } else {  // PolyBlobGeometry
-                return g.vertices;
-            }
-        },
-        geometry);
-}
-
-// Reposiciona una sola manija (coords de pieza); el índice corresponde al orden
-// de handlePoints. Mantiene coherente la geometría (radio y tamaños mínimos).
-void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
-    std::visit(
-        [&](auto& g) {
-            using T = std::decay_t<decltype(g)>;
-            if constexpr (std::is_same_v<T, CaliperGeometry> ||
-                          std::is_same_v<T, EdgeFlawGeometry> ||
-                          std::is_same_v<T, RulerGeometry>) {
-                if (handle == 0) {
-                    g.p0 = q;
-                } else {
-                    g.p1 = q;
-                }
-            } else if constexpr (std::is_same_v<T, CircleGeometry>) {
-                if (handle == 0) {
-                    g.center = q;
-                } else {
-                    g.radius = std::max(4.0F, static_cast<float>(cv::norm(q - g.center)));
-                }
-            } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
-                switch (handle) {
-                    case 0: g.lineA = q; break;
-                    case 1: g.lineB = q; break;
-                    case 2: g.scanA = q; break;
-                    default: g.scanB = q; break;
-                }
-            } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
-                switch (handle) {
-                    case 0: g.a0 = q; break;
-                    case 1: g.a1 = q; break;
-                    case 2: g.b0 = q; break;
-                    default: g.b1 = q; break;
-                }
-            } else if constexpr (std::is_same_v<T, AngleGeometry>) {
-                switch (handle) {
-                    case 0: g.vertex = q; break;
-                    case 1: g.end0 = q; break;
-                    default: g.end1 = q; break;
-                }
-            } else if constexpr (std::is_same_v<T, BlobGeometry>) {
-                if (handle == 0) {
-                    g.center = q;
-                } else {
-                    g.width = std::max(8.0F, 2.0F * std::abs(q.x - g.center.x));
-                    g.height = std::max(8.0F, 2.0F * std::abs(q.y - g.center.y));
-                }
-            } else if constexpr (std::is_same_v<T, PositionGeometry>) {
-                g.point = q;
-            } else {  // PolyBlobGeometry
-                if (handle >= 0 && handle < static_cast<int>(g.vertices.size())) {
-                    g.vertices[static_cast<std::size_t>(handle)] = q;
-                }
-            }
-        },
-        geometry);
-}
 
 }  // namespace
 
@@ -394,40 +266,27 @@ void EditorCanvas::setEditingLocked(bool locked) {
     update();
 }
 
+// La aritmética de la vista vive en ViewTransform (canvas_geometry), que sí se
+// puede probar sin ventana; el widget solo le pasa su estado actual. Antes
+// estaba aquí dentro y era la parte del trazado sin red de pruebas.
+ViewTransform EditorCanvas::view() const {
+    return ViewTransform(cv::Size(image_.width(), image_.height()),
+                         cv::Size(width(), height()), zoom_, cv::Point2d(pan_.x(), pan_.y()));
+}
+
 QRectF EditorCanvas::fitRect() const {
-    if (image_.isNull()) {
-        return {};
-    }
-    QSizeF target = image_.size();
-    target.scale(size(), Qt::KeepAspectRatio);
-    QRectF rect(QPointF(0, 0), target);
-    rect.moveCenter(QRectF(this->rect()).center());
-    return rect;
+    const ViewRect fit = view().fitRect();
+    return {fit.x, fit.y, fit.width, fit.height};
 }
 
 QRectF EditorCanvas::targetRect() const {
-    const QRectF fit = fitRect();
-    if (fit.isEmpty()) {
-        return fit;
-    }
-    QRectF scaled(0.0, 0.0, fit.width() * zoom_, fit.height() * zoom_);
-    // El límite se aplica aquí (no solo al arrastrar) para que redimensionar la
-    // ventana tampoco pueda dejar la imagen fuera de vista.
-    scaled.moveCenter(fit.center() + clampedPan(pan_));
-    return scaled;
+    const ViewRect target = view().targetRect();
+    return {target.x, target.y, target.width, target.height};
 }
 
 QPointF EditorCanvas::clampedPan(const QPointF& pan) const {
-    const QRectF fit = fitRect();
-    if (fit.isEmpty()) {
-        return {};
-    }
-    // Margen que se puede desplazar en cada eje sin descubrir el fondo. Si con
-    // el zoom actual la imagen sigue cabiendo en ese eje, el margen es 0 y la
-    // imagen queda centrada.
-    const double maxX = std::max(0.0, (fit.width() * zoom_ - width()) / 2.0);
-    const double maxY = std::max(0.0, (fit.height() * zoom_ - height()) / 2.0);
-    return {std::clamp(pan.x(), -maxX, maxX), std::clamp(pan.y(), -maxY, maxY)};
+    const cv::Point2d clamped = view().clampedPan(cv::Point2d(pan.x(), pan.y()));
+    return {clamped.x, clamped.y};
 }
 
 void EditorCanvas::restoreCursor() {
@@ -547,18 +406,12 @@ void EditorCanvas::resizeEvent(QResizeEvent* event) {
 }
 
 QPointF EditorCanvas::imageToWidget(const cv::Point2f& p) const {
-    const QRectF target = targetRect();
-    const double sx = target.width() / image_.width();
-    const double sy = target.height() / image_.height();
-    return {target.left() + p.x * sx, target.top() + p.y * sy};
+    const cv::Point2d widgetPoint = view().imageToWidget(p);
+    return {widgetPoint.x, widgetPoint.y};
 }
 
 cv::Point2f EditorCanvas::widgetToImage(const QPointF& p) const {
-    const QRectF target = targetRect();
-    const double sx = image_.width() / target.width();
-    const double sy = image_.height() / target.height();
-    return {static_cast<float>((p.x() - target.left()) * sx),
-            static_cast<float>((p.y() - target.top()) * sy)};
+    return view().widgetToImage(cv::Point2d(p.x(), p.y()));
 }
 
 cv::Point2f EditorCanvas::toImg(const cv::Point2f& piecePoint) const {
@@ -569,57 +422,19 @@ int EditorCanvas::hitTest(const cv::Point2f& p) const {
     if (tools_ == nullptr) {
         return -1;
     }
-    constexpr double kThreshold = 14.0;  // zona de clic generosa
+    // Zona de clic generosa, en píxeles de PANTALLA: es la distancia que ve el
+    // operador, no la que mide la imagen (ver pickTolerance).
+    constexpr double kThresholdOnScreen = 14.0;
     int best = -1;
-    double bestDistance = kThreshold;
+    double bestDistance = pickTolerance(kThresholdOnScreen, displayScale());
 
     for (int i = 0; i < static_cast<int>(tools_->size()); ++i) {
         const auto& tool = (*tools_)[static_cast<std::size_t>(i)];
         if (tool.deleted) {
             continue;
         }
-        double d = 1e9;
-        std::visit(
-            [&](const auto& g) {
-                using T = std::decay_t<decltype(g)>;
-                if constexpr (std::is_same_v<T, CaliperGeometry> ||
-                              std::is_same_v<T, EdgeFlawGeometry> ||
-                              std::is_same_v<T, RulerGeometry>) {
-                    d = distanceToSegment(p, toImg(g.p0), toImg(g.p1));
-                } else if constexpr (std::is_same_v<T, CircleGeometry>) {
-                    d = std::abs(cv::norm(p - toImg(g.center)) - g.radius);
-                } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
-                    d = std::min(distanceToSegment(p, toImg(g.lineA), toImg(g.lineB)),
-                                 distanceToSegment(p, toImg(g.scanA), toImg(g.scanB)));
-                } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
-                    d = std::min(distanceToSegment(p, toImg(g.a0), toImg(g.a1)),
-                                 distanceToSegment(p, toImg(g.b0), toImg(g.b1)));
-                } else if constexpr (std::is_same_v<T, AngleGeometry>) {
-                    d = std::min(distanceToSegment(p, toImg(g.vertex), toImg(g.end0)),
-                                 distanceToSegment(p, toImg(g.vertex), toImg(g.end1)));
-                } else if constexpr (std::is_same_v<T, BlobGeometry>) {
-                    const float hw = g.width / 2.0F;
-                    const float hh = g.height / 2.0F;
-                    const cv::Point2f c[4] = {
-                        toImg(g.center + cv::Point2f(-hw, -hh)),
-                        toImg(g.center + cv::Point2f(hw, -hh)),
-                        toImg(g.center + cv::Point2f(hw, hh)),
-                        toImg(g.center + cv::Point2f(-hw, hh))};
-                    for (int k = 0; k < 4; ++k) {
-                        d = std::min(d, distanceToSegment(p, c[k], c[(k + 1) % 4]));
-                    }
-                } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
-                    const std::size_t n = g.vertices.size();
-                    for (std::size_t k = 0; k < n; ++k) {
-                        d = std::min(d, distanceToSegment(p, toImg(g.vertices[k]),
-                                                          toImg(g.vertices[(k + 1) % n])));
-                    }
-                } else if constexpr (std::is_same_v<T, PositionGeometry>) {
-                    d = cv::norm(p - toImg(g.point));  // un punto: distancia directa
-                }
-            },
-            tool.geometry);
-        if (d < bestDistance) {
+        if (const double d = distanceToGeometry(tool.geometry, fixture_, p);
+            d < bestDistance) {
             bestDistance = d;
             best = i;
         }
@@ -636,18 +451,12 @@ int EditorCanvas::hitHandle(const cv::Point2f& imagePoint) const {
     if (tool.deleted) {
         return -1;
     }
-    constexpr double kHandleRadius = 9.0;  // zona de agarre de la manija (px imagen)
-    int best = -1;
-    double bestDistance = kHandleRadius;
-    const auto handles = handlePoints(tool.geometry);
-    for (int i = 0; i < static_cast<int>(handles.size()); ++i) {
-        const double d = cv::norm(imagePoint - toImg(handles[static_cast<std::size_t>(i)]));
-        if (d < bestDistance) {
-            bestDistance = d;
-            best = i;
-        }
-    }
-    return best;
+    // La manija se dibuja de 7×7 px de pantalla; se agarra desde algo más para
+    // no exigir puntería, pero también en píxeles de pantalla, para que la zona
+    // de agarre siga a lo que se ve con cualquier zoom.
+    constexpr double kHandleRadiusOnScreen = 9.0;
+    return pickHandle(tool.geometry, fixture_,
+                      imagePoint, pickTolerance(kHandleRadiusOnScreen, displayScale()));
 }
 
 std::optional<cv::Point2f> EditorCanvas::snapEdge(const cv::Point2f& cursor,
@@ -830,7 +639,10 @@ void EditorCanvas::finishMarquee(const cv::Point2f& releasePoint) {
         return;
     }
 
-    if (cv::norm(releasePoint - dragStart_) < 6.0) {
+    // Distinguir un clic de un arrastre depende de cuánto movió la mano, no de
+    // cuántos píxeles de imagen recorrió: en píxeles de pantalla, para que el
+    // gesto signifique lo mismo con cualquier zoom.
+    if (cv::norm(releasePoint - dragStart_) < pickTolerance(6.0, displayScale())) {
         // Clic simple en vacío: deseleccionar.
         multiSelected_.clear();
         if (selected_ != -1) {
@@ -920,8 +732,14 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
     // clic añade un vértice; hacer clic cerca del primero (con >= 3 vértices)
     // cierra el polígono y crea la herramienta.
     if (createType_.has_value() && *createType_ == ToolType::PolyBlob) {
+        // El punto de cierre se dibuja de 4 px de pantalla, así que su zona de
+        // clic también se mide en pantalla: con el zoom alto, 12 px de imagen
+        // eran casi 50 en pantalla y cerraban el polígono al intentar poner un
+        // vértice cerca del inicio.
+        constexpr double kCloseOnScreen = 12.0;
         if (pendingPolygon_.size() >= 3 &&
-            cv::norm(toImg(pendingPolygon_.front()) - p) < 12.0) {
+            cv::norm(toImg(pendingPolygon_.front()) - p) <
+                pickTolerance(kCloseOnScreen, displayScale())) {
             PolyBlobGeometry g;
             g.vertices = pendingPolygon_;
             pendingPolygon_.clear();
@@ -934,7 +752,11 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         return;
     }
 
-    if (!createType_.has_value() || cv::norm(p - dragStart_) < 8.0) {
+    // También en píxeles de pantalla: con el zoom alto, un trazo corto pero
+    // intencionado (una herramienta pequeña dibujada con precisión) superaba
+    // los 8 px de pantalla pero no los 8 de imagen, y se descartaba en silencio.
+    if (!createType_.has_value() ||
+        cv::norm(p - dragStart_) < pickTolerance(8.0, displayScale())) {
         snapImg_.reset();
         return;  // arrastre demasiado corto: ignorado
     }

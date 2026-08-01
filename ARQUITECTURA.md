@@ -198,6 +198,41 @@ lo que cae dentro de su ventana de escaneo. Una muesca más profunda que esa
 ventana pasa desapercibida y la desviación vuelve a salir baja; hay que subir el
 parámetro si se esperan defectos grandes.
 
+### El trazado: por qué las tolerancias van en píxeles de pantalla
+
+La aritmética del lienzo vive en `canvas/canvas_geometry.*`, **fuera del
+widget** y sin Qt, para poder probarla sin abrir una ventana: `ViewTransform`
+(ajuste, zoom, límite del desplazamiento y las dos conversiones
+pantalla↔imagen), las manijas de cada tipo de herramienta y la distancia de un
+clic a una geometría.
+
+La regla que gobierna todo lo que el operador *toca* es esta: **la zona de clic
+se mide en píxeles de PANTALLA y se traduce a píxeles de imagen dividiendo por
+la escala de la vista** (`pickTolerance`). Suena obvio y no lo era: las
+tolerancias estaban fijadas en píxeles de imagen mientras las manijas se
+dibujan siempre del mismo tamaño en pantalla, así que solo coincidían al 100 %
+de zoom. Medido en el propio widget con una imagen de 1920×1080 en una ventana
+de 900×640, al zoom máximo la escala es **9,375 px de pantalla por px de
+imagen**, de modo que:
+
+- una manija de 7 px dibujados se agarraba desde **84 px de distancia** — un
+  clic en un sitio visiblemente vacío deformaba la herramienta;
+- el punto de cierre del blob poligonal atrapaba desde ~112 px, así que poner
+  un vértice cerca del inicio cerraba el polígono sin querer;
+- un trazo intencionado de 30 px no llegaba al mínimo de 8 px de imagen (75 de
+  pantalla) y la herramienta **no se creaba, sin aviso**.
+
+Con una imagen grande en una ventana pequeña pasaba lo contrario: la manija que
+se ve no se podía agarrar. Los cuatro umbrales (selección, manija, cierre del
+polígono y mínimo de arrastre) están ahora en píxeles de pantalla, y hay
+pruebas que fijan que la zona de agarre sea la misma con cualquier zoom.
+
+Otro contrato que se cerró aquí: **`setHandlePoint` con un índice fuera de rango
+no toca nada**. Antes caía en la rama por defecto de cada tipo y movía la última
+manija (cambiaba el radio, redimensionaba el blob), que es el fallo silencioso
+que aparece cuando un arrastre sobrevive a un cambio de selección o a un
+deshacer y el índice ya no corresponde a esa geometría.
+
 ---
 
 ## 6. Tablero de referencia y modos de medición
