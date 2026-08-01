@@ -96,7 +96,13 @@ double distanceToSegment(const cv::Point2f& p, const cv::Point2f& a, const cv::P
 }
 
 // Puntos representativos de una geometría (coords de pieza) para el marco de
-// selección múltiple.
+// selección múltiple: basta con que UNO caiga dentro del marco.
+//
+// Por eso tienen que cubrir la FORMA DIBUJADA, no solo su ancla. Con el círculo
+// y el blob solo se devolvía el centro, así que un marco trazado sobre el
+// anillo o sobre un lado del rectángulo —encima de lo que el operador ve— no
+// seleccionaba nada; y del Punto-Línea faltaba el segmento de escaneo, que sí
+// se dibuja y sí tiene manija.
 std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
     return std::visit(
         [](const auto& g) -> std::vector<cv::Point2f> {
@@ -105,9 +111,20 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
                           std::is_same_v<T, EdgeFlawGeometry> ||
                           std::is_same_v<T, RulerGeometry>) {
                 return {g.p0, g.p1};
-            } else if constexpr (std::is_same_v<T, CircleGeometry> ||
-                                 std::is_same_v<T, BlobGeometry>) {
-                return {g.center};
+            } else if constexpr (std::is_same_v<T, CircleGeometry>) {
+                return {g.center,
+                        g.center + cv::Point2f(-g.radius, 0.0F),
+                        g.center + cv::Point2f(g.radius, 0.0F),
+                        g.center + cv::Point2f(0.0F, -g.radius),
+                        g.center + cv::Point2f(0.0F, g.radius)};
+            } else if constexpr (std::is_same_v<T, BlobGeometry>) {
+                const float hw = g.width / 2.0F;
+                const float hh = g.height / 2.0F;
+                return {g.center,
+                        g.center + cv::Point2f(-hw, -hh),
+                        g.center + cv::Point2f(hw, -hh),
+                        g.center + cv::Point2f(hw, hh),
+                        g.center + cv::Point2f(-hw, hh)};
             } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
                 return {g.a0, g.a1, g.b0, g.b1};
             } else if constexpr (std::is_same_v<T, AngleGeometry>) {
@@ -117,7 +134,7 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
             } else if constexpr (std::is_same_v<T, PositionGeometry>) {
                 return {g.point};
             } else {
-                return {g.lineA, g.lineB};
+                return {g.lineA, g.lineB, g.scanA, g.scanB};
             }
         },
         geometry);

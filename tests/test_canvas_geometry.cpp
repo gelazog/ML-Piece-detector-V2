@@ -343,6 +343,87 @@ TEST(Handles, PolyBlobHandlesFollowItsVertices) {
     EXPECT_EQ(std::get<PolyBlobGeometry>(g).vertices.size(), 5U);  // no añade ni quita
 }
 
+// Regla del marco de selección: queda seleccionada la herramienta con ALGÚN
+// punto de referencia dentro. Se comprueba tal cual, porque es lo que hace el
+// widget al soltar el marco.
+namespace {
+
+bool marqueeSelects(const ToolGeometry& geometry, const pci::vision::Fixture& fixture,
+                    cv::Point2f corner0, cv::Point2f corner1) {
+    const float left = std::min(corner0.x, corner1.x);
+    const float right = std::max(corner0.x, corner1.x);
+    const float top = std::min(corner0.y, corner1.y);
+    const float bottom = std::max(corner0.y, corner1.y);
+    for (const auto& piecePoint : referencePoints(geometry)) {
+        const cv::Point2f q = pci::vision::toImageCoords(fixture, piecePoint);
+        if (q.x >= left && q.x <= right && q.y >= top && q.y <= bottom) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
+TEST(Marquee, ASquareDrawnOverWhatYouSeeSelectsTheTool) {
+    // El fallo real: con solo el centro como punto de referencia, un marco
+    // trazado sobre el anillo del círculo o sobre un lado del blob —justo donde
+    // el operador ve la herramienta— no seleccionaba nada.
+    const ToolGeometry circle = CircleGeometry{{500.0F, 500.0F}, 200.0F, 12.0F, 36};
+    EXPECT_TRUE(marqueeSelects(circle, identity(), {650.0F, 450.0F}, {750.0F, 550.0F}))
+        << "marco sobre el borde derecho del anillo";
+    EXPECT_TRUE(marqueeSelects(circle, identity(), {450.0F, 250.0F}, {550.0F, 350.0F}))
+        << "marco sobre el borde superior del anillo";
+    EXPECT_TRUE(marqueeSelects(circle, identity(), {400.0F, 400.0F}, {600.0F, 600.0F}))
+        << "marco sobre el centro (seguía funcionando)";
+    // Y un marco lejos del círculo sigue sin seleccionarlo.
+    EXPECT_FALSE(marqueeSelects(circle, identity(), {900.0F, 900.0F}, {1000.0F, 1000.0F}));
+    // Tampoco el hueco interior, donde no hay nada dibujado.
+    EXPECT_FALSE(marqueeSelects(circle, identity(), {560.0F, 560.0F}, {620.0F, 620.0F}));
+
+    const ToolGeometry blob = BlobGeometry{{300.0F, 300.0F}, 200.0F, 100.0F, 20.0F, true};
+    EXPECT_TRUE(marqueeSelects(blob, identity(), {380.0F, 330.0F}, {420.0F, 370.0F}))
+        << "marco sobre la esquina inferior derecha";
+    EXPECT_FALSE(marqueeSelects(blob, identity(), {700.0F, 700.0F}, {800.0F, 800.0F}));
+
+    const ToolGeometry pointToLine = PointToLineGeometry{
+        {0.0F, 0.0F}, {100.0F, 0.0F}, {50.0F, 60.0F}, {50.0F, 120.0F}};
+    EXPECT_TRUE(marqueeSelects(pointToLine, identity(), {40.0F, 100.0F}, {60.0F, 140.0F}))
+        << "marco sobre el segmento de escaneo, que también se dibuja";
+}
+
+TEST(Marquee, TheSelectionFrameFollowsTheRotatedPiece) {
+    const ToolGeometry circle = CircleGeometry{{100.0F, 0.0F}, 40.0F, 12.0F, 36};
+    const auto f = fixtureAt({640.0F, 360.0F}, 90.0);
+    // Con la pieza girada 90°, el borde derecho del círculo en coords de pieza
+    // aparece en otro sitio de la imagen; el marco debe seguirlo.
+    const cv::Point2f edge = pci::vision::toImageCoords(f, {140.0F, 0.0F});
+    EXPECT_TRUE(marqueeSelects(circle, f, edge - cv::Point2f(10.0F, 10.0F),
+                               edge + cv::Point2f(10.0F, 10.0F)));
+}
+
+TEST(Marquee, EveryReferencePointIsAPointYouCanSee) {
+    // Coherencia: los puntos de referencia deben caer SOBRE la herramienta
+    // dibujada (distancia ~0 a su geometría) o ser su centro. Si alguno cayera
+    // fuera, el marco seleccionaría cosas que el operador no está encuadrando.
+    const std::vector<std::pair<ToolGeometry, cv::Point2f>> withCenters = {
+        {CircleGeometry{{500.0F, 500.0F}, 200.0F, 12.0F, 36}, {500.0F, 500.0F}},
+        {BlobGeometry{{300.0F, 300.0F}, 200.0F, 100.0F, 20.0F, true}, {300.0F, 300.0F}},
+        {CaliperGeometry{{10.0F, 10.0F}, {90.0F, 10.0F}, 10.0F}, {10.0F, 10.0F}},
+        {AngleGeometry{{0.0F, 0.0F}, {50.0F, 0.0F}, {0.0F, 50.0F}}, {0.0F, 0.0F}},
+        {PointToLineGeometry{{0.0F, 0.0F}, {100.0F, 0.0F}, {50.0F, 60.0F}, {50.0F, 120.0F}},
+         {0.0F, 0.0F}},
+    };
+    for (const auto& [geometry, center] : withCenters) {
+        for (const auto& p : referencePoints(geometry)) {
+            const bool onTheShape = distanceToGeometry(geometry, identity(), p) < 1e-3;
+            const bool isTheCenter = cv::norm(p - center) < 1e-3;
+            EXPECT_TRUE(onTheShape || isTheCenter)
+                << "punto (" << p.x << ", " << p.y << ") ni está sobre la forma ni es su ancla";
+        }
+    }
+}
+
 TEST(Handles, ReferencePointsCoverEveryTypeWithoutBeingEmpty) {
     const std::vector<ToolGeometry> geometries = {
         CaliperGeometry{}, CircleGeometry{}, PointToLineGeometry{}, EdgeFlawGeometry{},
@@ -623,6 +704,65 @@ TEST(CanvasStress, ARandomWalkOfViewChangesKeepsTheViewValid) {
         ASSERT_LE(center.x, image.width + 0.5F) << "paso " << step;
         ASSERT_GE(center.y, -0.5F) << "paso " << step;
         ASSERT_LE(center.y, image.height + 0.5F) << "paso " << step;
+    }
+}
+
+TEST(CanvasStress, MovingAToolNeverDeformsIt) {
+    // Invariante que vale para los diez tipos: arrastrar una herramienta
+    // desplaza TODAS sus manijas por el mismo delta y no cambia nada más. Si un
+    // tipo olvidara un campo (el segmento de escaneo, un vértice), la
+    // herramienta se deformaría al moverla y mediría otra cosa sin avisar.
+    const std::vector<ToolGeometry> geometries = {
+        CaliperGeometry{{10.0F, 20.0F}, {90.0F, 40.0F}, 10.0F},
+        CircleGeometry{{100.0F, 100.0F}, 40.0F, 12.0F, 36},
+        PointToLineGeometry{{0.0F, 0.0F}, {50.0F, 0.0F}, {25.0F, -20.0F}, {25.0F, 20.0F}},
+        EdgeFlawGeometry{{5.0F, 5.0F}, {60.0F, 8.0F}, 16.0F, 20},
+        BlobGeometry{{100.0F, 100.0F}, 80.0F, 60.0F, 20.0F, true},
+        RulerGeometry{{1.0F, 2.0F}, {3.0F, 4.0F}},
+        LineToLineGeometry{{0.0F, 0.0F}, {40.0F, 0.0F}, {0.0F, 30.0F}, {40.0F, 30.0F}},
+        AngleGeometry{{0.0F, 0.0F}, {40.0F, 0.0F}, {0.0F, 40.0F}},
+        PolyBlobGeometry{{{0.0F, 0.0F}, {20.0F, 0.0F}, {20.0F, 20.0F}, {0.0F, 20.0F}},
+                         20.0F, true},
+        PositionGeometry{{12.0F, 34.0F}, PositionAxis::Radial},
+    };
+    const cv::Point2f delta(37.5F, -12.25F);
+
+    for (const auto& base : geometries) {
+        const auto before = handlePoints(base);
+        ToolGeometry moved = base;
+        translateGeometry(moved, delta);
+        const auto after = handlePoints(moved);
+        ASSERT_EQ(before.size(), after.size());
+        for (std::size_t i = 0; i < before.size(); ++i) {
+            EXPECT_NEAR(after[i].x, before[i].x + delta.x, 1e-3);
+            EXPECT_NEAR(after[i].y, before[i].y + delta.y, 1e-3);
+        }
+        // Y los puntos del marco de selección se mueven igual (mismo recuento).
+        EXPECT_EQ(referencePoints(moved).size(), referencePoints(base).size());
+    }
+}
+
+TEST(CanvasStress, MovingAToolBackAndForthLeavesItWhereItStarted) {
+    // Un arrastre largo aplica cientos de deltas pequeños: si acumularan error,
+    // la herramienta quedaría desplazada tras pasearla y devolverla.
+    std::mt19937 rng(1234);
+    std::uniform_real_distribution<float> stepDist(-9.0F, 9.0F);
+    ToolGeometry g =
+        PolyBlobGeometry{{{100.0F, 100.0F}, {180.0F, 110.0F}, {150.0F, 190.0F}}, 20.0F, true};
+    const auto start = handlePoints(g);
+
+    cv::Point2f total(0.0F, 0.0F);
+    for (int i = 0; i < 2000; ++i) {
+        const cv::Point2f d(stepDist(rng), stepDist(rng));
+        translateGeometry(g, d);
+        total += d;
+    }
+    translateGeometry(g, -total);  // vuelta exacta al punto de partida
+
+    const auto end = handlePoints(g);
+    for (std::size_t i = 0; i < start.size(); ++i) {
+        EXPECT_NEAR(end[i].x, start[i].x, 0.05F);  // deriva de coma flotante acotada
+        EXPECT_NEAR(end[i].y, start[i].y, 0.05F);
     }
 }
 
