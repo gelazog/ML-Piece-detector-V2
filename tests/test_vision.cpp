@@ -793,3 +793,145 @@ TEST(DetectionHardCases, HeavyNoiseDoesNotInventAPiece) {
         EXPECT_LT(analysis.value().contour.area, 480.0 * 640.0 * 0.5);
     }
 }
+
+// ===========================================================================
+//  Estabilizador en SECUENCIAS largas: lo que ve el operador no es un frame
+//  suelto, sino minutos de video. Aqui se vigilan la deriva, la vibracion y el
+//  retardo, que es donde se nota si el estabilizador esta bien ajustado.
+// ===========================================================================
+
+TEST(StabilizerSequences, StillPieceWithNoiseDoesNotDriftOrJitter) {
+    StabilizerOptions options;
+    const Fixture truth{{320.0F, 240.0F}, 30.0};
+    Fixture shown = truth;
+
+    // 300 frames de la pieza QUIETA con ruido de medicion pequeño.
+    unsigned seed = 12345;
+    const auto noise = [&seed](double amplitude) {
+        seed = seed * 1103515245U + 12345U;
+        const double unit = static_cast<double>((seed >> 16) % 2001) / 1000.0 - 1.0;
+        return unit * amplitude;
+    };
+    double maxAngleError = 0.0;
+    double maxPositionError = 0.0;
+    for (int i = 0; i < 300; ++i) {
+        Fixture measured = truth;
+        measured.origin.x += static_cast<float>(noise(1.5));
+        measured.origin.y += static_cast<float>(noise(1.5));
+        measured.angleDeg += noise(1.0);
+        bool flipped = false;
+        shown = stabilizeFixture(shown, measured, options, flipped);
+        EXPECT_FALSE(flipped);
+        maxAngleError = std::max(maxAngleError, std::abs(angleDiff(shown.angleDeg, 30.0)));
+        maxPositionError = std::max(
+            maxPositionError, static_cast<double>(cv::norm(shown.origin - truth.origin)));
+    }
+    // Dentro de la banda muerta la vista queda clavada: nada de deriva lenta.
+    EXPECT_LT(maxAngleError, 2.5) << "el angulo derivo con la pieza quieta";
+    EXPECT_LT(maxPositionError, 5.0) << "la posicion derivo con la pieza quieta";
+}
+
+TEST(StabilizerSequences, SlowRotationIsFollowedWithBoundedLag) {
+    StabilizerOptions options;
+    Fixture shown{{320.0F, 240.0F}, 0.0};
+    double worstLag = 0.0;
+    for (int i = 1; i <= 120; ++i) {
+        const double truthAngle = i * 0.5;  // medio grado por frame
+        const Fixture measured{{320.0F, 240.0F}, truthAngle};
+        bool flipped = false;
+        shown = stabilizeFixture(shown, measured, options, flipped);
+        if (i > 30) {  // tras el arranque, el retardo debe estabilizarse
+            worstLag = std::max(worstLag, std::abs(angleDiff(shown.angleDeg, truthAngle)));
+        }
+    }
+    EXPECT_LT(worstLag, 6.0) << "el seguimiento se quedo demasiado atras";
+}
+
+TEST(StabilizerSequences, SpuriousFlipsAreCorrectedAndReportedForTheCrop) {
+    // Serie realista: pieza casi simetrica cuyo eje principal salta 180 grados
+    // cada pocos frames. Contrato del estabilizador (verificado contra su uso
+    // en MainWindow): el angulo MOSTRADO no salta nunca, y ademas avisa con
+    // flipped180 en los frames afectados para que el llamador rehaga el recorte
+    // normalizado girandolo 180 grados.
+    StabilizerOptions options;
+    Fixture shown{{300.0F, 200.0F}, 40.0};
+    int flipsReported = 0;
+    int flippedFrames = 0;
+    for (int i = 0; i < 200; ++i) {
+        const bool measurementFlipped = (i % 3 == 0);
+        flippedFrames += measurementFlipped ? 1 : 0;
+        Fixture measured{{300.0F, 200.0F}, measurementFlipped ? 40.0 - 180.0 : 40.0};
+        bool flipped = false;
+        shown = stabilizeFixture(shown, measured, options, flipped);
+        flipsReported += flipped ? 1 : 0;
+        EXPECT_EQ(flipped, measurementFlipped) << "aviso fuera de sitio en el frame " << i;
+        EXPECT_LT(std::abs(angleDiff(shown.angleDeg, 40.0)), 5.0)
+            << "salto visible en el frame " << i;
+    }
+    EXPECT_EQ(flipsReported, flippedFrames);
+}
+
+TEST(StabilizerSequences, RoundPieceKeepsItsAngleFrozenForever) {
+    // Anisotropia por debajo del umbral: el eje no es fiable y el angulo debe
+    // quedarse congelado por muchos frames que pasen.
+    StabilizerOptions options;
+    Fixture shown{{100.0F, 100.0F}, 15.0};
+    shown.anisotropy = 0.05;
+    for (int i = 0; i < 150; ++i) {
+        Fixture measured{{100.0F, 100.0F}, static_cast<double>((i * 37) % 360)};
+        measured.anisotropy = 0.05;  // sigue siendo redonda
+        bool flipped = false;
+        shown = stabilizeFixture(shown, measured, options, flipped);
+        EXPECT_NEAR(shown.angleDeg, 15.0, 1e-6) << "frame " << i;
+    }
+}
+
+TEST(StabilizerSequences, JumpToANewPositionSnapsInsteadOfSliding) {
+    // La pieza se cambia por otra colocada lejos: la vista debe llegar de
+    // inmediato, no arrastrarse durante decenas de frames.
+    StabilizerOptions options;
+    Fixture shown{{100.0F, 100.0F}, 0.0};
+    const Fixture measured{{400.0F, 380.0F}, 0.0};
+    bool flipped = false;
+    shown = stabilizeFixture(shown, measured, options, flipped);
+    EXPECT_NEAR(shown.origin.x, 400.0F, 1.0F);
+    EXPECT_NEAR(shown.origin.y, 380.0F, 1.0F);
+}
+
+// El rasgo distintivo es la verdad cuando la pieza es simetrica; comprobar que
+// aguanta una vuelta completa, no solo un par de angulos.
+TEST(OrientationAnchorSequences, HoldsOrientationThroughAFullTurn) {
+    const cv::Point2f center(320.0F, 240.0F);
+    cv::Point2f dot;
+    // Pieza con una marca distintiva; se registra el rasgo en la pose 0.
+    cv::Mat base = drawLPiece({640, 480}, center, 0.0, 40.0F, 40, 220);
+    dot = pci::testhelpers::lPointToImage({3.2F, 0.5F}, center, 0.0, 40.0F);
+    cv::circle(base, cv::Point(cvRound(dot.x), cvRound(dot.y)), 6, cv::Scalar(230),
+               cv::FILLED);
+    PipelineConfig config;
+    config.autoOrient = true;
+    const auto baseAnalysis = analyzeFrame(base, config);
+    ASSERT_TRUE(baseAnalysis.isOk());
+
+    OrientationAnchor anchor;
+    anchor.piecePoint = toPieceCoords(baseAnalysis.value().fixture, dot);
+    anchor.intensity = sampleIntensity(base, dot);
+
+    for (const double theta : {0.0, 45.0, 90.0, 135.0, 180.0, 225.0, 270.0, 315.0}) {
+        cv::Mat frame = drawLPiece({640, 480}, center, theta, 40.0F, 40, 220);
+        const cv::Point2f rotatedDot =
+            pci::testhelpers::lPointToImage({3.2F, 0.5F}, center, theta, 40.0F);
+        cv::circle(frame, cv::Point(cvRound(rotatedDot.x), cvRound(rotatedDot.y)), 6,
+                   cv::Scalar(230), cv::FILLED);
+        auto analysis = analyzeFrame(frame, config);
+        ASSERT_TRUE(analysis.isOk()) << "theta " << theta;
+        ASSERT_TRUE(applyAnchor(frame, anchor, analysis.value()).isOk());
+
+        // Con el rasgo aplicado, el punto marcado debe volver a caer donde se
+        // registro (en coordenadas de PIEZA), sea cual sea la rotacion.
+        const cv::Point2f recovered =
+            toPieceCoords(analysis.value().fixture, rotatedDot);
+        EXPECT_NEAR(recovered.x, anchor.piecePoint.x, 14.0F) << "theta " << theta;
+        EXPECT_NEAR(recovered.y, anchor.piecePoint.y, 14.0F) << "theta " << theta;
+    }
+}

@@ -1284,3 +1284,109 @@ TEST(ToolVerdicts, CalibratedDetailShowsMillimetres) {
     EXPECT_NEAR(result.value().measured, 40.0, 2.0);  // sigue en pixeles
     EXPECT_NE(result.value().detail.find("mm"), std::string::npos) << result.value().detail;
 }
+
+// ===========================================================================
+//  Exportar/importar plantillas con datos limite. El formato usa cv::FileStorage
+//  y ya dio problemas con cadenas raras, asi que conviene apretarlo.
+// ===========================================================================
+
+TEST(TemplateIoEdge, EmptyTemplateRoundTrips) {
+    const std::string json = exportTemplateJson({});
+    const auto back = importTemplateJson(json);
+    ASSERT_TRUE(back.isOk()) << back.error().message;
+    EXPECT_TRUE(back.value().empty());
+}
+
+TEST(TemplateIoEdge, TwoHundredToolsRoundTripInOrder) {
+    std::vector<ToolConfig> tools;
+    for (int i = 0; i < 200; ++i) {
+        ToolConfig config;
+        config.type = (i % 2 == 0) ? ToolType::Ruler : ToolType::Caliper;
+        config.name = "herramienta " + std::to_string(i);
+        config.geometryJson =
+            (i % 2 == 0)
+                ? toJson(ToolGeometry(RulerGeometry{{static_cast<float>(i), 1.0F},
+                                                    {static_cast<float>(i) + 5.0F, 2.0F}}))
+                : toJson(ToolGeometry(CaliperGeometry{{static_cast<float>(i), 0.0F},
+                                                      {static_cast<float>(i) + 20.0F, 0.0F},
+                                                      8.0F}));
+        config.toleranceMin = i * 0.5;
+        config.toleranceMax = i * 0.5 + 3.0;
+        tools.push_back(config);
+    }
+
+    const auto back = importTemplateJson(exportTemplateJson(tools));
+    ASSERT_TRUE(back.isOk()) << back.error().message;
+    ASSERT_EQ(back.value().size(), tools.size());
+    for (std::size_t i = 0; i < tools.size(); ++i) {
+        EXPECT_EQ(back.value()[i].name, tools[i].name) << "posicion " << i;
+        EXPECT_EQ(back.value()[i].type, tools[i].type);
+        EXPECT_DOUBLE_EQ(back.value()[i].toleranceMin, tools[i].toleranceMin);
+        EXPECT_EQ(back.value()[i].id, -1) << "las importadas son nuevas para la pieza";
+    }
+}
+
+// Nombres con comillas, llaves y acentos: el JSON de la plantilla lleva dentro
+// otro JSON (la geometria), asi que es justo donde un escapado flojo rompe.
+TEST(TemplateIoEdge, ExoticNamesSurviveTheRoundTrip) {
+    const std::vector<std::string> names = {
+        "ancho \"critico\"",
+        "cota {con llaves}",
+        "medida 'simple'",
+        "acentuada ñ á é í ó ú",
+        "con\\barra invertida",
+        "con, coma; y punto.",
+    };
+    std::vector<ToolConfig> tools;
+    for (const auto& name : names) {
+        ToolConfig config;
+        config.type = ToolType::Ruler;
+        config.name = name;
+        config.geometryJson = toJson(ToolGeometry(RulerGeometry{{0, 0}, {10, 0}}));
+        config.toleranceMin = 1.0;
+        config.toleranceMax = 20.0;
+        tools.push_back(config);
+    }
+
+    const auto back = importTemplateJson(exportTemplateJson(tools));
+    ASSERT_TRUE(back.isOk()) << back.error().message;
+    ASSERT_EQ(back.value().size(), names.size());
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        EXPECT_EQ(back.value()[i].name, names[i]) << "nombre " << i << " se corrompio";
+    }
+}
+
+TEST(TemplateIoEdge, ExtremeTolerancesAndDisabledFlagSurvive) {
+    ToolConfig config;
+    config.type = ToolType::Blob;
+    config.name = "conteo";
+    config.geometryJson =
+        toJson(ToolGeometry(BlobGeometry{{10.0F, 10.0F}, 40.0F, 30.0F, 25.0F, false}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1.0e9;
+    config.enabled = false;
+
+    const auto back = importTemplateJson(exportTemplateJson({config}));
+    ASSERT_TRUE(back.isOk()) << back.error().message;
+    ASSERT_EQ(back.value().size(), 1U);
+    EXPECT_DOUBLE_EQ(back.value()[0].toleranceMax, 1.0e9);
+    EXPECT_FALSE(back.value()[0].enabled) << "una herramienta apagada no debe reactivarse";
+    auto geometry = geometryFromJson(back.value()[0].type, back.value()[0].geometryJson);
+    ASSERT_TRUE(geometry.isOk());
+    EXPECT_FALSE(std::get<BlobGeometry>(geometry.value()).darkBlobs);
+}
+
+// Un archivo de otra version o manipulado no puede colar herramientas rotas ni
+// tumbar la importacion entera sin explicacion.
+TEST(TemplateIoEdge, ToolWithGeometryOfAnotherTypeIsRejected) {
+    ToolConfig config;
+    config.type = ToolType::Circle;
+    config.name = "circulo mentiroso";
+    // Geometria de Regla declarada como Circulo.
+    config.geometryJson = toJson(ToolGeometry(RulerGeometry{{0, 0}, {10, 0}}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 10.0;
+
+    const auto back = importTemplateJson(exportTemplateJson({config}));
+    EXPECT_FALSE(back.isOk()) << "una geometria que no corresponde al tipo debe rechazarse";
+}
