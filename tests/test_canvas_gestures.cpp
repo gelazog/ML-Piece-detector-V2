@@ -15,6 +15,11 @@
 
 #include <vector>
 
+#include <QDialogButtonBox>
+#include <QPushButton>
+#include <QTableWidget>
+
+#include "inspection_editor/auto_measure_dialog.h"
 #include "inspection_editor/canvas/editor_canvas.h"
 
 using namespace pci::inspection;
@@ -299,6 +304,90 @@ TEST_F(CanvasGestureTest, MeasurementLabelsAreDrawnInsideTheView) {
     EXPECT_GT(fourteen, one * 8)
         << "catorce medidas en la esquina inferior pintan " << fourteen
         << " px frente a " << one << " de una sola: se están yendo fuera de la vista";
+}
+
+
+// ---------------------------------------------------------------------------
+// Diálogo de revisión de la medición automática
+// ---------------------------------------------------------------------------
+
+TEST(AutoMeasureDialogTest, StartsWithEverythingCheckedAndReturnsOnlyWhatStaysChecked) {
+    // Lo normal es querer casi todas, así que revisar consiste en DESMARCAR lo
+    // que sobra. Si empezaran todas vacías, el operador tendría que marcar de
+    // una en una y el botón dejaría de ahorrar trabajo.
+    std::vector<AutoProposal> proposals(3);
+    for (int i = 0; i < 3; ++i) {
+        proposals[static_cast<std::size_t>(i)].config.type = ToolType::Ruler;
+        proposals[static_cast<std::size_t>(i)].config.name = "cota" + std::to_string(i);
+        proposals[static_cast<std::size_t>(i)].measured = 10.0 * (i + 1);
+        proposals[static_cast<std::size_t>(i)].reason = "porque sí";
+    }
+
+    AutoMeasureDialog dialog(proposals);
+    auto* table = dialog.findChild<QTableWidget*>();
+    ASSERT_NE(table, nullptr);
+    ASSERT_EQ(table->rowCount(), 3);
+    for (int row = 0; row < 3; ++row) {
+        EXPECT_EQ(table->item(row, 0)->checkState(), Qt::Checked);
+    }
+
+    // Se desmarca la del medio y se acepta.
+    table->item(1, 0)->setCheckState(Qt::Unchecked);
+    dialog.accept();
+    const auto accepted = dialog.accepted();
+    ASSERT_EQ(accepted.size(), 2U);
+    EXPECT_EQ(accepted[0].config.name, "cota0");
+    EXPECT_EQ(accepted[1].config.name, "cota2");
+}
+
+TEST(AutoMeasureDialogTest, CancellingInsertsNothing) {
+    std::vector<AutoProposal> proposals(2);
+    proposals[0].config.name = "a";
+    proposals[1].config.name = "b";
+    AutoMeasureDialog dialog(proposals);
+    dialog.reject();
+    EXPECT_TRUE(dialog.accepted().empty()) << "cancelar no puede insertar nada";
+}
+
+TEST(AutoMeasureDialogTest, TheAcceptButtonSaysHowManyItWillInsert) {
+    // Sin ese número hay que contar las casillas a mano antes de pulsar.
+    std::vector<AutoProposal> proposals(4);
+    for (int i = 0; i < 4; ++i) {
+        proposals[static_cast<std::size_t>(i)].config.name = "c" + std::to_string(i);
+    }
+    AutoMeasureDialog dialog(proposals);
+    auto* table = dialog.findChild<QTableWidget*>();
+    auto* buttons = dialog.findChild<QDialogButtonBox*>();
+    ASSERT_NE(table, nullptr);
+    ASSERT_NE(buttons, nullptr);
+    auto* ok = buttons->button(QDialogButtonBox::Ok);
+    ASSERT_NE(ok, nullptr);
+    EXPECT_TRUE(ok->text().contains("4")) << ok->text().toStdString();
+
+    table->item(0, 0)->setCheckState(Qt::Unchecked);
+    table->item(1, 0)->setCheckState(Qt::Unchecked);
+    EXPECT_TRUE(ok->text().contains("2")) << ok->text().toStdString();
+
+    // Y sin nada marcado no deja aceptar: no tendría efecto.
+    for (int row = 0; row < 4; ++row) {
+        table->item(row, 0)->setCheckState(Qt::Unchecked);
+    }
+    EXPECT_FALSE(ok->isEnabled());
+}
+
+TEST(AutoMeasureDialogTest, TheFullReadingIsKeptInTheTooltip) {
+    // En la celda solo cabe el número, pero un aviso de condiciones de medida
+    // -cámara inclinada, poco contraste- no se puede perder por el camino.
+    std::vector<AutoProposal> proposals(1);
+    proposals[0].config.name = "Ø agujero 1";
+    proposals[0].measured = 70.1;
+    proposals[0].detail = "D=70.1px ⚠ cámara inclinada respecto al plano";
+    proposals[0].reason = "Agujero interno";
+    AutoMeasureDialog dialog(proposals);
+    auto* table = dialog.findChild<QTableWidget*>();
+    ASSERT_NE(table, nullptr);
+    EXPECT_TRUE(table->item(0, 2)->toolTip().contains("inclinada"))
+        << table->item(0, 2)->toolTip().toStdString();
 }
 
 int main(int argc, char** argv) {

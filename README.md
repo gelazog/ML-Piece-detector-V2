@@ -81,7 +81,17 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    principal. Si tus piezas llegan giradas y quieres que las herramientas las
    sigan al rotar, activa **Ver ▸ Seguir rotación de la pieza** (ahí sí
    aplican el rasgo distintivo y la anisotropía).
-3. **Dibujar sobre el video en vivo**: con la pieza detectada, elige una
+3. **Medir automáticamente**: en el editor de plantilla, el botón
+   **Medir automáticamente…** mira la pieza y propone las cotas que encuentra —
+   largo y ancho generales, un círculo por agujero, un arco por redondeo, un
+   espesor por cada par de caras paralelas y un ángulo por esquina. No las
+   inserta a lo loco: abre una lista con **la medida de cada una, su tolerancia
+   sugerida y por qué se propone**, todas marcadas de entrada, y añade solo las
+   que dejes marcadas — en un solo paso que Ctrl+Z deshace entero. Cada
+   propuesta se ha medido de verdad antes de ofrecerse, así que lo que aparece
+   en la lista ya funciona sobre esa pieza.
+
+4. **Dibujar sobre el video en vivo**: con la pieza detectada, elige una
    herramienta en la fila **Dibujar** (cada botón explica en su tooltip qué
    mide y cómo trazarla) y dibuja directamente sobre el video arrastrando el
    mouse — en tiempo real y anclado a la pieza: si la mueves o la giras, las
@@ -383,7 +393,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    cualquier rotación, incluso girada 180°**, cosa que los momentos por sí
    solos no distinguen en piezas simétricas. Se guarda con la pieza y aplica
    al registro, al video en vivo y a la inspección.
-4. **Registrar y activar**: un solo botón — pide el nombre **validando
+5. **Registrar y activar**: un solo botón — pide el nombre **validando
    duplicados al instante** (si la pieza ya existe ofrece guardar como nueva
    versión de su referencia o renombrar), pregunta el **modo de medición** de
    la pieza (y lo aplica ya, para que captures viendo el tablero con el que se
@@ -399,7 +409,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    medidor puro) también puedes registrar: se avisa una vez y la pieza queda
    registrada **solo con herramientas** — se mide con las que dibujes, pero no
    hay comparación de apariencia que detecte defectos inesperados.
-5. **Auto-inspección**: el botón queda activo y la app inspecciona el video
+6. **Auto-inspección**: el botón queda activo y la app inspecciona el video
    continuamente (~1/s): banner **OK/NG** en vivo, resultados por herramienta
    dibujados sobre el video y estadísticas del día en la barra de estado.
    Todo queda en el historial. Se puede prender/apagar cuando quieras con la
@@ -408,7 +418,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    por pieza, con la cantidad a mostrar ajustable y **exportación a CSV**, más
    un **gráfico de tendencia OK/NG por día** (barras dibujadas con QPainter,
    últimos 30 días).
-6. **Guardar plantilla (Ctrl+S)**: las herramientas que dibujas o ajustas en
+7. **Guardar plantilla (Ctrl+S)**: las herramientas que dibujas o ajustas en
    vivo se guardan en la plantilla activa de la pieza **sin tener que volver a
    registrarla** — pulsa **Guardar plantilla** o `Ctrl+S`. Antes solo se
    persistían al registrar; ahora puedes iterar sobre una pieza ya registrada y
@@ -416,7 +426,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    Si hay **cambios sin guardar** y cambias de pieza/plantilla o cierras la app,
    te pregunta **Guardar / Descartar / Cancelar** en vez de perderlos en
    silencio.
-7. **Afinar y aprender**: **Plantilla…** abre el editor para ajustar
+8. **Afinar y aprender**: **Plantilla…** abre el editor para ajustar
    tolerancias con "Probar sobre esta imagen" (los valores medidos te dicen qué
    rangos poner). Con la cámara en marcha, al abrirlo eliges la fuente —
    **frame actual** o **abrir archivo** — y dentro tienes **Actualizar desde

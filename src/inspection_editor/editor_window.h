@@ -65,7 +65,9 @@ private slots:
     void onDeleteClicked();
     void onTestClicked();
     void onSaveClicked();
-    void onRefreshFromCamera();  // recaptura una imagen fresca de la cámara (E1)
+    void onRefreshFromCamera();
+    // Mide la pieza sola y ofrece las cotas encontradas para revisarlas.
+    void onAutoMeasureClicked();  // recaptura una imagen fresca de la cámara (E1)
 
 private:
     void loadExistingTools();

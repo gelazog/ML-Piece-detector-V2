@@ -24,6 +24,8 @@
 #include "camera/camera_controller.h"
 #include "camera/frame_utils.h"
 #include "core/logging.h"
+#include "inspection_editor/auto_measure.h"
+#include "inspection_editor/auto_measure_dialog.h"
 #include "inspection_editor/canvas/tool_icons.h"
 #include "inspection_editor/execution/tool_executor.h"
 #include "repositories/tool_repository.h"
@@ -234,6 +236,13 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     refreshButton_->setEnabled(liveController_ != nullptr);
     sideLayout->addWidget(refreshButton_);
 
+    auto* autoButton = new QPushButton(tr("Medir automáticamente…"), this);
+    autoButton->setToolTip(
+        tr("Mide la pieza sola y propone las cotas que encuentra: dimensiones\n"
+           "generales, agujeros, redondeos, espesores entre caras paralelas y\n"
+           "ángulos de esquina. Se revisan antes de añadirlas."));
+    sideLayout->addWidget(autoButton);
+
     auto* testButton = new QPushButton(tr("Probar sobre esta imagen"), this);
     sideLayout->addWidget(testButton);
 
@@ -268,6 +277,7 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     connect(tolMax_, &QDoubleSpinBox::valueChanged, this, &EditorWindow::onPanelEdited);
     connect(paramSpin_, &QSpinBox::valueChanged, this, &EditorWindow::onPanelEdited);
     connect(deleteButton_, &QPushButton::clicked, this, &EditorWindow::onDeleteClicked);
+    connect(autoButton, &QPushButton::clicked, this, &EditorWindow::onAutoMeasureClicked);
     connect(testButton, &QPushButton::clicked, this, &EditorWindow::onTestClicked);
     connect(saveButton, &QPushButton::clicked, this, &EditorWindow::onSaveClicked);
     connect(refreshButton_, &QPushButton::clicked, this,
@@ -458,6 +468,54 @@ void EditorWindow::syncPanelFromSelection() {
         nameEdit_->clear();
     }
     syncing_ = false;
+}
+
+void EditorWindow::onAutoMeasureClicked() {
+    const cv::Mat image = camera::qImageToMat(reference_);
+    const auto analysis = vision::analyzeFrame(image);
+    if (!analysis.isOk()) {
+        statusLabel_->setText(tr("No se puede medir sola: no se detecta la pieza (%1)")
+                                  .arg(QString::fromStdString(analysis.error().message)));
+        return;
+    }
+
+    // Se mide con el fixture CON EL QUE SE EDITA, no con el que acaba de salir
+    // del análisis: las herramientas se guardan en coordenadas de pieza, y si
+    // se usara otro sistema las propuestas quedarían desplazadas respecto a las
+    // que ya hay en la plantilla.
+    const auto proposals = proposeTools(image, analysis.value().mask, fixture_, {},
+                                        calibration_.mmPerPixel);
+    if (proposals.empty()) {
+        statusLabel_->setText(
+            tr("No se encontró ninguna cota que proponer sobre esta imagen."));
+        return;
+    }
+
+    AutoMeasureDialog dialog(proposals, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        statusLabel_->setText(tr("Medición automática cancelada."));
+        return;
+    }
+    const auto accepted = dialog.accepted();
+    if (accepted.empty()) {
+        return;
+    }
+
+    // Todas de una vez y UN solo estado de deshacer: quitar siete herramientas
+    // con siete Ctrl+Z sería peor que haberlas dibujado a mano.
+    for (const auto& proposal : accepted) {
+        EditedTool tool;
+        tool.geometry = proposal.geometry;
+        tool.config = proposal.config;
+        tools_.push_back(std::move(tool));
+    }
+    commitUndoState();
+    refreshList();
+    canvas_->clearResults();
+    canvas_->update();
+    statusLabel_->setText(tr("Añadidas %1 medidas. Revisa sus tolerancias y guarda; "
+                             "Ctrl+Z las quita todas de una vez.")
+                              .arg(accepted.size()));
 }
 
 void EditorWindow::onToolCreated(const ToolGeometry& geometry) {

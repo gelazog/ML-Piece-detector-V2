@@ -441,6 +441,16 @@ Tres reglas que hacen que la lista sea revisable:
   descartan todas. Y se cortan en doce, ordenadas por tamaño del rasgo:
   cincuenta son tan inútiles como ninguna.
 
+**El botón abre una revisión, no inserta a lo loco** (decisión confirmada con el
+usuario). Insertar directamente es más rápido de programar y peor de usar: deja
+al operador borrando lo que no pidió. El diálogo muestra por fila **qué mide,
+cuánto da sobre esta pieza, su tolerancia sugerida y por qué se propone** —
+quitar cualquiera de esos cuatro datos convierte la revisión en "aceptar todo".
+Vienen todas marcadas, porque lo normal es querer casi todas y así revisar es
+desmarcar; el botón dice **cuántas va a insertar**; y todas entran en **un solo
+paso deshacible**, que quitar siete herramientas con siete Ctrl+Z sería peor que
+haberlas dibujado a mano.
+
 Verificado sobre piezas de medidas conocidas: agujeros de Ø70 y Ø100 se proponen
 como Ø70,1 y Ø100,0; las cuatro esquinas de radio 45 salen como cuatro Arcos; un
 pinchazo de 6 px no genera propuesta.

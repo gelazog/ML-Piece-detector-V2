@@ -16,6 +16,7 @@ target_link_libraries(pci_inspection
 
 # Editor visual (canvas + ventana): la única parte con Qt.
 add_library(pci_editor STATIC
+  auto_measure_dialog.cpp
   canvas/editor_canvas.cpp
   canvas/tool_icons.cpp
   editor_window.cpp

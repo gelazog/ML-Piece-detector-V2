@@ -185,8 +185,8 @@ Formato: casilla, ID, tarea, por qué, algoritmo, archivos, cómo se verifica.
   Verificación: sobre las mismas siluetas sintéticas de A1, las propuestas
   esperadas aparecen y sus medidas coinciden con la geometría dibujada.
 
-- [ ] **A3 — Botón "Medir automáticamente" con revisión.** *(pide
-  confirmación: es un cambio de flujo visible)*. Botón en el editor que ejecuta
+- [x] **A3 — Botón "Medir automáticamente" con revisión.** *(Confirmado por el
+  usuario: diálogo de revisión, no inserción directa.)* Botón en el editor que ejecuta
   A2 sobre el fotograma actual y abre un **diálogo de revisión**: la lista de
   propuestas con casilla, su medida, su tolerancia sugerida y el porqué;
   resaltando en el lienzo la que está seleccionada. Al aceptar, las marcadas se
