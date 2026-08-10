@@ -583,6 +583,12 @@ valor medido para ajustar tolerancias.
 
 Limitaciones conocidas:
 
+- Las herramientas de pieza torneada (Arco, Eje, Rosca, Engranaje) **avisan de
+  las condiciones en las que midieron**: cámara inclinada, borde con poco
+  contraste, arco demasiado corto, filete demasiado pequeño o falta de
+  calibración. No es decoración: estas medidas salen de una silueta 2D y con
+  datos malos dan números creíbles y falsos. Lee el detalle del resultado, no
+  solo el valor.
 - La interacción del editor (ratón) sí tiene pruebas automáticas: `pci_gui_tests`
   renderiza el lienzo fuera de pantalla y le inyecta clics y arrastres, y
   `test_canvas_geometry` cubre la aritmética del trazado (vista, zoom,

@@ -2241,3 +2241,100 @@ TEST(TemplateIoEdge, ToolWithGeometryOfAnotherTypeIsRejected) {
     const auto back = importTemplateJson(exportTemplateJson({config}));
     EXPECT_FALSE(back.isOk()) << "una geometria que no corresponde al tipo debe rechazarse";
 }
+
+// --- Avisos de condiciones de medida ---
+//
+// Estas herramientas dan numeros creibles con datos malos, que es la peor forma
+// de fallar. Los avisos existen para eso; y por eso lo que mas se prueba aqui
+// no es que salten, sino que NO salten cuando no toca: un aviso que sale
+// siempre es un aviso que el operador aprende a ignorar.
+
+namespace {
+
+std::string runCircleDetail(const cv::Mat& gray, double scaleQuality) {
+    const CircleGeometry g{{200.0F, 200.0F}, 60.0F, 15.0F, 72};
+    const auto r = runTool(gray, kIdentity, makeConfig(ToolType::Circle, ToolGeometry(g), 0,
+                                                       1e9),
+                           0.0, LengthUnit::Auto, cv::Mat(), nullptr, scaleQuality);
+    EXPECT_TRUE(r.isOk());
+    return r.isOk() ? r.value().detail : std::string();
+}
+
+// Disco con el contraste que se le pida: 220 sobre 40 es contraluz de libro;
+// 130 sobre 120 es metal brillante mal iluminado.
+cv::Mat discWithContrast(int background, int piece) {
+    cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(background));
+    cv::circle(gray, {200, 200}, 60, cv::Scalar(piece), cv::FILLED, cv::LINE_AA);
+    return gray;
+}
+
+}  // namespace
+
+TEST(MeasuringConditions, ATiltedCameraIsReported) {
+    const cv::Mat gray = discWithContrast(220, 40);
+    const std::string tilted = runCircleDetail(gray, 0.4);
+    std::printf("  calidad 0.40: %s\n", tilted.c_str());
+    EXPECT_NE(tilted.find("inclinada"), std::string::npos) << tilted;
+}
+
+TEST(MeasuringConditions, AGoodCameraPoseIsNotReported) {
+    const cv::Mat gray = discWithContrast(220, 40);
+    const std::string straight = runCircleDetail(gray, 0.95);
+    EXPECT_EQ(straight.find("inclinada"), std::string::npos) << straight;
+}
+
+TEST(MeasuringConditions, UnknownPoseNeverWarns) {
+    // El caso corriente: no hay marcador ArUco, asi que no se SABE como esta la
+    // camara. Avisar ahi seria ruido en cada medicion; antes de este test el
+    // valor por defecto (0) hacia justo eso.
+    const cv::Mat gray = discWithContrast(220, 40);
+    const std::string unknown = runCircleDetail(gray, -1.0);
+    EXPECT_EQ(unknown.find("inclinada"), std::string::npos) << unknown;
+}
+
+TEST(MeasuringConditions, APoorEdgeIsReported) {
+    // Metal brillante con luz frontal: el borde se despega poco del fondo pero
+    // todavia se encuentra. Por debajo de esto ni se detecta, y entonces la
+    // herramienta ya falla con "borde insuficiente" -que tambien informa-.
+    const cv::Mat faint = discWithContrast(150, 120);
+    const std::string detail = runCircleDetail(faint, -1.0);
+    std::printf("  contraste bajo: %s\n", detail.c_str());
+    EXPECT_NE(detail.find("contraste"), std::string::npos) << detail;
+}
+
+TEST(MeasuringConditions, AnUndetectableEdgeFailsBeforeWarning) {
+    // El escalon siguiente: si el borde no llega ni a detectarse no hay medida
+    // que matizar, y la herramienta se niega. Tambien es informar.
+    const cv::Mat invisible = discWithContrast(130, 118);
+    const std::string detail = runCircleDetail(invisible, -1.0);
+    std::printf("  sin borde: %s\n", detail.c_str());
+    EXPECT_NE(detail.find("insuficiente"), std::string::npos) << detail;
+}
+
+TEST(MeasuringConditions, AGoodEdgeIsNotReported) {
+    const cv::Mat crisp = discWithContrast(220, 40);
+    const std::string detail = runCircleDetail(crisp, -1.0);
+    EXPECT_EQ(detail.find("contraste"), std::string::npos) << detail;
+}
+
+TEST(MeasuringConditions, TheWarningsReachTheTurnedPartTools) {
+    // Los mismos avisos tienen que llegar al Eje, la Rosca y el Engranaje, que
+    // son los que mas dependen de un borde limpio y de la perpendicularidad.
+    const cv::Mat shaftScene = drawShaft(80.0, 80.0);
+    const auto shaft = runTool(shaftScene, kIdentity,
+                               makeConfig(ToolType::Shaft, ToolGeometry(shaftAlong(0.0, 90.0)),
+                                          0, 1e9),
+                               0.0, LengthUnit::Auto, cv::Mat(), nullptr, 0.3);
+    ASSERT_TRUE(shaft.isOk());
+    EXPECT_NE(shaft.value().detail.find("inclinada"), std::string::npos)
+        << shaft.value().detail;
+
+    const cv::Mat gearScene = drawGear(20, 260.0, 220.0);
+    const GearGeometry gg{{350.0F, 350.0F}, 200.0F, 290.0F, 720};
+    const auto gear = runTool(gearScene, kIdentity,
+                              makeConfig(ToolType::Gear, ToolGeometry(gg), 0, 1e9), 0.0,
+                              LengthUnit::Auto, cv::Mat(), nullptr, 0.3);
+    ASSERT_TRUE(gear.isOk());
+    EXPECT_NE(gear.value().detail.find("inclinada"), std::string::npos)
+        << gear.value().detail;
+}

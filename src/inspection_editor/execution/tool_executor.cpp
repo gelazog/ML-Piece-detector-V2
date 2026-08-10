@@ -35,6 +35,9 @@ struct Fmt {
     double mmPerPixel = 0.0;
     LengthUnit unit = LengthUnit::Auto;
     cv::Mat imageToMm;
+    // Perpendicularidad de la cámara (0..1) medida por el marcador ArUco.
+    // Negativo = no se sabe.
+    double scaleQuality = -1.0;
 };
 
 std::string fmt2(double value) {
@@ -120,6 +123,42 @@ std::string fmtArea(double px2, const Fmt& f) {
         std::snprintf(buffer, sizeof(buffer), "%.1fmm² (%.0fpx²)", mm2, px2);
     }
     return buffer;
+}
+
+// Avisos comunes a las herramientas que miden diámetros, radios y perfiles.
+//
+// Estas medidas salen de una silueta 2D, y hay dos formas de equivocarse que no
+// se notan en el número: la cámara inclinada -un círculo se ve como elipse y el
+// diámetro sale corto- y un borde sin contraste, donde el "borde" que se
+// detecta no es el de la pieza. Las dos dan resultados creíbles y falsos, que
+// es la peor manera de fallar, así que se dicen.
+//
+// `meanEdgeStrength` es el gradiente medio de los bordes que se usaron; por
+// debajo de ~25 el borde ya es dudoso (`detectEdges` descarta por debajo de 8,
+// y una silueta a contraluz da varios cientos).
+void appendConditionWarnings(std::string& detail, const Fmt& fmt, double meanEdgeStrength) {
+    if (fmt.scaleQuality >= 0.0 && fmt.scaleQuality < 0.75) {
+        detail += " ⚠ cámara inclinada respecto al plano (calidad " +
+                  fmt2(fmt.scaleQuality) + "): los diámetros salen cortos";
+    }
+    if (meanEdgeStrength > 0.0 && meanEdgeStrength < 25.0) {
+        detail += " ⚠ borde de poco contraste (" + fmt2(meanEdgeStrength) +
+                  "): mejora la iluminación, a ser posible a contraluz";
+    }
+}
+
+// Gradiente medio de un conjunto de muestras de perfil.
+template <typename Sample>
+double meanStrength(const std::vector<Sample>& samples) {
+    double sum = 0.0;
+    int n = 0;
+    for (const auto& s : samples) {
+        if (s.found) {
+            sum += s.strength;
+            ++n;
+        }
+    }
+    return n > 0 ? sum / n : 0.0;
 }
 
 bool withinTolerance(const ToolConfig& config, double value) {
@@ -302,6 +341,8 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
 
     const int rays = std::clamp(g.rayCount, 8, 360);
     std::vector<cv::Point2f> points;
+    double circleEdgeStrength = 0.0;
+    int circleEdgeCount = 0;
     for (int k = 0; k < rays; ++k) {
         const double theta = 2.0 * kPi * k / rays;
         const cv::Point2f dir(static_cast<float>(std::cos(theta)),
@@ -311,7 +352,12 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
         const auto edges = detectEdges(gray, from, to, 3.0F, 1);
         if (!edges.empty()) {
             points.push_back(edges[0].point);
+            circleEdgeStrength += std::abs(edges[0].strength);
+            ++circleEdgeCount;
         }
+    }
+    if (circleEdgeCount > 0) {
+        circleEdgeStrength /= circleEdgeCount;
     }
 
     if (static_cast<int>(points.size()) < rays * 6 / 10) {
@@ -359,6 +405,7 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
         result.detail += " (" + std::to_string(discarded) + "/" +
                          std::to_string(points.size()) + " puntos descartados)";
     }
+    appendConditionWarnings(result.detail, fmt, circleEdgeStrength);
     result.overlayPoints = std::move(points);
     result.overlayPoints.push_back(
         {static_cast<float>(cx), static_cast<float>(cy)});
@@ -439,6 +486,7 @@ ToolRunResult runArc(const cv::Mat& gray, const Fixture& fixture, const ToolConf
         result.detail += " (" + std::to_string(discarded) + "/" +
                          std::to_string(points.size()) + " puntos descartados)";
     }
+    appendConditionWarnings(result.detail, fmt, meanStrength(profile));
     result.overlayPoints = std::move(points);
     return result;
 }
@@ -527,6 +575,8 @@ ToolRunResult runShaft(const cv::Mat& gray, const Fixture& fixture, const ToolCo
     if (angleBetween > 0.3) {
         result.detail += ", ángulo entre caras=" + fmt2(angleBetween) + "°";
     }
+    appendConditionWarnings(result.detail, fmt,
+                            (meanStrength(sideA) + meanStrength(sideB)) / 2.0);
 
     result.overlaySegments.push_back({pointsA.front(), pointsA.back()});
     result.overlaySegments.push_back({pointsB.front(), pointsB.back()});
@@ -791,12 +841,12 @@ ToolRunResult runThread(const cv::Mat& gray, const Fixture& fixture, const ToolC
     // los flancos salían emborronados y el ángulo se leía siempre ~62° fuera
     // cual fuera el real. Aquí conviene el perfil crudo.
     constexpr float kThreadThickness = 1.0F;
-    const ThreadSide sideA = buildThreadSide(
-        axialProfile(gray, from, to, ProfileSide::Positive, stations, reach,
-                     kThreadThickness));
-    const ThreadSide sideB = buildThreadSide(
-        axialProfile(gray, from, to, ProfileSide::Negative, stations, reach,
-                     kThreadThickness));
+    const auto rawA = axialProfile(gray, from, to, ProfileSide::Positive, stations, reach,
+                                   kThreadThickness);
+    const auto rawB = axialProfile(gray, from, to, ProfileSide::Negative, stations, reach,
+                                   kThreadThickness);
+    const ThreadSide sideA = buildThreadSide(rawA);
+    const ThreadSide sideB = buildThreadSide(rawB);
     if (!sideA.usable || !sideB.usable) {
         result.detail = "No se ve el perfil de la rosca a los dos lados del eje";
         if (sideA.missing > 0 || sideB.missing > 0) {
@@ -870,6 +920,8 @@ ToolRunResult runThread(const cv::Mat& gray, const Fixture& fixture, const ToolC
         result.detail += " (los dos lados no concuerdan: revisa el eje)";
     }
 
+    appendConditionWarnings(result.detail, fmt,
+                            (meanStrength(rawA) + meanStrength(rawB)) / 2.0);
     result.overlaySegments.push_back({from, to});
     result.overlayPoints.push_back(from + (to - from) * 0.5F);
     return result;
@@ -1018,6 +1070,7 @@ ToolRunResult runGear(const cv::Mat& gray, const Fixture& fixture, const ToolCon
         result.detail += " — el módulo necesita calibración px→mm";
     }
 
+    appendConditionWarnings(result.detail, fmt, meanStrength(profile));
     result.overlayPoints = std::move(tipPoints);
     result.overlayPoints.push_back(center);
     return result;
@@ -1242,9 +1295,9 @@ ToolRunResult runPolyBlob(const cv::Mat& gray, const Fixture& fixture, const Too
 core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture& fixture,
                                     const ToolConfig& config, double mmPerPixel,
                                     LengthUnit unit, const cv::Mat& imageToMm,
-                                    const vision::BoardFrame* board) {
+                                    const vision::BoardFrame* board, double scaleQuality) {
     using ResultT = core::Result<ToolRunResult>;
-    const Fmt fmt{mmPerPixel, unit, imageToMm};
+    const Fmt fmt{mmPerPixel, unit, imageToMm, scaleQuality};
 
     if (image.empty()) {
         return ResultT::err("Imagen vacía");
@@ -1329,13 +1382,14 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
 std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture& fixture,
                                     const std::vector<ToolConfig>& tools, double mmPerPixel,
                                     LengthUnit unit, const cv::Mat& imageToMm,
-                                    const vision::BoardFrame* board) {
+                                    const vision::BoardFrame* board, double scaleQuality) {
     std::vector<ToolRunResult> results;
     for (const auto& config : tools) {
         if (!config.enabled) {
             continue;
         }
-        auto result = runTool(image, fixture, config, mmPerPixel, unit, imageToMm, board);
+        auto result =
+            runTool(image, fixture, config, mmPerPixel, unit, imageToMm, board, scaleQuality);
         if (result.isOk()) {
             results.push_back(std::move(result.value()));
         } else {

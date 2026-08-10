@@ -47,11 +47,18 @@ struct ToolRunResult {
 // usa la herramienta Posición, que mide respecto a su cero. Si no se pasa, se
 // asume un tablero centrado en la propia pieza y alineado con la imagen (en ese
 // caso la desviación de un rasgo es constante: ver toolTypeDescription).
+//
+// scaleQuality (0..1): perpendicularidad de la cámara al plano, tal como la
+// mide el marcador ArUco (`MarkerScale::quality`). Con la cámara inclinada, un
+// círculo se ve como elipse y los diámetros salen cortos, así que las
+// herramientas que miden diámetros o radios avisan cuando baja. 1 = de frente;
+// un valor negativo significa "no se sabe" y no dispara ningún aviso.
 core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture& fixture,
                                     const ToolConfig& config, double mmPerPixel = 0.0,
                                     LengthUnit unit = LengthUnit::Auto,
                                     const cv::Mat& imageToMm = cv::Mat(),
-                                    const vision::BoardFrame* board = nullptr);
+                                    const vision::BoardFrame* board = nullptr,
+                                    double scaleQuality = -1.0);
 
 // Ejecuta todas las herramientas habilitadas; nunca lanza. Los errores de
 // configuración se convierten en resultados NG con el motivo en detail.
@@ -60,7 +67,8 @@ std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture&
                                     double mmPerPixel = 0.0,
                                     LengthUnit unit = LengthUnit::Auto,
                                     const cv::Mat& imageToMm = cv::Mat(),
-                                    const vision::BoardFrame* board = nullptr);
+                                    const vision::BoardFrame* board = nullptr,
+                                    double scaleQuality = -1.0);
 
 // Formatea una longitud en píxeles según la escala y la unidad elegida.
 std::string formatLength(double px, double mmPerPixel, LengthUnit unit);

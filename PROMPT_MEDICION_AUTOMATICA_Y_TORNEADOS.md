@@ -283,7 +283,7 @@ Formato: casilla, ID, tarea, por qué, algoritmo, archivos, cómo se verifica.
   cambiar z.
   Skills: `computer-vision-opencv`, `cpp-testing`.
 
-- [ ] **T5 — Aviso de condiciones de medida.** Estas cinco herramientas dan
+- [x] **T5 — Aviso de condiciones de medida.** Estas cinco herramientas dan
   números creíbles con datos malos, que es la peor forma de fallar. Al
   ejecutarlas, comprobar y avisar en el resultado cuando: no hay calibración
   px→mm y la medida la necesita; `MarkerScale::quality` es baja (cámara

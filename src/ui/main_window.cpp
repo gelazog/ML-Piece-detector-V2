@@ -112,9 +112,12 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                 const vision::BoardFrame board = vision::resolveBoardFrame(
                     boardConfig, *previousFixture, true,
                     cv::Size(image.cols, image.rows));
-                overlay.toolResults = inspection::runTools(image, *previousFixture, tools,
-                                                           mmPerPixel, unit, imageToMm,
-                                                           &board);
+                // La calidad solo significa algo si SE DETECTÓ el marcador:
+                // sin él, el campo vale 0 y las herramientas avisarían de
+                // "cámara inclinada" en cada medición. -1 = no se sabe.
+                overlay.toolResults = inspection::runTools(
+                    image, *previousFixture, tools, mmPerPixel, unit, imageToMm, &board,
+                    overlay.liveMmPerPixel > 0.0 ? overlay.liveScaleQuality : -1.0);
             }
             return overlay;
         }
@@ -174,8 +177,9 @@ AnalysisOverlay buildOverlay(const QImage& frame,
             const vision::BoardFrame board =
                 vision::resolveBoardFrame(boardConfig, analysis.value().fixture, true,
                                           cv::Size(image.cols, image.rows), &bounds);
-            overlay.toolResults = inspection::runTools(image, analysis.value().fixture, tools,
-                                                       mmPerPixel, unit, imageToMm, &board);
+            overlay.toolResults = inspection::runTools(
+                image, analysis.value().fixture, tools, mmPerPixel, unit, imageToMm, &board,
+                overlay.liveMmPerPixel > 0.0 ? overlay.liveScaleQuality : -1.0);
         }
     } catch (const std::exception& e) {
         overlay.valid = false;

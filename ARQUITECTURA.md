@@ -371,6 +371,31 @@ Dos salvaguardas que se ganaron probando:
   operador aprende a ignorar, así que ahora hay un test que exige que **no**
   salte con una rueda normalizada.
 
+### Avisos de condiciones: el fallo que no se ve en el número
+
+Estas herramientas dan resultados **creíbles** con datos malos, que es la peor
+forma de fallar: un diámetro con la cámara inclinada sale corto y nada en el
+número lo delata. Por eso, además de negarse cuando no puede medir, cada
+herramienta de esta familia dice **en qué condiciones midió**:
+
+| Aviso | Cuándo | Por qué importa |
+|---|---|---|
+| Cámara inclinada | `MarkerScale::quality` < 0,75 | Un círculo se ve como elipse y los diámetros salen cortos |
+| Poco contraste | Gradiente medio del borde < 25 | El "borde" detectado no es el de la pieza |
+| Arco corto | Tramo < 30° | Radio y centro son casi indistinguibles |
+| Alcance corto | Un lado del eje sin bordes | La banda no llega a la pieza |
+| Filete pequeño | Altura < 20 px | El ángulo de flanco deja de resolverse |
+| Recuento discrepante | Periodicidad ≠ conteo de picos | Un diente de más o de menos cambia la rueda |
+| Sin calibración | Se pide módulo o designación | En píxeles esos números no existen |
+
+La regla que gobierna todo esto: **un aviso que salta siempre es un aviso que el
+operador aprende a ignorar**, y entonces no avisa de nada. Se ha pagado dos veces
+por no respetarla — el módulo cruzado del engranaje con el divisor a la mitad, y
+la calidad de escala, que vale 0 cuando **no hay marcador** y habría hecho saltar
+"cámara inclinada" en cada medición sin ArUco. Por eso hay un valor explícito de
+**"no se sabe"** que no dispara nada, y por eso la mitad de las pruebas de avisos
+comprueban que **NO** salten cuando no toca.
+
 ### El trazado: por qué las tolerancias van en píxeles de pantalla
 
 La aritmética del lienzo vive en `canvas/canvas_geometry.*`, **fuera del
