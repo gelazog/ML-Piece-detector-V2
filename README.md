@@ -100,6 +100,14 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    - *Blob poligonal*: región de forma libre (clic para marcar vértices, clic
      sobre el primero para cerrar) → mismo conteo que el Blob pero para zonas
      irregulares que un rectángulo no cubre bien.
+   - *Arco*: **radio** de una esquina redondeada o un redondeo. Se marcan tres
+     puntos sobre el arco (los dos extremos con un arrastre y luego el punto
+     por donde pasa), igual que al comprobarlo con una plantilla de radios. El
+     *Círculo* no sirve aquí porque pide un centro y un contorno cerrado, y una
+     esquina no tiene ninguno de los dos. Ojo: **cuanto más corto es el tramo
+     marcado, menos fiable es el radio** — sobre un arco corto el radio y el
+     centro son casi indistinguibles y un error pequeño del borde se amplifica.
+     La herramienta avisa por debajo de 30° de tramo; alarga el arco si puedes.
    - *Regla*: distancia directa entre dos puntos fijos (no busca bordes) —
      con la escala calibrada mide en mm/cm al vuelo.
    - *Línea-Línea*: dos líneas de referencia (se dibujan en dos pasos) → mide el
@@ -538,8 +546,8 @@ valor medido para ajustar tolerancias.
   (diámetro + redondez por mínimos cuadrados sobre rayos), **Punto-Línea**
   (distancia perpendicular), **Borde liso** (desviación máxima respecto a la
   recta ajustada) y **Blob** (conteo por área mínima y polaridad) — más
-  **Regla**, **Línea-Línea**, **Ángulo**, **Blob poligonal** y **Posición**
-  (desviación respecto al cero del tablero). Ver la tabla completa con la
+  **Regla**, **Línea-Línea**, **Ángulo**, **Blob poligonal**, **Posición**
+  (desviación respecto al cero del tablero) y **Arco** (radio de una esquina). Ver la tabla completa con la
   técnica de cada una en [ARQUITECTURA.md](ARQUITECTURA.md#5-herramientas-de-medición).
 - La geometría se guarda **en coordenadas del fixture** (tabla
   `InspectionTools`): si la pieza llega rotada, las herramientas se mueven con

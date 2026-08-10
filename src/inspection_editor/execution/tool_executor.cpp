@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "inspection_editor/execution/edge_detection.h"
+#include "inspection_editor/execution/profiles.h"
 #include "vision/fitting.h"
 #include "vision/plane_scale.h"
 #include "vision/position_fixture.h"
@@ -362,6 +363,84 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
     return result;
 }
 
+ToolRunResult runArc(const cv::Mat& gray, const Fixture& fixture, const ToolConfig& config,
+                     const ArcGeometry& g, const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+    const cv::Point2f start = toImg(fixture, g.start);
+    const cv::Point2f mid = toImg(fixture, g.mid);
+    const cv::Point2f end = toImg(fixture, g.end);
+
+    const vision::ArcSpan guess = vision::circleThroughThreePoints(start, mid, end);
+    if (!guess.valid) {
+        result.detail = "Los tres puntos están alineados: no definen un arco";
+        return result;
+    }
+
+    // Los tres puntos solo sitúan el arco; el radio se mide sobre el BORDE
+    // real, barriendo el sector y ajustando. Quedarse con la circunferencia de
+    // los tres puntos sería medir dónde hizo clic el operador, no la pieza.
+    const int rays = std::clamp(g.rayCount, 5, 180);
+    const double band = std::max(2.0, static_cast<double>(g.searchBand));
+    const auto profile =
+        radialProfileSector(gray, guess.center, std::max(0.0, guess.radius - band),
+                            guess.radius + band, rays, guess.startAngleDeg, guess.sweepDeg);
+
+    std::vector<cv::Point2f> points;
+    points.reserve(profile.size());
+    for (const auto& sample : profile) {
+        if (sample.found) {
+            points.push_back(sample.point);
+        }
+    }
+    if (static_cast<int>(points.size()) < std::max(3, rays * 6 / 10)) {
+        result.detail = "Borde del arco insuficiente (" + std::to_string(points.size()) + "/" +
+                        std::to_string(rays) + " rayos)";
+        return result;
+    }
+
+    const vision::CircleFit fit = vision::fitCircleRobust(points);
+    if (!fit.valid) {
+        result.detail = "No se pudo ajustar el arco";
+        return result;
+    }
+
+    // Error de forma sobre los puntos que contaron, igual que la redondez del
+    // Círculo.
+    const double outlierBand = 3.0 * std::max(fit.rmsResidual, 0.1);
+    double formError = 0.0;
+    int discarded = 0;
+    for (const auto& p : points) {
+        const double deviation = std::abs(cv::norm(p - fit.center) - fit.radius);
+        if (deviation > outlierBand) {
+            ++discarded;
+            continue;
+        }
+        formError = std::max(formError, deviation);
+    }
+
+    // El radio es la medida principal: es lo que lleva el plano y lo que se
+    // compara con una plantilla de radios.
+    result.measured = fit.radius;
+    result.ok = withinTolerance(config, result.measured);
+    const double span = std::abs(guess.sweepDeg);
+    result.detail = "R=" + fmtLen(fit.radius, fmt) + ", D=" + fmtLen(2.0 * fit.radius, fmt) +
+                    ", forma=" + fmtLen(formError, fmt) + ", arco=" + fmt2(span) + "°";
+    // Sobre un arco corto, el radio y el centro son casi indistinguibles: un
+    // error pequeño y sistemático del borde se traduce en un error grande de
+    // radio. Medido sobre un cuadrante perfecto de radio 20, el resultado se
+    // desvía más de un píxel solo por cómo está dibujado el borde. Conviene
+    // decirlo en vez de dar el número a secas.
+    if (span < 30.0) {
+        result.detail += " — arco corto: el radio es poco fiable, alarga el tramo";
+    }
+    if (discarded > 0) {
+        result.detail += " (" + std::to_string(discarded) + "/" +
+                         std::to_string(points.size()) + " puntos descartados)";
+    }
+    result.overlayPoints = std::move(points);
+    return result;
+}
+
 ToolRunResult runPointToLine(const cv::Mat& gray, const Fixture& fixture,
                              const ToolConfig& config, const PointToLineGeometry& g,
                              const Fmt& fmt) {
@@ -638,6 +717,9 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::PolyBlob:
                 return ResultT::ok(runPolyBlob(
                     gray, fixture, config, std::get<PolyBlobGeometry>(geometry.value()), fmt));
+            case ToolType::Arc:
+                return ResultT::ok(runArc(gray, fixture, config,
+                                          std::get<ArcGeometry>(geometry.value()), fmt));
             case ToolType::Position: {
                 // Sin tablero explícito: cero en la pieza y ejes de la imagen.
                 const vision::BoardFrame fallback{fixture.origin, 0.0};

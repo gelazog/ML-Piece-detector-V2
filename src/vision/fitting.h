@@ -49,6 +49,30 @@ struct CircleFit {
 [[nodiscard]] CircleFit fitCircleRobust(const std::vector<cv::Point2f>& points,
                                         int iterations = 5);
 
+// Circunferencia que pasa por tres puntos, con el TRAMO que definen: el arco
+// que va del primero al tercero pasando por el de en medio. Ese punto
+// intermedio es lo que resuelve la ambigüedad — por dos extremos pasan dos
+// arcos, el corto y el largo, y sin decir cuál no se sabe qué radio se está
+// midiendo ni por dónde buscar el borde.
+struct ArcSpan {
+    cv::Point2f center{0.0F, 0.0F};
+    double radius = 0.0;
+    double startAngleDeg = 0.0;  // ángulo del primer punto, medido desde +X
+    // Recorrido con signo desde el primer punto hasta el tercero, pasando por
+    // el intermedio. Positivo = hacia +Y (en imagen, el sentido horario visto
+    // en pantalla). |sweep| < 360.
+    double sweepDeg = 0.0;
+    bool valid = false;  // false si los tres puntos están alineados o repetidos
+};
+
+[[nodiscard]] ArcSpan circleThroughThreePoints(const cv::Point2f& start,
+                                               const cv::Point2f& mid,
+                                               const cv::Point2f& end);
+
+// ¿Cae `angleDeg` dentro del recorrido que arranca en `startAngleDeg`? Sirve
+// para saber si un punto está sobre el arco o más allá de sus extremos.
+[[nodiscard]] bool angleWithinSweep(double angleDeg, double startAngleDeg, double sweepDeg);
+
 struct LineFit {
     cv::Point2f point{0.0F, 0.0F};  // un punto de la recta (el centroide)
     // Dirección unitaria, en forma canónica: x > 0, o x = 0 e y > 0. Una recta

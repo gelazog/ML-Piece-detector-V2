@@ -201,6 +201,7 @@ QString toolTypeLabel(inspection::ToolType type) {
         case inspection::ToolType::Angle: return QStringLiteral("Ángulo");
         case inspection::ToolType::PolyBlob: return QStringLiteral("Blob poligonal");
         case inspection::ToolType::Position: return QStringLiteral("Posición");
+        case inspection::ToolType::Arc: return QStringLiteral("Arco");
     }
     return QStringLiteral("?");
 }

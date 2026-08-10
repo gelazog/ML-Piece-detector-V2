@@ -47,6 +47,14 @@ QIcon moveModeIcon() {
 
 QIcon toolIcon(ToolType type) {
     switch (type) {
+        case ToolType::Arc:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // Un arco con la flecha del radio saliendo de su centro.
+                p.drawArc(QRectF(4, 4, 22, 22), 20 * 16, 140 * 16);
+                p.drawLine(15, 15, 6, 9);
+                p.drawLine(6, 9, 9, 9);
+                p.drawLine(6, 9, 6, 12);
+            });
         case ToolType::Caliper:
             return makeIcon([](QPainter& p, const QColor&) {
                 // Dos mordazas y flecha de distancia entre ellas.

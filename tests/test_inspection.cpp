@@ -696,8 +696,8 @@ ToolConfig makeToolAt(int index, float x, float y) {
     const ToolType types[] = {ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine,
                               ToolType::EdgeFlaw, ToolType::Blob,     ToolType::Ruler,
                               ToolType::LineToLine, ToolType::Angle,  ToolType::PolyBlob,
-                              ToolType::Position};
-    const ToolType type = types[index % 10];
+                              ToolType::Position,   ToolType::Arc};
+    const ToolType type = types[index % 11];
     ToolGeometry geometry;
     switch (type) {
         case ToolType::Caliper:
@@ -705,6 +705,9 @@ ToolConfig makeToolAt(int index, float x, float y) {
             break;
         case ToolType::Circle:
             geometry = CircleGeometry{{x, y}, 18.0F, 6.0F, 24};
+            break;
+        case ToolType::Arc:
+            geometry = ArcGeometry{{x - 18.0F, y}, {x, y - 18.0F}, {x + 18.0F, y}, 6.0F, 16};
             break;
         case ToolType::PointToLine:
             geometry = PointToLineGeometry{{x - 20.0F, y}, {x + 20.0F, y},
@@ -956,6 +959,231 @@ TEST(CaliperSuite, BandWidthAveragesNoisyEdges) {
 }
 
 // --- Circulo: diametros, invariancia al giro y redondez ---
+
+// --- Arco (radio) ---
+
+namespace {
+
+// Esquina redondeada: dos caras rectas unidas por un cuadrante de radio
+// conocido, que es la forma real donde se mide un radio de plano. Devuelve
+// tambien los tres puntos con los que se traza la herramienta encima.
+cv::Mat drawRoundedCorner(int radius, cv::Point2f corner, cv::Point2f& start,
+                          cv::Point2f& mid, cv::Point2f& end) {
+    cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(220));
+    cv::rectangle(gray, cv::Rect(cvRound(corner.x), 0, 400, 400), cv::Scalar(40), cv::FILLED);
+    cv::rectangle(gray, cv::Rect(0, cvRound(corner.y), 400, 400), cv::Scalar(40), cv::FILLED);
+    cv::circle(gray, cv::Point(cvRound(corner.x), cvRound(corner.y)), radius, cv::Scalar(40),
+               cv::FILLED, cv::LINE_AA);
+    // El arco visible va de "arriba" a "izquierda", pasando por la diagonal.
+    const double r = radius;
+    start = {corner.x, static_cast<float>(corner.y - r)};
+    mid = {static_cast<float>(corner.x - r * 0.7071), static_cast<float>(corner.y - r * 0.7071)};
+    end = {static_cast<float>(corner.x - r), corner.y};
+    return gray;
+}
+
+}  // namespace
+
+TEST(ArcSuite, MeasuresTheRadiusOfARoundedCorner) {
+    for (const int radius : {20, 40, 70}) {
+        cv::Point2f start;
+        cv::Point2f mid;
+        cv::Point2f end;
+        const cv::Mat gray = drawRoundedCorner(radius, {200.0F, 200.0F}, start, mid, end);
+        const ArcGeometry g{start, mid, end, 10.0F, 24};
+        const double measured = runMeasure(gray, kIdentity, ToolType::Arc, ToolGeometry(g));
+        std::printf("  radio %2d -> medido %.2f\n", radius, measured);
+        // Margen de 1,5 px y no de una decima: medir un radio sobre un
+        // cuadrante es intrinsecamente menos preciso que sobre una
+        // circunferencia entera (ver ArcSuite.AShortArcIsHarderThanAFullCircle),
+        // y ademas el borde suavizado se dibuja unas decimas mas grande.
+        EXPECT_NEAR(measured, radius, 1.5) << "radio " << radius;
+    }
+}
+
+TEST(ArcSuite, TheRadiusIsTheSameOnARotatedPiece) {
+    // La geometria vive en coordenadas de pieza: girar la pieza no puede
+    // cambiar el radio medido. Es la invariancia que ya cumplen las otras diez.
+    constexpr int kRadius = 45;
+    cv::Point2f start;
+    cv::Point2f mid;
+    cv::Point2f end;
+    const cv::Mat gray = drawRoundedCorner(kRadius, {200.0F, 200.0F}, start, mid, end);
+
+    double reference = 0.0;
+    for (const double angle : {0.0, 25.0, 90.0, -60.0}) {
+        Fixture fixture;
+        fixture.origin = {200.0F, 200.0F};
+        fixture.angleDeg = angle;
+        const ArcGeometry g{pci::vision::toPieceCoords(fixture, start),
+                            pci::vision::toPieceCoords(fixture, mid),
+                            pci::vision::toPieceCoords(fixture, end), 10.0F, 24};
+        const double measured = runMeasure(gray, fixture, ToolType::Arc, ToolGeometry(g));
+        if (angle == 0.0) {
+            reference = measured;
+        } else {
+            EXPECT_NEAR(measured, reference, 1.0) << "a " << angle << " grados";
+        }
+    }
+}
+
+TEST(ArcSuite, MeasuresTheEdgeNotThePointsYouClicked) {
+    // Los tres puntos solo situan el arco. Si el operador los marca algo
+    // desviados, la medida debe seguir siendo la del BORDE real; de lo
+    // contrario se estaria midiendo el pulso de quien dibuja.
+    constexpr int kRadius = 50;
+    cv::Point2f start;
+    cv::Point2f mid;
+    cv::Point2f end;
+    const cv::Mat gray = drawRoundedCorner(kRadius, {200.0F, 200.0F}, start, mid, end);
+
+    const ArcGeometry exact{start, mid, end, 12.0F, 24};
+    const ArcGeometry sloppy{start + cv::Point2f(0.0F, 4.0F), mid + cv::Point2f(-3.0F, 3.0F),
+                             end + cv::Point2f(4.0F, 0.0F), 12.0F, 24};
+    const double a = runMeasure(gray, kIdentity, ToolType::Arc, ToolGeometry(exact));
+    const double b = runMeasure(gray, kIdentity, ToolType::Arc, ToolGeometry(sloppy));
+    std::printf("  exacto %.2f, marcado a ojo %.2f (real %d)\n", a, b, kRadius);
+    EXPECT_NEAR(a, kRadius, 3.0);
+    EXPECT_NEAR(b, kRadius, 3.0);
+}
+
+TEST(ArcSuite, MoreRaysDoNotChangeTheRadius) {
+    cv::Point2f start;
+    cv::Point2f mid;
+    cv::Point2f end;
+    const cv::Mat gray = drawRoundedCorner(40, {200.0F, 200.0F}, start, mid, end);
+    double previous = -1.0;
+    for (const int rays : {8, 24, 60}) {
+        const ArcGeometry g{start, mid, end, 10.0F, rays};
+        const double measured = runMeasure(gray, kIdentity, ToolType::Arc, ToolGeometry(g));
+        EXPECT_NEAR(measured, 40.0, 3.0) << rays << " rayos";
+        if (previous > 0.0) {
+            EXPECT_NEAR(measured, previous, 2.0);
+        }
+        previous = measured;
+    }
+}
+
+TEST(ArcSuite, AShortArcIsHarderThanAFullCircle) {
+    // Propiedad de la medida, no defecto: sobre un arco corto el radio y el
+    // centro son casi indistinguibles, asi que un error pequeno y SISTEMATICO
+    // del borde -no ruido aleatorio, que se promedia- se amplifica en el radio.
+    //
+    // Se mide el MISMO disco entero y por cuadrantes. El entero acierta; el
+    // cuadrante se desvia mas. Pasa igual en una pieza real, y por eso la
+    // herramienta avisa cuando el tramo marcado es corto.
+    constexpr int kRadius = 40;
+    cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(220));
+    cv::circle(gray, {200, 200}, kRadius, cv::Scalar(40), cv::FILLED, cv::LINE_8);
+
+    const CircleGeometry whole{{200.0F, 200.0F}, static_cast<float>(kRadius), 10.0F, 96};
+    const double full =
+        runMeasure(gray, kIdentity, ToolType::Circle, ToolGeometry(whole)) / 2.0;
+
+    // Un cuadrante del mismo disco, marcado con tres puntos exactos.
+    const double r = kRadius;
+    const ArcGeometry quarter{{200.0F, static_cast<float>(200.0 - r)},
+                              {static_cast<float>(200.0 - r * 0.7071),
+                               static_cast<float>(200.0 - r * 0.7071)},
+                              {static_cast<float>(200.0 - r), 200.0F},
+                              10.0F,
+                              24};
+    const double arc = runMeasure(gray, kIdentity, ToolType::Arc, ToolGeometry(quarter));
+
+    std::printf("  mismo disco R=%d: entero %.2f, cuadrante %.2f\n", kRadius, full, arc);
+    EXPECT_NEAR(full, kRadius, 0.5) << "la vuelta completa si debe clavarlo";
+    EXPECT_GT(std::abs(arc - kRadius), std::abs(full - kRadius))
+        << "el cuadrante deberia ser el menos preciso de los dos";
+    EXPECT_LT(std::abs(arc - kRadius), 3.0) << "pero sin irse de madre";
+}
+
+TEST(ArcSuite, AVeryShortArcSaysSoInsteadOfPretending) {
+    // El aviso que acompana a lo anterior: por debajo de 30 grados de tramo, la
+    // herramienta dice que el radio es poco fiable en vez de darlo a secas.
+    constexpr int kRadius = 60;
+    cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(220));
+    cv::circle(gray, {200, 200}, kRadius, cv::Scalar(40), cv::FILLED, cv::LINE_AA);
+
+    const double r = kRadius;
+    auto onCircle = [&](double deg) {
+        const double a = deg * 3.14159265358979323846 / 180.0;
+        return cv::Point2f(static_cast<float>(200.0 + r * std::cos(a)),
+                           static_cast<float>(200.0 + r * std::sin(a)));
+    };
+    const ArcGeometry tiny{onCircle(180.0), onCircle(190.0), onCircle(200.0), 10.0F, 16};
+    const auto result =
+        runTool(gray, kIdentity, makeConfig(ToolType::Arc, ToolGeometry(tiny), 0, 1e9));
+    ASSERT_TRUE(result.isOk());
+    EXPECT_NE(result.value().detail.find("arco corto"), std::string::npos)
+        << result.value().detail;
+
+    // Y con un tramo generoso no molesta con el aviso.
+    const ArcGeometry wide{onCircle(180.0), onCircle(225.0), onCircle(270.0), 10.0F, 24};
+    const auto fine =
+        runTool(gray, kIdentity, makeConfig(ToolType::Arc, ToolGeometry(wide), 0, 1e9));
+    ASSERT_TRUE(fine.isOk());
+    EXPECT_EQ(fine.value().detail.find("arco corto"), std::string::npos)
+        << fine.value().detail;
+}
+
+TEST(ArcSuite, CollinearPointsFailWithAReason) {
+    // Tres puntos en linea no definen un arco. Devolver un radio enorme seria
+    // peor que negarse.
+    const cv::Mat gray(200, 200, CV_8UC1, cv::Scalar(128));
+    const ArcGeometry g{{50.0F, 100.0F}, {100.0F, 100.0F}, {150.0F, 100.0F}, 10.0F, 24};
+    const auto result =
+        runTool(gray, kIdentity, makeConfig(ToolType::Arc, ToolGeometry(g), 0, 1e9));
+    ASSERT_TRUE(result.isOk());
+    EXPECT_FALSE(result.value().ok);
+    EXPECT_NE(result.value().detail.find("alineados"), std::string::npos)
+        << result.value().detail;
+}
+
+TEST(ArcSuite, AnEmptySceneFailsControlled) {
+    const cv::Mat gray(300, 300, CV_8UC1, cv::Scalar(128));
+    const ArcGeometry g{{150.0F, 100.0F}, {115.0F, 115.0F}, {100.0F, 150.0F}, 10.0F, 24};
+    const auto result =
+        runTool(gray, kIdentity, makeConfig(ToolType::Arc, ToolGeometry(g), 0, 1e9));
+    ASSERT_TRUE(result.isOk());
+    EXPECT_FALSE(result.value().ok);
+    EXPECT_NE(result.value().detail.find("insuficiente"), std::string::npos)
+        << result.value().detail;
+}
+
+TEST(ArcSuite, GeometrySurvivesASaveAndLoadRoundTrip) {
+    const ArcGeometry g{{10.5F, 20.25F}, {30.0F, 15.0F}, {45.5F, 28.75F}, 9.5F, 33};
+    const std::string json = toJson(ToolGeometry(g));
+    const auto parsed = geometryFromJson(ToolType::Arc, json);
+    ASSERT_TRUE(parsed.isOk()) << parsed.error().message;
+    const auto& back = std::get<ArcGeometry>(parsed.value());
+    EXPECT_FLOAT_EQ(back.start.x, g.start.x);
+    EXPECT_FLOAT_EQ(back.start.y, g.start.y);
+    EXPECT_FLOAT_EQ(back.mid.x, g.mid.x);
+    EXPECT_FLOAT_EQ(back.mid.y, g.mid.y);
+    EXPECT_FLOAT_EQ(back.end.x, g.end.x);
+    EXPECT_FLOAT_EQ(back.end.y, g.end.y);
+    EXPECT_FLOAT_EQ(back.searchBand, g.searchBand);
+    EXPECT_EQ(back.rayCount, g.rayCount);
+    // El tipo se deduce de la geometria: esta era la rama generica que devolvia
+    // Posicion para cualquier tipo nuevo sin que nada fallara al compilar.
+    EXPECT_EQ(typeOf(ToolGeometry(g)), ToolType::Arc);
+    EXPECT_STREQ(toolTypeName(ToolType::Arc), "arc");
+    const auto fromName = toolTypeFromName("arc");
+    ASSERT_TRUE(fromName.isOk());
+    EXPECT_EQ(fromName.value(), ToolType::Arc);
+}
+
+TEST(ArcSuite, MovingItKeepsItsShape) {
+    // translateGeometry no tenia rama para el Arco y simplemente no lo movia.
+    ToolGeometry geometry = ArcGeometry{{10.0F, 20.0F}, {30.0F, 5.0F}, {50.0F, 20.0F}, 8.0F, 20};
+    const auto before = std::get<ArcGeometry>(geometry);
+    translateGeometry(geometry, {100.0F, -40.0F});
+    const auto after = std::get<ArcGeometry>(geometry);
+    EXPECT_FLOAT_EQ(after.start.x, before.start.x + 100.0F);
+    EXPECT_FLOAT_EQ(after.mid.y, before.mid.y - 40.0F);
+    EXPECT_FLOAT_EQ(after.end.x, before.end.x + 100.0F);
+    EXPECT_FLOAT_EQ(after.searchBand, before.searchBand);
+}
 
 TEST(CircleSuite, DiameterScalesWithRadius) {
     for (const int radius : {15, 30, 55}) {

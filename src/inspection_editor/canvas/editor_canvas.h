@@ -231,6 +231,10 @@ private:
     std::optional<std::array<cv::Point2f, 2>> pendingLineA_;
     // Vértice + primer lado ya fijados de un Ángulo en curso (coords de pieza).
     std::optional<std::array<cv::Point2f, 2>> pendingAngle_;
+    // Arco a medio crear: el primer trazo fija los dos extremos y el segundo,
+    // por dónde pasa. Sin ese tercer punto los extremos admiten dos arcos -el
+    // corto y el largo- y no se sabria cual se esta midiendo.
+    std::optional<std::array<cv::Point2f, 2>> pendingArc_;
     // Vértices ya marcados de un Blob poligonal en curso (coords de pieza); se
     // cierra al hacer clic cerca del primero (>= 3 vértices).
     std::vector<cv::Point2f> pendingPolygon_;

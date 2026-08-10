@@ -9,6 +9,13 @@
 
 namespace pci::inspection {
 
+namespace {
+// Falso, pero dependiente del tipo: permite que un `static_assert` en la última
+// rama de un `if constexpr` solo salte cuando esa rama se instancia de verdad.
+template <typename T>
+inline constexpr bool alwaysFalse = false;
+}  // namespace
+
 const char* toolTypeName(ToolType type) {
     switch (type) {
         case ToolType::Caliper: return "caliper";
@@ -21,6 +28,7 @@ const char* toolTypeName(ToolType type) {
         case ToolType::Angle: return "angle";
         case ToolType::PolyBlob: return "poly_blob";
         case ToolType::Position: return "position";
+        case ToolType::Arc: return "arc";
     }
     return "unknown";
 }
@@ -29,7 +37,7 @@ core::Result<ToolType> toolTypeFromName(const std::string& name) {
     for (const ToolType type : {ToolType::Caliper, ToolType::Circle, ToolType::PointToLine,
                                 ToolType::EdgeFlaw, ToolType::Blob, ToolType::Ruler,
                                 ToolType::LineToLine, ToolType::Angle, ToolType::PolyBlob,
-                                ToolType::Position}) {
+                                ToolType::Position, ToolType::Arc}) {
         if (name == toolTypeName(type)) {
             return core::Result<ToolType>::ok(type);
         }
@@ -88,6 +96,12 @@ const char* toolTypeDescription(ToolType type) {
                    "se mide su desviación (radial, en X o en Y) y se compara con las\n"
                    "tolerancias. Con el cero en la pieza la desviación es fija: usa el\n"
                    "centro de la imagen o un punto fijado para que signifique algo.";
+        case ToolType::Arc:
+            return "Arco — mide el RADIO de una esquina redondeada o un redondeo.\n"
+                   "Marca tres puntos SOBRE el arco: los dos extremos y uno\n"
+                   "intermedio, igual que al comprobarlo con una plantilla de radios.\n"
+                   "El Círculo no sirve aquí: pide un centro y un contorno cerrado,\n"
+                   "y en una esquina no hay ninguno de los dos.";
     }
     return "";
 }
@@ -123,6 +137,7 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
         case ToolType::Caliper:
         case ToolType::Circle:
         case ToolType::PointToLine:
+        case ToolType::Arc:
         case ToolType::Ruler: {
             // Banda de ±10% con un mínimo de ±2 px para medidas pequeñas.
             const double band = std::max(measured * 0.10, 2.0);
@@ -155,8 +170,17 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::Angle;
             } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
                 return ToolType::PolyBlob;
-            } else {
+            } else if constexpr (std::is_same_v<T, PositionGeometry>) {
                 return ToolType::Position;
+            } else if constexpr (std::is_same_v<T, ArcGeometry>) {
+                return ToolType::Arc;
+            } else {
+                // Sin rama genérica a propósito. Antes esta cadena acababa en un
+                // `else` que devolvía Position, así que al añadir un tipo nuevo
+                // la herramienta se reportaba como Posición sin que nada
+                // fallara al compilar. Ahora no compila hasta que se le asigne
+                // su ToolType.
+                static_assert(alwaysFalse<T>, "geometría sin ToolType asignado");
             }
         },
         geometry);
@@ -194,6 +218,16 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 }
             } else if constexpr (std::is_same_v<T, PositionGeometry>) {
                 g.point += delta;
+            } else if constexpr (std::is_same_v<T, ArcGeometry>) {
+                g.start += delta;
+                g.mid += delta;
+                g.end += delta;
+            } else {
+                // Igual que en typeOf: esta cadena no puede acabar sin rama. Al
+                // no tener `else`, un tipo nuevo simplemente NO se trasladaba —
+                // la herramienta se quedaba clavada al arrastrarla y nada
+                // fallaba al compilar.
+                static_assert(alwaysFalse<T>, "geometría que no sabe trasladarse");
             }
         },
         geometry);
@@ -327,11 +361,19 @@ std::string toJson(const ToolGeometry& geometry) {
                     fs << "]";
                     fs << "minArea" << g.minArea << "dark" << (g.darkBlobs ? 1 : 0);
                 });
-            } else {
+            } else if constexpr (std::is_same_v<T, PositionGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "px" << g.point.x << "py" << g.point.y << "axis"
                        << static_cast<int>(g.axis);
                 });
+            } else if constexpr (std::is_same_v<T, ArcGeometry>) {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "sx" << g.start.x << "sy" << g.start.y << "mx" << g.mid.x << "my"
+                       << g.mid.y << "ex" << g.end.x << "ey" << g.end.y << "band"
+                       << g.searchBand << "rays" << g.rayCount;
+                });
+            } else {
+                static_assert(alwaysFalse<T>, "geometría que no sabe serializarse");
             }
         },
         geometry);
@@ -469,6 +511,20 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.axis = (axis == 1)   ? PositionAxis::X
                          : (axis == 2) ? PositionAxis::Y
                                        : PositionAxis::Radial;
+                return ResultT::ok(g);
+            }
+            case ToolType::Arc: {
+                ArcGeometry g;
+                auto sx = f("sx"), sy = f("sy"), mx = f("mx"), my = f("my"), ex = f("ex"),
+                     ey = f("ey"), band = f("band");
+                for (const auto* v : {&sx, &sy, &mx, &my, &ex, &ey, &band}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.start = {static_cast<float>(sx.value()), static_cast<float>(sy.value())};
+                g.mid = {static_cast<float>(mx.value()), static_cast<float>(my.value())};
+                g.end = {static_cast<float>(ex.value()), static_cast<float>(ey.value())};
+                g.searchBand = static_cast<float>(band.value());
+                g.rayCount = static_cast<int>(reader.numberOr("rays", 24.0));
                 return ResultT::ok(g);
             }
         }

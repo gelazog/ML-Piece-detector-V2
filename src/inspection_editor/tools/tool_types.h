@@ -17,7 +17,8 @@ enum class ToolType {
     LineToLine,
     Angle,
     PolyBlob,
-    Position
+    Position,
+    Arc
 };
 
 const char* toolTypeName(ToolType type);

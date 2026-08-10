@@ -42,6 +42,22 @@ struct RadialSample {
                                                       double rMax, int rayCount,
                                                       float thickness = 3.0F);
 
+// Igual, pero limitado a un sector: los rayos se reparten entre
+// `startAngleDeg` y `startAngleDeg + sweepDeg` (el recorrido puede ser
+// negativo). Lo pide el Arco, que solo debe mirar el tramo de circunferencia
+// que el operador marcó, no la vuelta entera.
+//
+// Diferencia de reparto respecto a la vuelta completa, y no es un detalle: en
+// un sector los rayos incluyen los DOS extremos (paso = recorrido/(n−1)),
+// mientras que en la vuelta el último coincidiría con el primero y se reparte
+// abierto (paso = 360/n).
+[[nodiscard]] std::vector<RadialSample> radialProfileSector(const cv::Mat& gray,
+                                                            cv::Point2f center, double rMin,
+                                                            double rMax, int rayCount,
+                                                            double startAngleDeg,
+                                                            double sweepDeg,
+                                                            float thickness = 3.0F);
+
 struct AxialSample {
     double t = 0.0;         // posición a lo largo del eje, en px desde `from`
     double offset = 0.0;    // distancia perpendicular del eje al borde (px)

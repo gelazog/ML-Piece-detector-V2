@@ -18,20 +18,22 @@ bool usableImage(const cv::Mat& gray) {
 
 }  // namespace
 
-std::vector<RadialSample> radialProfile(const cv::Mat& gray, cv::Point2f center, double rMin,
-                                        double rMax, int rayCount, float thickness) {
-    std::vector<RadialSample> profile;
-    if (!usableImage(gray) || rayCount < 2 || !(rMax > rMin) || rMin < 0.0) {
-        return profile;
-    }
+namespace {
 
+// Cuerpo común del barrido radial. `stepDeg` y el ángulo inicial los decide
+// quien llama, que es lo único que cambia entre la vuelta completa y el sector.
+std::vector<RadialSample> scanRays(const cv::Mat& gray, cv::Point2f center, double rMin,
+                                   double rMax, int rayCount, double startAngleDeg,
+                                   double stepDeg, float thickness) {
+    std::vector<RadialSample> profile;
     profile.reserve(static_cast<std::size_t>(rayCount));
     for (int k = 0; k < rayCount; ++k) {
-        const double theta = 2.0 * kPi * k / rayCount;
+        const double angleDeg = startAngleDeg + stepDeg * k;
+        const double theta = angleDeg / kRadToDeg;
         const cv::Point2f dir(static_cast<float>(std::cos(theta)),
                               static_cast<float>(std::sin(theta)));
         RadialSample sample;
-        sample.angleDeg = theta * kRadToDeg;
+        sample.angleDeg = angleDeg;
 
         const cv::Point2f from = center + dir * static_cast<float>(rMin);
         const cv::Point2f to = center + dir * static_cast<float>(rMax);
@@ -47,6 +49,31 @@ std::vector<RadialSample> radialProfile(const cv::Mat& gray, cv::Point2f center,
         profile.push_back(sample);
     }
     return profile;
+}
+
+}  // namespace
+
+std::vector<RadialSample> radialProfile(const cv::Mat& gray, cv::Point2f center, double rMin,
+                                        double rMax, int rayCount, float thickness) {
+    if (!usableImage(gray) || rayCount < 2 || !(rMax > rMin) || rMin < 0.0) {
+        return {};
+    }
+    // Vuelta completa: reparto abierto, porque el último rayo coincidiría con
+    // el primero.
+    return scanRays(gray, center, rMin, rMax, rayCount, 0.0, 360.0 / rayCount, thickness);
+}
+
+std::vector<RadialSample> radialProfileSector(const cv::Mat& gray, cv::Point2f center,
+                                              double rMin, double rMax, int rayCount,
+                                              double startAngleDeg, double sweepDeg,
+                                              float thickness) {
+    if (!usableImage(gray) || rayCount < 2 || !(rMax > rMin) || rMin < 0.0 ||
+        std::abs(sweepDeg) < 1e-9) {
+        return {};
+    }
+    // Sector: reparto cerrado, los dos extremos incluidos.
+    return scanRays(gray, center, rMin, rMax, rayCount, startAngleDeg,
+                    sweepDeg / (rayCount - 1), thickness);
 }
 
 cv::Point2f profileNormal(cv::Point2f from, cv::Point2f to) {

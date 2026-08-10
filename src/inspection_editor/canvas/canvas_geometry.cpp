@@ -5,6 +5,7 @@
 #include <type_traits>
 #include <variant>
 
+#include "vision/fitting.h"
 #include "vision/position_fixture.h"
 
 namespace pci::inspection {
@@ -133,6 +134,8 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
                 return g.vertices;
             } else if constexpr (std::is_same_v<T, PositionGeometry>) {
                 return {g.point};
+            } else if constexpr (std::is_same_v<T, ArcGeometry>) {
+                return {g.start, g.mid, g.end};
             } else {
                 return {g.lineA, g.lineB, g.scanA, g.scanB};
             }
@@ -165,6 +168,8 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
                         g.center + cv::Point2f(g.width / 2.0F, g.height / 2.0F)};
             } else if constexpr (std::is_same_v<T, PositionGeometry>) {
                 return {g.point};  // una sola manija: el rasgo marcado
+            } else if constexpr (std::is_same_v<T, ArcGeometry>) {
+                return {g.start, g.mid, g.end};
             } else {  // PolyBlobGeometry
                 return g.vertices;
             }
@@ -229,6 +234,12 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
                 }
             } else if constexpr (std::is_same_v<T, PositionGeometry>) {
                 g.point = q;
+            } else if constexpr (std::is_same_v<T, ArcGeometry>) {
+                switch (handle) {
+                    case 0: g.start = q; break;
+                    case 1: g.mid = q; break;
+                    default: g.end = q; break;
+                }
             } else {  // PolyBlobGeometry
                 if (handle >= 0 && handle < static_cast<int>(g.vertices.size())) {
                     g.vertices[static_cast<std::size_t>(handle)] = q;
@@ -278,6 +289,30 @@ double distanceToGeometry(const ToolGeometry& geometry, const vision::Fixture& f
                     }
                 } else if constexpr (std::is_same_v<T, PositionGeometry>) {
                     d = cv::norm(p - vision::toImageCoords(fixture, g.point));  // un punto: distancia directa
+                } else if constexpr (std::is_same_v<T, ArcGeometry>) {
+                    const cv::Point2f s = vision::toImageCoords(fixture, g.start);
+                    const cv::Point2f m = vision::toImageCoords(fixture, g.mid);
+                    const cv::Point2f e = vision::toImageCoords(fixture, g.end);
+                    const vision::ArcSpan arc = vision::circleThroughThreePoints(s, m, e);
+                    if (!arc.valid) {
+                        // Tres puntos alineados: todavía no es un arco, pero se
+                        // tiene que poder agarrar para corregirlo.
+                        d = std::min(distanceToSegment(p, s, m), distanceToSegment(p, m, e));
+                    } else {
+                        const double angle =
+                            std::atan2(static_cast<double>(p.y) - arc.center.y,
+                                       static_cast<double>(p.x) - arc.center.x) *
+                            57.29577951308232;
+                        if (vision::angleWithinSweep(angle, arc.startAngleDeg, arc.sweepDeg)) {
+                            d = std::abs(cv::norm(p - arc.center) - arc.radius);
+                        } else {
+                            // Fuera del sector: lo más cercano son los extremos,
+                            // no la circunferencia completa. Medir contra el
+                            // círculo entero haría seleccionable la parte del
+                            // aro que no se dibuja.
+                            d = std::min(cv::norm(p - s), cv::norm(p - e));
+                        }
+                    }
                 }
             },
             geometry);

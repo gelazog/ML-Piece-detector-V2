@@ -167,7 +167,7 @@ distinguen.
 
 ## 5. Herramientas de medición
 
-Diez herramientas, todas ancladas al fixture. El motor común
+Once herramientas, todas ancladas al fixture. El motor común
 (`tool_executor.cpp`) recibe imagen + fixture + configuración y devuelve un
 resultado con la medida, el veredicto y los puntos para dibujarla.
 
@@ -183,6 +183,7 @@ resultado con la medida, el veredicto y los puntos para dibujarla.
 | Línea-Línea | Ángulo entre dos rectas | Producto escalar de direcciones |
 | Ángulo | Ángulo interior de una esquina | Ángulo entre dos vectores desde el vértice |
 | Posición | Desviación de un rasgo respecto al cero del tablero | Lectura en el sistema del tablero (radial, X o Y) |
+| Arco | Radio de una esquina o un redondeo | Círculo por tres puntos para situar el sector + barrido radial acotado a él + ajuste Taubin robusto |
 
 **Ajustes geométricos** (`vision/fitting.*`). El Círculo —y las herramientas de
 pieza torneada que vienen detrás— acaban preguntando lo mismo: qué
@@ -272,6 +273,27 @@ Límite real, documentado tras encontrarlo en un test: el **Borde liso** solo ve
 lo que cae dentro de su ventana de escaneo. Una muesca más profunda que esa
 ventana pasa desapercibida y la desviación vuelve a salir baja; hay que subir el
 parámetro si se esperan defectos grandes.
+
+**Por qué el Arco existe si ya hay Círculo.** El Círculo pide un centro y un
+contorno cerrado; una esquina redondeada no tiene ninguno de los dos. El Arco se
+define por **tres puntos sobre el propio arco** —como se comprueba un radio con
+una plantilla— y esos tres puntos solo *sitúan* el sector: el radio se mide
+después sobre el borde real, barriéndolo y ajustando. Si se devolviera la
+circunferencia de los tres puntos se estaría midiendo el pulso de quien dibuja,
+no la pieza; hay un test que marca los puntos a ojo, desviados unos píxeles, y
+exige la misma medida.
+
+**El límite que tiene, medido.** Sobre un arco corto el radio y el centro son
+casi indistinguibles, así que un error **sistemático** del borde —no ruido
+aleatorio, que se promedia— se amplifica en el radio. Comprobado sobre el mismo
+disco de radio 40 dibujado con borde duro: la circunferencia entera se mide
+39,99 y un cuadrante del mismo disco, 38,69. No es un defecto del ajuste (F1
+mide que Taubin apenas sesga a 90° con ruido aleatorio): es que la
+discretización del borde introduce un error correlacionado que un tramo corto no
+puede promediar. Con borde suavizado —lo que se parece a una pieza real
+retroiluminada— la diferencia baja a unas décimas. De ahí dos consecuencias: las
+pruebas del Arco usan borde suavizado, y **la herramienta avisa cuando el tramo
+marcado baja de 30°** en vez de dar el número a secas.
 
 ### El trazado: por qué las tolerancias van en píxeles de pantalla
 

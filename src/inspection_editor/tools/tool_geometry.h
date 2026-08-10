@@ -82,10 +82,23 @@ struct PositionGeometry {
     PositionAxis axis = PositionAxis::Radial;
 };
 
+// Arco: el radio de una esquina o de un redondeo, que es una medida de plano
+// tan corriente como un diámetro y no se puede sacar con el Círculo — este pide
+// centro y contorno cerrado, y en una esquina no hay ni uno ni otro. Se define
+// por tres puntos SOBRE el arco (los dos extremos y uno intermedio), que es
+// como se mide con una plantilla de radios.
+struct ArcGeometry {
+    cv::Point2f start;
+    cv::Point2f mid;  // punto intermedio: fija por dónde va el arco
+    cv::Point2f end;
+    float searchBand = 12.0F;  // banda radial de búsqueda del borde
+    int rayCount = 24;         // puntos de escaneo repartidos por el sector
+};
+
 using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGeometry,
                                   EdgeFlawGeometry, BlobGeometry, RulerGeometry,
                                   LineToLineGeometry, AngleGeometry, PolyBlobGeometry,
-                                  PositionGeometry>;
+                                  PositionGeometry, ArcGeometry>;
 
 // (De)serialización JSON (cv::FileStorage en memoria). El tipo del JSON debe
 // coincidir con config.type al parsear.

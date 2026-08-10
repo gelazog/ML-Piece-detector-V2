@@ -12,6 +12,7 @@
 #include <limits>
 
 #include "inspection_editor/execution/edge_detection.h"
+#include "vision/fitting.h"
 #include "vision/position_fixture.h"
 
 namespace pci::inspection {
@@ -48,6 +49,7 @@ QColor toolColor(ToolType type) {
         case ToolType::Angle: return {255, 170, 60};
         case ToolType::PolyBlob: return {200, 120, 255};
         case ToolType::Position: return {255, 80, 80};
+        case ToolType::Arc: return {120, 255, 190};
     }
     return Qt::white;
 }
@@ -128,6 +130,7 @@ void EditorCanvas::setCreateType(std::optional<ToolType> type) {
     createType_ = type;
     pendingLineA_.reset();    // cancela una Línea-Línea a medio crear
     pendingAngle_.reset();    // cancela un Ángulo a medio crear
+    pendingArc_.reset();      // y un Arco a medio crear
     pendingPolygon_.clear();  // cancela un Blob poligonal a medio crear
     snapImg_.reset();         // limpia el resaltado de snap al borde
     restoreCursor();
@@ -837,6 +840,22 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         return;
     }
 
+    // Arco: primer trazo = los dos extremos; segundo = por dónde pasa.
+    if (*createType_ == ToolType::Arc) {
+        if (!pendingArc_.has_value()) {
+            pendingArc_ = std::array<cv::Point2f, 2>{a, b};
+            update();
+            return;
+        }
+        ArcGeometry g;
+        g.start = (*pendingArc_)[0];
+        g.end = (*pendingArc_)[1];
+        g.mid = b;
+        pendingArc_.reset();
+        emit toolCreated(ToolGeometry(g));
+        return;
+    }
+
     ToolGeometry geometry = CaliperGeometry{};
     switch (*createType_) {
         case ToolType::Caliper:
@@ -870,6 +889,9 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         case ToolType::Ruler:
             geometry = RulerGeometry{a, b};
             break;
+        case ToolType::Arc:
+            // Se construye en dos trazos, resueltos más arriba; aquí no llega.
+            return;
         case ToolType::Position:
             // Un solo punto: se marca donde empieza el trazo (el arrastre solo
             // sirve para confirmar; el extremo no aporta nada aquí).
@@ -1021,6 +1043,39 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                     painter.drawLine(zero, p);
                 }
                 labelPos = p + QPointF(8, -10);
+            } else if constexpr (std::is_same_v<T, ArcGeometry>) {
+                const cv::Point2f s0 = toImg(g.start);
+                const cv::Point2f sm = toImg(g.mid);
+                const cv::Point2f s1 = toImg(g.end);
+                const vision::ArcSpan arc = vision::circleThroughThreePoints(s0, sm, s1);
+                const QPointF w0 = imageToWidget(s0);
+                const QPointF w1 = imageToWidget(s1);
+                if (arc.valid) {
+                    // Solo el TRAMO marcado, no la circunferencia entera: dibujar
+                    // el aro completo haría creer que se mide todo el contorno.
+                    const double scale = targetRect().width() / image_.width();
+                    const QPointF c = imageToWidget(arc.center);
+                    const double r = arc.radius * scale;
+                    const QRectF box(c.x() - r, c.y() - r, 2.0 * r, 2.0 * r);
+                    // Qt mide los ángulos en 1/16 de grado y con +Y hacia ARRIBA,
+                    // al revés que las coordenadas de imagen: de ahí los signos.
+                    painter.drawArc(box, static_cast<int>(-arc.startAngleDeg * 16.0),
+                                    static_cast<int>(-arc.sweepDeg * 16.0));
+                    QPen radiusPen = painter.pen();
+                    radiusPen.setStyle(Qt::DashLine);
+                    const QPen solid = painter.pen();
+                    painter.setPen(radiusPen);
+                    painter.drawLine(c, imageToWidget(sm));  // el radio, a la vista
+                    painter.setPen(solid);
+                    labelPos = imageToWidget(sm);
+                } else {
+                    // Tres puntos alineados: se dibuja lo trazado para que se
+                    // pueda corregir en vez de desaparecer.
+                    painter.drawLine(w0, w1);
+                    labelPos = (w0 + w1) / 2.0;
+                }
+                painter.drawEllipse(w0, 3.0, 3.0);
+                painter.drawEllipse(w1, 3.0, 3.0);
             }
         },
         tool.geometry);
@@ -1148,6 +1203,14 @@ void EditorCanvas::paintCreationPreview(QPainter& painter) const {
                          imageToWidget(toImg((*pendingLineA_)[1])));
     }
     // Primer lado de un Ángulo en curso: vértice + primer lado ya fijados.
+    if (pendingArc_.has_value()) {
+        // Los dos extremos ya fijados, a la espera del punto intermedio.
+        const QPointF s0 = imageToWidget(toImg((*pendingArc_)[0]));
+        const QPointF s1 = imageToWidget(toImg((*pendingArc_)[1]));
+        painter.drawLine(s0, s1);
+        painter.drawEllipse(s0, 4.0, 4.0);
+        painter.drawEllipse(s1, 4.0, 4.0);
+    }
     if (pendingAngle_.has_value()) {
         painter.drawLine(imageToWidget(toImg((*pendingAngle_)[0])),
                          imageToWidget(toImg((*pendingAngle_)[1])));

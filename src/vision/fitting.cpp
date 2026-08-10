@@ -216,6 +216,74 @@ CircleFit fitCircleRobust(const std::vector<cv::Point2f>& points, int iterations
 }
 
 // --------------------------------------------------------------------------
+// Arcos por tres puntos
+// --------------------------------------------------------------------------
+
+namespace {
+
+constexpr double kRadToDeg = 57.29577951308232;
+
+// Normaliza a [0, 360).
+double wrap360(double degrees) {
+    double d = std::fmod(degrees, 360.0);
+    if (d < 0.0) {
+        d += 360.0;
+    }
+    return d;
+}
+
+}  // namespace
+
+ArcSpan circleThroughThreePoints(const cv::Point2f& start, const cv::Point2f& mid,
+                                 const cv::Point2f& end) {
+    ArcSpan arc;
+    // Circuncentro: intersección de las mediatrices, resuelta por determinantes.
+    const double ax = start.x;
+    const double ay = start.y;
+    const double bx = mid.x;
+    const double by = mid.y;
+    const double cx = end.x;
+    const double cy = end.y;
+
+    const double d = 2.0 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+    if (std::abs(d) < 1e-9) {
+        return arc;  // alineados o repetidos: no hay circunferencia
+    }
+    const double a2 = ax * ax + ay * ay;
+    const double b2 = bx * bx + by * by;
+    const double c2 = cx * cx + cy * cy;
+    const double ux = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / d;
+    const double uy = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d;
+
+    arc.center = cv::Point2f(static_cast<float>(ux), static_cast<float>(uy));
+    arc.radius = std::hypot(ax - ux, ay - uy);
+    if (!(arc.radius > 1e-6) || !std::isfinite(arc.radius)) {
+        return arc;
+    }
+
+    const double angleStart = std::atan2(ay - uy, ax - ux) * kRadToDeg;
+    const double angleMid = std::atan2(by - uy, bx - ux) * kRadToDeg;
+    const double angleEnd = std::atan2(cy - uy, cx - ux) * kRadToDeg;
+
+    // El punto intermedio decide el sentido: si al avanzar en positivo se
+    // encuentra antes que el final, el arco va en positivo; si no, al revés.
+    const double toMid = wrap360(angleMid - angleStart);
+    const double toEnd = wrap360(angleEnd - angleStart);
+    arc.startAngleDeg = wrap360(angleStart);
+    arc.sweepDeg = toMid <= toEnd ? toEnd : toEnd - 360.0;
+    arc.valid = true;
+    return arc;
+}
+
+bool angleWithinSweep(double angleDeg, double startAngleDeg, double sweepDeg) {
+    const double delta = wrap360(angleDeg - startAngleDeg);
+    if (sweepDeg >= 0.0) {
+        return delta <= sweepDeg;
+    }
+    return delta - 360.0 >= sweepDeg;
+}
+
+// --------------------------------------------------------------------------
 // Rectas
 // --------------------------------------------------------------------------
 

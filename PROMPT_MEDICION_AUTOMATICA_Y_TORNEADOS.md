@@ -212,7 +212,7 @@ Formato: casilla, ID, tarea, por qué, algoritmo, archivos, cómo se verifica.
 
 ### T. Piezas torneadas
 
-- [ ] **T1 — Herramienta Arco (radio).** El "radio" que pide el usuario. Se
+- [x] **T1 — Herramienta Arco (radio).** El "radio" que pide el usuario. Se
   trazan tres puntos sobre un arco (inicio, medio, fin) y la herramienta mide
   **R, Ø y error de forma**. Es el equivalente óptico de un radio-gauge, y sin
   F1 (Taubin) no sale bien: es justo el caso de arco parcial donde Kasa sesga.
