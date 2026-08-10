@@ -116,6 +116,14 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      lo que se mide es la separación entre los dos bordes ajustados. Si dice
      que faltan bordes, sube el **alcance de búsqueda** — el aviso te dice el
      valor actual.
+   - *Rosca*: **paso**, diámetro exterior, diámetro de fondo y **ángulo de
+     flanco** de un tornillo visto **de perfil**. Traza el eje a lo largo de la
+     parte roscada: el perfil se repite una vez por vuelta, y de ese periodo
+     sale el paso. Con la escala calibrada **propone la designación métrica**
+     (M6×1, M8×1.25…); sin ella se niega, porque un paso en píxeles no
+     identifica ningún tornillo. Necesita ver **varias vueltas**, y el ángulo de
+     flanco además necesita que el filete se vea grande: con 50 px de altura de
+     filete sale a ±1°, con 12 px deja de ser fiable y la herramienta lo dice.
    - *Regla*: distancia directa entre dos puntos fijos (no busca bordes) —
      con la escala calibrada mide en mm/cm al vuelo.
    - *Línea-Línea*: dos líneas de referencia (se dibujan en dos pasos) → mide el
@@ -556,7 +564,8 @@ valor medido para ajustar tolerancias.
   recta ajustada) y **Blob** (conteo por área mínima y polaridad) — más
   **Regla**, **Línea-Línea**, **Ángulo**, **Blob poligonal**, **Posición**
   (desviación respecto al cero del tablero), **Arco** (radio de una esquina) y
-  **Eje / Diámetro** (diámetro, conicidad y rectitud de una pieza de torno). Ver la tabla completa con la
+  **Eje / Diámetro** (diámetro, conicidad y rectitud de una pieza de torno) y
+  **Rosca** (paso, diámetros y ángulo de flanco, con designación métrica). Ver la tabla completa con la
   técnica de cada una en [ARQUITECTURA.md](ARQUITECTURA.md#5-herramientas-de-medición).
 - La geometría se guarda **en coordenadas del fixture** (tabla
   `InspectionTools`): si la pieza llega rotada, las herramientas se mueven con

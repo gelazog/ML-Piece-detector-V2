@@ -51,6 +51,7 @@ QColor toolColor(ToolType type) {
         case ToolType::Position: return {255, 80, 80};
         case ToolType::Arc: return {120, 255, 190};
         case ToolType::Shaft: return {255, 210, 120};
+        case ToolType::Thread: return {200, 255, 120};
     }
     return Qt::white;
 }
@@ -893,6 +894,14 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         case ToolType::Arc:
             // Se construye en dos trazos, resueltos más arriba; aquí no llega.
             return;
+        case ToolType::Thread: {
+            ThreadGeometry g;
+            g.axisFrom = a;
+            g.axisTo = b;
+            g.searchBand = std::max(15.0F, static_cast<float>(cv::norm(b - a)) * 0.4F);
+            geometry = g;
+            break;
+        }
         case ToolType::Shaft: {
             ShaftGeometry g;
             g.axisFrom = a;

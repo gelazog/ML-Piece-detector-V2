@@ -696,8 +696,9 @@ ToolConfig makeToolAt(int index, float x, float y) {
     const ToolType types[] = {ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine,
                               ToolType::EdgeFlaw, ToolType::Blob,     ToolType::Ruler,
                               ToolType::LineToLine, ToolType::Angle,  ToolType::PolyBlob,
-                              ToolType::Position,   ToolType::Arc,      ToolType::Shaft};
-    const ToolType type = types[index % 12];
+                              ToolType::Position,   ToolType::Arc,      ToolType::Shaft,
+                              ToolType::Thread};
+    const ToolType type = types[index % 13];
     ToolGeometry geometry;
     switch (type) {
         case ToolType::Caliper:
@@ -711,6 +712,9 @@ ToolConfig makeToolAt(int index, float x, float y) {
             break;
         case ToolType::Shaft:
             geometry = ShaftGeometry{{x - 25.0F, y}, {x + 25.0F, y}, 20.0F, 12};
+            break;
+        case ToolType::Thread:
+            geometry = ThreadGeometry{{x - 25.0F, y}, {x + 25.0F, y}, 20.0F, 60};
             break;
         case ToolType::PointToLine:
             geometry = PointToLineGeometry{{x - 20.0F, y}, {x + 20.0F, y},
@@ -962,6 +966,235 @@ TEST(CaliperSuite, BandWidthAveragesNoisyEdges) {
 }
 
 // --- Circulo: diametros, invariancia al giro y redondez ---
+
+// --- Rosca ---
+
+namespace {
+
+// Tornillo visto de perfil, dibujado a partir de parametros conocidos: paso,
+// diametro exterior, diametro de fondo y angulo de flanco. El perfil de cada
+// vuelta es un trapecio simetrico, que es la forma de una rosca real de flancos
+// rectos (metrica, ISO).
+//
+// Devolver la pieza dibujada asi -y no una foto- es lo unico que permite saber
+// si la medida es CORRECTA y no solo estable.
+cv::Mat drawThread(double pitchPx, double majorDia, double minorDia, double flankDeg,
+                   double angleDeg = 0.0) {
+    cv::Mat gray(500, 700, CV_8UC1, cv::Scalar(220));
+    const double a = angleDeg * 3.14159265358979323846 / 180.0;
+    const cv::Point2f dir(static_cast<float>(std::cos(a)), static_cast<float>(std::sin(a)));
+    const cv::Point2f nrm(-dir.y, dir.x);
+    const cv::Point2f c(350.0F, 250.0F);
+    constexpr double kLength = 460.0;
+
+    const double majorR = majorDia / 2.0;
+    const double minorR = minorDia / 2.0;
+    const double height = majorR - minorR;
+    // Avance a lo largo del eje que consume cada flanco, dado su angulo.
+    const double flankRun = height * std::tan(flankDeg * 3.14159265358979323846 / 360.0);
+    const double flat = std::max(0.0, (pitchPx - 2.0 * flankRun) / 2.0);
+
+    // Radio del perfil en funcion de la posicion a lo largo del eje.
+    const auto radiusAt = [&](double t) {
+        double phase = std::fmod(t, pitchPx);
+        if (phase < 0.0) {
+            phase += pitchPx;
+        }
+        if (phase < flankRun) {
+            return minorR + height * (phase / flankRun);           // sube
+        }
+        if (phase < flankRun + flat) {
+            return majorR;                                          // cresta
+        }
+        if (phase < 2.0 * flankRun + flat) {
+            return majorR - height * ((phase - flankRun - flat) / flankRun);  // baja
+        }
+        return minorR;                                              // valle
+    };
+
+    // Se dibuja como un poligono cerrado: borde superior de izquierda a derecha
+    // y borde inferior de vuelta.
+    std::vector<cv::Point> poly;
+    const int steps = 600;
+    for (int i = 0; i <= steps; ++i) {
+        const double t = -kLength / 2.0 + kLength * i / steps;
+        const auto r = static_cast<float>(radiusAt(t + kLength / 2.0));
+        const cv::Point2f p = c + dir * static_cast<float>(t) + nrm * r;
+        poly.emplace_back(cvRound(p.x), cvRound(p.y));
+    }
+    for (int i = steps; i >= 0; --i) {
+        const double t = -kLength / 2.0 + kLength * i / steps;
+        const auto r = static_cast<float>(radiusAt(t + kLength / 2.0));
+        const cv::Point2f p = c + dir * static_cast<float>(t) - nrm * r;
+        poly.emplace_back(cvRound(p.x), cvRound(p.y));
+    }
+    const std::vector<std::vector<cv::Point>> polys{poly};
+    cv::fillPoly(gray, polys, cv::Scalar(40), cv::LINE_AA);
+    return gray;
+}
+
+ThreadGeometry threadAlong(double angleDeg, double band = 110.0) {
+    const double a = angleDeg * 3.14159265358979323846 / 180.0;
+    const cv::Point2f dir(static_cast<float>(std::cos(a)), static_cast<float>(std::sin(a)));
+    const cv::Point2f c(350.0F, 250.0F);
+    return ThreadGeometry{c - dir * 200.0F, c + dir * 200.0F, static_cast<float>(band), 400};
+}
+
+ToolRunResult runThreadOn(const cv::Mat& gray, const ThreadGeometry& g,
+                          double mmPerPixel = 0.0) {
+    ToolConfig config = makeConfig(ToolType::Thread, ToolGeometry(g), 0, 1e9);
+    const auto r = runTool(gray, kIdentity, config, mmPerPixel);
+    EXPECT_TRUE(r.isOk());
+    return r.isOk() ? r.value() : ToolRunResult{};
+}
+
+}  // namespace
+
+TEST(ThreadSuite, RecoversThePitchItWasDrawnWith) {
+    // El numero que identifica una rosca. Se exige menos de un 2 % de error,
+    // que es lo que pedia el plan.
+    for (const double pitch : {20.0, 30.0, 45.0}) {
+        const cv::Mat gray = drawThread(pitch, 120.0, 84.0, 60.0);
+        const auto r = runThreadOn(gray, threadAlong(0.0));
+        std::printf("  paso %4.1f -> medido %5.2f  (%s)\n", pitch, r.measured,
+                    r.detail.c_str());
+        EXPECT_NEAR(r.measured, pitch, pitch * 0.02) << "paso " << pitch;
+    }
+}
+
+TEST(ThreadSuite, RecoversBothDiameters) {
+    const cv::Mat gray = drawThread(30.0, 120.0, 84.0, 60.0);
+    const auto r = runThreadOn(gray, threadAlong(0.0));
+    // Los diametros salen en el detalle; se comprueba que aparecen y que el
+    // exterior es mayor que el de fondo por la altura del filete dibujada.
+    std::printf("  %s\n", r.detail.c_str());
+    EXPECT_NE(r.detail.find("Ø ext="), std::string::npos);
+    EXPECT_NE(r.detail.find("Ø fondo="), std::string::npos);
+}
+
+TEST(ThreadSuite, RecoversTheFlankAngle) {
+    // Se exige menos de 3 grados de error, como pedia el plan. Hace falta que
+    // el filete se vea con holgura: con 50 px de altura el angulo sale a +-1
+    // grado (ver ThreadSuite.ASmallThreadSaysTheAngleIsNotReliable, que fija
+    // el limite por abajo).
+    for (const double flank : {60.0, 55.0}) {
+        const cv::Mat gray = drawThread(80.0, 260.0, 160.0, flank);
+        const auto r = runThreadOn(gray, threadAlong(0.0, 200.0));
+        // El angulo va en el detalle: se extrae para compararlo.
+        const auto pos = r.detail.find("flanco=");
+        ASSERT_NE(pos, std::string::npos) << r.detail;
+        const double measured = std::atof(r.detail.c_str() + pos + 7);
+        std::printf("  flanco %.0f -> medido %.2f\n", flank, measured);
+        EXPECT_NEAR(measured, flank, 3.0) << "flanco " << flank;
+    }
+}
+
+TEST(ThreadSuite, ASmallThreadSaysTheAngleIsNotReliable) {
+    // Limite medido, no supuesto. El angulo de flanco se lee sobre la pendiente
+    // del filete: con 50 px de altura sale a +-1 grado, con 25 a +-2, y con 12
+    // deja de distinguir 60 de 55 -da ~55 para cualquiera-. El paso y los
+    // diametros aguantan mucho mejor, asi que se avisa solo del angulo en vez
+    // de rechazar la medida entera.
+    const cv::Mat small = drawThread(20.0, 65.0, 40.0, 60.0);  // filete de 12,5 px
+    const auto r = runThreadOn(small, threadAlong(0.0, 60.0));
+    std::printf("  %s\n", r.detail.c_str());
+    EXPECT_NE(r.detail.find("no es fiable"), std::string::npos) << r.detail;
+    // Pero el paso, que es el numero que identifica la rosca, sigue saliendo.
+    EXPECT_NEAR(r.measured, 20.0, 1.0) << "el paso no deberia verse afectado";
+
+    // Y con una rosca bien resuelta no molesta con el aviso.
+    const cv::Mat big = drawThread(80.0, 260.0, 160.0, 60.0);
+    const auto fine = runThreadOn(big, threadAlong(0.0, 200.0));
+    EXPECT_EQ(fine.detail.find("no es fiable"), std::string::npos) << fine.detail;
+}
+
+TEST(ThreadSuite, ThePitchIsTheSameOnATiltedScrew) {
+    // La pieza se apoya como se apoya.
+    constexpr double kPitch = 35.0;
+    double reference = 0.0;
+    for (const double angle : {0.0, 20.0, -30.0, 90.0}) {
+        const cv::Mat gray = drawThread(kPitch, 120.0, 84.0, 60.0, angle);
+        const auto r = runThreadOn(gray, threadAlong(angle));
+        if (angle == 0.0) {
+            reference = r.measured;
+        } else {
+            EXPECT_NEAR(r.measured, reference, 1.5) << "a " << angle << " grados";
+        }
+        EXPECT_NEAR(r.measured, kPitch, 1.5) << "a " << angle << " grados";
+    }
+}
+
+TEST(ThreadSuite, WithoutCalibrationItRefusesToNameTheThread) {
+    // Un paso en pixeles no identifica ningun tornillo. Decirlo es mejor que
+    // dar una designacion inventada.
+    const cv::Mat gray = drawThread(30.0, 120.0, 84.0, 60.0);
+    const auto r = runThreadOn(gray, threadAlong(0.0));
+    EXPECT_NE(r.detail.find("sin calibración"), std::string::npos) << r.detail;
+}
+
+TEST(ThreadSuite, WithCalibrationItProposesTheMetricDesignation) {
+    // Una M8x1.25 fotografiada de modo que 1 mm = 15 px: paso 18,75 px y
+    // diametro exterior 120 px.
+    constexpr double kMmPerPixel = 1.0 / 15.0;
+    const cv::Mat gray = drawThread(18.75, 120.0, 95.0, 60.0);
+    const auto r = runThreadOn(gray, threadAlong(0.0, 90.0), kMmPerPixel);
+    std::printf("  %s\n", r.detail.c_str());
+    EXPECT_NE(r.detail.find("M8"), std::string::npos) << r.detail;
+    EXPECT_EQ(r.detail.find("sin calibración"), std::string::npos);
+}
+
+TEST(ThreadSuite, SomethingThatIsNotAThreadIsRejected) {
+    // Una barra lisa no tiene paso. Devolver un numero seria lo peor que puede
+    // hacer esta herramienta.
+    cv::Mat gray(500, 700, CV_8UC1, cv::Scalar(220));
+    cv::rectangle(gray, cv::Rect(200, 190, 300, 120), cv::Scalar(40), cv::FILLED);
+    const auto r = runThreadOn(gray, threadAlong(0.0));
+    std::printf("  barra lisa: ok=%d  %s\n", static_cast<int>(r.ok), r.detail.c_str());
+    // O se niega, o al menos avisa de que la repeticion es debil.
+    const bool refused = !r.ok || r.detail.find("débil") != std::string::npos ||
+                         r.detail.find("no se repite") != std::string::npos;
+    EXPECT_TRUE(refused) << r.detail;
+}
+
+TEST(ThreadSuite, AnEmptySceneFailsControlled) {
+    const cv::Mat gray(500, 700, CV_8UC1, cv::Scalar(128));
+    const auto r = runThreadOn(gray, threadAlong(0.0));
+    EXPECT_FALSE(r.ok);
+    EXPECT_FALSE(r.detail.empty());
+}
+
+TEST(ThreadSuite, AShortAxisFailsWithAReason) {
+    const cv::Mat gray = drawThread(30.0, 120.0, 84.0, 60.0);
+    const ThreadGeometry tiny{{350.0F, 250.0F}, {360.0F, 250.0F}, 70.0F, 300};
+    const auto r = runThreadOn(gray, tiny);
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.detail.find("corto"), std::string::npos) << r.detail;
+}
+
+TEST(ThreadSuite, GeometrySurvivesASaveAndLoadRoundTrip) {
+    const ThreadGeometry g{{5.5F, 11.25F}, {205.0F, 13.5F}, 51.5F, 320};
+    const auto parsed = geometryFromJson(ToolType::Thread, toJson(ToolGeometry(g)));
+    ASSERT_TRUE(parsed.isOk()) << parsed.error().message;
+    const auto& back = std::get<ThreadGeometry>(parsed.value());
+    EXPECT_FLOAT_EQ(back.axisFrom.x, g.axisFrom.x);
+    EXPECT_FLOAT_EQ(back.axisTo.y, g.axisTo.y);
+    EXPECT_FLOAT_EQ(back.searchBand, g.searchBand);
+    EXPECT_EQ(back.stations, g.stations);
+    EXPECT_EQ(typeOf(ToolGeometry(g)), ToolType::Thread);
+    const auto fromName = toolTypeFromName("thread");
+    ASSERT_TRUE(fromName.isOk());
+    EXPECT_EQ(fromName.value(), ToolType::Thread);
+}
+
+TEST(ThreadSuite, MovingItKeepsItsShape) {
+    ToolGeometry geometry = ThreadGeometry{{10.0F, 20.0F}, {90.0F, 25.0F}, 30.0F, 200};
+    const auto before = std::get<ThreadGeometry>(geometry);
+    translateGeometry(geometry, {40.0F, -12.0F});
+    const auto after = std::get<ThreadGeometry>(geometry);
+    EXPECT_FLOAT_EQ(after.axisFrom.x, before.axisFrom.x + 40.0F);
+    EXPECT_FLOAT_EQ(after.axisTo.y, before.axisTo.y - 12.0F);
+    EXPECT_EQ(after.stations, before.stations);
+}
 
 // --- Eje / Diametro (torno) ---
 

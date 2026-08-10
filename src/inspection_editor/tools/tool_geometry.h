@@ -110,10 +110,23 @@ struct ShaftGeometry {
     int stations = 32;         // cortes repartidos a lo largo del eje
 };
 
+// Rosca vista de perfil. Se traza el eje igual que en el Eje torneado -misma
+// geometria, mismo gesto- y lo que cambia es la lectura: el perfil de una rosca
+// a lo largo del eje es una senal PERIODICA, y de su periodo sale el paso.
+struct ThreadGeometry {
+    cv::Point2f axisFrom;
+    cv::Point2f axisTo;
+    float searchBand = 60.0F;
+    // Hacen falta bastantes cortes por vuelta de rosca para medir bien el
+    // periodo: con pocos, el paso se redondea al muestreo.
+    int stations = 240;
+};
+
 using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGeometry,
                                   EdgeFlawGeometry, BlobGeometry, RulerGeometry,
                                   LineToLineGeometry, AngleGeometry, PolyBlobGeometry,
-                                  PositionGeometry, ArcGeometry, ShaftGeometry>;
+                                  PositionGeometry, ArcGeometry, ShaftGeometry,
+                                  ThreadGeometry>;
 
 // (De)serialización JSON (cv::FileStorage en memoria). El tipo del JSON debe
 // coincidir con config.type al parsear.

@@ -30,6 +30,7 @@ const char* toolTypeName(ToolType type) {
         case ToolType::Position: return "position";
         case ToolType::Arc: return "arc";
         case ToolType::Shaft: return "shaft";
+        case ToolType::Thread: return "thread";
     }
     return "unknown";
 }
@@ -38,7 +39,8 @@ core::Result<ToolType> toolTypeFromName(const std::string& name) {
     for (const ToolType type : {ToolType::Caliper, ToolType::Circle, ToolType::PointToLine,
                                 ToolType::EdgeFlaw, ToolType::Blob, ToolType::Ruler,
                                 ToolType::LineToLine, ToolType::Angle, ToolType::PolyBlob,
-                                ToolType::Position, ToolType::Arc, ToolType::Shaft}) {
+                                ToolType::Position, ToolType::Arc, ToolType::Shaft,
+                                ToolType::Thread}) {
         if (name == toolTypeName(type)) {
             return core::Result<ToolType>::ok(type);
         }
@@ -109,6 +111,13 @@ const char* toolTypeDescription(ToolType type) {
                    "los dos bordes y se miden de una vez el DIÁMETRO, la CONICIDAD\n"
                    "(si no es cilíndrica) y la RECTITUD. Un calíper mide en un solo\n"
                    "punto y ahí no se distingue un cilindro de un cono.";
+        case ToolType::Thread:
+            return "Rosca — mide PASO, diámetro exterior y de fondo, y ángulo de\n"
+                   "flanco de un tornillo visto DE PERFIL. Traza el eje a lo largo\n"
+                   "de la parte roscada: el perfil se repite una vez por vuelta, y\n"
+                   "de ese periodo sale el paso. Con la escala calibrada propone\n"
+                   "además la designación métrica (M6×1, M8×1.25...).\n"
+                   "Necesita ver varias vueltas y buen contraste de borde.";
     }
     return "";
 }
@@ -146,6 +155,7 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
         case ToolType::PointToLine:
         case ToolType::Arc:
         case ToolType::Shaft:
+        case ToolType::Thread:
         case ToolType::Ruler: {
             // Banda de ±10% con un mínimo de ±2 px para medidas pequeñas.
             const double band = std::max(measured * 0.10, 2.0);
@@ -184,6 +194,8 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::Arc;
             } else if constexpr (std::is_same_v<T, ShaftGeometry>) {
                 return ToolType::Shaft;
+            } else if constexpr (std::is_same_v<T, ThreadGeometry>) {
+                return ToolType::Thread;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -232,7 +244,8 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 g.start += delta;
                 g.mid += delta;
                 g.end += delta;
-            } else if constexpr (std::is_same_v<T, ShaftGeometry>) {
+            } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
+                                 std::is_same_v<T, ThreadGeometry>) {
                 g.axisFrom += delta;
                 g.axisTo += delta;
             } else {
@@ -385,7 +398,8 @@ std::string toJson(const ToolGeometry& geometry) {
                        << g.mid.y << "ex" << g.end.x << "ey" << g.end.y << "band"
                        << g.searchBand << "rays" << g.rayCount;
                 });
-            } else if constexpr (std::is_same_v<T, ShaftGeometry>) {
+            } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
+                                 std::is_same_v<T, ThreadGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "ax" << g.axisFrom.x << "ay" << g.axisFrom.y << "bx" << g.axisTo.x
                        << "by" << g.axisTo.y << "band" << g.searchBand << "stations"
@@ -556,6 +570,18 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.axisTo = {static_cast<float>(bx.value()), static_cast<float>(by.value())};
                 g.searchBand = static_cast<float>(band.value());
                 g.stations = static_cast<int>(reader.numberOr("stations", 32.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::Thread: {
+                ThreadGeometry g;
+                auto ax = f("ax"), ay = f("ay"), bx = f("bx"), by = f("by"), band = f("band");
+                for (const auto* v : {&ax, &ay, &bx, &by, &band}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.axisFrom = {static_cast<float>(ax.value()), static_cast<float>(ay.value())};
+                g.axisTo = {static_cast<float>(bx.value()), static_cast<float>(by.value())};
+                g.searchBand = static_cast<float>(band.value());
+                g.stations = static_cast<int>(reader.numberOr("stations", 240.0));
                 return ResultT::ok(g);
             }
         }

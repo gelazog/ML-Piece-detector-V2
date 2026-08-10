@@ -167,7 +167,7 @@ distinguen.
 
 ## 5. Herramientas de medición
 
-Doce herramientas, todas ancladas al fixture. El motor común
+Trece herramientas, todas ancladas al fixture. El motor común
 (`tool_executor.cpp`) recibe imagen + fixture + configuración y devuelve un
 resultado con la medida, el veredicto y los puntos para dibujarla.
 
@@ -185,6 +185,7 @@ resultado con la medida, el veredicto y los puntos para dibujarla.
 | Posición | Desviación de un rasgo respecto al cero del tablero | Lectura en el sistema del tablero (radial, X o Y) |
 | Arco | Radio de una esquina o un redondeo | Círculo por tres puntos para situar el sector + barrido radial acotado a él + ajuste Taubin robusto |
 | Eje / Diámetro | Diámetro, conicidad y rectitud de una pieza de torno | Perfil axial a los dos lados + ajuste robusto de recta a cada borde; el diámetro es la separación entre las dos rectas |
+| Rosca | Paso, Ø exterior, Ø de fondo y ángulo de flanco | Perfil axial a los dos lados + periodo por autocorrelación (el paso) + plegado síncrono por ese periodo y ajuste de recta a los flancos |
 
 **Ajustes geométricos** (`vision/fitting.*`). El Círculo —y las herramientas de
 pieza torneada que vienen detrás— acaban preguntando lo mismo: qué
@@ -311,6 +312,38 @@ casos, comprobado), que es justo lo que no se consigue encadenando calíperes.
 Cuando la banda de búsqueda no llega al borde —pieza gruesa o eje descentrado—,
 el aviso dice **el alcance actual y qué hacer**, en vez de un "bordes
 insuficientes" que no orienta.
+
+**Cómo se mide una rosca.** El perfil de un tornillo a lo largo de su eje se
+repite una vez por vuelta: es una señal periódica, y de su periodo sale el
+**paso** (F4). Los diámetros **exterior** y **de fondo** son las crestas y los
+valles — media del decil superior e inferior, no el máximo suelto, para que una
+rebaba no defina el diámetro — sumando los dos lados, igual que el Eje, para no
+depender de que el eje esté centrado.
+
+El **ángulo de flanco** costó dos intentos y merece contarse. El primero fue
+estadística de pendientes (mediana de las más inclinadas): estaba mal, porque la
+proporción de muestras que caen en el flanco depende de cuánto llano tenga la
+cresta, así que el resultado cambiaba con el **paso** en vez de con el ángulo —
+daba 42°, 57° y 118° para la misma rosca de 60° con tres pasos distintos. Lo
+correcto es **plegar la señal por su periodo** (promediado síncrono, lo que hace
+un perfilómetro): al superponer decenas de vueltas alineadas por fase, el ruido
+de borde baja y queda la forma del filete; sobre ella se ajusta una recta a la
+parte central de cada flanco, del 20 % al 80 % de la altura, para no contaminarla
+con el redondeo de la punta ni el del fondo.
+
+Un detalle que costó un tercer intento: el número de casillas del plegado lo
+manda el **periodo**, no un valor fijo. Con un periodo de 46 muestras solo
+existen ~46 fases distintas, así que pedir 72 casillas dejaba huecos vacíos por
+construcción. Y el perfil se toma con **grosor de promediado 1**, no el 3
+habitual: ese promediado va perpendicular al escaneo, o sea **a lo largo del
+eje**, justo sobre el filete que se quiere medir.
+
+**Hasta dónde llega, medido.** Con roscas sintéticas de ángulo conocido: con
+**50 px de altura de filete el ángulo sale a ±1°** (60,01 y 54,98 medidos), con
+25 px a ±2°, y con 12 px deja de distinguir 60° de 55° — da ~55 para cualquiera.
+El paso y los diámetros aguantan mucho mejor, así que la herramienta **avisa solo
+del ángulo** en vez de rechazar la medida entera. Y **sin calibración px→mm se
+niega a proponer designación**: un paso en píxeles no identifica ningún tornillo.
 
 ### El trazado: por qué las tolerancias van en píxeles de pantalla
 

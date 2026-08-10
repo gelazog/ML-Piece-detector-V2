@@ -47,6 +47,16 @@ QIcon moveModeIcon() {
 
 QIcon toolIcon(ToolType type) {
     switch (type) {
+        case ToolType::Thread:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // Perfil dentado a los dos lados de un eje.
+                const QPolygonF top({QPointF(4, 11), QPointF(8, 5), QPointF(12, 11),
+                                     QPointF(16, 5), QPointF(20, 11), QPointF(24, 5),
+                                     QPointF(27, 11)});
+                p.drawPolyline(top);
+                p.drawPolyline(top.translated(0, 8));
+                p.drawLine(4, 15, 27, 15);
+            });
         case ToolType::Shaft:
             return makeIcon([](QPainter& p, const QColor&) {
                 // Dos bordes paralelos con el eje discontinuo por el medio.

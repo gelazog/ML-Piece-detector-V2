@@ -136,7 +136,8 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
                 return {g.point};
             } else if constexpr (std::is_same_v<T, ArcGeometry>) {
                 return {g.start, g.mid, g.end};
-            } else if constexpr (std::is_same_v<T, ShaftGeometry>) {
+            } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
+                                 std::is_same_v<T, ThreadGeometry>) {
                 return {g.axisFrom, g.axisTo};
             } else {
                 return {g.lineA, g.lineB, g.scanA, g.scanB};
@@ -172,7 +173,8 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
                 return {g.point};  // una sola manija: el rasgo marcado
             } else if constexpr (std::is_same_v<T, ArcGeometry>) {
                 return {g.start, g.mid, g.end};
-            } else if constexpr (std::is_same_v<T, ShaftGeometry>) {
+            } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
+                                 std::is_same_v<T, ThreadGeometry>) {
                 return {g.axisFrom, g.axisTo};
             } else {  // PolyBlobGeometry
                 return g.vertices;
@@ -244,7 +246,8 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
                     case 1: g.mid = q; break;
                     default: g.end = q; break;
                 }
-            } else if constexpr (std::is_same_v<T, ShaftGeometry>) {
+            } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
+                                 std::is_same_v<T, ThreadGeometry>) {
                 if (handle == 0) {
                     g.axisFrom = q;
                 } else {
@@ -291,7 +294,8 @@ double distanceToGeometry(const ToolGeometry& geometry, const vision::Fixture& f
                     for (int k = 0; k < 4; ++k) {
                         d = std::min(d, distanceToSegment(p, c[k], c[(k + 1) % 4]));
                     }
-                } else if constexpr (std::is_same_v<T, ShaftGeometry>) {
+                } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
+                                     std::is_same_v<T, ThreadGeometry>) {
                     d = distanceToSegment(p, vision::toImageCoords(fixture, g.axisFrom),
                                           vision::toImageCoords(fixture, g.axisTo));
                 } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {

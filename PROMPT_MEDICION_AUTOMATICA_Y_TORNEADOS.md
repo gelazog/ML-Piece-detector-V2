@@ -239,7 +239,7 @@ Formato: casilla, ID, tarea, por qué, algoritmo, archivos, cómo se verifica.
   `ToolType::Shaft` + `ShaftGeometry{axisFrom, axisTo, searchBand, stations}`.
   Verificación: ejes sintéticos cilíndricos y cónicos de dimensiones conocidas.
 
-- [ ] **T3 — Herramienta Rosca.** Mide **paso, Ø mayor (exterior), Ø menor (de
+- [x] **T3 — Herramienta Rosca.** Mide **paso, Ø mayor (exterior), Ø menor (de
   fondo) y ángulo de flanco**, que son los cuatro números con los que se
   identifica y se acepta una rosca.
   Algoritmo:

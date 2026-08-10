@@ -11,6 +11,7 @@
 #include "inspection_editor/execution/edge_detection.h"
 #include "inspection_editor/execution/profiles.h"
 #include "vision/fitting.h"
+#include "vision/periodicity.h"
 #include "vision/plane_scale.h"
 #include "vision/position_fixture.h"
 
@@ -533,6 +534,347 @@ ToolRunResult runShaft(const cv::Mat& gray, const Fixture& fixture, const ToolCo
     return result;
 }
 
+// --- Rosca -----------------------------------------------------------------
+
+// Perfil de un lado, convertido en señal uniforme. Los cortes sin borde se
+// rellenan interpolando en vez de omitirse: el paso sale del PERIODO de esta
+// señal, y quitar muestras desplazaría todas las siguientes.
+struct ThreadSide {
+    std::vector<double> offsets;
+    int missing = 0;
+    bool usable = false;
+};
+
+ThreadSide buildThreadSide(const std::vector<AxialSample>& profile) {
+    ThreadSide side;
+    if (profile.empty()) {
+        return side;
+    }
+    side.offsets.assign(profile.size(), 0.0);
+    std::vector<bool> known(profile.size(), false);
+    for (std::size_t i = 0; i < profile.size(); ++i) {
+        known[i] = profile[i].found;
+        side.offsets[i] = profile[i].offset;
+        if (!profile[i].found) {
+            ++side.missing;
+        }
+    }
+    if (side.missing * 3 > static_cast<int>(profile.size())) {
+        return side;  // más de un tercio sin borde: no hay señal que analizar
+    }
+    // Relleno lineal de los huecos, extendiendo el valor de los extremos.
+    std::size_t lastKnown = profile.size();
+    for (std::size_t i = 0; i < profile.size(); ++i) {
+        if (!known[i]) {
+            continue;
+        }
+        if (lastKnown == profile.size()) {
+            for (std::size_t j = 0; j < i; ++j) {
+                side.offsets[j] = side.offsets[i];
+            }
+        } else if (i > lastKnown + 1) {
+            const double a = side.offsets[lastKnown];
+            const double b = side.offsets[i];
+            for (std::size_t j = lastKnown + 1; j < i; ++j) {
+                const double t = static_cast<double>(j - lastKnown) / (i - lastKnown);
+                side.offsets[j] = a + (b - a) * t;
+            }
+        }
+        lastKnown = i;
+    }
+    if (lastKnown == profile.size()) {
+        return side;  // ni un solo borde
+    }
+    for (std::size_t j = lastKnown + 1; j < profile.size(); ++j) {
+        side.offsets[j] = side.offsets[lastKnown];
+    }
+    side.usable = true;
+    return side;
+}
+
+// Media del decil superior (crestas) o inferior (valles). Se usa la media de un
+// grupo y no el máximo suelto para que una rebaba no defina el diámetro.
+double decileMean(std::vector<double> values, bool top) {
+    if (values.empty()) {
+        return 0.0;
+    }
+    std::sort(values.begin(), values.end());
+    const std::size_t count = std::max<std::size_t>(1, values.size() / 10);
+    double sum = 0.0;
+    for (std::size_t k = 0; k < count; ++k) {
+        sum += top ? values[values.size() - 1 - k] : values[k];
+    }
+    return sum / count;
+}
+
+// Perfil medio de UNA vuelta, obtenido plegando la señal por su periodo y
+// promediando todas las vueltas alineadas por fase. Es lo mismo que hace un
+// perfilómetro: al promediar decenas de vueltas, el ruido de borde baja y queda
+// la forma del filete. Sin este paso, cualquier medida del flanco depende de
+// dónde caigan las muestras dentro de cada vuelta.
+// El número de casillas lo manda el PERIODO, no un valor fijo: con un periodo
+// de 46 muestras solo existen ~46 fases distintas, así que pedir 72 casillas
+// dejaba huecos vacíos por construcción y el plegado se abortaba entero.
+std::vector<double> foldByPeriod(const std::vector<double>& offsets, double period) {
+    if (!(period > 8.0) || offsets.size() < 16) {
+        return {};
+    }
+    const int bins = std::clamp(static_cast<int>(std::floor(period)), 12, 72);
+    std::vector<double> sum(static_cast<std::size_t>(bins), 0.0);
+    std::vector<int> count(static_cast<std::size_t>(bins), 0);
+    for (std::size_t i = 0; i < offsets.size(); ++i) {
+        const double phase = std::fmod(static_cast<double>(i), period) / period;
+        auto bin = static_cast<std::size_t>(phase * bins);
+        if (bin >= static_cast<std::size_t>(bins)) {
+            bin = static_cast<std::size_t>(bins) - 1;
+        }
+        sum[bin] += offsets[i];
+        ++count[bin];
+    }
+
+    std::vector<double> folded(static_cast<std::size_t>(bins), 0.0);
+    int empty = 0;
+    for (std::size_t b = 0; b < folded.size(); ++b) {
+        if (count[b] > 0) {
+            folded[b] = sum[b] / count[b];
+        } else {
+            ++empty;
+        }
+    }
+    if (empty * 5 > bins) {
+        return {};  // demasiados huecos: el periodo no cuadra
+    }
+    // Los pocos huecos que queden se rellenan con el vecino ocupado más
+    // cercano, dando la vuelta: el perfil de una rosca es cíclico.
+    for (std::size_t b = 0; b < folded.size(); ++b) {
+        if (count[b] > 0) {
+            continue;
+        }
+        for (int step = 1; step < bins; ++step) {
+            const auto before = static_cast<std::size_t>((static_cast<int>(b) - step + bins) %
+                                                         bins);
+            const auto after = static_cast<std::size_t>((static_cast<int>(b) + step) % bins);
+            if (count[before] > 0 && count[after] > 0) {
+                folded[b] = (folded[before] + folded[after]) / 2.0;
+                break;
+            }
+            if (count[before] > 0) {
+                folded[b] = folded[before];
+                break;
+            }
+            if (count[after] > 0) {
+                folded[b] = folded[after];
+                break;
+            }
+        }
+    }
+    return folded;
+}
+
+// Ángulo incluido entre los dos flancos, en grados.
+//
+// El flanco es el tramo INCLINADO entre un valle y una cresta. Se ajusta una
+// recta a la parte central de ese tramo —del 20 % al 80 % de la altura del
+// filete— para no contaminarla con el redondeo de la punta ni con el del fondo.
+// Se hizo primero por estadística de pendientes (mediana de las más inclinadas)
+// y estaba mal: la proporción de muestras que caen en el flanco depende de
+// cuánto llano tenga la cresta, así que el resultado cambiaba con el PASO en
+// vez de con el ángulo.
+double flankAngleDeg(const std::vector<double>& offsets, double period,
+                     double stationSpacing) {
+    const std::vector<double> folded = foldByPeriod(offsets, period);
+    if (folded.empty() || stationSpacing <= 0.0) {
+        return 0.0;
+    }
+    const auto kBins = static_cast<int>(folded.size());
+    const auto minIt = std::min_element(folded.begin(), folded.end());
+    const auto maxIt = std::max_element(folded.begin(), folded.end());
+    const double low = *minIt;
+    const double high = *maxIt;
+    const double height = high - low;
+    if (height < 1.0) {
+        return 0.0;  // sin filete apreciable no hay flanco que medir
+    }
+    const auto rootBin = static_cast<int>(std::distance(folded.begin(), minIt));
+    const auto crestBin = static_cast<int>(std::distance(folded.begin(), maxIt));
+
+    // Ancho de un bin, en píxeles a lo largo del eje.
+    const double binWidthPx = period * stationSpacing / kBins;
+
+    // Recorre de un extremo al otro (circularmente) y ajusta la parte central.
+    const auto measureFlank = [&](int fromBin, int toBin) -> double {
+        std::vector<cv::Point2f> points;
+        int steps = (toBin - fromBin + kBins) % kBins;
+        if (steps == 0) {
+            steps = kBins;
+        }
+        for (int k = 0; k <= steps; ++k) {
+            const auto bin = static_cast<std::size_t>((fromBin + k) % kBins);
+            const double value = folded[bin];
+            const double fraction = (value - low) / height;
+            if (fraction < 0.2 || fraction > 0.8) {
+                continue;  // punta y fondo redondeados: fuera del ajuste
+            }
+            points.emplace_back(static_cast<float>(k * binWidthPx),
+                                static_cast<float>(value));
+        }
+        if (points.size() < 3) {
+            return 0.0;
+        }
+        const vision::LineFit fit = vision::fitLineTotal(points);
+        if (!fit.valid || std::abs(fit.direction.x) < 1e-6) {
+            return 0.0;
+        }
+        const double slope = std::abs(fit.direction.y / fit.direction.x);
+        if (slope < 1e-6) {
+            return 0.0;
+        }
+        // El flanco forma con la PERPENDICULAR al eje un ángulo atan(1/pendiente).
+        return std::atan(1.0 / slope) * 180.0 / kPi;
+    };
+
+    const double rising = measureFlank(rootBin, crestBin);
+    const double falling = measureFlank(crestBin, rootBin);
+    if (rising <= 0.0 || falling <= 0.0) {
+        return 0.0;
+    }
+    return rising + falling;  // ángulo incluido: los dos flancos
+}
+
+// Roscas métricas de paso grueso. Sirve para proponer la designación cuando hay
+// calibración: con el diámetro exterior y el paso en mm, la rosca queda
+// identificada.
+struct MetricThread {
+    double diameterMm;
+    double pitchMm;
+    const char* name;
+};
+
+const char* closestMetricThread(double diameterMm, double pitchMm, double& errorOut) {
+    static constexpr MetricThread kTable[] = {
+        {1.6, 0.35, "M1.6"}, {2.0, 0.40, "M2"},   {2.5, 0.45, "M2.5"}, {3.0, 0.50, "M3"},
+        {4.0, 0.70, "M4"},   {5.0, 0.80, "M5"},   {6.0, 1.00, "M6"},   {8.0, 1.25, "M8"},
+        {10.0, 1.50, "M10"}, {12.0, 1.75, "M12"}, {14.0, 2.00, "M14"}, {16.0, 2.00, "M16"},
+        {20.0, 2.50, "M20"}, {24.0, 3.00, "M24"}, {30.0, 3.50, "M30"}, {36.0, 4.00, "M36"}};
+    const char* best = nullptr;
+    double bestError = 1e9;
+    for (const auto& entry : kTable) {
+        // Error relativo en los dos ejes: un tornillo se identifica por la
+        // pareja, no por el diámetro suelto.
+        const double e = std::abs(diameterMm - entry.diameterMm) / entry.diameterMm +
+                         std::abs(pitchMm - entry.pitchMm) / entry.pitchMm;
+        if (e < bestError) {
+            bestError = e;
+            best = entry.name;
+        }
+    }
+    errorOut = bestError;
+    return best;
+}
+
+ToolRunResult runThread(const cv::Mat& gray, const Fixture& fixture, const ToolConfig& config,
+                        const ThreadGeometry& g, const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+    const cv::Point2f from = toImg(fixture, g.axisFrom);
+    const cv::Point2f to = toImg(fixture, g.axisTo);
+    const double axisLength = cv::norm(to - from);
+    if (axisLength < 20.0) {
+        result.detail = "El eje trazado es demasiado corto para ver varias vueltas";
+        return result;
+    }
+
+    const int stations = std::clamp(g.stations, 40, 1000);
+    const double reach = std::max(5.0, static_cast<double>(g.searchBand));
+    // Grosor de promediado 1 y no el 3 habitual. El promediado va PERPENDICULAR
+    // al escaneo, y como el escaneo sale perpendicular al eje, ese promedio cae
+    // a lo LARGO del eje: justo sobre el filete que se quiere medir. Con 3 px
+    // los flancos salían emborronados y el ángulo se leía siempre ~62° fuera
+    // cual fuera el real. Aquí conviene el perfil crudo.
+    constexpr float kThreadThickness = 1.0F;
+    const ThreadSide sideA = buildThreadSide(
+        axialProfile(gray, from, to, ProfileSide::Positive, stations, reach,
+                     kThreadThickness));
+    const ThreadSide sideB = buildThreadSide(
+        axialProfile(gray, from, to, ProfileSide::Negative, stations, reach,
+                     kThreadThickness));
+    if (!sideA.usable || !sideB.usable) {
+        result.detail = "No se ve el perfil de la rosca a los dos lados del eje";
+        if (sideA.missing > 0 || sideB.missing > 0) {
+            result.detail += ". Sube el alcance de búsqueda (ahora " + fmt2(reach) +
+                             " px) o mejora el contraste del borde";
+        }
+        return result;
+    }
+
+    const double spacing = axisLength / (stations - 1);
+
+    // El paso sale del periodo del perfil. Se mide en los dos lados por
+    // separado: si no coinciden, la lectura no es de fiar y se dice.
+    const double minPeriod = 4.0;
+    const double maxPeriod = stations / 2.5;
+    const auto periodA = vision::dominantPeriod(sideA.offsets, minPeriod, maxPeriod);
+    const auto periodB = vision::dominantPeriod(sideB.offsets, minPeriod, maxPeriod);
+    if (!periodA.valid || !periodB.valid) {
+        result.detail = "El perfil no se repite: ¿es una rosca vista de perfil?";
+        return result;
+    }
+    const double pitchPx = (periodA.period + periodB.period) / 2.0 * spacing;
+    const double confidence = std::min(periodA.confidence, periodB.confidence);
+    const double sidesDisagreement =
+        std::abs(periodA.period - periodB.period) / std::max(periodA.period, periodB.period);
+
+    // Diámetros: crestas y valles de los dos lados sumados, que no depende de
+    // que el eje esté centrado (mismo criterio que el Eje torneado).
+    const double majorDiameter =
+        decileMean(sideA.offsets, true) + decileMean(sideB.offsets, true);
+    const double minorDiameter =
+        decileMean(sideA.offsets, false) + decileMean(sideB.offsets, false);
+    const double flank = (flankAngleDeg(sideA.offsets, periodA.period, spacing) +
+                          flankAngleDeg(sideB.offsets, periodB.period, spacing)) /
+                         2.0;
+
+    result.measured = pitchPx;  // el paso es lo que identifica una rosca
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = "paso=" + fmtLen(pitchPx, fmt) + ", Ø ext=" + fmtLen(majorDiameter, fmt) +
+                    ", Ø fondo=" + fmtLen(minorDiameter, fmt) +
+                    ", flanco=" + fmt2(flank) + "°";
+
+    if (fmt.mmPerPixel > 0.0) {
+        double designationError = 0.0;
+        const char* name = closestMetricThread(majorDiameter * fmt.mmPerPixel,
+                                               pitchPx * fmt.mmPerPixel, designationError);
+        // Solo se propone si encaja de verdad. Dar una designación a una rosca
+        // que no está en la tabla sería peor que no dar ninguna.
+        if (name != nullptr && designationError < 0.12) {
+            result.detail += std::string(", ≈ ") + name + "×" + fmt2(pitchPx * fmt.mmPerPixel);
+        }
+    } else {
+        // Sin escala, el paso en píxeles no identifica nada.
+        result.detail += " — sin calibración px→mm no se puede designar la rosca";
+    }
+    // El ángulo de flanco es el más exigente de los cuatro números: se mide
+    // sobre la pendiente del filete, y si el filete ocupa pocos píxeles esa
+    // pendiente no se resuelve. Comprobado con roscas sintéticas: con 50 px de
+    // altura de filete el ángulo sale a ±1°, con 25 px a ±2°, y con 12 px deja
+    // de distinguir 60° de 55°. Los diámetros y el paso aguantan mucho mejor,
+    // así que se avisa solo del ángulo en vez de rechazar la medida entera.
+    const double crestHeight = (majorDiameter - minorDiameter) / 2.0;
+    if (crestHeight < 20.0) {
+        result.detail += " (filete de solo " + fmt2(crestHeight) +
+                         " px: el ángulo de flanco no es fiable, acerca la cámara)";
+    }
+    if (confidence < 0.5) {
+        result.detail += " (repetición débil: confianza " + fmt2(confidence) + ")";
+    }
+    if (sidesDisagreement > 0.15) {
+        result.detail += " (los dos lados no concuerdan: revisa el eje)";
+    }
+
+    result.overlaySegments.push_back({from, to});
+    result.overlayPoints.push_back(from + (to - from) * 0.5F);
+    return result;
+}
+
 ToolRunResult runPointToLine(const cv::Mat& gray, const Fixture& fixture,
                              const ToolConfig& config, const PointToLineGeometry& g,
                              const Fmt& fmt) {
@@ -815,6 +1157,9 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Shaft:
                 return ResultT::ok(runShaft(gray, fixture, config,
                                             std::get<ShaftGeometry>(geometry.value()), fmt));
+            case ToolType::Thread:
+                return ResultT::ok(runThread(gray, fixture, config,
+                                             std::get<ThreadGeometry>(geometry.value()), fmt));
             case ToolType::Position: {
                 // Sin tablero explícito: cero en la pieza y ejes de la imagen.
                 const vision::BoardFrame fallback{fixture.origin, 0.0};
