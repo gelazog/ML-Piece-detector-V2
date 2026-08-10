@@ -1,0 +1,69 @@
+#pragma once
+
+#include <opencv2/core.hpp>
+
+#include <vector>
+
+namespace pci::vision {
+
+// Convierte "una silueta" en "dos caras paralelas, cuatro esquinas redondeadas
+// y tres agujeros". Es el paso que hace falta antes de poder proponer medidas
+// automáticamente: el contorno que entrega `analyzeFrame` es una lista de
+// puntos, y de una lista de puntos no se deduce qué medir.
+
+enum class PrimitiveKind { Line, Arc };
+
+struct ContourPrimitive {
+    PrimitiveKind kind = PrimitiveKind::Line;
+    cv::Point2f start{0.0F, 0.0F};
+    cv::Point2f end{0.0F, 0.0F};
+    cv::Point2f mid{0.0F, 0.0F};  // punto intermedio del tramo, sobre la forma
+    // Solo para Arc.
+    cv::Point2f center{0.0F, 0.0F};
+    double radius = 0.0;
+    double sweepDeg = 0.0;
+    // Calidad del ajuste (px) y longitud recorrida del tramo (px). La longitud
+    // sirve para ordenar por importancia: un rasgo de 3 px no merece una
+    // herramienta.
+    double rmsResidual = 0.0;
+    double length = 0.0;
+};
+
+struct DecomposeOptions {
+    // Paso del remuestreo uniforme. El contorno crudo va de píxel en píxel y
+    // trae el dentado de la rasterización; remuestrear lo suaviza sin borrar la
+    // forma.
+    double resampleStep = 2.0;
+    // Residuo máximo aceptable para dar un tramo por bueno (px).
+    double maxResidual = 0.8;
+    // Un tramo con menos puntos que esto no se parte más: por debajo, cualquier
+    // recta corta se ajusta igual de bien a un arco enorme.
+    int minPoints = 8;
+    // Ángulo mínimo de arco para aceptarlo como tal. Por debajo, un arco de
+    // radio gigantesco explica los puntos igual que una recta, y devolver ese
+    // radio sería inventárselo.
+    double minArcSweepDeg = 15.0;
+};
+
+// Descompone un contorno CERRADO en tramos rectos y arcos.
+//
+// El método es partir-y-unir recursivo, y no detección de esquinas, por una
+// razón concreta: en la unión tangente de una recta con un redondeo **no hay
+// esquina** —la dirección no cambia, solo la curvatura—, así que un detector de
+// esquinas se salta justo las transiciones de una pieza mecanizada. Partir por
+// el punto de peor ajuste sí las encuentra.
+[[nodiscard]] std::vector<ContourPrimitive> decomposeContour(
+    const std::vector<cv::Point>& contour, const DecomposeOptions& options = {});
+
+// Contornos internos de la máscara: los agujeros de la pieza. Cada uno es
+// candidato a un Círculo si es redondo. `minAreaPx` descarta el ruido de la
+// segmentación.
+[[nodiscard]] std::vector<std::vector<cv::Point>> findHoles(const cv::Mat& mask,
+                                                            double minAreaPx = 40.0);
+
+// Remuestrea un contorno cerrado a paso uniforme. Se expone porque es útil por
+// separado (dibujar, exportar) y porque así se puede probar aparte.
+[[nodiscard]] std::vector<cv::Point2f> resampleClosedContour(
+    const std::vector<cv::Point>& contour, double step);
+
+}  // namespace pci::vision

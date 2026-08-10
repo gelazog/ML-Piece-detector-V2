@@ -15,6 +15,7 @@ add_executable(pci_tests
   test_domain.cpp
   test_engine.cpp
   test_fitting.cpp
+  test_geometry_features.cpp
   test_fps_counter.cpp
   test_frame_utils.cpp
   test_inspection.cpp

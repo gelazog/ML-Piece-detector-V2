@@ -143,7 +143,7 @@ Formato: casilla, ID, tarea, por qué, algoritmo, archivos, cómo se verifica.
 
 ### A. Medición automática
 
-- [ ] **A1 — Descomposición del contorno en primitivas.** El contorno que ya
+- [x] **A1 — Descomposición del contorno en primitivas.** *(Se hizo con barrido voraz + ajuste de fronteras, no con detección de esquinas ni partición recursiva: ver ARQUITECTURA.)* El contorno que ya
   entrega `analyzeFrame` es una lista de puntos; para medir hace falta saber
   **qué trozos son rectas y qué trozos son arcos**. Es el paso que convierte
   "una silueta" en "dos caras paralelas, cuatro esquinas redondeadas y tres

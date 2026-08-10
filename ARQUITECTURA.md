@@ -371,6 +371,47 @@ Dos salvaguardas que se ganaron probando:
   operador aprende a ignorar, así que ahora hay un test que exige que **no**
   salte con una rueda normalizada.
 
+### De una silueta a rasgos medibles
+
+`vision/geometry_features.*` convierte "una lista de puntos" en "cuatro lados y
+cuatro esquinas redondeadas de radio 38", que es lo que hace falta antes de poder
+proponer medidas solo. El camino hasta que funcionó tiene cuatro decisiones que
+salieron de medir, no de suponer:
+
+- **Barrido voraz, no detección de esquinas.** En la unión tangente de una recta
+  con un redondeo **no hay esquina**: la dirección no cambia, solo la curvatura.
+  Un detector de esquinas se salta justo las transiciones de una pieza
+  mecanizada. El barrido —extender un tramo mientras una primitiva lo explique y
+  cortar donde se rompe— encuentra por igual la esquina viva y la tangente.
+  También se probó partición recursiva por el punto de peor ajuste y se
+  descartó: más difícil de razonar y dejaba tramos de 541 px con residuo 11 sin
+  partir.
+- **Suavizado antes de ajustar.** Sin él, un lado *perfectamente recto* daba
+  residuo 1,2–1,4 px por el dentado de la rasterización — el suelo de ruido
+  quedaba al nivel de la tolerancia, y con eso no se distingue un rasgo limpio de
+  una mezcla. Con una media móvil corta baja a 0,1–0,3 y la tolerancia puede
+  apretarse a 0,8.
+- **Ajuste de fronteras.** El barrido corta *después* de la transición real
+  (sigue creciendo hasta pasarse), así que cada tramo se lleva un trozo del
+  siguiente y en un redondeo eso aplana el ajuste: los radios salían 45–57 para
+  un radio real de 40. Moviendo cada frontera al punto que minimiza la suma de
+  los residuos vecinos, pasan a **38,0–38,6** y los residuos caen un orden de
+  magnitud.
+- **La costura, fundida solo si de verdad es un rasgo.** El contorno cierra pero
+  el barrido es lineal, así que al dar la vuelta deja un muñón: un disco salía
+  como "un arco de 701 px y otro de 49". Se funden el primer y el último tramo
+  **ajustando su unión y aceptando solo si sigue siendo una primitiva**. Se probó
+  antes con heurísticas por clase ("dos rectas cuyos extremos se tocan") y era un
+  error de bulto: en un contorno cerrado los extremos *siempre* se tocan en la
+  costura, así que fundía dos lados perpendiculares de un rectángulo.
+
+Verificado contra siluetas de geometría conocida: rectángulo → 4 rectas; pieza
+en L → 6 rectas; disco → **un** arco (R = 119,5 para 120); rectángulo con
+esquinas de radio 40 → **4 rectas y 4 arcos** de R ≈ 38,3.
+
+Los **agujeros** salen aparte, de la jerarquía de `findContours`: un contorno con
+padre es un hueco interno, y cada uno es candidato a un Círculo.
+
 ### Avisos de condiciones: el fallo que no se ve en el número
 
 Estas herramientas dan resultados **creíbles** con datos malos, que es la peor
