@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "inspection_editor/execution/edge_detection.h"
+#include "vision/fitting.h"
 #include "vision/plane_scale.h"
 #include "vision/position_fixture.h"
 
@@ -316,30 +317,32 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
         return result;
     }
 
-    // Ajuste algebraico de círculo (Kasa): minimiza x^2+y^2 - 2ax - 2by - c.
-    cv::Mat A(static_cast<int>(points.size()), 3, CV_64F);
-    cv::Mat b(static_cast<int>(points.size()), 1, CV_64F);
-    for (int i = 0; i < static_cast<int>(points.size()); ++i) {
-        const auto& p = points[static_cast<std::size_t>(i)];
-        A.at<double>(i, 0) = 2.0 * p.x;
-        A.at<double>(i, 1) = 2.0 * p.y;
-        A.at<double>(i, 2) = 1.0;
-        b.at<double>(i, 0) = static_cast<double>(p.x) * p.x + static_cast<double>(p.y) * p.y;
-    }
-    cv::Mat solution;
-    if (!cv::solve(A, b, solution, cv::DECOMP_SVD)) {
+    // Ajuste robusto (Taubin + reponderación). Antes se usaba Kasa, que sesga
+    // el radio hacia abajo cuando el borde solo aparece en parte del contorno
+    // —un círculo tapado a medias, un taladro con el borde roto— y sin ningún
+    // rechazo de atípicos, así que una rebaba o un reflejo movían el resultado.
+    const vision::CircleFit fit = vision::fitCircleRobust(points);
+    if (!fit.valid) {
         result.detail = "No se pudo ajustar el círculo";
         return result;
     }
-    const double cx = solution.at<double>(0);
-    const double cy = solution.at<double>(1);
-    const double r =
-        std::sqrt(std::max(0.0, solution.at<double>(2) + cx * cx + cy * cy));
+    const double cx = fit.center.x;
+    const double cy = fit.center.y;
+    const double r = fit.radius;
 
+    // La redondez se mide sobre los puntos que el ajuste consideró buenos: si
+    // se incluyeran los descartados, un solo punto malo la dispararía y
+    // ocultaría la forma real de la pieza.
+    const double outlierBand = 3.0 * std::max(fit.rmsResidual, 0.1);
     double roundness = 0.0;
+    int discarded = 0;
     for (const auto& p : points) {
-        const double d = std::hypot(p.x - cx, p.y - cy);
-        roundness = std::max(roundness, std::abs(d - r));
+        const double deviation = std::abs(std::hypot(p.x - cx, p.y - cy) - r);
+        if (deviation > outlierBand) {
+            ++discarded;
+            continue;
+        }
+        roundness = std::max(roundness, deviation);
     }
 
     result.measured = 2.0 * r;
@@ -347,6 +350,12 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
     result.detail = "D=" + fmtLen(result.measured, fmt) +
                     ", R=" + fmtLen(r, fmt) +
                     ", redondez=" + fmtLen(roundness, fmt);
+    if (discarded > 0) {
+        // Decirlo importa: un borde con muchos puntos descartados puede seguir
+        // dando un diámetro perfecto y estar midiendo solo media pieza.
+        result.detail += " (" + std::to_string(discarded) + "/" +
+                         std::to_string(points.size()) + " puntos descartados)";
+    }
     result.overlayPoints = std::move(points);
     result.overlayPoints.push_back(
         {static_cast<float>(cx), static_cast<float>(cy)});

@@ -84,7 +84,7 @@ Formato: casilla, ID, tarea, por qué, algoritmo, archivos, cómo se verifica.
 
 ### F. Fundamentos de ajuste (habilitan todo lo demás)
 
-- [ ] **F1 — Ajuste de círculo Taubin, y robusto.** El Círculo actual usa
+- [x] **F1 — Ajuste de círculo Taubin, y robusto.** El Círculo actual usa
   ajuste **Kasa** (`tool_executor.cpp`, ~línea 319). Kasa es conocido por
   **sesgar el radio hacia abajo en arcos parciales**: sobre una circunferencia
   completa da bien, pero sobre el arco de una esquina —que es justo lo que pide

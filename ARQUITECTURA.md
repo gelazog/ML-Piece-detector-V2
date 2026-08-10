@@ -184,6 +184,25 @@ resultado con la medida, el veredicto y los puntos para dibujarla.
 | Ángulo | Ángulo interior de una esquina | Ángulo entre dos vectores desde el vértice |
 | Posición | Desviación de un rasgo respecto al cero del tablero | Lectura en el sistema del tablero (radial, X o Y) |
 
+**Ajustes geométricos** (`vision/fitting.*`). El Círculo —y las herramientas de
+pieza torneada que vienen detrás— acaban preguntando lo mismo: qué
+circunferencia explica esta nube de puntos de borde. Dos decisiones ahí:
+
+- **Taubin, no Kasa.** Kasa minimiza el residuo algebraico sin normalizar, lo
+  que pesa de más los puntos lejanos al centro. Sobre una circunferencia
+  completa da igual, pero sobre un **arco parcial** el radio sale corto, y
+  cuanto más corto es el arco, peor. Medido en el test con un radio de 200 px:
+  a 30° de arco Kasa se desvía **10,3 px (5 %)** y Taubin **0,92 px (0,46 %)**;
+  a 90°, 0,23 frente a 0,12; con medio círculo o más los dos aciertan. Cuesta
+  lo mismo, así que no hay razón para el sesgo.
+- **Reponderación robusta.** El borde de una pieza real trae puntos que no son
+  del círculo: una rebaba, un reflejo, un rayo que enganchó el borde
+  equivocado. Se reponderan con la biponderada de Tukey midiendo la dispersión
+  con la MAD, que no se deja arrastrar por los propios atípicos. El resultado
+  dice **cuántos puntos acabaron contando**: un borde que descarta la mitad
+  puede seguir dando un diámetro perfecto y estar midiendo media pieza, así que
+  el Círculo lo escribe en el detalle en vez de callárselo.
+
 **Tolerancias.** Cada herramienta tiene banda mínima y máxima; al crearla se
 sugieren automáticamente a partir de lo que mide en la pieza buena (±10 % para
 distancias, conteo exacto para blobs, ±2° para ángulos). La tolerancia decide el
