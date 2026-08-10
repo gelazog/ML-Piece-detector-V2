@@ -27,8 +27,12 @@ std::vector<cv::Point2f> arcPoints(cv::Point2f center, double radius, double spa
     std::normal_distribution<double> noise(0.0, noiseSigma);
     std::vector<cv::Point2f> points;
     points.reserve(static_cast<std::size_t>(count));
+    // En una vuelta completa el reparto es por `count` (si fuera por count-1,
+    // el primer punto y el último caerían encima y sesgarían los momentos).
+    const bool closed = spanDeg >= 359.999;
+    const int divisions = closed ? count : std::max(1, count - 1);
     for (int i = 0; i < count; ++i) {
-        const double t = count == 1 ? 0.0 : static_cast<double>(i) / (count - 1);
+        const double t = static_cast<double>(i) / divisions;
         const double angle = (-spanDeg / 2.0 + spanDeg * t) * kPi / 180.0;
         const double r = radius + (noiseSigma > 0.0 ? noise(rng) : 0.0);
         points.emplace_back(static_cast<float>(center.x + r * std::cos(angle)),
@@ -179,6 +183,146 @@ TEST(CircleFitting, RobustFitLeavesACleanCircleAlone) {
     ASSERT_TRUE(robust.valid);
     EXPECT_NEAR(robust.radius, 45.0, 0.2);
     EXPECT_GE(robust.inlierCount, 44);
+}
+
+// ---------------------------------------------------------------------------
+// Rectas
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Puntos sobre la recta que pasa por `origin` con el ángulo dado, repartidos a
+// lo largo de `span` px, con ruido perpendicular.
+std::vector<cv::Point2f> linePoints(cv::Point2f origin, double angleDeg, double span,
+                                    int count, double noiseSigma, unsigned seed) {
+    std::mt19937 rng(seed);
+    std::normal_distribution<double> noise(0.0, noiseSigma);
+    const double a = angleDeg * kPi / 180.0;
+    const cv::Point2d dir(std::cos(a), std::sin(a));
+    const cv::Point2d normal(-dir.y, dir.x);
+    std::vector<cv::Point2f> points;
+    points.reserve(static_cast<std::size_t>(count));
+    for (int i = 0; i < count; ++i) {
+        const double t = -span / 2.0 + span * i / std::max(1, count - 1);
+        const double n = noiseSigma > 0.0 ? noise(rng) : 0.0;
+        points.emplace_back(static_cast<float>(origin.x + dir.x * t + normal.x * n),
+                            static_cast<float>(origin.y + dir.y * t + normal.y * n));
+    }
+    return points;
+}
+
+}  // namespace
+
+TEST(LineFitting, RecoversEveryOrientationIncludingTheVertical) {
+    // La vertical es el caso que rompe el ajuste clásico y=mx+b (pendiente
+    // infinita). Con mínimos cuadrados totales no tiene nada de especial, y eso
+    // es justo lo que hay que comprobar.
+    for (const double angle : {0.0, 17.0, 45.0, 89.0, 90.0, -45.0, -89.0}) {
+        const auto points = linePoints({250.0F, 180.0F}, angle, 200.0, 40, 0.0, 1);
+        const pci::vision::LineFit fit = pci::vision::fitLineTotal(points);
+        ASSERT_TRUE(fit.valid) << "ángulo " << angle;
+        // La recta no tiene sentido, así que 90° y -90° son la misma.
+        const double expected = angle <= -90.0 ? angle + 180.0 : angle;
+        EXPECT_NEAR(fit.angleDeg(), expected, 1e-3) << "ángulo pedido " << angle;
+        EXPECT_LT(fit.rmsResidual, 1e-3);
+        // Y todos los puntos caen sobre ella.
+        for (const auto& p : points) {
+            EXPECT_LT(std::abs(fit.signedDistance(p)), 1e-3);
+        }
+    }
+}
+
+TEST(LineFitting, TheResidualMatchesTheNoiseItWasGiven) {
+    // Si el residuo no refleja el ruido real, no sirve para decidir si un tramo
+    // de contorno es recto: es el criterio de la descomposición del contorno.
+    for (const double sigma : {0.25, 1.0, 3.0}) {
+        const auto points = linePoints({0.0F, 0.0F}, 33.0, 400.0, 400, sigma, 5);
+        const pci::vision::LineFit fit = pci::vision::fitLineTotal(points);
+        ASSERT_TRUE(fit.valid);
+        EXPECT_NEAR(fit.rmsResidual, sigma, sigma * 0.2) << "sigma " << sigma;
+        EXPECT_NEAR(fit.angleDeg(), 33.0, 1.0);
+    }
+}
+
+TEST(LineFitting, SignedDistanceSeparatesTheTwoSides) {
+    // El signo es lo que permite separar los dos costados de un eje torneado:
+    // sin él, los dos bordes se mezclarían en un solo ajuste.
+    const auto points = linePoints({100.0F, 100.0F}, 0.0, 200.0, 20, 0.0, 1);
+    const pci::vision::LineFit fit = pci::vision::fitLineTotal(points);
+    ASSERT_TRUE(fit.valid);
+    const double above = fit.signedDistance({100.0F, 90.0F});
+    const double below = fit.signedDistance({100.0F, 110.0F});
+    EXPECT_LT(above * below, 0.0) << "los dos lados deben tener signo opuesto";
+    EXPECT_NEAR(std::abs(above), 10.0, 1e-3);
+    EXPECT_NEAR(std::abs(below), 10.0, 1e-3);
+}
+
+TEST(LineFitting, DirectionIsCanonicalSoAnglesDoNotFlip) {
+    // Los mismos puntos en orden inverso deben dar exactamente la misma recta;
+    // si no, un ángulo entre dos rectas saltaría 180° según cómo se recorrieran.
+    auto forward = linePoints({40.0F, 40.0F}, 120.0, 150.0, 30, 0.0, 2);
+    std::vector<cv::Point2f> backward(forward.rbegin(), forward.rend());
+    const pci::vision::LineFit a = pci::vision::fitLineTotal(forward);
+    const pci::vision::LineFit b = pci::vision::fitLineTotal(backward);
+    ASSERT_TRUE(a.valid && b.valid);
+    EXPECT_NEAR(a.angleDeg(), b.angleDeg(), 1e-6);
+    EXPECT_GE(a.direction.x, 0.0F);
+    EXPECT_LE(a.angleDeg(), 90.0);
+    EXPECT_GT(a.angleDeg(), -90.0);
+}
+
+TEST(LineFitting, RobustFitIgnoresAChip) {
+    // Una viruta pegada al borde: unos pocos puntos claramente fuera.
+    auto points = linePoints({200.0F, 200.0F}, 10.0, 300.0, 60, 0.3, 9);
+    for (int i = 0; i < 6; ++i) {
+        points.emplace_back(220.0F + static_cast<float>(i) * 3.0F, 160.0F);
+    }
+    const pci::vision::LineFit plain = pci::vision::fitLineTotal(points);
+    const pci::vision::LineFit robust = pci::vision::fitLineRobust(points);
+    ASSERT_TRUE(robust.valid);
+    std::printf("  con viruta: simple %.2f°  robusto %.2f°  (real 10.00°)\n",
+                plain.angleDeg(), robust.angleDeg());
+    EXPECT_NEAR(robust.angleDeg(), 10.0, 0.5);
+    EXPECT_LT(std::abs(robust.angleDeg() - 10.0), std::abs(plain.angleDeg() - 10.0));
+    EXPECT_LE(robust.inlierCount, 60);
+    EXPECT_GE(robust.inlierCount, 55);
+}
+
+TEST(LineFitting, RobustFitLeavesACleanLineAlone) {
+    const auto points = linePoints({10.0F, 500.0F}, -60.0, 250.0, 50, 0.2, 13);
+    const pci::vision::LineFit robust = pci::vision::fitLineRobust(points);
+    ASSERT_TRUE(robust.valid);
+    EXPECT_NEAR(robust.angleDeg(), -60.0, 0.3);
+    EXPECT_GE(robust.inlierCount, 46);
+}
+
+TEST(LineFitting, RefusesWhatIsNotALine) {
+    EXPECT_FALSE(pci::vision::fitLineTotal({}).valid);
+    EXPECT_FALSE(pci::vision::fitLineTotal({{5.0F, 5.0F}}).valid);
+    // Todos los puntos en el mismo sitio: no hay dirección.
+    EXPECT_FALSE(
+        pci::vision::fitLineTotal({{7.0F, 7.0F}, {7.0F, 7.0F}, {7.0F, 7.0F}}).valid);
+}
+
+TEST(LineFitting, AnisotropySaysWhenTheDirectionMeansNothing) {
+    // Una nube redonda (puntos en círculo) sí produce una dirección, pero es
+    // ruido: no hay eje principal. En vez de esconder un umbral dentro del
+    // ajuste, se devuelve la anisotropía —la misma medida que ya usa el fixture
+    // para no perseguir el ángulo de piezas casi circulares— y decide quien
+    // pregunta, que es el único que sabe cuánta le hace falta.
+    const auto circle = arcPoints({0.0F, 0.0F}, 50.0, 360.0, 60, 0.0, 4);
+    const pci::vision::LineFit round = pci::vision::fitLineTotal(circle);
+    ASSERT_TRUE(round.valid);
+    EXPECT_LT(round.anisotropy, 0.05) << "una nube redonda no tiene dirección fiable";
+
+    const auto straight = linePoints({0.0F, 0.0F}, 25.0, 300.0, 60, 0.5, 4);
+    const pci::vision::LineFit line = pci::vision::fitLineTotal(straight);
+    ASSERT_TRUE(line.valid);
+    EXPECT_GT(line.anisotropy, 0.95) << "una recta de verdad sí";
+
+    // Y el residuo distingue lo mismo por otra vía: una nube redonda no es una
+    // recta delgada. Las dos señales tienen que apuntar al mismo sitio.
+    EXPECT_GT(round.rmsResidual, 10.0 * line.rmsResidual);
 }
 
 TEST(CircleFitting, ResidualTellsACircleFromSomethingElse) {

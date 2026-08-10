@@ -49,4 +49,48 @@ struct CircleFit {
 [[nodiscard]] CircleFit fitCircleRobust(const std::vector<cv::Point2f>& points,
                                         int iterations = 5);
 
+struct LineFit {
+    cv::Point2f point{0.0F, 0.0F};  // un punto de la recta (el centroide)
+    // Dirección unitaria, en forma canónica: x > 0, o x = 0 e y > 0. Una recta
+    // no tiene sentido, así que fijar el signo evita que el mismo conjunto de
+    // puntos devuelva a veces d y a veces -d y que los ángulos salten 180°.
+    cv::Point2f direction{1.0F, 0.0F};
+    double rmsResidual = 0.0;  // distancia perpendicular cuadrática media (px)
+    int inlierCount = 0;
+    // Cuán alargada es la nube: **0 = redonda, ~1 = línea**. Misma definición
+    // que `Fixture::anisotropy` (1 − √(λmenor/λmayor)), y por el mismo motivo:
+    // una nube redonda no tiene eje principal, así que su dirección es ruido.
+    // Se expone en vez de decidir por el llamante con un umbral escondido —
+    // cuánta anisotropía hace falta depende de para qué se pida la recta.
+    double anisotropy = 0.0;
+    bool valid = false;
+
+    // Distancia perpendicular con signo: positiva al lado izquierdo de
+    // `direction`. El signo es lo que permite saber de qué lado del eje cae un
+    // borde, que es como se separan los dos flancos de un eje torneado.
+    [[nodiscard]] double signedDistance(const cv::Point2f& p) const;
+    // Orientación en grados, normalizada a (-90, 90].
+    [[nodiscard]] double angleDeg() const;
+};
+
+// Mínimos cuadrados totales: minimiza la distancia PERPENDICULAR a la recta,
+// no el error vertical. La diferencia no es cosmética — el ajuste clásico
+// `y = mx + b` no puede representar una recta vertical (la pendiente se va a
+// infinito) y se degrada mucho antes de llegar a ella. Aquí la recta se
+// describe por punto y dirección, así que todas las orientaciones cuestan lo
+// mismo. Se resuelve con la forma cerrada del eje principal de la covarianza.
+//
+// Devuelve valid=false solo cuando no hay recta posible: menos de 2 puntos o
+// todos en el mismo sitio. Para el caso intermedio —una nube redonda, donde sí
+// sale una dirección pero no significa nada— está `anisotropy`, que es la que
+// hay que mirar antes de fiarse del ángulo.
+[[nodiscard]] LineFit fitLineTotal(const std::vector<cv::Point2f>& points);
+
+// Igual, con reponderación iterativa contra atípicos (misma biponderada de
+// Tukey sobre la MAD que el círculo). Lo necesitan los flancos de la rosca y
+// los dos costados de un eje, donde una viruta o una marca de mecanizado mete
+// puntos que no pertenecen al borde.
+[[nodiscard]] LineFit fitLineRobust(const std::vector<cv::Point2f>& points,
+                                    int iterations = 5);
+
 }  // namespace pci::vision

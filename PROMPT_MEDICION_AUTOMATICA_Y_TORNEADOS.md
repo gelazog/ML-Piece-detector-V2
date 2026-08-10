@@ -102,7 +102,7 @@ Formato: casilla, ID, tarea, por qué, algoritmo, archivos, cómo se verifica.
   el propio test**, no solo pasar.
   Skills: `cpp-coding-standards`, `cpp-testing`.
 
-- [ ] **F2 — Ajuste de recta robusto.** Mínimos cuadrados totales (PCA sobre
+- [x] **F2 — Ajuste de recta robusto.** Mínimos cuadrados totales (PCA sobre
   los puntos, que trata bien las rectas verticales) + rechazo de atípicos.
   `fitLineRobust(points) -> {point, direction, rmsResidual, inlierCount}`.
   Lo necesitan el eje, la rosca (flancos) y la descomposición del contorno.

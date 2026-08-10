@@ -203,6 +203,16 @@ circunferencia explica esta nube de puntos de borde. Dos decisiones ahí:
   puede seguir dando un diámetro perfecto y estar midiendo media pieza, así que
   el Círculo lo escribe en el detalle en vez de callárselo.
 
+Para las **rectas** hay dos decisiones equivalentes: se ajusta por **mínimos
+cuadrados totales** (distancia perpendicular, recta descrita por punto y
+dirección) en vez del clásico `y = mx + b`, que no puede representar una recta
+vertical y se degrada mucho antes de llegar a ella; y la dirección se devuelve
+en **forma canónica** para que el mismo conjunto de puntos recorrido al revés no
+dé un ángulo girado 180°. Cuando la nube es redonda sí sale una dirección, pero
+es ruido: en vez de esconder un umbral dentro del ajuste se devuelve la
+**anisotropía** —la misma medida y la misma fórmula que `Fixture::anisotropy`,
+0 = redondo, 1 = línea— y decide quien pregunta.
+
 **Tolerancias.** Cada herramienta tiene banda mínima y máxima; al crearla se
 sugieren automáticamente a partir de lo que mide en la pieza buena (±10 % para
 distancias, conteo exacto para blobs, ±2° para ángulos). La tolerancia decide el

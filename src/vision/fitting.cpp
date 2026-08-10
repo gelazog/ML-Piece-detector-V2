@@ -215,4 +215,168 @@ CircleFit fitCircleRobust(const std::vector<cv::Point2f>& points, int iterations
     return fit;
 }
 
+// --------------------------------------------------------------------------
+// Rectas
+// --------------------------------------------------------------------------
+
+double LineFit::signedDistance(const cv::Point2f& p) const {
+    // Componente perpendicular del vector punto-recta: el producto cruzado con
+    // la dirección unitaria ya da la distancia con signo.
+    const double dx = static_cast<double>(p.x) - point.x;
+    const double dy = static_cast<double>(p.y) - point.y;
+    return dx * direction.y - dy * direction.x;
+}
+
+double LineFit::angleDeg() const {
+    constexpr double kRadToDeg = 57.29577951308232;
+    double angle = std::atan2(static_cast<double>(direction.y),
+                              static_cast<double>(direction.x)) *
+                   kRadToDeg;
+    // La dirección es canónica, así que ya cae en [-90, 90]; se normaliza el
+    // borde para que -90 y 90 no sean dos respuestas distintas a lo mismo.
+    if (angle <= -90.0) {
+        angle += 180.0;
+    }
+    return angle;
+}
+
+namespace {
+
+LineFit fitLineWeighted(const std::vector<cv::Point2f>& points,
+                        const std::vector<double>& weights) {
+    LineFit fit;
+    if (points.size() < 2) {
+        return fit;
+    }
+
+    double totalWeight = 0.0;
+    double meanX = 0.0;
+    double meanY = 0.0;
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        const double w = weights.empty() ? 1.0 : weights[i];
+        totalWeight += w;
+        meanX += w * points[i].x;
+        meanY += w * points[i].y;
+    }
+    if (totalWeight <= 0.0) {
+        return fit;
+    }
+    meanX /= totalWeight;
+    meanY /= totalWeight;
+
+    double sxx = 0.0;
+    double syy = 0.0;
+    double sxy = 0.0;
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        const double w = weights.empty() ? 1.0 : weights[i];
+        const double dx = points[i].x - meanX;
+        const double dy = points[i].y - meanY;
+        sxx += w * dx * dx;
+        syy += w * dy * dy;
+        sxy += w * dx * dy;
+    }
+    sxx /= totalWeight;
+    syy /= totalWeight;
+    sxy /= totalWeight;
+
+    // Autovalores de la covarianza 2x2 en forma cerrada. El mayor mide la
+    // dispersión a lo largo de la recta; el menor, el grosor de la nube.
+    const double trace = sxx + syy;
+    const double diff = std::sqrt(std::max(0.0, (sxx - syy) * (sxx - syy) + 4.0 * sxy * sxy));
+    const double lambdaMax = (trace + diff) / 2.0;
+    const double lambdaMin = (trace - diff) / 2.0;
+    if (lambdaMax < 1e-12) {
+        return fit;  // todos los puntos en el mismo sitio
+    }
+    // Misma fórmula que Fixture::anisotropy, para que "0 = redondo, 1 = línea"
+    // signifique lo mismo en todo el proyecto.
+    fit.anisotropy = 1.0 - std::sqrt(std::max(0.0, lambdaMin) / lambdaMax);
+
+    // Eje principal. atan2(2·Sxy, Sxx−Syy)/2 es el ángulo del autovector mayor
+    // y no se rompe en ninguna orientación, incluida la vertical.
+    const double angle = 0.5 * std::atan2(2.0 * sxy, sxx - syy);
+    double dirX = std::cos(angle);
+    double dirY = std::sin(angle);
+    // Forma canónica: mismo conjunto de puntos, misma dirección siempre.
+    if (dirX < 0.0 || (std::abs(dirX) < 1e-12 && dirY < 0.0)) {
+        dirX = -dirX;
+        dirY = -dirY;
+    }
+
+    fit.point = cv::Point2f(static_cast<float>(meanX), static_cast<float>(meanY));
+    fit.direction = cv::Point2f(static_cast<float>(dirX), static_cast<float>(dirY));
+    fit.valid = true;
+
+    double sum = 0.0;
+    for (const auto& p : points) {
+        const double d = fit.signedDistance(p);
+        sum += d * d;
+    }
+    fit.rmsResidual = std::sqrt(sum / static_cast<double>(points.size()));
+    fit.inlierCount = static_cast<int>(points.size());
+    return fit;
+}
+
+}  // namespace
+
+LineFit fitLineTotal(const std::vector<cv::Point2f>& points) {
+    return fitLineWeighted(points, {});
+}
+
+LineFit fitLineRobust(const std::vector<cv::Point2f>& points, int iterations) {
+    LineFit fit = fitLineTotal(points);
+    if (!fit.valid) {
+        return fit;
+    }
+
+    std::vector<double> weights(points.size(), 1.0);
+    std::vector<double> residuals(points.size(), 0.0);
+
+    for (int iter = 0; iter < std::max(0, iterations); ++iter) {
+        for (std::size_t i = 0; i < points.size(); ++i) {
+            residuals[i] = fit.signedDistance(points[i]);
+        }
+        std::vector<double> absResiduals(residuals.size());
+        std::transform(residuals.begin(), residuals.end(), absResiduals.begin(),
+                       [](double r) { return std::abs(r); });
+        const double scale = 1.4826 * medianOf(absResiduals);
+        if (!(scale > 1e-9)) {
+            break;  // ajuste ya exacto
+        }
+
+        constexpr double kTukey = 4.685;
+        for (std::size_t i = 0; i < points.size(); ++i) {
+            const double u = residuals[i] / (kTukey * scale);
+            weights[i] = std::abs(u) < 1.0 ? std::pow(1.0 - u * u, 2.0) : 0.0;
+        }
+
+        const LineFit next = fitLineWeighted(points, weights);
+        if (!next.valid) {
+            break;
+        }
+        const double shift =
+            std::hypot(static_cast<double>(next.point.x) - fit.point.x,
+                       static_cast<double>(next.point.y) - fit.point.y) +
+            std::abs(next.angleDeg() - fit.angleDeg());
+        fit = next;
+        if (shift < 1e-4) {
+            break;
+        }
+    }
+
+    // Residuo y recuento sobre los puntos que contaron, igual que en el círculo.
+    double sum = 0.0;
+    int inliers = 0;
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        if (weights[i] > 0.0) {
+            const double d = fit.signedDistance(points[i]);
+            sum += d * d;
+            ++inliers;
+        }
+    }
+    fit.inlierCount = inliers;
+    fit.rmsResidual = inliers > 0 ? std::sqrt(sum / inliers) : 0.0;
+    return fit;
+}
+
 }  // namespace pci::vision
