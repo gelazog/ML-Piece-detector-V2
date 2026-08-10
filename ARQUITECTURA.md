@@ -235,6 +235,30 @@ exactitud usan bordes duros; el suavizado se queda donde sí aporta, que es
 reducir la dispersión entre rayos a menos de la mitad (0,24 frente a 0,64 px).
 Traducido: un borde suave da mejor **redondez** y peor **diámetro absoluto**.
 
+**Periodo de una señal repetitiva** (`vision/periodicity.*`). La rosca y el
+engranaje son el mismo problema visto de dos maneras, y el paso y el número de
+dientes salen del mismo cálculo. Tres decisiones:
+
+- **Autocorrelación, no contar picos.** Contar picos parece más simple hasta que
+  la pieza tiene un diente mellado: aparece o desaparece un pico y el recuento
+  se descuadra entero. La autocorrelación mira la señal completa — medido con un
+  diente arrasado, el periodo pasa de 25,00 a 24,98 y lo que baja es la
+  confianza (1,000 → 0,952), que es exactamente la señal que el operador
+  necesita.
+- **Modo circular frente a lineal.** El perfil radial de un engranaje recorre
+  una vuelta y **cierra sobre sí mismo**, así que la correlación da la vuelta y
+  usa todas las muestras en todos los desfases; el de una rosca a lo largo del
+  eje no cierra. En el caso lineal se le quita además la **tendencia recta**,
+  que es como se separa la conicidad de la pieza del rizado que interesa.
+- **Corrección del error de octava.** La autocorrelación pica también en los
+  múltiplos del periodo, y con un periodo fraccionario el múltiplo puede ganar:
+  con periodo real 17,4 el máximo global cae en el desfase 35, porque 2,0115
+  periodos alinean mejor que 0,977. Devolver eso sería el doble del paso, o la
+  mitad de los dientes — un error grande y silencioso. Se parte del máximo
+  global y se comprueban sus submúltiplos **buscando en una ventana**, no en el
+  valor redondeado, porque el pico real cae al lado. Verificado con 17, 23, 31 y
+  47 dientes (primos, que no dividen bien el muestreo): todos exactos.
+
 **Tolerancias.** Cada herramienta tiene banda mínima y máxima; al crearla se
 sugieren automáticamente a partir de lo que mide en la pieza buena (±10 % para
 distancias, conteo exacto para blobs, ±2° para ángulos). La tolerancia decide el

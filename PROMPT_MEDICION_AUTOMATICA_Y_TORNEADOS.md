@@ -127,7 +127,10 @@ Formato: casilla, ID, tarea, por qué, algoritmo, archivos, cómo se verifica.
   Verificación: sobre imágenes sintéticas con el borde en una posición exacta
   conocida, el perfil la recupera con error subpíxel.
 
-- [ ] **F4 — Periodo dominante de una señal.** La rosca y el engranaje son
+- [x] **F4 — Periodo dominante de una señal.** *(En `vision/periodicity.*`. Se
+  añadió un modo **circular** que el plan no preveía: el perfil radial de un
+  engranaje cierra sobre sí mismo y el de una rosca no, y tratarlos igual
+  desperdicia muestras en el primero.)* La rosca y el engranaje son
   **señales periódicas**: el perfil de una rosca a lo largo del eje se repite
   cada paso, y el perfil radial de un engranaje se repite cada diente. El paso
   y el número de dientes salen los dos del mismo cálculo.
