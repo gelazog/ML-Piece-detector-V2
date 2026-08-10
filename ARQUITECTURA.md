@@ -167,7 +167,7 @@ distinguen.
 
 ## 5. Herramientas de medición
 
-Trece herramientas, todas ancladas al fixture. El motor común
+Catorce herramientas, todas ancladas al fixture. El motor común
 (`tool_executor.cpp`) recibe imagen + fixture + configuración y devuelve un
 resultado con la medida, el veredicto y los puntos para dibujarla.
 
@@ -186,6 +186,7 @@ resultado con la medida, el veredicto y los puntos para dibujarla.
 | Arco | Radio de una esquina o un redondeo | Círculo por tres puntos para situar el sector + barrido radial acotado a él + ajuste Taubin robusto |
 | Eje / Diámetro | Diámetro, conicidad y rectitud de una pieza de torno | Perfil axial a los dos lados + ajuste robusto de recta a cada borde; el diámetro es la separación entre las dos rectas |
 | Rosca | Paso, Ø exterior, Ø de fondo y ángulo de flanco | Perfil axial a los dos lados + periodo por autocorrelación (el paso) + plegado síncrono por ese periodo y ajuste de recta a los flancos |
+| Engranaje | Dientes, Ø de cabeza y raíz, módulo, Ø primitivo, excentricidad | Perfil radial + periodo circular (los dientes) + ajuste de círculo a las puntas (la excentricidad) |
 
 **Ajustes geométricos** (`vision/fitting.*`). El Círculo —y las herramientas de
 pieza torneada que vienen detrás— acaban preguntando lo mismo: qué
@@ -344,6 +345,31 @@ eje**, justo sobre el filete que se quiere medir.
 El paso y los diámetros aguantan mucho mejor, así que la herramienta **avisa solo
 del ángulo** en vez de rechazar la medida entera. Y **sin calibración px→mm se
 niega a proponer designación**: un paso en píxeles no identifica ningún tornillo.
+
+**Cómo se mide un engranaje.** El perfil radial desde el centro se repite una
+vez por diente, así que **el número de dientes sale del mismo cálculo que el paso
+de una rosca**, en modo circular porque una vuelta cierra. Verificado con ruedas
+sintéticas de 12, 17, 24, 31 y 48 dientes —incluidos primos, que no dividen bien
+el muestreo— todas exactas.
+
+Sobre las puntas detectadas se ajusta un **círculo** (F1): da un centro mejor que
+el marcado a ojo y su dispersión **es** la excentricidad, que es lo que se busca
+al medir una rueda desgastada. El **módulo** sale de Da = m·(z+2) y sólo con
+calibración: es milímetros por diente, y sin escala real no existe.
+
+Dos salvaguardas que se ganaron probando:
+
+- **Doble recuento.** Además de la periodicidad se cuentan los dientes picando el
+  contorno, y si los dos números no coinciden se dice. Con un diente rebajado al
+  60 %, la periodicidad sigue dando 24 y el conteo por picos da 23: el resultado
+  correcto es 24, y el aviso es justo lo que el operador necesita ver.
+- **Comprobación cruzada del módulo** por altura de diente (2,25·m en la norma).
+  La primera versión dividía la diferencia de **diámetros** por 2,25, pero esa
+  diferencia es el **doble** de la altura del diente: el módulo cruzado salía
+  exactamente al doble y el aviso de discrepancia saltaba en ruedas
+  perfectamente normalizadas. Un aviso que salta siempre es un aviso que el
+  operador aprende a ignorar, así que ahora hay un test que exige que **no**
+  salte con una rueda normalizada.
 
 ### El trazado: por qué las tolerancias van en píxeles de pantalla
 

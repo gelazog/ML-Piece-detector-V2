@@ -139,6 +139,12 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
             } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
                                  std::is_same_v<T, ThreadGeometry>) {
                 return {g.axisFrom, g.axisTo};
+            } else if constexpr (std::is_same_v<T, GearGeometry>) {
+                return {g.center,
+                        g.center + cv::Point2f(-g.outerRadius, 0.0F),
+                        g.center + cv::Point2f(g.outerRadius, 0.0F),
+                        g.center + cv::Point2f(0.0F, -g.outerRadius),
+                        g.center + cv::Point2f(0.0F, g.outerRadius)};
             } else {
                 return {g.lineA, g.lineB, g.scanA, g.scanB};
             }
@@ -176,6 +182,11 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
             } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
                                  std::is_same_v<T, ThreadGeometry>) {
                 return {g.axisFrom, g.axisTo};
+            } else if constexpr (std::is_same_v<T, GearGeometry>) {
+                // Centro, raíz y cabeza: las tres cosas que hay que poder
+                // ajustar sin volver a trazar la herramienta.
+                return {g.center, g.center + cv::Point2f(g.innerRadius, 0.0F),
+                        g.center + cv::Point2f(g.outerRadius, 0.0F)};
             } else {  // PolyBlobGeometry
                 return g.vertices;
             }
@@ -253,6 +264,17 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
                 } else {
                     g.axisTo = q;
                 }
+            } else if constexpr (std::is_same_v<T, GearGeometry>) {
+                if (handle == 0) {
+                    g.center = q;
+                } else if (handle == 1) {
+                    g.innerRadius = std::min(
+                        std::max(4.0F, static_cast<float>(cv::norm(q - g.center))),
+                        g.outerRadius - 2.0F);
+                } else {
+                    g.outerRadius = std::max(g.innerRadius + 2.0F,
+                                             static_cast<float>(cv::norm(q - g.center)));
+                }
             } else {  // PolyBlobGeometry
                 if (handle >= 0 && handle < static_cast<int>(g.vertices.size())) {
                     g.vertices[static_cast<std::size_t>(handle)] = q;
@@ -298,6 +320,11 @@ double distanceToGeometry(const ToolGeometry& geometry, const vision::Fixture& f
                                      std::is_same_v<T, ThreadGeometry>) {
                     d = distanceToSegment(p, vision::toImageCoords(fixture, g.axisFrom),
                                           vision::toImageCoords(fixture, g.axisTo));
+                } else if constexpr (std::is_same_v<T, GearGeometry>) {
+                    // Se agarra por cualquiera de sus dos aros, no por el disco.
+                    const cv::Point2f c = vision::toImageCoords(fixture, g.center);
+                    const double r = cv::norm(p - c);
+                    d = std::min(std::abs(r - g.outerRadius), std::abs(r - g.innerRadius));
                 } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
                     const std::size_t n = g.vertices.size();
                     for (std::size_t k = 0; k < n; ++k) {

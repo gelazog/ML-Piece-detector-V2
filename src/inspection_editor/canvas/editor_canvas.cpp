@@ -52,6 +52,7 @@ QColor toolColor(ToolType type) {
         case ToolType::Arc: return {120, 255, 190};
         case ToolType::Shaft: return {255, 210, 120};
         case ToolType::Thread: return {200, 255, 120};
+        case ToolType::Gear: return {160, 190, 255};
     }
     return Qt::white;
 }
@@ -894,6 +895,16 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         case ToolType::Arc:
             // Se construye en dos trazos, resueltos más arriba; aquí no llega.
             return;
+        case ToolType::Gear: {
+            GearGeometry g;
+            g.center = a;
+            // El arrastre marca la punta del diente; la raíz se estima dentro y
+            // el operador la afina con la manija si hace falta.
+            g.outerRadius = std::max(12.0F, static_cast<float>(cv::norm(b - a)));
+            g.innerRadius = g.outerRadius * 0.75F;
+            geometry = g;
+            break;
+        }
         case ToolType::Thread: {
             ThreadGeometry g;
             g.axisFrom = a;

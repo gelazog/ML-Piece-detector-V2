@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <string>
 
 #include "inspection_editor/execution/edge_detection.h"
@@ -697,8 +698,8 @@ ToolConfig makeToolAt(int index, float x, float y) {
                               ToolType::EdgeFlaw, ToolType::Blob,     ToolType::Ruler,
                               ToolType::LineToLine, ToolType::Angle,  ToolType::PolyBlob,
                               ToolType::Position,   ToolType::Arc,      ToolType::Shaft,
-                              ToolType::Thread};
-    const ToolType type = types[index % 13];
+                              ToolType::Thread,     ToolType::Gear};
+    const ToolType type = types[index % 14];
     ToolGeometry geometry;
     switch (type) {
         case ToolType::Caliper:
@@ -715,6 +716,9 @@ ToolConfig makeToolAt(int index, float x, float y) {
             break;
         case ToolType::Thread:
             geometry = ThreadGeometry{{x - 25.0F, y}, {x + 25.0F, y}, 20.0F, 60};
+            break;
+        case ToolType::Gear:
+            geometry = GearGeometry{{x, y}, 12.0F, 22.0F, 180};
             break;
         case ToolType::PointToLine:
             geometry = PointToLineGeometry{{x - 20.0F, y}, {x + 20.0F, y},
@@ -966,6 +970,195 @@ TEST(CaliperSuite, BandWidthAveragesNoisyEdges) {
 }
 
 // --- Circulo: diametros, invariancia al giro y redondez ---
+
+// --- Engranaje ---
+
+namespace {
+
+// Rueda dentada vista de cara, dibujada a partir de parametros conocidos. El
+// perfil de cada diente es trapecial -no es una evolvente exacta, pero para
+// contar dientes y medir cabeza y raiz da igual, y en cambio permite saber si
+// la medida es CORRECTA-.
+cv::Mat drawGear(int teeth, double tipRadius, double rootRadius,
+                 double damagedToothFraction = 0.0) {
+    cv::Mat gray(700, 700, CV_8UC1, cv::Scalar(220));
+    const cv::Point2f c(350.0F, 350.0F);
+    std::vector<cv::Point> poly;
+    const int steps = 3600;
+    for (int i = 0; i < steps; ++i) {
+        const double theta = 2.0 * 3.14159265358979323846 * i / steps;
+        const double phase = std::fmod(theta * teeth / (2.0 * 3.14159265358979323846), 1.0);
+        double r = rootRadius;
+        // Diente: sube, meseta, baja, valle (cada cuarto del periodo).
+        if (phase < 0.25) {
+            r = rootRadius + (tipRadius - rootRadius) * (phase / 0.25);
+        } else if (phase < 0.5) {
+            r = tipRadius;
+        } else if (phase < 0.75) {
+            r = tipRadius - (tipRadius - rootRadius) * ((phase - 0.5) / 0.25);
+        }
+        // Un diente mellado: se rebaja el primero.
+        if (damagedToothFraction > 0.0 &&
+            theta < 2.0 * 3.14159265358979323846 / teeth) {
+            r = rootRadius + (r - rootRadius) * (1.0 - damagedToothFraction);
+        }
+        poly.emplace_back(cvRound(c.x + r * std::cos(theta)),
+                          cvRound(c.y + r * std::sin(theta)));
+    }
+    const std::vector<std::vector<cv::Point>> polys{poly};
+    cv::fillPoly(gray, polys, cv::Scalar(40), cv::LINE_AA);
+    return gray;
+}
+
+ToolRunResult runGearOn(const cv::Mat& gray, const GearGeometry& g, double mmPerPixel = 0.0) {
+    ToolConfig config = makeConfig(ToolType::Gear, ToolGeometry(g), 0, 1e9);
+    const auto r = runTool(gray, kIdentity, config, mmPerPixel);
+    EXPECT_TRUE(r.isOk());
+    return r.isOk() ? r.value() : ToolRunResult{};
+}
+
+}  // namespace
+
+TEST(GearSuite, CountsTheTeethItWasDrawnWith) {
+    // Incluye numeros primos, que no dividen bien el muestreo y romperian un
+    // contador de picos ingenuo.
+    for (const int teeth : {12, 17, 24, 31, 48}) {
+        const cv::Mat gray = drawGear(teeth, 260.0, 220.0);
+        const GearGeometry g{{350.0F, 350.0F}, 200.0F, 290.0F, 1440};
+        const auto r = runGearOn(gray, g);
+        std::printf("  z=%2d -> %s\n", teeth, r.detail.c_str());
+        EXPECT_EQ(static_cast<int>(std::lround(r.measured)), teeth) << "dientes " << teeth;
+    }
+}
+
+TEST(GearSuite, MeasuresTipAndRootDiameters) {
+    const cv::Mat gray = drawGear(20, 260.0, 220.0);
+    const GearGeometry g{{350.0F, 350.0F}, 200.0F, 290.0F, 1440};
+    const auto r = runGearOn(gray, g);
+    std::printf("  %s\n", r.detail.c_str());
+    EXPECT_NE(r.detail.find("Ø cabeza="), std::string::npos);
+    EXPECT_NE(r.detail.find("Ø raíz="), std::string::npos);
+    // El diametro de cabeza dibujado es 520 px; se admite un margen de 6 px por
+    // el suavizado del dibujo y la punta trapecial.
+    const auto pos = r.detail.find("Ø cabeza=");
+    ASSERT_NE(pos, std::string::npos);
+    const double tip = std::atof(r.detail.c_str() + pos + std::strlen("Ø cabeza="));
+    EXPECT_NEAR(tip, 520.0, 6.0) << r.detail;
+}
+
+TEST(GearSuite, ADamagedToothLowersConfidenceWithoutChangingTheCount) {
+    // El motivo de contar por autocorrelacion y no por picos. Ademas la
+    // excentricidad tiene que notarlo, que es justo lo que se busca al medir
+    // una rueda desgastada.
+    const cv::Mat sound = drawGear(24, 260.0, 220.0);
+    const cv::Mat damaged = drawGear(24, 260.0, 220.0, 0.6);
+    const GearGeometry g{{350.0F, 350.0F}, 200.0F, 290.0F, 1440};
+    const auto a = runGearOn(sound, g);
+    const auto b = runGearOn(damaged, g);
+    std::printf("  sano:   %s\n  mellado:%s\n", a.detail.c_str(), b.detail.c_str());
+    EXPECT_EQ(static_cast<int>(std::lround(a.measured)), 24);
+    EXPECT_EQ(static_cast<int>(std::lround(b.measured)), 24)
+        << "un diente mellado no puede cambiar el recuento";
+}
+
+TEST(GearSuite, TheCountIsTheSameOnARotatedGear) {
+    // Una rueda girada es la misma rueda.
+    const cv::Mat gray = drawGear(19, 250.0, 210.0);
+    for (const double angle : {0.0, 13.0, 47.0, -80.0}) {
+        Fixture fixture;
+        fixture.origin = {350.0F, 350.0F};
+        fixture.angleDeg = angle;
+        const GearGeometry g{pci::vision::toPieceCoords(fixture, {350.0F, 350.0F}), 190.0F,
+                             280.0F, 1440};
+        const auto r = runGearOn(gray, g);
+        // El centro va en coords de pieza, asi que hay que ejecutar con el
+        // fixture correspondiente.
+        ToolConfig config = makeConfig(ToolType::Gear, ToolGeometry(g), 0, 1e9);
+        const auto run = runTool(gray, fixture, config);
+        ASSERT_TRUE(run.isOk());
+        EXPECT_EQ(static_cast<int>(std::lround(run.value().measured)), 19)
+            << "a " << angle << " grados: " << run.value().detail;
+    }
+}
+
+TEST(GearSuite, WithoutCalibrationItRefusesToGiveAModule) {
+    // El modulo no existe sin escala real: es mm por diente.
+    const cv::Mat gray = drawGear(20, 260.0, 220.0);
+    const GearGeometry g{{350.0F, 350.0F}, 200.0F, 290.0F, 1440};
+    const auto r = runGearOn(gray, g);
+    EXPECT_NE(r.detail.find("necesita calibración"), std::string::npos) << r.detail;
+    EXPECT_EQ(r.detail.find("módulo≈"), std::string::npos) << r.detail;
+}
+
+TEST(GearSuite, WithCalibrationItGivesTheModule) {
+    // Rueda de z=20 y modulo 2 mm fotografiada a 12 px/mm:
+    // Ø cabeza = m(z+2) = 44 mm = 528 px; Ø raiz = m(z-2,5) = 35 mm = 420 px.
+    constexpr double kMmPerPixel = 1.0 / 12.0;
+    const cv::Mat gray = drawGear(20, 264.0, 210.0);
+    const GearGeometry g{{350.0F, 350.0F}, 190.0F, 300.0F, 1440};
+    const auto r = runGearOn(gray, g, kMmPerPixel);
+    std::printf("  %s\n", r.detail.c_str());
+    EXPECT_NE(r.detail.find("módulo≈"), std::string::npos) << r.detail;
+    const auto pos = r.detail.find("módulo≈");
+    ASSERT_NE(pos, std::string::npos);
+    const double module = std::atof(r.detail.c_str() + pos + std::strlen("módulo≈"));
+    EXPECT_NEAR(module, 2.0, 0.06) << r.detail;  // menos del 3 %, como pedia el plan
+
+    // Y la comprobacion cruzada por altura de diente tiene que CONCORDAR en una
+    // rueda normalizada. Sin esta asercion el aviso de discrepancia saltaba
+    // siempre -el divisor estaba a la mitad- y habria acabado siendo ruido que
+    // el operador aprende a ignorar.
+    EXPECT_EQ(r.detail.find("discrepan"), std::string::npos) << r.detail;
+}
+
+TEST(GearSuite, ADiscWithNoTeethIsRejected) {
+    // Un disco liso no es un engranaje. Devolver un numero de dientes seria lo
+    // peor que puede hacer esta herramienta.
+    cv::Mat gray(700, 700, CV_8UC1, cv::Scalar(220));
+    cv::circle(gray, {350, 350}, 250, cv::Scalar(40), cv::FILLED, cv::LINE_AA);
+    const GearGeometry g{{350.0F, 350.0F}, 200.0F, 290.0F, 1440};
+    const auto r = runGearOn(gray, g);
+    std::printf("  disco liso: ok=%d  %s\n", static_cast<int>(r.ok), r.detail.c_str());
+    const bool refused = !r.ok || r.detail.find("No se aprecian dientes") != std::string::npos ||
+                         r.detail.find("no se repite") != std::string::npos ||
+                         r.detail.find("débil") != std::string::npos;
+    EXPECT_TRUE(refused) << r.detail;
+}
+
+TEST(GearSuite, BadRadiiFailWithAReason) {
+    const cv::Mat gray = drawGear(20, 260.0, 220.0);
+    const GearGeometry bad{{350.0F, 350.0F}, 290.0F, 200.0F, 1440};  // invertidos
+    const auto r = runGearOn(gray, bad);
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.detail.find("radios"), std::string::npos) << r.detail;
+}
+
+TEST(GearSuite, GeometrySurvivesASaveAndLoadRoundTrip) {
+    const GearGeometry g{{120.5F, 240.25F}, 55.5F, 98.75F, 720};
+    const auto parsed = geometryFromJson(ToolType::Gear, toJson(ToolGeometry(g)));
+    ASSERT_TRUE(parsed.isOk()) << parsed.error().message;
+    const auto& back = std::get<GearGeometry>(parsed.value());
+    EXPECT_FLOAT_EQ(back.center.x, g.center.x);
+    EXPECT_FLOAT_EQ(back.center.y, g.center.y);
+    EXPECT_FLOAT_EQ(back.innerRadius, g.innerRadius);
+    EXPECT_FLOAT_EQ(back.outerRadius, g.outerRadius);
+    EXPECT_EQ(back.rayCount, g.rayCount);
+    EXPECT_EQ(typeOf(ToolGeometry(g)), ToolType::Gear);
+    const auto fromName = toolTypeFromName("gear");
+    ASSERT_TRUE(fromName.isOk());
+    EXPECT_EQ(fromName.value(), ToolType::Gear);
+}
+
+TEST(GearSuite, MovingItKeepsItsShape) {
+    ToolGeometry geometry = GearGeometry{{50.0F, 60.0F}, 30.0F, 70.0F, 720};
+    const auto before = std::get<GearGeometry>(geometry);
+    translateGeometry(geometry, {12.0F, -8.0F});
+    const auto after = std::get<GearGeometry>(geometry);
+    EXPECT_FLOAT_EQ(after.center.x, before.center.x + 12.0F);
+    EXPECT_FLOAT_EQ(after.center.y, before.center.y - 8.0F);
+    EXPECT_FLOAT_EQ(after.innerRadius, before.innerRadius);
+    EXPECT_FLOAT_EQ(after.outerRadius, before.outerRadius);
+}
 
 // --- Rosca ---
 

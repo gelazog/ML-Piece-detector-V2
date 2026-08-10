@@ -262,7 +262,7 @@ Formato: casilla, ID, tarea, por qué, algoritmo, archivos, cómo se verifica.
   ruido; se exige recuperar el paso con error < 2 % y el ángulo con < 3°.
   Skills: `computer-vision-opencv`, `cpp-testing`.
 
-- [ ] **T4 — Herramienta Engranaje.** Mide **número de dientes (z), Ø de cabeza
+- [x] **T4 — Herramienta Engranaje.** Mide **número de dientes (z), Ø de cabeza
   (Da), Ø de raíz (Df), módulo (m), Ø primitivo (Dp) y excentricidad**.
   Algoritmo:
   1. Perfil radial (F3) desde el centro, con muchos rayos (~1440).

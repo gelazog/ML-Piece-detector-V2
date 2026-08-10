@@ -124,6 +124,13 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      identifica ningún tornillo. Necesita ver **varias vueltas**, y el ángulo de
      flanco además necesita que el filete se vea grande: con 50 px de altura de
      filete sale a ±1°, con 12 px deja de ser fiable y la herramienta lo dice.
+   - *Engranaje*: cuenta los **dientes** y mide **Ø de cabeza**, **Ø de raíz**,
+     **módulo**, **Ø primitivo** y **excentricidad**. La rueda debe verse **de
+     cara**: arrastra del centro hacia fuera, pasando la punta de los dientes.
+     Cuenta por periodicidad y no picando el contorno, así que un diente mellado
+     no descuadra el recuento — y como contraste hace también el conteo por
+     picos y **avisa si los dos no coinciden**. El módulo **exige calibración**:
+     sin escala real no existe, y se dice en vez de dar un número sin unidad.
    - *Regla*: distancia directa entre dos puntos fijos (no busca bordes) —
      con la escala calibrada mide en mm/cm al vuelo.
    - *Línea-Línea*: dos líneas de referencia (se dibujan en dos pasos) → mide el
@@ -565,7 +572,8 @@ valor medido para ajustar tolerancias.
   **Regla**, **Línea-Línea**, **Ángulo**, **Blob poligonal**, **Posición**
   (desviación respecto al cero del tablero), **Arco** (radio de una esquina) y
   **Eje / Diámetro** (diámetro, conicidad y rectitud de una pieza de torno) y
-  **Rosca** (paso, diámetros y ángulo de flanco, con designación métrica). Ver la tabla completa con la
+  **Rosca** (paso, diámetros y ángulo de flanco, con designación métrica) y
+  **Engranaje** (dientes, módulo, diámetros y excentricidad). Ver la tabla completa con la
   técnica de cada una en [ARQUITECTURA.md](ARQUITECTURA.md#5-herramientas-de-medición).
 - La geometría se guarda **en coordenadas del fixture** (tabla
   `InspectionTools`): si la pieza llega rotada, las herramientas se mueven con

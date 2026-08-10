@@ -20,7 +20,8 @@ enum class ToolType {
     Position,
     Arc,
     Shaft,
-    Thread
+    Thread,
+    Gear
 };
 
 const char* toolTypeName(ToolType type);

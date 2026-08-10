@@ -204,6 +204,7 @@ QString toolTypeLabel(inspection::ToolType type) {
         case inspection::ToolType::Arc: return QStringLiteral("Arco");
         case inspection::ToolType::Shaft: return QStringLiteral("Eje / Diámetro");
         case inspection::ToolType::Thread: return QStringLiteral("Rosca");
+        case inspection::ToolType::Gear: return QStringLiteral("Engranaje");
     }
     return QStringLiteral("?");
 }

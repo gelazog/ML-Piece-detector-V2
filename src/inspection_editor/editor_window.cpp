@@ -48,6 +48,7 @@ QString typeLabel(ToolType type) {
         case ToolType::Arc: return QStringLiteral("Arco");
         case ToolType::Shaft: return QStringLiteral("Eje / Diámetro");
         case ToolType::Thread: return QStringLiteral("Rosca");
+        case ToolType::Gear: return QStringLiteral("Engranaje");
     }
     return QStringLiteral("?");
 }
@@ -107,6 +108,7 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     addMode(tr("Arco"), static_cast<int>(ToolType::Arc));
     addMode(tr("Eje / Diámetro"), static_cast<int>(ToolType::Shaft));
     addMode(tr("Rosca"), static_cast<int>(ToolType::Thread));
+    addMode(tr("Engranaje"), static_cast<int>(ToolType::Gear));
     modesLayout->addStretch(1);
     rootLayout->addLayout(modesLayout);
 

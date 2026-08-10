@@ -47,6 +47,16 @@ QIcon moveModeIcon() {
 
 QIcon toolIcon(ToolType type) {
     switch (type) {
+        case ToolType::Gear:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // Rueda dentada: un aro con dientes radiales.
+                p.drawEllipse(QPointF(15, 15), 7.0, 7.0);
+                for (int k = 0; k < 8; ++k) {
+                    const double a = k * 3.14159265358979323846 / 4.0;
+                    p.drawLine(QPointF(15 + 7 * std::cos(a), 15 + 7 * std::sin(a)),
+                               QPointF(15 + 11 * std::cos(a), 15 + 11 * std::sin(a)));
+                }
+            });
         case ToolType::Thread:
             return makeIcon([](QPainter& p, const QColor&) {
                 // Perfil dentado a los dos lados de un eje.

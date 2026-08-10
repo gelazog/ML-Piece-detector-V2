@@ -31,6 +31,7 @@ const char* toolTypeName(ToolType type) {
         case ToolType::Arc: return "arc";
         case ToolType::Shaft: return "shaft";
         case ToolType::Thread: return "thread";
+        case ToolType::Gear: return "gear";
     }
     return "unknown";
 }
@@ -40,7 +41,7 @@ core::Result<ToolType> toolTypeFromName(const std::string& name) {
                                 ToolType::EdgeFlaw, ToolType::Blob, ToolType::Ruler,
                                 ToolType::LineToLine, ToolType::Angle, ToolType::PolyBlob,
                                 ToolType::Position, ToolType::Arc, ToolType::Shaft,
-                                ToolType::Thread}) {
+                                ToolType::Thread, ToolType::Gear}) {
         if (name == toolTypeName(type)) {
             return core::Result<ToolType>::ok(type);
         }
@@ -118,6 +119,12 @@ const char* toolTypeDescription(ToolType type) {
                    "de ese periodo sale el paso. Con la escala calibrada propone\n"
                    "además la designación métrica (M6×1, M8×1.25...).\n"
                    "Necesita ver varias vueltas y buen contraste de borde.";
+        case ToolType::Gear:
+            return "Engranaje — cuenta los DIENTES y mide diámetro de cabeza, de\n"
+                   "raíz, módulo y excentricidad. La rueda debe verse DE CARA.\n"
+                   "Arrastra del centro del engranaje hacia fuera, pasando la punta\n"
+                   "de los dientes; el perfil radial se repite una vez por diente.\n"
+                   "El módulo exige calibración px→mm: sin escala real no existe.";
     }
     return "";
 }
@@ -127,7 +134,10 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
     switch (type) {
         case ToolType::Blob:
         case ToolType::PolyBlob:
-            // Conteo: se exige exactamente lo que hay en la pieza buena.
+        case ToolType::Gear:
+            // Conteo: se exige exactamente lo que hay en la pieza buena. En el
+            // engranaje eso son los dientes, que o son los que toca o la rueda
+            // es otra.
             toleranceMin = measured;
             toleranceMax = measured;
             return;
@@ -196,6 +206,8 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::Shaft;
             } else if constexpr (std::is_same_v<T, ThreadGeometry>) {
                 return ToolType::Thread;
+            } else if constexpr (std::is_same_v<T, GearGeometry>) {
+                return ToolType::Gear;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -248,6 +260,8 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                                  std::is_same_v<T, ThreadGeometry>) {
                 g.axisFrom += delta;
                 g.axisTo += delta;
+            } else if constexpr (std::is_same_v<T, GearGeometry>) {
+                g.center += delta;
             } else {
                 // Igual que en typeOf: esta cadena no puede acabar sin rama. Al
                 // no tener `else`, un tipo nuevo simplemente NO se trasladaba —
@@ -404,6 +418,11 @@ std::string toJson(const ToolGeometry& geometry) {
                     fs << "ax" << g.axisFrom.x << "ay" << g.axisFrom.y << "bx" << g.axisTo.x
                        << "by" << g.axisTo.y << "band" << g.searchBand << "stations"
                        << g.stations;
+                });
+            } else if constexpr (std::is_same_v<T, GearGeometry>) {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "cx" << g.center.x << "cy" << g.center.y << "rin"
+                       << g.innerRadius << "rout" << g.outerRadius << "rays" << g.rayCount;
                 });
             } else {
                 static_assert(alwaysFalse<T>, "geometría que no sabe serializarse");
@@ -582,6 +601,18 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.axisTo = {static_cast<float>(bx.value()), static_cast<float>(by.value())};
                 g.searchBand = static_cast<float>(band.value());
                 g.stations = static_cast<int>(reader.numberOr("stations", 240.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::Gear: {
+                GearGeometry g;
+                auto cx = f("cx"), cy = f("cy"), rin = f("rin"), rout = f("rout");
+                for (const auto* v : {&cx, &cy, &rin, &rout}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
+                g.innerRadius = static_cast<float>(rin.value());
+                g.outerRadius = static_cast<float>(rout.value());
+                g.rayCount = static_cast<int>(reader.numberOr("rays", 1440.0));
                 return ResultT::ok(g);
             }
         }

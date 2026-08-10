@@ -122,11 +122,21 @@ struct ThreadGeometry {
     int stations = 240;
 };
 
+// Engranaje visto DE CARA. El perfil radial desde el centro se repite una vez
+// por diente, asi que el numero de dientes sale del mismo calculo de periodo
+// que el paso de una rosca -en modo circular, porque una vuelta cierra-.
+struct GearGeometry {
+    cv::Point2f center;
+    float innerRadius = 40.0F;  // por dentro de la raiz de los dientes
+    float outerRadius = 90.0F;  // por fuera de la cabeza
+    int rayCount = 1440;        // muchos rayos: hacen falta varios por diente
+};
+
 using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGeometry,
                                   EdgeFlawGeometry, BlobGeometry, RulerGeometry,
                                   LineToLineGeometry, AngleGeometry, PolyBlobGeometry,
                                   PositionGeometry, ArcGeometry, ShaftGeometry,
-                                  ThreadGeometry>;
+                                  ThreadGeometry, GearGeometry>;
 
 // (De)serialización JSON (cv::FileStorage en memoria). El tipo del JSON debe
 // coincidir con config.type al parsear.

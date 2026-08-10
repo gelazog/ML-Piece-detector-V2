@@ -875,6 +875,154 @@ ToolRunResult runThread(const cv::Mat& gray, const Fixture& fixture, const ToolC
     return result;
 }
 
+// --- Engranaje --------------------------------------------------------------
+
+ToolRunResult runGear(const cv::Mat& gray, const Fixture& fixture, const ToolConfig& config,
+                      const GearGeometry& g, const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+    const cv::Point2f center = toImg(fixture, g.center);
+    if (!(g.outerRadius > g.innerRadius + 1.0F) || g.innerRadius < 1.0F) {
+        result.detail = "Los radios de búsqueda no delimitan la corona de dientes";
+        return result;
+    }
+
+    const int rays = std::clamp(g.rayCount, 180, 3600);
+    const auto profile = radialProfile(gray, center, g.innerRadius, g.outerRadius, rays, 1.0F);
+    if (foundCount(profile) * 5 < rays * 4) {
+        result.detail = "Borde de los dientes insuficiente (" +
+                        std::to_string(foundCount(profile)) + "/" + std::to_string(rays) +
+                        " rayos). Ajusta los radios o el contraste";
+        return result;
+    }
+
+    // Señal r(θ) uniforme: los rayos sin borde se rellenan con el vecino, por
+    // la misma razón que en la rosca — el número de dientes sale del PERIODO.
+    std::vector<double> radii(profile.size(), 0.0);
+    double lastGood = 0.0;
+    for (std::size_t i = 0; i < profile.size(); ++i) {
+        if (profile[i].found) {
+            lastGood = profile[i].radius;
+        }
+        radii[i] = lastGood;
+    }
+    for (std::size_t i = 0; i < radii.size() && radii[i] == 0.0; ++i) {
+        radii[i] = lastGood;  // los huecos del principio, con el último válido
+    }
+
+    // Una vuelta CIERRA sobre sí misma: correlación circular.
+    const auto period = vision::dominantPeriod(radii, 6.0, rays / 4.0, /*circular=*/true);
+    if (!period.valid) {
+        result.detail = "El contorno no se repite: ¿es un engranaje visto de cara?";
+        return result;
+    }
+    const int teeth = static_cast<int>(std::lround(rays / period.period));
+
+    const double tipRadius = decileMean(radii, true);
+    const double rootRadius = decileMean(radii, false);
+    const double toothHeight = tipRadius - rootRadius;
+    if (toothHeight < 2.0) {
+        result.detail = "No se aprecian dientes entre los dos radios marcados";
+        return result;
+    }
+
+    // Recuento independiente: tramos contiguos por encima de un umbral alto.
+    // Si no coincide con el periodo, hay que decirlo en vez de elegir en
+    // silencio — un diente de más o de menos cambia la pieza entera.
+    const double threshold = rootRadius + 0.75 * toothHeight;
+    std::size_t start = 0;
+    while (start < radii.size() && radii[start] > threshold) {
+        ++start;  // empezar fuera de un diente para no partirlo por el cierre
+    }
+    int runs = 0;
+    bool inside = false;
+    std::vector<cv::Point2f> tipPoints;
+    double bestInRun = 0.0;
+    cv::Point2f bestPoint;
+    for (std::size_t k = 0; k < radii.size(); ++k) {
+        const std::size_t i = (start + k) % radii.size();
+        if (radii[i] > threshold) {
+            if (!inside) {
+                inside = true;
+                ++runs;
+                bestInRun = 0.0;
+            }
+            if (radii[i] > bestInRun && profile[i].found) {
+                bestInRun = radii[i];
+                bestPoint = profile[i].point;
+            }
+        } else if (inside) {
+            inside = false;
+            if (bestInRun > 0.0) {
+                tipPoints.push_back(bestPoint);
+            }
+        }
+    }
+    if (inside && bestInRun > 0.0) {
+        tipPoints.push_back(bestPoint);
+    }
+
+    // Con las puntas de los dientes se ajusta el círculo de cabeza: da un
+    // centro mejor que el marcado a ojo, y su dispersión ES la excentricidad.
+    double runout = 0.0;
+    double tipCircleRadius = tipRadius;
+    if (tipPoints.size() >= 3) {
+        const vision::CircleFit tipCircle = vision::fitCircleRobust(tipPoints);
+        if (tipCircle.valid) {
+            tipCircleRadius = tipCircle.radius;
+            for (const auto& p : tipPoints) {
+                runout = std::max(runout, std::abs(cv::norm(p - tipCircle.center) -
+                                                   tipCircle.radius));
+            }
+        }
+    }
+
+    const double tipDiameter = 2.0 * tipCircleRadius;
+    const double rootDiameter = 2.0 * rootRadius;
+
+    result.measured = teeth;  // los dientes son la identidad de la rueda
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = "z=" + std::to_string(teeth) + " dientes, Ø cabeza=" +
+                    fmtLen(tipDiameter, fmt) + ", Ø raíz=" + fmtLen(rootDiameter, fmt) +
+                    ", excentricidad=" + fmtLen(runout, fmt);
+
+    if (runs != teeth) {
+        result.detail += " (¡ojo! contando picos salen " + std::to_string(runs) +
+                         ": revisa los radios marcados)";
+    }
+    if (period.confidence < 0.5) {
+        result.detail += " (repetición débil: confianza " + fmt2(period.confidence) + ")";
+    }
+
+    if (fmt.mmPerPixel > 0.0 && teeth > 0) {
+        // Módulo de un engranaje recto normalizado: la cabeza sobresale un
+        // módulo por encima del primitivo, así que Da = m·(z+2).
+        const double moduleFromTip = tipDiameter * fmt.mmPerPixel / (teeth + 2);
+        // Comprobación cruzada por la altura del diente, que en la norma es
+        // 2,25·m. Ojo: la diferencia de DIÁMETROS es el DOBLE de esa altura,
+        // así que el divisor es 4,5 y no 2,25 — con 2,25 el módulo cruzado
+        // salía justo el doble y el aviso de discrepancia saltaba en ruedas
+        // perfectamente normalizadas.
+        const double moduleFromHeight = (tipDiameter - rootDiameter) * fmt.mmPerPixel / 4.5;
+        result.detail += ", módulo≈" + fmt2(moduleFromTip) + " mm, Ø primitivo=" +
+                         fmt2(moduleFromTip * teeth) + " mm";
+        const double disagreement =
+            std::abs(moduleFromTip - moduleFromHeight) / std::max(moduleFromTip, 1e-9);
+        if (disagreement > 0.15) {
+            // No es un recto normalizado sin corrección: dar un módulo a secas
+            // sería inventárselo.
+            result.detail += " (las dos estimaciones del módulo discrepan: " +
+                             fmt2(moduleFromHeight) +
+                             " mm por altura de diente; ¿perfil corregido o no normalizado?)";
+        }
+    } else {
+        result.detail += " — el módulo necesita calibración px→mm";
+    }
+
+    result.overlayPoints = std::move(tipPoints);
+    result.overlayPoints.push_back(center);
+    return result;
+}
+
 ToolRunResult runPointToLine(const cv::Mat& gray, const Fixture& fixture,
                              const ToolConfig& config, const PointToLineGeometry& g,
                              const Fmt& fmt) {
@@ -1160,6 +1308,9 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Thread:
                 return ResultT::ok(runThread(gray, fixture, config,
                                              std::get<ThreadGeometry>(geometry.value()), fmt));
+            case ToolType::Gear:
+                return ResultT::ok(runGear(gray, fixture, config,
+                                           std::get<GearGeometry>(geometry.value()), fmt));
             case ToolType::Position: {
                 // Sin tablero explícito: cero en la pieza y ejes de la imagen.
                 const vision::BoardFrame fallback{fixture.origin, 0.0};
