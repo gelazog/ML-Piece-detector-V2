@@ -29,6 +29,7 @@ const char* toolTypeName(ToolType type) {
         case ToolType::PolyBlob: return "poly_blob";
         case ToolType::Position: return "position";
         case ToolType::Arc: return "arc";
+        case ToolType::Shaft: return "shaft";
     }
     return "unknown";
 }
@@ -37,7 +38,7 @@ core::Result<ToolType> toolTypeFromName(const std::string& name) {
     for (const ToolType type : {ToolType::Caliper, ToolType::Circle, ToolType::PointToLine,
                                 ToolType::EdgeFlaw, ToolType::Blob, ToolType::Ruler,
                                 ToolType::LineToLine, ToolType::Angle, ToolType::PolyBlob,
-                                ToolType::Position, ToolType::Arc}) {
+                                ToolType::Position, ToolType::Arc, ToolType::Shaft}) {
         if (name == toolTypeName(type)) {
             return core::Result<ToolType>::ok(type);
         }
@@ -102,6 +103,12 @@ const char* toolTypeDescription(ToolType type) {
                    "intermedio, igual que al comprobarlo con una plantilla de radios.\n"
                    "El Círculo no sirve aquí: pide un centro y un contorno cerrado,\n"
                    "y en una esquina no hay ninguno de los dos.";
+        case ToolType::Shaft:
+            return "Eje / Diámetro — para piezas de torno vistas de perfil.\n"
+                   "Traza el EJE a lo largo de la pieza, por el medio; se exploran\n"
+                   "los dos bordes y se miden de una vez el DIÁMETRO, la CONICIDAD\n"
+                   "(si no es cilíndrica) y la RECTITUD. Un calíper mide en un solo\n"
+                   "punto y ahí no se distingue un cilindro de un cono.";
     }
     return "";
 }
@@ -138,6 +145,7 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
         case ToolType::Circle:
         case ToolType::PointToLine:
         case ToolType::Arc:
+        case ToolType::Shaft:
         case ToolType::Ruler: {
             // Banda de ±10% con un mínimo de ±2 px para medidas pequeñas.
             const double band = std::max(measured * 0.10, 2.0);
@@ -174,6 +182,8 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::Position;
             } else if constexpr (std::is_same_v<T, ArcGeometry>) {
                 return ToolType::Arc;
+            } else if constexpr (std::is_same_v<T, ShaftGeometry>) {
+                return ToolType::Shaft;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -222,6 +232,9 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 g.start += delta;
                 g.mid += delta;
                 g.end += delta;
+            } else if constexpr (std::is_same_v<T, ShaftGeometry>) {
+                g.axisFrom += delta;
+                g.axisTo += delta;
             } else {
                 // Igual que en typeOf: esta cadena no puede acabar sin rama. Al
                 // no tener `else`, un tipo nuevo simplemente NO se trasladaba —
@@ -371,6 +384,12 @@ std::string toJson(const ToolGeometry& geometry) {
                     fs << "sx" << g.start.x << "sy" << g.start.y << "mx" << g.mid.x << "my"
                        << g.mid.y << "ex" << g.end.x << "ey" << g.end.y << "band"
                        << g.searchBand << "rays" << g.rayCount;
+                });
+            } else if constexpr (std::is_same_v<T, ShaftGeometry>) {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "ax" << g.axisFrom.x << "ay" << g.axisFrom.y << "bx" << g.axisTo.x
+                       << "by" << g.axisTo.y << "band" << g.searchBand << "stations"
+                       << g.stations;
                 });
             } else {
                 static_assert(alwaysFalse<T>, "geometría que no sabe serializarse");
@@ -525,6 +544,18 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.end = {static_cast<float>(ex.value()), static_cast<float>(ey.value())};
                 g.searchBand = static_cast<float>(band.value());
                 g.rayCount = static_cast<int>(reader.numberOr("rays", 24.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::Shaft: {
+                ShaftGeometry g;
+                auto ax = f("ax"), ay = f("ay"), bx = f("bx"), by = f("by"), band = f("band");
+                for (const auto* v : {&ax, &ay, &bx, &by, &band}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.axisFrom = {static_cast<float>(ax.value()), static_cast<float>(ay.value())};
+                g.axisTo = {static_cast<float>(bx.value()), static_cast<float>(by.value())};
+                g.searchBand = static_cast<float>(band.value());
+                g.stations = static_cast<int>(reader.numberOr("stations", 32.0));
                 return ResultT::ok(g);
             }
         }

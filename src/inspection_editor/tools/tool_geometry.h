@@ -95,10 +95,25 @@ struct ArcGeometry {
     int rayCount = 24;         // puntos de escaneo repartidos por el sector
 };
 
+// Eje torneado: una pieza de torno vista de perfil son dos bordes casi
+// paralelos. Se traza el EJE por el medio y la herramienta explora a los dos
+// lados a lo largo de él.
+//
+// No es un preset del Calíper: un calíper mide en un punto, y en un punto no se
+// distingue un cilindro de un cono. Aquí se mide a lo largo, que es lo que
+// permite dar de una vez diámetro, conicidad y rectitud — los tres números con
+// los que se acepta una pieza al salir del torno.
+struct ShaftGeometry {
+    cv::Point2f axisFrom;
+    cv::Point2f axisTo;
+    float searchBand = 60.0F;  // hasta dónde buscar el borde a cada lado
+    int stations = 32;         // cortes repartidos a lo largo del eje
+};
+
 using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGeometry,
                                   EdgeFlawGeometry, BlobGeometry, RulerGeometry,
                                   LineToLineGeometry, AngleGeometry, PolyBlobGeometry,
-                                  PositionGeometry, ArcGeometry>;
+                                  PositionGeometry, ArcGeometry, ShaftGeometry>;
 
 // (De)serialización JSON (cv::FileStorage en memoria). El tipo del JSON debe
 // coincidir con config.type al parsear.

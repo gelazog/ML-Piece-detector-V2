@@ -50,6 +50,7 @@ QColor toolColor(ToolType type) {
         case ToolType::PolyBlob: return {200, 120, 255};
         case ToolType::Position: return {255, 80, 80};
         case ToolType::Arc: return {120, 255, 190};
+        case ToolType::Shaft: return {255, 210, 120};
     }
     return Qt::white;
 }
@@ -892,6 +893,16 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         case ToolType::Arc:
             // Se construye en dos trazos, resueltos más arriba; aquí no llega.
             return;
+        case ToolType::Shaft: {
+            ShaftGeometry g;
+            g.axisFrom = a;
+            g.axisTo = b;
+            // La banda por defecto se saca del propio trazo: buscar el borde a
+            // 60 px fijos falla tanto en un eje fino como en uno grueso.
+            g.searchBand = std::max(15.0F, static_cast<float>(cv::norm(b - a)) * 0.4F);
+            geometry = g;
+            break;
+        }
         case ToolType::Position:
             // Un solo punto: se marca donde empieza el trazo (el arrastre solo
             // sirve para confirmar; el extremo no aporta nada aquí).

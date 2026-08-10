@@ -47,6 +47,15 @@ QIcon moveModeIcon() {
 
 QIcon toolIcon(ToolType type) {
     switch (type) {
+        case ToolType::Shaft:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // Dos bordes paralelos con el eje discontinuo por el medio.
+                p.drawLine(4, 8, 26, 8);
+                p.drawLine(4, 20, 26, 20);
+                p.drawLine(4, 14, 8, 14);
+                p.drawLine(12, 14, 18, 14);
+                p.drawLine(22, 14, 26, 14);
+            });
         case ToolType::Arc:
             return makeIcon([](QPainter& p, const QColor&) {
                 // Un arco con la flecha del radio saliendo de su centro.

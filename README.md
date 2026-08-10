@@ -108,6 +108,14 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      marcado, menos fiable es el radio** — sobre un arco corto el radio y el
      centro son casi indistinguibles y un error pequeño del borde se amplifica.
      La herramienta avisa por debajo de 30° de tramo; alarga el arco si puedes.
+   - *Eje / Diámetro*: para piezas de **torno vistas de perfil**. Traza el eje
+     a lo largo de la pieza, por el medio, y de un solo trazo salen el
+     **diámetro**, la **conicidad** (cuánto cambia el diámetro de un extremo al
+     otro) y la **rectitud**. Un calíper mide en un punto, y en un punto un
+     cilindro y un cono son idénticos. Da igual que el eje no quede centrado:
+     lo que se mide es la separación entre los dos bordes ajustados. Si dice
+     que faltan bordes, sube el **alcance de búsqueda** — el aviso te dice el
+     valor actual.
    - *Regla*: distancia directa entre dos puntos fijos (no busca bordes) —
      con la escala calibrada mide en mm/cm al vuelo.
    - *Línea-Línea*: dos líneas de referencia (se dibujan en dos pasos) → mide el
@@ -547,7 +555,8 @@ valor medido para ajustar tolerancias.
   (distancia perpendicular), **Borde liso** (desviación máxima respecto a la
   recta ajustada) y **Blob** (conteo por área mínima y polaridad) — más
   **Regla**, **Línea-Línea**, **Ángulo**, **Blob poligonal**, **Posición**
-  (desviación respecto al cero del tablero) y **Arco** (radio de una esquina). Ver la tabla completa con la
+  (desviación respecto al cero del tablero), **Arco** (radio de una esquina) y
+  **Eje / Diámetro** (diámetro, conicidad y rectitud de una pieza de torno). Ver la tabla completa con la
   técnica de cada una en [ARQUITECTURA.md](ARQUITECTURA.md#5-herramientas-de-medición).
 - La geometría se guarda **en coordenadas del fixture** (tabla
   `InspectionTools`): si la pieza llega rotada, las herramientas se mueven con

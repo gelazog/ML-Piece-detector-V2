@@ -696,8 +696,8 @@ ToolConfig makeToolAt(int index, float x, float y) {
     const ToolType types[] = {ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine,
                               ToolType::EdgeFlaw, ToolType::Blob,     ToolType::Ruler,
                               ToolType::LineToLine, ToolType::Angle,  ToolType::PolyBlob,
-                              ToolType::Position,   ToolType::Arc};
-    const ToolType type = types[index % 11];
+                              ToolType::Position,   ToolType::Arc,      ToolType::Shaft};
+    const ToolType type = types[index % 12];
     ToolGeometry geometry;
     switch (type) {
         case ToolType::Caliper:
@@ -708,6 +708,9 @@ ToolConfig makeToolAt(int index, float x, float y) {
             break;
         case ToolType::Arc:
             geometry = ArcGeometry{{x - 18.0F, y}, {x, y - 18.0F}, {x + 18.0F, y}, 6.0F, 16};
+            break;
+        case ToolType::Shaft:
+            geometry = ShaftGeometry{{x - 25.0F, y}, {x + 25.0F, y}, 20.0F, 12};
             break;
         case ToolType::PointToLine:
             geometry = PointToLineGeometry{{x - 20.0F, y}, {x + 20.0F, y},
@@ -959,6 +962,200 @@ TEST(CaliperSuite, BandWidthAveragesNoisyEdges) {
 }
 
 // --- Circulo: diametros, invariancia al giro y redondez ---
+
+// --- Eje / Diametro (torno) ---
+
+namespace {
+
+// Barra vista de perfil: cilindrica si los dos diametros coinciden, conica si
+// no. Se dibuja como un trapecio, que es la silueta real de una pieza de torno.
+cv::Mat drawShaft(double diameterStart, double diameterEnd, double angleDeg = 0.0) {
+    cv::Mat gray(500, 500, CV_8UC1, cv::Scalar(220));
+    const double a = angleDeg * 3.14159265358979323846 / 180.0;
+    const cv::Point2f dir(static_cast<float>(std::cos(a)), static_cast<float>(std::sin(a)));
+    const cv::Point2f nrm(-dir.y, dir.x);
+    const cv::Point2f c(250.0F, 250.0F);
+    const cv::Point2f p0 = c - dir * 150.0F;
+    const cv::Point2f p1 = c + dir * 150.0F;
+    const auto hs = static_cast<float>(diameterStart / 2.0);
+    const auto he = static_cast<float>(diameterEnd / 2.0);
+    const std::vector<cv::Point> poly = {
+        cv::Point(cvRound(p0.x + nrm.x * hs), cvRound(p0.y + nrm.y * hs)),
+        cv::Point(cvRound(p1.x + nrm.x * he), cvRound(p1.y + nrm.y * he)),
+        cv::Point(cvRound(p1.x - nrm.x * he), cvRound(p1.y - nrm.y * he)),
+        cv::Point(cvRound(p0.x - nrm.x * hs), cvRound(p0.y - nrm.y * hs))};
+    cv::fillConvexPoly(gray, poly, cv::Scalar(40), cv::LINE_AA);
+    return gray;
+}
+
+ShaftGeometry shaftAlong(double angleDeg, double band = 60.0) {
+    const double a = angleDeg * 3.14159265358979323846 / 180.0;
+    const cv::Point2f dir(static_cast<float>(std::cos(a)), static_cast<float>(std::sin(a)));
+    const cv::Point2f c(250.0F, 250.0F);
+    return ShaftGeometry{c - dir * 120.0F, c + dir * 120.0F, static_cast<float>(band), 32};
+}
+
+}  // namespace
+
+TEST(ShaftSuite, MeasuresTheDiameterOfACylinder) {
+    for (const double diameter : {40.0, 80.0, 140.0}) {
+        const cv::Mat gray = drawShaft(diameter, diameter);
+        // Alcance holgado: con 60 px por lado el borde de la pieza de 140 cae
+        // fuera y la herramienta -con razon- se niega a medir.
+        const double measured =
+            runMeasure(gray, kIdentity, ToolType::Shaft, ToolGeometry(shaftAlong(0.0, 110.0)));
+        std::printf("  cilindro Ø%.0f -> medido %.2f\n", diameter, measured);
+        // Margen de 2 px: la silueta suavizada del dibujo se ensancha unas
+        // decimas por lado (medido en F3: +0,6 px por borde), asi que el
+        // diametro sale sistematicamente algo mayor que el nominal.
+        EXPECT_NEAR(measured, diameter, 2.0) << "diametro " << diameter;
+    }
+}
+
+TEST(ShaftSuite, TheDiameterIsTheSameOnATiltedPiece) {
+    // La pieza llega como llega: el resultado no puede depender de la
+    // inclinacion con la que se apoye en la mesa.
+    constexpr double kDiameter = 70.0;
+    double reference = 0.0;
+    for (const double angle : {0.0, 20.0, 45.0, -35.0, 90.0}) {
+        const cv::Mat gray = drawShaft(kDiameter, kDiameter, angle);
+        const double measured = runMeasure(gray, kIdentity, ToolType::Shaft,
+                                           ToolGeometry(shaftAlong(angle, 90.0)));
+        if (angle == 0.0) {
+            reference = measured;
+        } else {
+            EXPECT_NEAR(measured, reference, 1.5) << "a " << angle << " grados";
+        }
+        EXPECT_NEAR(measured, kDiameter, 2.0) << "a " << angle << " grados";
+    }
+}
+
+TEST(ShaftSuite, AnOffCentreAxisStillGivesTheRightDiameter) {
+    // El operador no traza el eje por el centro exacto. Como se mide la
+    // SEPARACION entre los dos bordes ajustados y no la distancia a la linea
+    // dibujada, da igual: es la diferencia con hacerlo a base de calipers.
+    constexpr double kDiameter = 90.0;
+    const cv::Mat gray = drawShaft(kDiameter, kDiameter);
+    // El alcance tiene que cubrir el radio MAS el descentrado, o el borde
+    // lejano queda fuera; es justo el caso que la herramienta explica ahora en
+    // su mensaje de error.
+    ShaftGeometry centred = shaftAlong(0.0, 90.0);
+    ShaftGeometry shifted = centred;
+    shifted.axisFrom.y += 25.0F;  // eje desplazado un cuarto del radio
+    shifted.axisTo.y += 25.0F;
+
+    const double a = runMeasure(gray, kIdentity, ToolType::Shaft, ToolGeometry(centred));
+    const double b = runMeasure(gray, kIdentity, ToolType::Shaft, ToolGeometry(shifted));
+    std::printf("  eje centrado %.2f, descentrado 25 px %.2f (real %.0f)\n", a, b, kDiameter);
+    EXPECT_NEAR(a, kDiameter, 2.0);
+    EXPECT_NEAR(b, a, 0.5) << "descentrar el eje no puede cambiar la medida";
+}
+
+TEST(ShaftSuite, TellsAConeFromACylinder) {
+    // El motivo de que esta herramienta exista y no sea un preset del Caliper:
+    // un caliper mide en UN punto y ahi las dos piezas son identicas.
+    const cv::Mat cylinder = drawShaft(80.0, 80.0);
+    const cv::Mat cone = drawShaft(60.0, 100.0);
+
+    const auto runDetail = [](const cv::Mat& gray) {
+        const auto r = runTool(gray, kIdentity,
+                               makeConfig(ToolType::Shaft, ToolGeometry(shaftAlong(0.0)), 0,
+                                          1e9));
+        EXPECT_TRUE(r.isOk());
+        return r.value();
+    };
+    const auto flat = runDetail(cylinder);
+    const auto tapered = runDetail(cone);
+    std::printf("  cilindro: %s\n  cono:     %s\n", flat.detail.c_str(),
+                tapered.detail.c_str());
+
+    // El cilindro no tiene conicidad; el cono si, y del orden dibujado: sobre
+    // los 240 px de eje medidos de los 300 de pieza, 40 de diferencia total
+    // dan unos 32.
+    EXPECT_NE(flat.detail.find("conicidad="), std::string::npos);
+    EXPECT_EQ(flat.detail.find("ángulo entre caras"), std::string::npos)
+        << "un cilindro no deberia reportar angulo entre caras: " << flat.detail;
+    EXPECT_NE(tapered.detail.find("ángulo entre caras"), std::string::npos)
+        << tapered.detail;
+    // Y el diametro medio del cono cae entre los dos extremos.
+    EXPECT_GT(tapered.measured, 60.0);
+    EXPECT_LT(tapered.measured, 100.0);
+}
+
+TEST(ShaftSuite, TheTaperMatchesWhatWasDrawn) {
+    // La conicidad medida sobre el tramo explorado tiene que corresponderse con
+    // la pendiente dibujada, no ser un numero cualquiera distinto de cero.
+    const cv::Mat gray = drawShaft(60.0, 100.0);  // +40 en 300 px de pieza
+    const auto r = runTool(gray, kIdentity,
+                           makeConfig(ToolType::Shaft, ToolGeometry(shaftAlong(0.0)), 0, 1e9));
+    ASSERT_TRUE(r.isOk());
+    // El eje trazado cubre 240 px, asi que la conicidad esperada es 40*240/300.
+    const double expected = 40.0 * 240.0 / 300.0;
+    // Se relee del detalle el diametro medio, que debe ser el del centro: 80.
+    std::printf("  cono 60->100: %s (conicidad esperada %.1f)\n", r.value().detail.c_str(),
+                expected);
+    EXPECT_NEAR(r.value().measured, 80.0, 1.5) << "el diametro medio es el del centro";
+}
+
+TEST(ShaftSuite, ADegenerateAxisFailsWithAReason) {
+    const cv::Mat gray = drawShaft(80.0, 80.0);
+    const ShaftGeometry tiny{{250.0F, 250.0F}, {252.0F, 250.0F}, 60.0F, 32};
+    const auto r =
+        runTool(gray, kIdentity, makeConfig(ToolType::Shaft, ToolGeometry(tiny), 0, 1e9));
+    ASSERT_TRUE(r.isOk());
+    EXPECT_FALSE(r.value().ok);
+    EXPECT_NE(r.value().detail.find("corto"), std::string::npos) << r.value().detail;
+}
+
+TEST(ShaftSuite, TooShortAReachSaysWhatToDo) {
+    // El fallo mas habitual de esta herramienta: la banda no llega al borde
+    // porque la pieza es gruesa o el eje quedo descentrado. Decir solo "bordes
+    // insuficientes" deja al operador sin saber que tocar.
+    const cv::Mat gray = drawShaft(140.0, 140.0);
+    const auto r = runTool(gray, kIdentity,
+                           makeConfig(ToolType::Shaft, ToolGeometry(shaftAlong(0.0, 30.0)), 0,
+                                      1e9));
+    ASSERT_TRUE(r.isOk());
+    EXPECT_FALSE(r.value().ok);
+    EXPECT_NE(r.value().detail.find("alcance"), std::string::npos) << r.value().detail;
+    std::printf("  %s\n", r.value().detail.c_str());
+}
+
+TEST(ShaftSuite, AnEmptySceneFailsControlled) {
+    const cv::Mat gray(500, 500, CV_8UC1, cv::Scalar(128));
+    const auto r = runTool(gray, kIdentity,
+                           makeConfig(ToolType::Shaft, ToolGeometry(shaftAlong(0.0)), 0, 1e9));
+    ASSERT_TRUE(r.isOk());
+    EXPECT_FALSE(r.value().ok);
+    EXPECT_NE(r.value().detail.find("insuficientes"), std::string::npos) << r.value().detail;
+}
+
+TEST(ShaftSuite, GeometrySurvivesASaveAndLoadRoundTrip) {
+    const ShaftGeometry g{{12.5F, 30.25F}, {180.0F, 33.5F}, 44.5F, 48};
+    const auto parsed = geometryFromJson(ToolType::Shaft, toJson(ToolGeometry(g)));
+    ASSERT_TRUE(parsed.isOk()) << parsed.error().message;
+    const auto& back = std::get<ShaftGeometry>(parsed.value());
+    EXPECT_FLOAT_EQ(back.axisFrom.x, g.axisFrom.x);
+    EXPECT_FLOAT_EQ(back.axisFrom.y, g.axisFrom.y);
+    EXPECT_FLOAT_EQ(back.axisTo.x, g.axisTo.x);
+    EXPECT_FLOAT_EQ(back.axisTo.y, g.axisTo.y);
+    EXPECT_FLOAT_EQ(back.searchBand, g.searchBand);
+    EXPECT_EQ(back.stations, g.stations);
+    EXPECT_EQ(typeOf(ToolGeometry(g)), ToolType::Shaft);
+    const auto fromName = toolTypeFromName("shaft");
+    ASSERT_TRUE(fromName.isOk());
+    EXPECT_EQ(fromName.value(), ToolType::Shaft);
+}
+
+TEST(ShaftSuite, MovingItKeepsItsShape) {
+    ToolGeometry geometry = ShaftGeometry{{10.0F, 20.0F}, {90.0F, 25.0F}, 30.0F, 24};
+    const auto before = std::get<ShaftGeometry>(geometry);
+    translateGeometry(geometry, {-15.0F, 60.0F});
+    const auto after = std::get<ShaftGeometry>(geometry);
+    EXPECT_FLOAT_EQ(after.axisFrom.x, before.axisFrom.x - 15.0F);
+    EXPECT_FLOAT_EQ(after.axisTo.y, before.axisTo.y + 60.0F);
+    EXPECT_FLOAT_EQ(after.searchBand, before.searchBand);
+}
 
 // --- Arco (radio) ---
 

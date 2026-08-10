@@ -167,7 +167,7 @@ distinguen.
 
 ## 5. Herramientas de medición
 
-Once herramientas, todas ancladas al fixture. El motor común
+Doce herramientas, todas ancladas al fixture. El motor común
 (`tool_executor.cpp`) recibe imagen + fixture + configuración y devuelve un
 resultado con la medida, el veredicto y los puntos para dibujarla.
 
@@ -184,6 +184,7 @@ resultado con la medida, el veredicto y los puntos para dibujarla.
 | Ángulo | Ángulo interior de una esquina | Ángulo entre dos vectores desde el vértice |
 | Posición | Desviación de un rasgo respecto al cero del tablero | Lectura en el sistema del tablero (radial, X o Y) |
 | Arco | Radio de una esquina o un redondeo | Círculo por tres puntos para situar el sector + barrido radial acotado a él + ajuste Taubin robusto |
+| Eje / Diámetro | Diámetro, conicidad y rectitud de una pieza de torno | Perfil axial a los dos lados + ajuste robusto de recta a cada borde; el diámetro es la separación entre las dos rectas |
 
 **Ajustes geométricos** (`vision/fitting.*`). El Círculo —y las herramientas de
 pieza torneada que vienen detrás— acaban preguntando lo mismo: qué
@@ -294,6 +295,22 @@ puede promediar. Con borde suavizado —lo que se parece a una pieza real
 retroiluminada— la diferencia baja a unas décimas. De ahí dos consecuencias: las
 pruebas del Arco usan borde suavizado, y **la herramienta avisa cuando el tramo
 marcado baja de 30°** en vez de dar el número a secas.
+
+**Por qué el Eje no es un preset del Calíper.** Un calíper mide en **un punto**,
+y en un punto un cilindro y un cono son idénticos. El Eje explora **a lo largo**:
+un perfil axial por cada lado, una recta robusta ajustada a cada borde, y de ahí
+salen a la vez el diámetro, la conicidad y la rectitud — los tres números con
+los que se acepta una pieza al salir del torno. Verificado con un tronco de cono
+dibujado con 40 px de diferencia entre extremos: sobre el tramo explorado la
+conicidad esperada es 32,0 y se mide **31,9**.
+
+Un detalle que evita un error de uso frecuente: el diámetro es la **separación
+entre las dos rectas ajustadas**, no la distancia a la línea que dibujó el
+operador. Por eso descentrar el eje 25 px no cambia la medida (91,44 en los dos
+casos, comprobado), que es justo lo que no se consigue encadenando calíperes.
+Cuando la banda de búsqueda no llega al borde —pieza gruesa o eje descentrado—,
+el aviso dice **el alcance actual y qué hacer**, en vez de un "bordes
+insuficientes" que no orienta.
 
 ### El trazado: por qué las tolerancias van en píxeles de pantalla
 

@@ -46,6 +46,7 @@ QString typeLabel(ToolType type) {
         case ToolType::Position: return QStringLiteral("Posición");
         case ToolType::PolyBlob: return QStringLiteral("Blob poligonal");
         case ToolType::Arc: return QStringLiteral("Arco");
+        case ToolType::Shaft: return QStringLiteral("Eje / Diámetro");
     }
     return QStringLiteral("?");
 }
@@ -103,6 +104,7 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     addMode(tr("Blob poligonal"), static_cast<int>(ToolType::PolyBlob));
     addMode(tr("Posición"), static_cast<int>(ToolType::Position));
     addMode(tr("Arco"), static_cast<int>(ToolType::Arc));
+    addMode(tr("Eje / Diámetro"), static_cast<int>(ToolType::Shaft));
     modesLayout->addStretch(1);
     rootLayout->addLayout(modesLayout);
 

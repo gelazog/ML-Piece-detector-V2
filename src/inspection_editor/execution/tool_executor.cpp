@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 #include <cstdio>
 #include <utility>
 
@@ -441,6 +442,97 @@ ToolRunResult runArc(const cv::Mat& gray, const Fixture& fixture, const ToolConf
     return result;
 }
 
+ToolRunResult runShaft(const cv::Mat& gray, const Fixture& fixture, const ToolConfig& config,
+                       const ShaftGeometry& g, const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+    const cv::Point2f from = toImg(fixture, g.axisFrom);
+    const cv::Point2f to = toImg(fixture, g.axisTo);
+    if (cv::norm(to - from) < 5.0) {
+        result.detail = "El eje trazado es demasiado corto";
+        return result;
+    }
+
+    const int stations = std::clamp(g.stations, 5, 200);
+    const double reach = std::max(5.0, static_cast<double>(g.searchBand));
+    const auto sideA = axialProfile(gray, from, to, ProfileSide::Positive, stations, reach);
+    const auto sideB = axialProfile(gray, from, to, ProfileSide::Negative, stations, reach);
+
+    std::vector<cv::Point2f> pointsA;
+    std::vector<cv::Point2f> pointsB;
+    for (const auto& s : sideA) {
+        if (s.found) {
+            pointsA.push_back(s.point);
+        }
+    }
+    for (const auto& s : sideB) {
+        if (s.found) {
+            pointsB.push_back(s.point);
+        }
+    }
+    const int needed = std::max(3, stations / 2);
+    if (static_cast<int>(pointsA.size()) < needed ||
+        static_cast<int>(pointsB.size()) < needed) {
+        result.detail = "Bordes del eje insuficientes (" + std::to_string(pointsA.size()) +
+                        " y " + std::to_string(pointsB.size()) + " de " +
+                        std::to_string(stations) + " cortes)";
+        // La causa más habitual con diferencia: la banda no llega al borde
+        // porque la pieza es gruesa o el eje quedó descentrado. Sin decirlo, el
+        // operador no tiene forma de adivinar qué parámetro tocar.
+        if (pointsA.empty() || pointsB.empty()) {
+            result.detail += ". Un lado no aparece: sube el alcance de búsqueda (ahora " +
+                             fmt2(reach) + " px) o centra mejor el eje";
+        }
+        return result;
+    }
+
+    const vision::LineFit lineA = vision::fitLineRobust(pointsA);
+    const vision::LineFit lineB = vision::fitLineRobust(pointsB);
+    if (!lineA.valid || !lineB.valid) {
+        result.detail = "No se pudo ajustar alguno de los dos bordes";
+        return result;
+    }
+
+    // El diámetro en un punto del eje es la suma de las distancias
+    // perpendiculares a los dos bordes ajustados. Sale bien aunque el eje se
+    // haya trazado descentrado: lo que se mide es la separación entre los
+    // bordes, no la distancia a la línea que dibujó el operador.
+    const cv::Point2f axis = to - from;
+    std::vector<double> diameters;
+    diameters.reserve(static_cast<std::size_t>(stations));
+    for (int i = 0; i < stations; ++i) {
+        const cv::Point2f p = from + axis * (static_cast<float>(i) / (stations - 1));
+        diameters.push_back(std::abs(lineA.signedDistance(p)) +
+                            std::abs(lineB.signedDistance(p)));
+    }
+    const double meanDiameter =
+        std::accumulate(diameters.begin(), diameters.end(), 0.0) / diameters.size();
+    // Conicidad: cuánto cambia el diámetro de un extremo al otro. Es la medida
+    // que un calíper en un punto no puede dar.
+    const double taper = diameters.back() - diameters.front();
+    // Rectitud: lo que se aparta cada borde de su propia recta.
+    const double straightness = std::max(lineA.rmsResidual, lineB.rmsResidual);
+
+    result.measured = meanDiameter;
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = "Ø=" + fmtLen(meanDiameter, fmt) +
+                    ", conicidad=" + fmtLen(std::abs(taper), fmt) +
+                    (std::abs(taper) < 1e-9 ? ""
+                                            : (taper > 0.0 ? " (abre)" : " (cierra)")) +
+                    ", rectitud=" + fmtLen(straightness, fmt);
+    // Los dos bordes deberían ser paralelos; si no lo son, el ángulo entre
+    // ellos dice cuánto cónica es la pieza en grados, que es como suele venir
+    // en el plano.
+    const double angleBetween = std::abs(lineA.angleDeg() - lineB.angleDeg());
+    if (angleBetween > 0.3) {
+        result.detail += ", ángulo entre caras=" + fmt2(angleBetween) + "°";
+    }
+
+    result.overlaySegments.push_back({pointsA.front(), pointsA.back()});
+    result.overlaySegments.push_back({pointsB.front(), pointsB.back()});
+    result.overlayPoints.push_back(from + axis * 0.5F);
+    return result;
+}
+
 ToolRunResult runPointToLine(const cv::Mat& gray, const Fixture& fixture,
                              const ToolConfig& config, const PointToLineGeometry& g,
                              const Fmt& fmt) {
@@ -720,6 +812,9 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Arc:
                 return ResultT::ok(runArc(gray, fixture, config,
                                           std::get<ArcGeometry>(geometry.value()), fmt));
+            case ToolType::Shaft:
+                return ResultT::ok(runShaft(gray, fixture, config,
+                                            std::get<ShaftGeometry>(geometry.value()), fmt));
             case ToolType::Position: {
                 // Sin tablero explícito: cero en la pieza y ejes de la imagen.
                 const vision::BoardFrame fallback{fixture.origin, 0.0};

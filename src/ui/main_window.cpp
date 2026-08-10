@@ -202,6 +202,7 @@ QString toolTypeLabel(inspection::ToolType type) {
         case inspection::ToolType::PolyBlob: return QStringLiteral("Blob poligonal");
         case inspection::ToolType::Position: return QStringLiteral("Posición");
         case inspection::ToolType::Arc: return QStringLiteral("Arco");
+        case inspection::ToolType::Shaft: return QStringLiteral("Eje / Diámetro");
     }
     return QStringLiteral("?");
 }

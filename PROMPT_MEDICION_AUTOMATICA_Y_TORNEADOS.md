@@ -226,7 +226,7 @@ Formato: casilla, ID, tarea, por qué, algoritmo, archivos, cómo se verifica.
   creación), `canvas/tool_icons.cpp`, `ui/main_window.*`.
   Verificación: arcos sintéticos de radio conocido y ángulo variable.
 
-- [ ] **T2 — Herramienta Eje / Diámetro (torno).** Una pieza torneada vista de
+- [x] **T2 — Herramienta Eje / Diámetro (torno).** Una pieza torneada vista de
   perfil son **dos bordes casi paralelos**. La herramienta mide **Ø,
   conicidad** (si el eje no es cilíndrico) y **rectitud** en un solo trazo,
   que es lo que se comprueba al salir del torno.
