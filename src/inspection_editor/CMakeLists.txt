@@ -1,5 +1,6 @@
 # Lógica de herramientas y ejecución: Qt-free, testeable sin GUI.
 add_library(pci_inspection STATIC
+  auto_measure.cpp
   canvas/canvas_geometry.cpp
   execution/edge_detection.cpp
   execution/profiles.cpp

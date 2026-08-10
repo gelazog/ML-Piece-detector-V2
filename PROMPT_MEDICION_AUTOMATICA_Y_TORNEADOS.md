@@ -164,7 +164,7 @@ Formato: casilla, ID, tarea, por qué, algoritmo, archivos, cómo se verifica.
   comprueba que salen el número de rectas y arcos correcto y que los radios
   coinciden con los dibujados.
 
-- [ ] **A2 — Generador de propuestas.** Convierte las primitivas de A1 en
+- [x] **A2 — Generador de propuestas.** Convierte las primitivas de A1 en
   herramientas listas para usar:
   - `minAreaRect` de la pieza → dos **Reglas** (largo y ancho).
   - Cada agujero y cada arco con ángulo suficiente → un **Círculo**.

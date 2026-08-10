@@ -412,6 +412,39 @@ esquinas de radio 40 → **4 rectas y 4 arcos** de R ≈ 38,3.
 Los **agujeros** salen aparte, de la jerarquía de `findContours`: un contorno con
 padre es un hueco interno, y cada uno es candidato a un Círculo.
 
+### Medición automática: propuestas, no números
+
+`inspection_editor/auto_measure.*` mira la pieza y propone qué medir. La
+decisión que gobierna la función entera: **genera propuestas de herramientas, no
+una lista de números**. Unos números sueltos serían un callejón sin salida —sin
+tolerancia, sin veredicto, sin guardarse en la plantilla, sin seguir a la pieza
+con el fixture, sin aparecer en el histórico—, y todo eso ya existe y funciona
+para las herramientas. El operador pasa de *dibujar veinte herramientas* a
+*revisar veinte propuestas*.
+
+Qué propone, a partir de la descomposición del contorno y de los agujeros:
+**largo y ancho** (rectángulo mínimo), un **Círculo** por agujero, un **Arco**
+por redondeo, un **Calíper** por cada par de caras paralelas enfrentadas y un
+**Ángulo** por esquina viva.
+
+Tres reglas que hacen que la lista sea revisable:
+
+- **Cada propuesta se ejecuta antes de proponerse.** Si la herramienta no
+  consigue medir sobre esta pieza, se descarta en vez de ofrecérsela al
+  operador. Lo que llega a la lista ya funciona, y su tolerancia sugerida sale
+  de una medida real y no de una estimación geométrica.
+- **Sin duplicados.** En un rectángulo salían "Ancho total = 279" y "Espesor 1 =
+  280": la misma cota dos veces con dos nombres. Una propuesta de longitud se
+  descarta si otra ya aceptada mide lo mismo en el mismo sitio.
+- **Con el porqué y con tope.** Cada una lleva una frase explicando por qué se
+  propone; sin eso, doce propuestas no se revisan, se aceptan todas o se
+  descartan todas. Y se cortan en doce, ordenadas por tamaño del rasgo:
+  cincuenta son tan inútiles como ninguna.
+
+Verificado sobre piezas de medidas conocidas: agujeros de Ø70 y Ø100 se proponen
+como Ø70,1 y Ø100,0; las cuatro esquinas de radio 45 salen como cuatro Arcos; un
+pinchazo de 6 px no genera propuesta.
+
 ### Avisos de condiciones: el fallo que no se ve en el número
 
 Estas herramientas dan resultados **creíbles** con datos malos, que es la peor
