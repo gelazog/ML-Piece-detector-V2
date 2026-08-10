@@ -2,6 +2,7 @@
 add_library(pci_inspection STATIC
   canvas/canvas_geometry.cpp
   execution/edge_detection.cpp
+  execution/profiles.cpp
   execution/tool_executor.cpp
   tools/template_io.cpp
   tools/tool_geometry.cpp

@@ -213,6 +213,28 @@ es ruido: en vez de esconder un umbral dentro del ajuste se devuelve la
 **anisotropía** —la misma medida y la misma fórmula que `Fixture::anisotropy`,
 0 = redondo, 1 = línea— y decide quien pregunta.
 
+**Recorrer un borde** (`inspection_editor/execution/profiles.*`). Dos formas, y
+las dos devuelven una señal **muestreada uniformemente**, que es lo esencial: la
+rosca y el engranaje son señales periódicas —el perfil se repite cada paso, o
+cada diente— y el paso y el número de dientes salen de su periodo, que un
+muestreo irregular falsearía. Por eso una muestra sin borde se devuelve marcada
+`found=false` en lugar de omitirla: quitarla desplazaría todas las demás.
+
+- **Perfil radial** `r(θ)`: desde un centro, dónde está el borde en cada
+  ángulo. Base del engranaje (una repetición por diente) y del arco.
+- **Perfil axial**: a lo largo de un eje, a qué distancia perpendicular está el
+  borde de cada lado. Base del eje torneado (el diámetro es la suma de los dos
+  lados) y de la rosca (el rizado del perfil es el paso).
+
+Su exactitud está medida contra un **semiplano**, cuyo borde cae en una
+coordenada exacta sin rasterizado de curvas de por medio: **sesgo +0,000 px**, y
+una barra de 80 px se lee 39,50 + 40,50 = 80,00. Conviene saber que
+`cv::circle` con suavizado pinta el disco **0,6 px más grande** que el radio
+pedido —desfase constante, comprobado de R=30 a R=150—, así que las pruebas de
+exactitud usan bordes duros; el suavizado se queda donde sí aporta, que es
+reducir la dispersión entre rayos a menos de la mitad (0,24 frente a 0,64 px).
+Traducido: un borde suave da mejor **redondez** y peor **diámetro absoluto**.
+
 **Tolerancias.** Cada herramienta tiene banda mínima y máxima; al crearla se
 sugieren automáticamente a partir de lo que mide en la pieza buena (±10 % para
 distancias, conteo exacto para blobs, ±2° para ángulos). La tolerancia decide el

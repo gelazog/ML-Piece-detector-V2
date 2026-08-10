@@ -110,7 +110,10 @@ Formato: casilla, ID, tarea, por qué, algoritmo, archivos, cómo se verifica.
   Verificación: rectas sintéticas en todas las orientaciones (incluida la
   vertical, donde `y=mx+b` se rompe) y con atípicos.
 
-- [ ] **F3 — Perfil radial y perfil axial.** Son las dos formas de "recorrer un
+- [x] **F3 — Perfil radial y perfil axial.** *(Van en
+  `inspection_editor/execution/profiles.*`, no en `vision/` como decía este
+  documento: usan `detectEdges`, que está en esa capa, y `pci_vision` está por
+  debajo — ponerlos en vision invertiría la dependencia.)* Son las dos formas de "recorrer un
   borde" que piden las herramientas nuevas, y el Círculo ya tiene media
   implementación del primero enterrada en su ejecutor. Extraer y generalizar:
   - `radialProfile(gray, center, rMin, rMax, rayCount) -> vector<{angle,
