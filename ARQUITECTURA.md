@@ -222,6 +222,29 @@ sigue guardando la que él dibujó y el modo (`Off` / `Automatic` / `Fixed`)
 decide cuál se usa. Y la zona activa se dibuja sobre el vídeo, porque un recorte
 invisible convierte cualquier fallo en un misterio.
 
+**Tres fallos que costó eso**, y que se corrigieron después de que el operador
+reportara que «la zona de detección no funciona»:
+
+- **Dibujar una zona no la usaba.** El modo lo decidía todo y arranca en «imagen
+  entera», así que al arrastrar el recuadro este se guardaba, el botón pasaba a
+  decir «Quitar zona», la barra de estado decía «zona activa»… y no se pintaba
+  ni se usaba. Solo funcionaba si además se iba a *Configurar ▸ Rendimiento* a
+  marcar el modo a mano. Meter el modo en medio desacopló el gesto de su efecto,
+  y tres sitios de la interfaz afirmaban lo contrario de lo que hacía el
+  programa. Ahora **dibujar una zona es usarla** y quitarla apaga el modo que la
+  usaba; la regla vive en `vision::modeAfterFixedZoneChanged` —una función pura,
+  probada— y no escrita a mano en la ventana.
+- **La zona automática se movía sin verse.** Su rectángulo solo se repintaba al
+  cambiar de modo, así que el operador veía uno quieto, o ninguno si no había
+  tocado el modo desde que arrancó. Se repinta con cada frame analizado.
+- **Con el contorno oculto se daba la pieza por perdida.** Con la pose congelada
+  no se segmenta nada, así que no hay contorno; eso se le pasaba al seguimiento
+  como «no hay pieza» y a los dos frames se rendía con un «se dejó de ver la
+  pieza» que era falso — la pieza estaba ahí, lo apagado era el dibujo. Ahora
+  `AnalysisOverlay::analysed` distingue «se buscó y no había» de «no se buscó»,
+  y solo lo primero alimenta al seguimiento. Dar algo por perdido sin haberlo
+  mirado es afirmar lo que no se ha medido.
+
 ### Dónde se va el tiempo de un análisis (y por qué no hay escala adaptativa)
 
 Se planificó una «escala de trabajo adaptativa»: segmentar una copia reducida

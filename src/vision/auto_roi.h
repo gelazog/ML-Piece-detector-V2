@@ -89,4 +89,23 @@ private:
 // motivo (`None`).
 [[nodiscard]] const char* giveUpReason(AutoRoiGiveUp reason);
 
+// La zona con la que se analiza este frame, según el modo. Vacía = imagen
+// entera, que es lo que `PipelineConfig::roi` ya entiende como «sin zona».
+//
+// Vive aquí y no en la ventana porque es la regla, no una pantalla: quién usa
+// el rectángulo dibujado y quién el que sigue a la pieza.
+[[nodiscard]] cv::Rect effectiveWorkingZone(WorkingZoneMode mode, const cv::Rect& fixedZone,
+                                            const cv::Rect& automaticZone);
+
+// Modo que corresponde después de dibujar o de quitar la zona fija.
+//
+// Existe porque separarlos costó un fallo real: la zona dibujada se guardaba
+// pero el modo seguía en «imagen entera», así que el botón decía «Quitar zona»,
+// la barra de estado decía que estaba activa, y el rectángulo ni se pintaba ni
+// se usaba. **Dibujar una zona es usarla** —nadie arrastra un recuadro de
+// detección para luego no usarlo— y quitarla apaga el modo que la usaba, que si
+// no quedaría apuntando a un rectángulo que ya no existe.
+[[nodiscard]] WorkingZoneMode modeAfterFixedZoneChanged(WorkingZoneMode current,
+                                                        bool hasFixedZone);
+
 }  // namespace pci::vision

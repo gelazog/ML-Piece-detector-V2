@@ -44,6 +44,12 @@ struct AnalysisOverlay {
     // Piezas encontradas en el frame (C5). -1 = no se contaron: contar cuesta y
     // solo se hace cuando alguien mira el número.
     int piecesFound = -1;
+    // Si este frame llegó a SEGMENTARSE. Con la pose congelada (contorno
+    // oculto) no se segmenta: las herramientas se miden con el fixture del
+    // frame anterior y no hay contorno nuevo. Distinguirlo de «se segmentó y no
+    // había pieza» importa, porque la zona automática decide con eso: dar por
+    // perdida una pieza que nadie ha buscado es afirmar lo que no se ha mirado.
+    bool analysed = false;
 };
 
 }  // namespace pci::ui

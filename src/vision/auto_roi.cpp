@@ -67,6 +67,27 @@ const char* giveUpReason(AutoRoiGiveUp reason) {
     return "";
 }
 
+cv::Rect effectiveWorkingZone(WorkingZoneMode mode, const cv::Rect& fixedZone,
+                              const cv::Rect& automaticZone) {
+    switch (mode) {
+        case WorkingZoneMode::Off: return {};
+        case WorkingZoneMode::Automatic: return automaticZone;
+        case WorkingZoneMode::Fixed: return fixedZone;
+    }
+    return {};
+}
+
+WorkingZoneMode modeAfterFixedZoneChanged(WorkingZoneMode current, bool hasFixedZone) {
+    if (hasFixedZone) {
+        // El gesto explícito manda, incluso sobre el modo automático: quien
+        // acaba de dibujar dónde mirar quiere que se mire ahí.
+        return WorkingZoneMode::Fixed;
+    }
+    // Sin zona, «fija» no puede seguir siendo el modo. Los otros dos no
+    // dependen de ella y se quedan como estaban.
+    return current == WorkingZoneMode::Fixed ? WorkingZoneMode::Off : current;
+}
+
 void AutoRoiTracker::reset() {
     roi_ = cv::Rect();
     lastArea_ = 0.0;

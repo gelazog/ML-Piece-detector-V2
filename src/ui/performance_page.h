@@ -25,6 +25,12 @@ public:
 
     [[nodiscard]] vision::WorkingZoneMode mode() const;
 
+    // Refleja el modo y si hay zona dibujada SIN emitir `modeChanged`. Hace
+    // falta porque dibujar una zona sobre el vídeo cambia el modo por sí solo:
+    // si el panel estuviera abierto y no se enterara, enseñaría un modo y el
+    // programa estaría usando otro.
+    void showMode(vision::WorkingZoneMode mode, bool hasFixedZone);
+
     // Estado en vivo de la zona: qué se está procesando ahora mismo y, si el
     // seguimiento se rindió, por qué. Un recorte que aparece y desaparece sin
     // explicación parece un fallo de la aplicación.

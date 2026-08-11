@@ -148,6 +148,8 @@ AnalysisOverlay buildOverlay(const QImage& frame,
         } else {
             analysis = vision::analyzeFrame(image, pipeline);
         }
+        // A partir de aquí el frame se ha segmentado, haya pieza o no.
+        overlay.analysed = true;
         if (!analysis.isOk()) {
             overlay.error = QString::fromStdString(analysis.error().message);
             // Sin pieza todavía se puede enfocar: se mide el centro del
@@ -616,6 +618,18 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
                                        repos_.settings->getInt("det_roi_y", 0).value(),
                                        repos_.settings->getInt("det_roi_w", 0).value(),
                                        repos_.settings->getInt("det_roi_h", 0).value());
+        // Modo «fija» sin zona guardada es un estado imposible de alcanzar hoy,
+        // pero sí de heredar de una versión anterior. Sin esto el programa diría
+        // que trabaja en una zona y estaría mirando la imagen entera.
+        //
+        // Aquí NO vale `modeAfterFixedZoneChanged`: esa función es para cuando
+        // el operador acaba de dibujar, y forzaría «fija» al abrir. Si guardó
+        // una zona y luego se pasó a automática, el modo guardado es el que
+        // manda; lo único que se corrige es la incoherencia a la baja.
+        if (zoneMode_ == vision::WorkingZoneMode::Fixed &&
+            pipelineConfig_.roi.area() <= 0) {
+            zoneMode_ = vision::WorkingZoneMode::Off;
+        }
         pipelineConfig_.autoOrient = repos_.settings->getInt("track_rotation", 0).value() != 0;
         arucoLiveScale_ = repos_.settings->getInt("aruco_live", 0).value() != 0;
         markerSizeMm_ = repos_.settings->getDouble("aruco_marker_mm", 30.0).value();
@@ -950,12 +964,7 @@ void MainWindow::updateRoiButton() {
 }
 
 cv::Rect MainWindow::effectiveWorkingZone() const {
-    switch (zoneMode_) {
-        case vision::WorkingZoneMode::Off: return {};
-        case vision::WorkingZoneMode::Automatic: return autoRoi_.roi();
-        case vision::WorkingZoneMode::Fixed: return pipelineConfig_.roi;
-    }
-    return {};
+    return vision::effectiveWorkingZone(zoneMode_, pipelineConfig_.roi, autoRoi_.roi());
 }
 
 void MainWindow::setWorkingZoneMode(vision::WorkingZoneMode mode) {
@@ -969,6 +978,13 @@ void MainWindow::setWorkingZoneMode(vision::WorkingZoneMode mode) {
     if (repos_.settings != nullptr) {
         repos_.settings->setString("work_zone_mode",
                                    vision::workingZoneModeKey(mode));
+    }
+    // El modo puede cambiar sin tocar el panel (al dibujar o quitar la zona),
+    // así que si está abierto se le pone al día. `showMode` no reemite.
+    if (configureDialog_ != nullptr) {
+        if (auto* page = configureDialog_->performancePage(); page != nullptr) {
+            page->showMode(zoneMode_, pipelineConfig_.roi.area() > 0);
+        }
     }
     updateWorkingZoneOverlay();
 }
@@ -1068,6 +1084,7 @@ void MainWindow::onRoiButtonToggled(bool enabled) {
     if (pipelineConfig_.roi.area() > 0) {
         // Segundo uso del botón: quitar la zona activa.
         pipelineConfig_.roi = cv::Rect();
+        setWorkingZoneMode(vision::modeAfterFixedZoneChanged(zoneMode_, false));
         persistPipelineConfig();
         updateRoiButton();
         statusBar()->showMessage(tr("Zona de detección eliminada: se analiza todo el frame."));
@@ -1086,6 +1103,8 @@ void MainWindow::onRoiButtonToggled(bool enabled) {
 
 void MainWindow::onRegionPicked(const cv::Rect& imageRect) {
     pipelineConfig_.roi = imageRect;
+    // Dibujar la zona la PONE EN USO (la regla vive en `vision::auto_roi`).
+    setWorkingZoneMode(vision::modeAfterFixedZoneChanged(zoneMode_, true));
     persistPipelineConfig();
     updateRoiButton();
     statusBar()->showMessage(
@@ -1452,13 +1471,23 @@ void MainWindow::onAnalysisFinished() {
     // Zona de trabajo automática (C3): el seguimiento se alimenta SIEMPRE, esté
     // o no abierto el panel, porque es lo que decide el recorte del próximo
     // frame. Si el modo no es automático, el tracker se mantiene en reposo.
-    if (zoneMode_ == vision::WorkingZoneMode::Automatic) {
+    // Solo se alimenta si el frame SE ANALIZÓ. Con la pose congelada (contorno
+    // oculto) no se segmenta nada, así que no hay contorno: decirle al
+    // seguimiento «no hay pieza» sería afirmar algo que no se ha mirado, y a los
+    // dos frames se rendía con un «se dejó de ver la pieza» que era mentira —
+    // la pieza estaba ahí, lo que estaba apagado era el contorno.
+    if (zoneMode_ == vision::WorkingZoneMode::Automatic && overlay.analysed) {
         const QRectF bounds = overlay.contour.boundingRect();
         autoRoi_.update(overlay.valid && !overlay.contour.isEmpty(),
                         cv::Rect(static_cast<int>(bounds.x()), static_cast<int>(bounds.y()),
                                  static_cast<int>(bounds.width()),
                                  static_cast<int>(bounds.height())),
                         cv::Size(overlay.frameSize.width(), overlay.frameSize.height()));
+        // La zona automática cambia con cada frame, así que su dibujo tiene que
+        // repintarse aquí. Sin esto solo se refrescaba al cambiar de modo: el
+        // recorte se movía de verdad y el operador veía un rectángulo quieto —
+        // o ninguno, si no había cambiado de modo desde que arrancó.
+        updateWorkingZoneOverlay();
     }
     if (configureDialog_ != nullptr) {
         if (auto* page = configureDialog_->performancePage(); page != nullptr) {

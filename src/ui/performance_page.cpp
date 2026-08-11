@@ -63,6 +63,26 @@ PerformancePage::PerformancePage(vision::WorkingZoneMode mode, bool hasFixedZone
     connect(fixed_, &QRadioButton::toggled, this, emitMode);
 }
 
+void PerformancePage::showMode(vision::WorkingZoneMode mode, bool hasFixedZone) {
+    if (off_ == nullptr) {
+        return;
+    }
+    fixed_->setEnabled(hasFixedZone);
+    // Los tres botones se bloquean a la vez: marcar uno desmarca otro, y cada
+    // `toggled` dispararía `modeChanged` de vuelta hacia quien nos está
+    // sincronizando.
+    const QSignalBlocker blockOff(off_);
+    const QSignalBlocker blockAuto(automatic_);
+    const QSignalBlocker blockFixed(fixed_);
+    switch (mode) {
+        case vision::WorkingZoneMode::Off: off_->setChecked(true); break;
+        case vision::WorkingZoneMode::Automatic: automatic_->setChecked(true); break;
+        case vision::WorkingZoneMode::Fixed:
+            (hasFixedZone ? fixed_ : off_)->setChecked(true);
+            break;
+    }
+}
+
 vision::WorkingZoneMode PerformancePage::mode() const {
     if (automatic_ != nullptr && automatic_->isChecked()) {
         return vision::WorkingZoneMode::Automatic;

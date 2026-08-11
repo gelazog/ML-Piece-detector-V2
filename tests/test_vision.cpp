@@ -1809,3 +1809,76 @@ TEST(DetectionSettings, TheDetectionZoneAlsoDecides) {
     EXPECT_GT(zonedResult.value().fixture.origin.x, 700.0F)
         << "con zona gana la que cae dentro";
 }
+
+// ---------------------------------------------------------------------------
+// La zona de trabajo: qué se usa y cuándo (corrección del fallo reportado)
+// ---------------------------------------------------------------------------
+//
+// El fallo: la zona de detección dibujada a mano se guardaba, el botón pasaba a
+// decir «Quitar zona» y la barra de estado decía que estaba activa… y no se
+// usaba ni se pintaba, porque el modo de trabajo arranca en «imagen entera» y
+// era el modo el que decidía. Dibujar y usar estaban desacoplados, y solo lo
+// notaba quien fuese a Configurar ▸ Rendimiento a marcar el modo a mano.
+
+TEST(WorkingZone, DrawingAZoneIsUsingIt) {
+    // La regla que faltaba. Nadie arrastra un recuadro de detección para luego
+    // no usarlo: el gesto ES la intención.
+    EXPECT_EQ(modeAfterFixedZoneChanged(WorkingZoneMode::Off, true),
+              WorkingZoneMode::Fixed);
+    // Incluso desde automática: el gesto explícito manda sobre el seguimiento.
+    EXPECT_EQ(modeAfterFixedZoneChanged(WorkingZoneMode::Automatic, true),
+              WorkingZoneMode::Fixed);
+    EXPECT_EQ(modeAfterFixedZoneChanged(WorkingZoneMode::Fixed, true),
+              WorkingZoneMode::Fixed);
+}
+
+TEST(WorkingZone, RemovingTheZoneTurnsOffTheModeThatUsedIt) {
+    // Si no, «fija» quedaría apuntando a un rectángulo que ya no existe, y el
+    // programa diría que trabaja en una zona mientras mira la imagen entera.
+    EXPECT_EQ(modeAfterFixedZoneChanged(WorkingZoneMode::Fixed, false),
+              WorkingZoneMode::Off);
+    // Los otros dos no dependen de la zona dibujada y no se tocan.
+    EXPECT_EQ(modeAfterFixedZoneChanged(WorkingZoneMode::Automatic, false),
+              WorkingZoneMode::Automatic);
+    EXPECT_EQ(modeAfterFixedZoneChanged(WorkingZoneMode::Off, false),
+              WorkingZoneMode::Off);
+}
+
+TEST(WorkingZone, EachModeUsesItsOwnRectangleAndNoOther) {
+    const cv::Rect drawn(10, 20, 300, 200);
+    const cv::Rect tracked(50, 60, 120, 90);
+
+    EXPECT_EQ(effectiveWorkingZone(WorkingZoneMode::Fixed, drawn, tracked), drawn);
+    EXPECT_EQ(effectiveWorkingZone(WorkingZoneMode::Automatic, drawn, tracked), tracked);
+    // «Imagen entera» es imagen entera aunque haya un rectángulo guardado: es la
+    // mitad de la regla que se rompió, y tiene que seguir siendo cierta.
+    EXPECT_EQ(effectiveWorkingZone(WorkingZoneMode::Off, drawn, tracked).area(), 0);
+
+    // Y un modo automático que todavía no ha enganchado nada da imagen entera,
+    // no la zona dibujada.
+    EXPECT_EQ(effectiveWorkingZone(WorkingZoneMode::Automatic, drawn, cv::Rect()).area(), 0);
+}
+
+TEST(AutoRoi, AFrameThatWasNeverAnalysedMustNotCountAsALostPiece) {
+    // Con el contorno oculto la pose se congela y no se segmenta nada, así que
+    // no hay contorno. Antes eso se le pasaba al seguimiento como «no hay
+    // pieza» y a los dos frames se rendía con «se dejó de ver la pieza»: una
+    // afirmación sobre algo que nadie había mirado. La ventana ya no lo
+    // alimenta en ese caso; esto fija lo que pasa si se hiciera.
+    AutoRoiTracker tracker;
+    const cv::Size frame(1280, 720);
+    const cv::Rect piece(500, 300, 180, 140);
+    for (int k = 0; k < 5; ++k) {
+        tracker.update(true, piece, frame);
+    }
+    ASSERT_TRUE(tracker.tracking()) << "primero tiene que estar siguiendo";
+
+    // Tres frames sin pieza (el tolerado es 2) y el seguimiento se cae.
+    for (int k = 0; k < 3; ++k) {
+        tracker.update(false, cv::Rect(), frame);
+    }
+    EXPECT_FALSE(tracker.tracking());
+    EXPECT_EQ(tracker.lastGiveUp(), AutoRoiGiveUp::PieceLost)
+        << "y el motivo que vería el operador sería este, que con la pose "
+           "congelada era mentira";
+}

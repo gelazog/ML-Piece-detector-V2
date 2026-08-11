@@ -17,9 +17,11 @@
 
 #include "ui/configure_dialog.h"
 #include "ui/detection_page.h"
+#include "ui/performance_page.h"
 #include "ui/preferences_page.h"
 
 using namespace pci::ui;
+using pci::vision::WorkingZoneMode;
 
 namespace {
 
@@ -221,4 +223,34 @@ TEST(ConfigureDialog, TheAreaFractionsAreEditableAndRoundTrip) {
     ASSERT_GE(spins.size(), 2);
     spins.at(0)->setValue(0.10);
     EXPECT_NEAR(page->minAreaFraction(), 0.001, 1e-9);
+}
+
+TEST(PerformancePage, SyncingTheModeFromOutsideDoesNotEmitItBack) {
+    // Dibujar la zona sobre el vídeo cambia el modo por sí solo, y el panel
+    // tiene que enterarse. Pero si al ponerlo al día reemitiera `modeChanged`,
+    // la ventana volvería a llamar al panel y se realimentarían — el mismo
+    // motivo por el que la paleta distingue `activate` de `showSelection`.
+    PerformancePage page(WorkingZoneMode::Off, false);
+    int announced = 0;
+    QObject::connect(&page, &PerformancePage::modeChanged,
+                     [&announced](WorkingZoneMode) { ++announced; });
+
+    page.showMode(WorkingZoneMode::Fixed, true);
+    EXPECT_EQ(page.mode(), WorkingZoneMode::Fixed);
+    EXPECT_EQ(announced, 0) << "sincronizar no es elegir";
+
+    page.showMode(WorkingZoneMode::Automatic, true);
+    EXPECT_EQ(page.mode(), WorkingZoneMode::Automatic);
+    EXPECT_EQ(announced, 0);
+}
+
+TEST(PerformancePage, TheFixedModeIsNotOfferedWithoutAZoneDrawn) {
+    // Ofrecer «zona fija» sin zona sería ofrecer un modo que no hace nada.
+    PerformancePage page(WorkingZoneMode::Fixed, false);
+    EXPECT_EQ(page.mode(), WorkingZoneMode::Off)
+        << "sin zona dibujada, «fija» no puede quedar seleccionada";
+
+    // Y en cuanto se dibuja una, pasa a estar disponible.
+    page.showMode(WorkingZoneMode::Fixed, true);
+    EXPECT_EQ(page.mode(), WorkingZoneMode::Fixed);
 }
