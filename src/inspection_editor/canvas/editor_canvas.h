@@ -194,6 +194,8 @@ private:
                                                       const cv::Point2f& dir) const;
 
     void paintTool(QPainter& painter, const EditedTool& tool, bool selected) const;
+    // Flechas de dependencia entre herramientas que se referencian (X0/X1/X2).
+    void paintDependencies(QPainter& painter) const;
     void paintResults(QPainter& painter) const;
     // ¿Hay un resultado medido para esta herramienta? Si lo hay, su etiqueta ya
     // incluye el nombre y no hay que pintarlo por duplicado.

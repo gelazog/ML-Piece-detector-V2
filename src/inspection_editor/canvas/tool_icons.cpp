@@ -177,6 +177,21 @@ QIcon toolIcon(ToolType type) {
                 p.drawEllipse(QPointF(12, 13), 2.0, 2.0);
                 p.drawEllipse(QPointF(18, 15), 1.6, 1.6);
             });
+        case ToolType::MedianAxis:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // Dos flancos tenues y, entre ellos, el eje de trazo y punto —
+                // el símbolo de línea de eje de un plano.
+                QPen faint = p.pen();
+                faint.setWidthF(1.2);
+                p.setPen(faint);
+                p.drawLine(4, 7, 24, 7);
+                p.drawLine(4, 21, 24, 21);
+                QPen axis = p.pen();
+                axis.setWidthF(2.0);
+                axis.setStyle(Qt::DashDotLine);
+                p.setPen(axis);
+                p.drawLine(3, 14, 25, 14);
+            });
         case ToolType::ConstructedPoint:
             return makeIcon([](QPainter& p, const QColor& c) {
                 // Dos rectas de origen finas y punteadas, y el punto que sale de

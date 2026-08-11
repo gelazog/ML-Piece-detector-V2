@@ -725,3 +725,60 @@ TEST(ToolCoherence, EveryToolActuallyGetsPaintedOnTheCanvas) {
         EXPECT_GT(changed, 30) << toolTypeLabel(type) << " no se dibuja en el lienzo";
     }
 }
+
+TEST(DependencyArrows, AReferenceIsDrawnAndABrokenOneIsNot) {
+    // Sin la flecha, en el lienzo se ve una recta construida y las rectas de
+    // las que sale, sin nada que las relacione: borrar la equivocada rompe la
+    // medida y nada lo habría avisado.
+    const auto renderWith = [](const std::string& reference) {
+        EditorCanvas canvas;
+        canvas.resize(kWidgetWidth, kWidgetHeight);
+        QImage scene(kImageWidth, kImageHeight, QImage::Format_RGB888);
+        scene.fill(QColor(20, 20, 20));
+        canvas.setScene(scene, pci::vision::Fixture{});
+
+        std::vector<EditedTool> tools(2);
+        tools[0].config.id = 1;
+        tools[0].config.name = "cara A";
+        tools[0].config.type = ToolType::Ruler;
+        tools[0].geometry = RulerGeometry{{80.0F, 80.0F}, {240.0F, 80.0F}};
+        tools[1].config.id = 2;
+        tools[1].config.name = "paralela";
+        tools[1].config.type = ToolType::ConstructedLine;
+        tools[1].config.reference = reference;
+        tools[1].geometry =
+            ConstructedLineGeometry{LineConstruction::ParallelThrough, {160.0F, 260.0F}};
+        canvas.setTools(&tools);
+
+        QImage shot(canvas.size(), QImage::Format_RGB888);
+        shot.fill(Qt::black);
+        canvas.render(&shot);
+        return shot;
+    };
+
+    const QImage without = renderWith("");
+    const QImage with = renderWith("cara A");
+    const QImage broken = renderWith("una que no existe");
+
+    const auto differences = [](const QImage& a, const QImage& b) {
+        int changed = 0;
+        for (int y = 0; y < a.height(); ++y) {
+            for (int x = 0; x < a.width(); ++x) {
+                if (a.pixel(x, y) != b.pixel(x, y)) {
+                    ++changed;
+                }
+            }
+        }
+        return changed;
+    };
+
+    const int drawnByTheArrow = differences(with, without);
+    std::printf("  la flecha de dependencia pinta %d px\n", drawnByTheArrow);
+    EXPECT_GT(drawnByTheArrow, 50) << "declarar una referencia no dibuja nada";
+
+    // Una referencia rota no inventa ninguna flecha: no hay a dónde llevarla, y
+    // el motivo se lo dirá la medición. Dibujar una flecha hacia la nada haría
+    // creer que el datum existe.
+    EXPECT_EQ(differences(broken, without), 0)
+        << "una referencia que no existe no puede dibujar una flecha";
+}

@@ -137,7 +137,8 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
             } else if constexpr (std::is_same_v<T, ArcGeometry>) {
                 return {g.start, g.mid, g.end};
             } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
-                                 std::is_same_v<T, ThreadGeometry>) {
+                                 std::is_same_v<T, ThreadGeometry> ||
+                                 std::is_same_v<T, MedianAxisGeometry>) {
                 return {g.axisFrom, g.axisTo};
             } else if constexpr (std::is_same_v<T, GearGeometry>) {
                 return {g.center,
@@ -191,7 +192,8 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
             } else if constexpr (std::is_same_v<T, ArcGeometry>) {
                 return {g.start, g.mid, g.end};
             } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
-                                 std::is_same_v<T, ThreadGeometry>) {
+                                 std::is_same_v<T, ThreadGeometry> ||
+                                 std::is_same_v<T, MedianAxisGeometry>) {
                 return {g.axisFrom, g.axisTo};
             } else if constexpr (std::is_same_v<T, GearGeometry>) {
                 // Centro, raíz y cabeza: las tres cosas que hay que poder
@@ -276,7 +278,8 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
                     default: g.end = q; break;
                 }
             } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
-                                 std::is_same_v<T, ThreadGeometry>) {
+                                 std::is_same_v<T, ThreadGeometry> ||
+                                 std::is_same_v<T, MedianAxisGeometry>) {
                 if (handle == 0) {
                     g.axisFrom = q;
                 } else {
@@ -342,7 +345,8 @@ double distanceToGeometry(const ToolGeometry& geometry, const vision::Fixture& f
                         d = std::min(d, distanceToSegment(p, c[k], c[(k + 1) % 4]));
                     }
                 } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
-                                     std::is_same_v<T, ThreadGeometry>) {
+                                     std::is_same_v<T, ThreadGeometry> ||
+                                     std::is_same_v<T, MedianAxisGeometry>) {
                     d = distanceToSegment(p, vision::toImageCoords(fixture, g.axisFrom),
                                           vision::toImageCoords(fixture, g.axisTo));
                 } else if constexpr (std::is_same_v<T, GearGeometry>) {

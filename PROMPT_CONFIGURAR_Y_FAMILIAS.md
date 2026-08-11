@@ -520,7 +520,18 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
   conocidas; casos degenerados (rectas paralelas que no se cortan, dos puntos
   coincidentes) fallan con motivo y **no** devuelven NaN.
 
-- [ ] **X2 — Eje medio de la silueta.** La línea media entre los dos flancos de
+- [x] **X2 — Eje medio de la silueta.** *(Salió tal cual estaba planeado, que
+  con lo medido hasta ahora es la excepción: reutiliza entero el perfil axial
+  del Eje torneado y `fitLineRobust`, y los cinco tests pasaron a la primera. La
+  verificación del trazo descentrado se hizo con tres alturas (centrado, +25 px
+  y −22 px) en vez de una, y las tres caen dentro de ±0,3 px. Se añadió una
+  regla que el plan no pedía: si en un corte solo se ve UN flanco, ese corte no
+  cuenta —suponer el centro por simetría sería inventárselo justo en la
+  herramienta que existe para encontrarlo—, y con menos de cinco cortes buenos
+  no mide y dice cuántos vio. Entra aquí también la **flecha de dependencia en
+  el lienzo** que arrastraban `X0` y `X1`; una referencia rota no dibuja
+  flecha, porque una flecha hacia la nada haría creer que el datum existe.)* La
+  línea media entre los dos flancos de
   una pieza alargada. Es el datum natural de una pieza torneada y el sustituto
   honesto de la simetría retirada de la norma.
   Algoritmo: emparejar puntos opuestos por la normal (reutiliza el perfil axial

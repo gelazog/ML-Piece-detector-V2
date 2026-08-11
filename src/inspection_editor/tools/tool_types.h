@@ -23,7 +23,8 @@ enum class ToolType {
     Thread,
     Gear,
     ConstructedPoint,
-    ConstructedLine
+    ConstructedLine,
+    MedianAxis
 };
 
 const char* toolTypeName(ToolType type);

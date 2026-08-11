@@ -261,6 +261,20 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      lo dicen con el motivo escrito, porque todo lo que las usaba de referencia
      se queda sin ella.
 
+     Las referencias se ven en el lienzo: una **flecha punteada** va de la
+     herramienta que aporta el dato a la que lo usa, para que se sepa qué se
+     rompe antes de borrar nada.
+   - *Eje medio*: la línea que pasa por el **centro** de una pieza alargada, a
+     media distancia entre sus dos flancos — el datum natural de una pieza de
+     torno. Se traza igual que el *Eje / Diámetro*, a lo largo de la pieza, y
+     **da igual que quede descentrado**: lo que se calcula es el punto medio
+     entre los bordes reales, no la línea que dibujaste. Mide su **rectitud** y
+     avisa de la **desalineación entre la primera mitad y la segunda**, que es
+     lo que delata dos diámetros que no son coaxiales. Si en un tramo solo se ve
+     un flanco, **no lo mide**: suponer el centro por simetría sería inventarlo
+     justo en la herramienta que existe para encontrarlo (sube el alcance de
+     búsqueda — el aviso te dice cuántos cortes vieron los dos bordes).
+
    > **Antes de medir un diámetro, una rosca o un engranaje: cuatro
    > condiciones.** Todo esto se saca de una **silueta**, y una silueta mala da
    > números creíbles y falsos, que es la peor forma de fallar. Las

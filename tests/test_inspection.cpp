@@ -758,6 +758,9 @@ ToolConfig makeToolAt(int index, float x, float y) {
         case ToolType::Position:
             geometry = PositionGeometry{{x, y}, PositionAxis::Radial};
             break;
+        case ToolType::MedianAxis:
+            geometry = MedianAxisGeometry{{x - 25.0F, y}, {x + 25.0F, y}, 20.0F, 12};
+            break;
         case ToolType::ConstructedPoint:
             geometry = ConstructedPointGeometry{PointConstruction::Midpoint, {x, y}};
             break;
@@ -2513,11 +2516,13 @@ TEST(ToolCoherence, NoFamilyIsEmptyAnyMore) {
     for (const ToolCategory category : allToolCategories()) {
         EXPECT_FALSE(toolsInCategory(category).empty()) << categoryLabel(category);
     }
-    // Y las dos construcciones están donde dicen estar.
-    const auto constructions = toolsInCategory(ToolCategory::Construction);
-    EXPECT_EQ(constructions.size(), 2U);
-    EXPECT_EQ(categoryOf(ToolType::ConstructedPoint), ToolCategory::Construction);
-    EXPECT_EQ(categoryOf(ToolType::ConstructedLine), ToolCategory::Construction);
+    // Y las construcciones están donde dicen estar. Se comprueban por tipo y no
+    // por cuántas hay: un número mágico obliga a tocar el test cada vez que se
+    // añade una, y un test que se repara sin pensar deja de proteger nada.
+    for (const ToolType type : {ToolType::ConstructedPoint, ToolType::ConstructedLine,
+                                ToolType::MedianAxis}) {
+        EXPECT_EQ(categoryOf(type), ToolCategory::Construction) << toolTypeLabel(type);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -3061,4 +3066,160 @@ TEST(Constructions, AnUnknownConstructionIsRefusedInsteadOfSilentlyBecomingTheFi
     EXPECT_FALSE(back.isOk());
     EXPECT_NE(back.error().message.find("desconocida"), std::string::npos)
         << back.error().message;
+}
+
+// ---------------------------------------------------------------------------
+// Eje medio de la silueta (X2)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Barra horizontal oscura sobre fondo claro, con el centro en `centreY` y el
+// grosor dado. `centreYAt` permite que el centro cambie a lo largo de x, que es
+// como se fabrica un eje con dos tramos desalineados.
+cv::Mat barImage(int width, int height, double thickness,
+                 const std::function<double(int)>& centreYAt) {
+    cv::Mat gray(height, width, CV_8UC1, cv::Scalar(220));
+    for (int x = 0; x < width; ++x) {
+        const double centre = centreYAt(x);
+        const int top = static_cast<int>(std::lround(centre - thickness / 2.0));
+        const int bottom = static_cast<int>(std::lround(centre + thickness / 2.0));
+        for (int y = std::max(0, top); y <= std::min(height - 1, bottom); ++y) {
+            gray.at<unsigned char>(y, x) = 30;
+        }
+    }
+    return gray;
+}
+
+ToolConfig medianAxisAt(cv::Point2f from, cv::Point2f to, float band) {
+    ToolConfig config;
+    config.type = ToolType::MedianAxis;
+    config.name = "eje medio";
+    config.geometryJson =
+        toJson(ToolGeometry(MedianAxisGeometry{from, to, band, 40}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+}  // namespace
+
+TEST(MedianAxis, TheAxisIsFoundEvenWhenTheOperatorDrawsItOffCentre) {
+    // La razón de ser de la herramienta: lo que se calcula es el punto medio
+    // entre los bordes REALES, así que da igual por dónde pase el trazo. Si
+    // dependiera del trazo, no sería un eje: sería la línea que dibujó alguien.
+    const double centreY = 200.0;
+    const cv::Mat gray = barImage(640, 400, 80.0, [centreY](int) { return centreY; });
+
+    // El mismo eje trazado por el centro y descentrado 25 px hacia abajo.
+    for (const float drawnY : {200.0F, 225.0F, 178.0F}) {
+        const auto result = runTool(gray, kIdentity,
+                                    medianAxisAt({120.0F, drawnY}, {520.0F, drawnY}, 90.0F));
+        ASSERT_TRUE(result.isOk()) << result.error().message;
+        const auto& value = result.value();
+        ASSERT_TRUE(value.derived.valid()) << value.detail;
+
+        // El eje encontrado pasa por y=200 y es horizontal, se trace donde se
+        // trace. Se comprueba la ORDENADA de la recta ajustada en el centro del
+        // tramo, no su punto de paso, que puede estar en cualquier sitio.
+        const auto& line = value.derived;
+        const double t = (320.0 - line.point.x) / line.direction.x;
+        const double yAt320 = line.point.y + t * line.direction.y;
+        EXPECT_NEAR(yAt320, centreY, 0.3)
+            << "trazado en y=" << drawnY << ": " << value.detail;
+        EXPECT_NEAR(std::abs(line.direction.y), 0.0, 0.002)
+            << "el eje de una barra recta es horizontal";
+    }
+}
+
+TEST(MedianAxis, AStraightBarHasStraightnessNearZero) {
+    const cv::Mat gray = barImage(640, 400, 80.0, [](int) { return 200.0; });
+    const auto result =
+        runTool(gray, kIdentity, medianAxisAt({120.0F, 200.0F}, {520.0F, 200.0F}, 90.0F));
+    ASSERT_TRUE(result.isOk());
+    // Sub-píxel: el borde se interpola, así que no sale exactamente 0.
+    EXPECT_LT(result.value().measured, 0.5) << result.value().detail;
+    EXPECT_NE(result.value().detail.find("rectitud"), std::string::npos);
+}
+
+TEST(MedianAxis, TwoMisalignedSectionsReportTheAngleThatWasDrawn) {
+    // Dos tramos: el primero horizontal y el segundo subiendo con una pendiente
+    // conocida. La desalineación medida tiene que ser la fabricada — es lo que
+    // delata dos diámetros que no son coaxiales.
+    const double slope = std::tan(3.0 * CV_PI / 180.0);  // 3° exactos
+    const cv::Mat gray = barImage(640, 400, 80.0, [slope](int x) {
+        return x < 320 ? 200.0 : 200.0 + (x - 320) * slope;
+    });
+
+    const auto result =
+        runTool(gray, kIdentity, medianAxisAt({130.0F, 200.0F}, {510.0F, 210.0F}, 110.0F));
+    ASSERT_TRUE(result.isOk()) << result.error().message;
+    const auto& value = result.value();
+    ASSERT_TRUE(value.derived.valid()) << value.detail;
+
+    // El detalle lleva el ángulo entre las dos mitades. Se lee del texto porque
+    // es lo que ve el operador: si el número que se muestra no fuera el medido,
+    // el test pasaría y la herramienta mentiría.
+    const auto at = value.detail.find("desalineación de los dos tramos=");
+    ASSERT_NE(at, std::string::npos) << value.detail;
+    const double reported = std::atof(
+        value.detail.c_str() + at + std::string("desalineación de los dos tramos=").size());
+    EXPECT_NEAR(reported, 3.0, 0.35) << value.detail;
+
+    // Y una barra doblada NO es recta: su rectitud tiene que ser mucho mayor
+    // que la de la barra recta del test anterior.
+    EXPECT_GT(value.measured, 2.0) << value.detail;
+}
+
+TEST(MedianAxis, ItRefusesInsteadOfGuessingWhenOnlyOneFlankIsVisible) {
+    // Con el alcance corto solo se ve un flanco (o ninguno). Suponer el centro
+    // por simetría sería inventárselo justo en la herramienta que existe para
+    // encontrarlo.
+    const cv::Mat gray = barImage(640, 400, 80.0, [](int) { return 200.0; });
+    // Trazo pegado al borde de arriba y alcance que no llega al de abajo.
+    const auto result =
+        runTool(gray, kIdentity, medianAxisAt({120.0F, 165.0F}, {520.0F, 165.0F}, 8.0F));
+    ASSERT_TRUE(result.isOk());
+    EXPECT_FALSE(result.value().ok) << result.value().detail;
+    EXPECT_FALSE(result.value().derived.valid())
+        << "y no ofrece un eje que no ha podido encontrar";
+    EXPECT_NE(result.value().detail.find("flancos"), std::string::npos)
+        << result.value().detail;
+}
+
+TEST(MedianAxis, TheAxisCanBeTheDatumOfAConstruction) {
+    // Para lo que existe: que otra herramienta lo referencie. Aquí, una
+    // perpendicular al eje medio por un punto.
+    const cv::Mat gray = barImage(640, 400, 80.0, [](int) { return 200.0; });
+
+    ToolConfig point;
+    point.type = ToolType::Position;
+    point.name = "P";
+    point.geometryJson =
+        toJson(ToolGeometry(PositionGeometry{{300.0F, 120.0F}, PositionAxis::Radial}));
+    point.toleranceMin = 0.0;
+    point.toleranceMax = 1e9;
+
+    ToolConfig perpendicular;
+    perpendicular.type = ToolType::ConstructedLine;
+    perpendicular.name = "perp";
+    perpendicular.reference = "eje medio";
+    perpendicular.reference2 = "P";
+    perpendicular.geometryJson = toJson(
+        ToolGeometry(ConstructedLineGeometry{LineConstruction::PerpendicularThrough,
+                                             {300.0F, 120.0F}}));
+    perpendicular.toleranceMin = 0.0;
+    perpendicular.toleranceMax = 1e9;
+
+    const std::vector<ToolConfig> tools{
+        perpendicular, medianAxisAt({120.0F, 210.0F}, {520.0F, 210.0F}, 90.0F), point};
+    const auto results = runTools(gray, kIdentity, tools);
+    ASSERT_EQ(results.size(), 3U);
+    for (const auto& result : results) {
+        EXPECT_TRUE(result.ok) << result.name << ": " << result.detail;
+    }
+    // El eje medio de una barra horizontal es horizontal, así que su
+    // perpendicular es vertical: 90°.
+    EXPECT_EQ(results[0].name, "perp");
+    EXPECT_NEAR(results[0].measured, 90.0, 0.2) << results[0].detail;
 }

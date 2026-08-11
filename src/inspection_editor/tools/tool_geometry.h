@@ -177,12 +177,31 @@ struct ConstructedLineGeometry {
     cv::Point2f anchor;
 };
 
+// Eje medio de la silueta: la línea que va por el centro de una pieza alargada,
+// a media distancia entre sus dos flancos.
+//
+// Es el datum natural de una pieza torneada, y el sustituto honesto de la
+// simetría que ASME Y14.5-2018 retiró. A diferencia de las dos construcciones de
+// arriba, esta **sí mira la imagen**: los flancos hay que encontrarlos. Pero lo
+// que produce es lo mismo —una recta para referenciar— y por eso vive en la
+// misma familia.
+//
+// Se traza igual que el Eje torneado, con el mismo gesto y la misma geometría,
+// porque es la misma exploración: en cada estación se buscan los dos bordes y
+// se toma su punto medio. La diferencia está en qué se hace con ellos.
+struct MedianAxisGeometry {
+    cv::Point2f axisFrom;
+    cv::Point2f axisTo;
+    float searchBand = 60.0F;  // hasta dónde buscar el flanco a cada lado
+    int stations = 32;         // cortes repartidos a lo largo del eje
+};
+
 using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGeometry,
                                   EdgeFlawGeometry, BlobGeometry, RulerGeometry,
                                   LineToLineGeometry, AngleGeometry, PolyBlobGeometry,
                                   PositionGeometry, ArcGeometry, ShaftGeometry,
                                   ThreadGeometry, GearGeometry, ConstructedPointGeometry,
-                                  ConstructedLineGeometry>;
+                                  ConstructedLineGeometry, MedianAxisGeometry>;
 
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
@@ -213,7 +232,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 16>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 17>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que

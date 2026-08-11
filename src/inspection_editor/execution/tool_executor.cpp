@@ -1556,6 +1556,127 @@ ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& confi
     return result;
 }
 
+// Eje medio de la silueta (X2). Misma exploración que el Eje torneado —dos
+// perfiles axiales, uno por lado— y lo que cambia es qué se hace con ellos: en
+// vez de sumar los dos offsets para dar el diámetro, se toma el PUNTO MEDIO de
+// cada pareja y se les ajusta una recta.
+//
+// Eso es lo que hace que dé igual cómo de descentrado vaya el trazo del
+// operador: el punto medio entre los dos bordes reales no depende de por dónde
+// pase la línea que dibujó, solo de dónde estén los flancos.
+ToolRunResult runMedianAxis(const cv::Mat& gray, const Fixture& fixture,
+                            const ToolConfig& config, const MedianAxisGeometry& g,
+                            const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+    const cv::Point2f from = toImg(fixture, g.axisFrom);
+    const cv::Point2f to = toImg(fixture, g.axisTo);
+    if (cv::norm(to - from) < 5.0) {
+        result.detail = "El eje trazado es demasiado corto";
+        return result;
+    }
+
+    const int stations = std::clamp(g.stations, 5, 200);
+    const double reach = std::max(5.0, static_cast<double>(g.searchBand));
+    const auto sideA = axialProfile(gray, from, to, ProfileSide::Positive, stations, reach);
+    const auto sideB = axialProfile(gray, from, to, ProfileSide::Negative, stations, reach);
+    if (sideA.size() != sideB.size() || sideA.empty()) {
+        result.detail = "No se pudo recorrer el eje";
+        return result;
+    }
+
+    // Solo cuentan las estaciones donde se vieron LOS DOS flancos: con uno solo
+    // no hay punto medio que calcular, y suponerlo simétrico sería inventarse el
+    // centro justo en la herramienta que existe para encontrarlo.
+    std::vector<cv::Point2f> midpoints;
+    midpoints.reserve(sideA.size());
+    for (std::size_t i = 0; i < sideA.size(); ++i) {
+        if (sideA[i].found && sideB[i].found) {
+            midpoints.push_back((sideA[i].point + sideB[i].point) * 0.5F);
+        }
+    }
+    if (midpoints.size() < 5) {
+        result.detail = "Solo " + std::to_string(midpoints.size()) +
+                        " de " + std::to_string(stations) +
+                        " cortes vieron los dos flancos: sube el alcance de búsqueda (" +
+                        fmt2(reach) + " px) o mejora el contraste del borde";
+        return result;
+    }
+
+    const vision::LineFit fit = vision::fitLineRobust(midpoints);
+    if (!fit.valid) {
+        result.detail = "No se pudo ajustar el eje medio";
+        return result;
+    }
+
+    // Rectitud: la desviación máxima de los puntos medios respecto a la recta
+    // ajustada. Es el ancho de la banda mínima que los contiene a todos, que es
+    // como se define la rectitud, y no la desviación típica — una única
+    // curvatura en un extremo tiene que salir, no diluirse en la media.
+    double straightness = 0.0;
+    for (const auto& p : midpoints) {
+        straightness = std::max(straightness, std::abs(fit.signedDistance(p)));
+    }
+    result.measured = straightness;
+    result.ok = withinTolerance(config, result.measured);
+
+    // El eje medio, en coordenadas de PIEZA, para que otras herramientas lo
+    // referencien. El fixture es rotación + traslación, así que la dirección se
+    // transforma llevando dos puntos y restando.
+    const cv::Point2f p0 = vision::toPieceCoords(fixture, fit.point);
+    const cv::Point2f p1 = vision::toPieceCoords(fixture, fit.point + fit.direction);
+    result.derived.kind = DerivedKind::Line;
+    result.derived.point = p0;
+    result.derived.direction = p1 - p0;
+
+    std::string detail = "rectitud=" + fmtLen(straightness, fmt);
+
+    // Desalineación entre la primera mitad del eje y la segunda: es lo que
+    // delata dos tramos de distinto diámetro que no son coaxiales. Se da solo si
+    // cada mitad tiene puntos de sobra para que su recta signifique algo; con
+    // tres puntos, el "ángulo" que saldría sería ruido con unidades.
+    const std::size_t half = midpoints.size() / 2;
+    if (half >= 4) {
+        const std::vector<cv::Point2f> firstHalf(midpoints.begin(),
+                                                 midpoints.begin() + static_cast<long>(half));
+        const std::vector<cv::Point2f> secondHalf(midpoints.begin() + static_cast<long>(half),
+                                                  midpoints.end());
+        const vision::LineFit fitA = vision::fitLineRobust(firstHalf);
+        const vision::LineFit fitB = vision::fitLineRobust(secondHalf);
+        if (fitA.valid && fitB.valid) {
+            // Ángulo entre dos RECTAS, en [0°, 90°]: los valores absolutos son
+            // lo que evita que salga 179° donde hay 1°.
+            const double dot = std::abs(static_cast<double>(fitA.direction.x) * fitB.direction.x +
+                                        static_cast<double>(fitA.direction.y) * fitB.direction.y);
+            const double cross =
+                std::abs(static_cast<double>(fitA.direction.x) * fitB.direction.y -
+                         static_cast<double>(fitA.direction.y) * fitB.direction.x);
+            const double misalignment = std::atan2(cross, dot) * 180.0 / kPi;
+            detail += ", desalineación de los dos tramos=" + fmt2(misalignment) + "°";
+        }
+    }
+    detail += " (" + std::to_string(midpoints.size()) + "/" + std::to_string(stations) +
+              " cortes)";
+    result.detail = detail;
+
+    // Se dibuja el eje ENCONTRADO, no el trazado: el trazado ya se ve mientras
+    // se dibuja, y lo que el operador necesita comprobar es si el que ha salido
+    // cae por el centro de la pieza.
+    const cv::Point2f along = fit.direction;
+    double tMin = 0.0;
+    double tMax = 0.0;
+    for (const auto& p : midpoints) {
+        const double t = (p - fit.point).dot(along);
+        tMin = std::min(tMin, t);
+        tMax = std::max(tMax, t);
+    }
+    result.overlaySegments.push_back({fit.point + static_cast<float>(tMin) * along,
+                                      fit.point + static_cast<float>(tMax) * along});
+    for (const auto& p : midpoints) {
+        result.overlayPoints.push_back(p);
+    }
+    return result;
+}
+
 }  // namespace
 
 core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture& fixture,
@@ -1658,6 +1779,10 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
                                                std::get<PositionGeometry>(geometry.value()),
                                                fmt, board != nullptr ? *board : fallback));
             }
+            case ToolType::MedianAxis:
+                return ResultT::ok(runMedianAxis(
+                    gray, fixture, config, std::get<MedianAxisGeometry>(geometry.value()),
+                    fmt));
             case ToolType::ConstructedPoint: {
                 static const DerivedElements kNone;
                 return ResultT::ok(runConstructedPoint(

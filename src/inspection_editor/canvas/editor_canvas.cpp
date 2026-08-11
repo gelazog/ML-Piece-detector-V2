@@ -56,7 +56,8 @@ QColor toolColor(ToolType type) {
         // Las dos construcciones comparten color a propósito: son la misma
         // familia y lo que las distingue —punto o recta— ya se ve en el dibujo.
         case ToolType::ConstructedPoint:
-        case ToolType::ConstructedLine: return {150, 255, 255};
+        case ToolType::ConstructedLine:
+        case ToolType::MedianAxis: return {150, 255, 255};
     }
     return Qt::white;
 }
@@ -971,6 +972,17 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
             geometry = g;
             break;
         }
+        case ToolType::MedianAxis: {
+            MedianAxisGeometry g;
+            g.axisFrom = a;
+            g.axisTo = b;
+            // Mismo criterio que el Eje torneado: la banda sale del propio
+            // trazo, porque un alcance fijo falla igual en una pieza fina que
+            // en una gruesa.
+            g.searchBand = std::max(15.0F, static_cast<float>(cv::norm(b - a)) * 0.4F);
+            geometry = g;
+            break;
+        }
         case ToolType::Shaft: {
             ShaftGeometry g;
             g.axisFrom = a;
@@ -1009,6 +1021,81 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
             return;  // gestionado arriba (creación en varios pasos)
     }
     emit toolCreated(geometry);
+}
+
+// Flechas de «quién usa a quién» (X0/X1/X2). Una herramienta que mide contra un
+// datum es invisible sin esto: en el lienzo se ve una recta construida y las dos
+// rectas de las que sale, sin nada que las relacione, y borrar la equivocada
+// rompe la medida sin que nada lo hubiera avisado.
+//
+// Van DEBAJO de las herramientas y en trazo fino: son estructura, no medida, y
+// no pueden competir con lo que se está midiendo.
+void EditorCanvas::paintDependencies(QPainter& painter) const {
+    if (tools_ == nullptr) {
+        return;
+    }
+    // Punto por el que se agarra visualmente una herramienta: el promedio de sus
+    // puntos de referencia, que es lo más parecido a "dónde está" sin tener que
+    // decidirlo tipo por tipo.
+    const auto anchorOf = [this](const EditedTool& tool) {
+        const auto points = referencePoints(tool.geometry);
+        cv::Point2f sum(0.0F, 0.0F);
+        for (const auto& p : points) {
+            sum += p;
+        }
+        const cv::Point2f mean =
+            points.empty() ? sum : sum / static_cast<float>(points.size());
+        return imageToWidget(toImg(mean));
+    };
+    const auto findByName = [this](const std::string& name) -> const EditedTool* {
+        for (const auto& tool : *tools_) {
+            if (!tool.deleted && tool.config.name == name) {
+                return &tool;
+            }
+        }
+        return nullptr;
+    };
+
+    QPen pen(QColor(150, 255, 255, 130));
+    pen.setStyle(Qt::DotLine);
+    pen.setWidthF(1.2);
+    pen.setCosmetic(true);
+    painter.save();
+    painter.setPen(pen);
+    painter.setBrush(Qt::NoBrush);
+    for (const auto& tool : *tools_) {
+        if (tool.deleted) {
+            continue;
+        }
+        for (const std::string* name : {&tool.config.reference, &tool.config.reference2}) {
+            if (name->empty()) {
+                continue;
+            }
+            const EditedTool* source = findByName(*name);
+            // Una referencia rota no se dibuja: no hay a dónde llevar la flecha,
+            // y el motivo se lo dirá la medición, que es donde importa.
+            if (source == nullptr || source == &tool) {
+                continue;
+            }
+            const QPointF from = anchorOf(*source);
+            const QPointF to = anchorOf(tool);
+            const QPointF delta = to - from;
+            const double length = std::hypot(delta.x(), delta.y());
+            if (length < 12.0) {
+                continue;  // pegadas: la flecha sería un borrón
+            }
+            const QPointF unit = delta / length;
+            const QPointF normal(-unit.y(), unit.x());
+            // Se corta antes de llegar para no tapar la herramienta de destino.
+            const QPointF tip = to - unit * 10.0;
+            painter.drawLine(from + unit * 10.0, tip);
+            // Punta de flecha en el extremo del que USA la referencia: el
+            // sentido es "de dónde sale el dato" hacia "quién lo consume".
+            painter.drawLine(tip, tip - unit * 7.0 + normal * 3.5);
+            painter.drawLine(tip, tip - unit * 7.0 - normal * 3.5);
+        }
+    }
+    painter.restore();
 }
 
 void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool selected) const {
@@ -1175,7 +1262,8 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 painter.drawEllipse(w0, 3.0, 3.0);
                 painter.drawEllipse(w1, 3.0, 3.0);
             } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
-                                 std::is_same_v<T, ThreadGeometry>) {
+                                 std::is_same_v<T, ThreadGeometry> ||
+                                 std::is_same_v<T, MedianAxisGeometry>) {
                 // El eje trazado y, a rayas, hasta dónde busca el borde a cada
                 // lado. Sin la banda, un "no encuentro bordes" no se entiende:
                 // el operador no ve que su alcance se queda corto.
@@ -1963,6 +2051,7 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
     }
 
     if (tools_ != nullptr) {
+        paintDependencies(painter);
         for (int i = 0; i < static_cast<int>(tools_->size()); ++i) {
             const auto& tool = (*tools_)[static_cast<std::size_t>(i)];
             if (!tool.deleted) {

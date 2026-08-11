@@ -600,6 +600,39 @@ plantilla guardada antes no puede perder su datum al abrirse.
 que ahora pueden ser largos (A→B→C→A); como no hay un culpable único, el motivo
 nombra **a quién espera cada una**.
 
+**Eje medio de la silueta** (`X2`). La tercera de la familia, y la única que
+**mira la imagen**: los flancos hay que encontrarlos. Reutiliza entera la
+exploración del Eje torneado —dos perfiles axiales, uno por lado— y lo que
+cambia es qué se hace con ellos: en vez de sumar los dos offsets para dar el
+diámetro, se toma el **punto medio** de cada pareja y se les ajusta una recta
+robusta.
+
+Eso es lo que hace que **dé igual cómo de descentrado vaya el trazo**: el punto
+medio entre los bordes reales no depende de por dónde pase la línea que dibujó
+el operador. El test lo fija trazando el mismo eje en tres alturas distintas
+(centrado, +25 px y −22 px) y exigiendo el mismo resultado dentro de **±0,3 px**.
+
+Da dos números: la **rectitud** (desviación máxima respecto a la recta ajustada
+— la banda mínima que contiene los puntos, que es como se define, y no la
+desviación típica: una curvatura en un extremo tiene que salir, no diluirse) y
+la **desalineación entre la primera mitad y la segunda**, que es lo que delata
+dos tramos de distinto diámetro que no son coaxiales. Esa segunda solo se da si
+cada mitad tiene al menos cuatro puntos; con tres, el «ángulo» sería ruido con
+unidades.
+
+Solo cuentan las estaciones donde se vieron **los dos** flancos. Con uno solo se
+podría suponer el centro por simetría, y eso sería inventárselo justo en la
+herramienta que existe para encontrarlo: si no llegan a cinco, no mide y dice
+cuántas vio y cuál es el alcance actual.
+
+**Flechas de dependencia en el lienzo.** Cada referencia declarada se dibuja
+como una flecha punteada de quien **aporta** el dato a quien lo **consume**, por
+debajo de las herramientas y en trazo fino: son estructura, no medida. Sin
+ellas, en pantalla se ve una recta construida y las dos de las que sale sin nada
+que las relacione, y borrar la equivocada rompe la medida sin aviso. Una
+referencia rota **no dibuja flecha**: no hay a dónde llevarla, y una flecha
+hacia la nada haría creer que el datum existe.
+
 **Una sola lista de herramientas** (`allToolTypes()`). El repaso de coherencia
 encontró que las cuatro herramientas de pieza torneada estaban en el editor de
 plantilla y **no** en la fila "Dibujar" de la vista en vivo: existían, se

@@ -27,17 +27,18 @@ const char* toolTypeName(ToolType type) {
         case ToolType::Gear: return "gear";
         case ToolType::ConstructedPoint: return "constructed_point";
         case ToolType::ConstructedLine: return "constructed_line";
+        case ToolType::MedianAxis: return "median_axis";
     }
     return "unknown";
 }
 
-const std::array<ToolType, 16>& allToolTypes() {
-    static const std::array<ToolType, 16> kTypes{
+const std::array<ToolType, 17>& allToolTypes() {
+    static const std::array<ToolType, 17> kTypes{
         ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine, ToolType::EdgeFlaw,
         ToolType::Blob,     ToolType::Ruler,    ToolType::LineToLine,  ToolType::Angle,
         ToolType::PolyBlob, ToolType::Position, ToolType::Arc,         ToolType::Shaft,
         ToolType::Thread,   ToolType::Gear,     ToolType::ConstructedPoint,
-        ToolType::ConstructedLine};
+        ToolType::ConstructedLine, ToolType::MedianAxis};
     return kTypes;
 }
 
@@ -80,6 +81,9 @@ ToolCategory categoryOf(ToolType type) {
         // contra el que miden las de GD&T.
         case ToolType::ConstructedPoint:
         case ToolType::ConstructedLine:
+        // El eje medio SÍ mira la imagen, pero lo que entrega es lo mismo que
+        // las otras dos: una recta para referenciar.
+        case ToolType::MedianAxis:
             return ToolCategory::Construction;
         case ToolType::Shaft:
         case ToolType::Thread:
@@ -263,6 +267,7 @@ const char* toolTypeLabel(ToolType type) {
         case ToolType::Gear: return "Engranaje";
         case ToolType::ConstructedPoint: return "Punto construido";
         case ToolType::ConstructedLine: return "Recta construida";
+        case ToolType::MedianAxis: return "Eje medio";
     }
     return "?";
 }
@@ -355,6 +360,14 @@ const char* toolTypeDescription(ToolType type) {
                    "dos rectas (si son paralelas, la recta media), o paralela y\n"
                    "perpendicular a una recta por un punto. Es lo que le falta al\n"
                    "GD&T para medir contra algo declarado y no contra un supuesto.";
+        case ToolType::MedianAxis:
+            return "Eje medio — la línea que va por el CENTRO de una pieza alargada,\n"
+                   "a media distancia entre sus dos flancos. Es el datum natural de una\n"
+                   "pieza de torno. Traza el eje a lo largo de la pieza, por el medio:\n"
+                   "da igual que quede descentrado, porque lo que se calcula es el punto\n"
+                   "medio entre los bordes reales, no la línea que dibujaste. Mide su\n"
+                   "RECTITUD y avisa de la desalineación entre la mitad de un tramo y la\n"
+                   "otra, que es lo que delata dos diámetros que no son coaxiales.";
     }
     return "";
 }
@@ -371,6 +384,7 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
             toleranceMin = measured;
             toleranceMax = measured;
             return;
+        case ToolType::MedianAxis:
         case ToolType::EdgeFlaw:
             // Desviación: la pieza buena define el piso; techo holgado.
             toleranceMin = 0.0;
@@ -451,6 +465,8 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::ConstructedPoint;
             } else if constexpr (std::is_same_v<T, ConstructedLineGeometry>) {
                 return ToolType::ConstructedLine;
+            } else if constexpr (std::is_same_v<T, MedianAxisGeometry>) {
+                return ToolType::MedianAxis;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -500,7 +516,8 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 g.mid += delta;
                 g.end += delta;
             } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
-                                 std::is_same_v<T, ThreadGeometry>) {
+                                 std::is_same_v<T, ThreadGeometry> ||
+                                 std::is_same_v<T, MedianAxisGeometry>) {
                 g.axisFrom += delta;
                 g.axisTo += delta;
             } else if constexpr (std::is_same_v<T, GearGeometry>) {
@@ -683,7 +700,8 @@ std::string toJson(const ToolGeometry& geometry) {
                        << g.searchBand << "rays" << g.rayCount;
                 });
             } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
-                                 std::is_same_v<T, ThreadGeometry>) {
+                                 std::is_same_v<T, ThreadGeometry> ||
+                                 std::is_same_v<T, MedianAxisGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "ax" << g.axisFrom.x << "ay" << g.axisFrom.y << "bx" << g.axisTo.x
                        << "by" << g.axisTo.y << "band" << g.searchBand << "stations"
@@ -857,6 +875,18 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
             }
             case ToolType::Shaft: {
                 ShaftGeometry g;
+                auto ax = f("ax"), ay = f("ay"), bx = f("bx"), by = f("by"), band = f("band");
+                for (const auto* v : {&ax, &ay, &bx, &by, &band}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.axisFrom = {static_cast<float>(ax.value()), static_cast<float>(ay.value())};
+                g.axisTo = {static_cast<float>(bx.value()), static_cast<float>(by.value())};
+                g.searchBand = static_cast<float>(band.value());
+                g.stations = static_cast<int>(reader.numberOr("stations", 32.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::MedianAxis: {
+                MedianAxisGeometry g;
                 auto ax = f("ax"), ay = f("ay"), bx = f("bx"), by = f("by"), band = f("band");
                 for (const auto* v : {&ax, &ay, &bx, &by, &band}) {
                     if (!v->isOk()) return ResultT::err(v->error().message);
