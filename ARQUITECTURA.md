@@ -196,8 +196,40 @@ fixture salía a **±0,000 px** del de referencia y las cotas idénticas. Lo que
 vale es escalar los puntos del contorno, que son enteros: eso los cuantizaría al
 factor.
 
-El coste real está en **los momentos sobre la máscara completa** y en **el
-recorte canónico**. Ahí es donde hay que mirar, no en la segmentación.
+El coste real estaba en **los momentos sobre la máscara completa** y en **el
+recorte canónico**. Los dos se arreglaron:
+
+- **`computeFixture` recorría la máscara dos veces** (tres con `autoOrient`),
+  porque el centroide, la anisotropía y el ángulo se pedían por separado y cada
+  uno llamaba a `cv::moments`. Ahora los momentos se calculan **una vez** y se
+  comparten, y **sobre la envolvente de la pieza** en vez de sobre la máscara
+  entera. Es exactamente equivalente: los momentos centrales son invariantes a
+  la traslación, así que el ángulo y la anisotropía no cambian, y al centroide
+  solo hay que sumarle la esquina del recorte.
+- **`normalizePiece` hacía dos `warpAffine` de imagen completa incluso sin
+  giro**, que es el caso **por defecto** (`autoOrient` es false: la pieza se
+  deja vertical). Una rotación identidad aplicada a 3,7 millones de píxeles, dos
+  veces. Ahora, sin giro, se recorta la envolvente y ya está. El camino con giro
+  sigue igual.
+
+Ambas son optimizaciones de código que ya funcionaba, así que la prueba que vale
+no es "da un número razonable" sino **"da exactamente lo de antes"**: los tests
+llevan una implementación de referencia con el código original y comparan contra
+ella. El recorte canónico sale con **0 píxeles distintos**.
+
+Resultado sobre la misma escena:
+
+| Etapa | Antes | Ahora |
+|---|---|---|
+| `analyzeFrame` completo | 35,4 ms | **23,1 ms** (1,53×) |
+| `computeFixture` | 14,1 ms | 5,2 ms |
+| `normalizePiece` | 12,1 ms | 5,7 ms |
+| `segmentPiece` | 8,3 ms | 7,8 ms |
+
+Con eso, **la segmentación pasa a ser el mayor coste** (34 % de los 23 ms). Si
+alguna vez hiciera falta más, ahí sí volvería a tener sentido mirar la escala de
+trabajo: sobre el total de hoy valdría ~1,33× en vez del 1,10× que se midió
+antes. Sigue sin justificar un modo nuevo en la interfaz.
 
 ### El panel «Configurar»: un solo sitio
 

@@ -10,8 +10,10 @@ core::Result<double> principalAngleDeg(const cv::Mat& mask) {
     if (mask.empty() || mask.type() != CV_8UC1) {
         return core::Result<double>::err("Máscara inválida (se espera CV_8UC1)");
     }
+    return principalAngleDeg(cv::moments(mask, true));
+}
 
-    const cv::Moments m = cv::moments(mask, true);
+core::Result<double> principalAngleDeg(const cv::Moments& m) {
     if (m.m00 <= 0.0) {
         return core::Result<double>::err("Máscara vacía: no hay pieza");
     }
@@ -42,7 +44,10 @@ double principalAnisotropy(const cv::Mat& mask) {
     if (mask.empty() || mask.type() != CV_8UC1) {
         return 0.0;
     }
-    const cv::Moments m = cv::moments(mask, true);
+    return principalAnisotropy(cv::moments(mask, true));
+}
+
+double principalAnisotropy(const cv::Moments& m) {
     if (m.m00 <= 0.0) {
         return 0.0;
     }

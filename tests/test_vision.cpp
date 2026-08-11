@@ -1399,3 +1399,209 @@ TEST(AutoRoi, CroppingIsAtLeastTwiceAsFastOnASmallPiece) {
     EXPECT_LT(croppedMs * 2.0, wholeMs)
         << "el recorte tiene que ir al menos el doble de rapido";
 }
+
+// ---------------------------------------------------------------------------
+// C4b: acelerar los momentos y el recorte canónico, sin mover las medidas
+// ---------------------------------------------------------------------------
+//
+// Son optimizaciones de una función que ya funcionaba, así que la prueba que
+// vale no es "da un número razonable" sino "da EXACTAMENTE lo de antes". Por
+// eso el test lleva una implementación de referencia con el código original y
+// compara contra ella.
+
+namespace {
+
+// El `normalizePiece` de antes de C4b, tal cual: fondo fuera, dos warpAffine de
+// imagen completa y recorte de la envolvente del resultado.
+cv::Mat normalizePieceReference(const cv::Mat& image, const cv::Mat& mask,
+                                const Fixture& fixture, int canonicalSize) {
+    cv::Mat clean = cv::Mat::zeros(image.size(), image.type());
+    image.copyTo(clean, mask);
+
+    const cv::Mat rotation = cv::getRotationMatrix2D(fixture.origin, fixture.angleDeg, 1.0);
+    cv::Mat rotated;
+    cv::Mat rotatedMask;
+    cv::warpAffine(clean, rotated, rotation, clean.size(), cv::INTER_LINEAR,
+                   cv::BORDER_CONSTANT, cv::Scalar());
+    cv::warpAffine(mask, rotatedMask, rotation, mask.size(), cv::INTER_NEAREST,
+                   cv::BORDER_CONSTANT, cv::Scalar());
+
+    const cv::Rect box = cv::boundingRect(rotatedMask);
+    const cv::Mat cropped = rotated(box);
+    const double scale = static_cast<double>(canonicalSize) /
+                         static_cast<double>(std::max(box.width, box.height));
+    cv::Mat resized;
+    cv::resize(cropped, resized, cv::Size(), scale, scale,
+               scale < 1.0 ? cv::INTER_AREA : cv::INTER_LINEAR);
+
+    cv::Mat canvas = cv::Mat::zeros(canonicalSize, canonicalSize, image.type());
+    const int x = (canonicalSize - resized.cols) / 2;
+    const int y = (canonicalSize - resized.rows) / 2;
+    resized.copyTo(canvas(cv::Rect(x, y, resized.cols, resized.rows)));
+    return canvas;
+}
+
+// Escena y máscara de una pieza en L, que no es simétrica: si el centroide o el
+// ángulo se movieran, se notaría.
+void lSceneAndMask(cv::Mat& scene, cv::Mat& mask, cv::Size size = {2560, 1440}) {
+    scene = cv::Mat(size, CV_8UC1, cv::Scalar(30));
+    mask = cv::Mat::zeros(size, CV_8UC1);
+    const std::vector<cv::Rect> parts{{600, 300, 1200, 300}, {600, 300, 300, 900}};
+    for (const auto& part : parts) {
+        cv::rectangle(scene, part, cv::Scalar(210), cv::FILLED);
+        cv::rectangle(mask, part, cv::Scalar(255), cv::FILLED);
+    }
+}
+
+}  // namespace
+
+TEST(FixtureSpeedup, TheMomentsOverTheBoundingBoxAreTheSameOnes) {
+    // El atajo es calcular los momentos sobre la envolvente en vez de sobre la
+    // máscara entera. Es exacto porque los momentos centrales no dependen de
+    // dónde esté la pieza; lo único que hay que corregir es el centroide.
+    cv::Mat scene;
+    cv::Mat mask;
+    lSceneAndMask(scene, mask);
+
+    const cv::Moments whole = cv::moments(mask, true);
+    const cv::Rect box = cv::boundingRect(mask);
+    const cv::Moments cropped = cv::moments(mask(box), true);
+
+    EXPECT_DOUBLE_EQ(cropped.m00, whole.m00);
+    EXPECT_NEAR(cropped.m10 / cropped.m00 + box.x, whole.m10 / whole.m00, 1e-9);
+    EXPECT_NEAR(cropped.m01 / cropped.m00 + box.y, whole.m01 / whole.m00, 1e-9);
+    // Los centrales, idénticos: de ahí salen el ángulo y la anisotropía.
+    EXPECT_NEAR(cropped.mu20, whole.mu20, std::abs(whole.mu20) * 1e-12);
+    EXPECT_NEAR(cropped.mu11, whole.mu11, std::abs(whole.mu20) * 1e-12);
+    EXPECT_NEAR(cropped.mu02, whole.mu02, std::abs(whole.mu02) * 1e-12);
+}
+
+TEST(FixtureSpeedup, TheFixtureIsTheSameAsComputingItTheLongWay) {
+    cv::Mat scene;
+    cv::Mat mask;
+    lSceneAndMask(scene, mask);
+
+    for (const bool autoOrient : {false, true}) {
+        const auto fixture = computeFixture(mask, autoOrient);
+        ASSERT_TRUE(fixture.isOk());
+
+        // Referencia: momentos sobre la máscara ENTERA, como se hacía antes.
+        const cv::Moments m = cv::moments(mask, true);
+        const double expectedX = m.m10 / m.m00;
+        const double expectedY = m.m01 / m.m00;
+        std::printf("  autoOrient=%d: origen (%.6f, %.6f), esperado (%.6f, %.6f)\n",
+                    autoOrient, static_cast<double>(fixture.value().origin.x),
+                    static_cast<double>(fixture.value().origin.y), expectedX, expectedY);
+        EXPECT_NEAR(fixture.value().origin.x, expectedX, 1e-3);
+        EXPECT_NEAR(fixture.value().origin.y, expectedY, 1e-3);
+        EXPECT_NEAR(fixture.value().anisotropy, principalAnisotropy(mask), 1e-12);
+        if (autoOrient) {
+            const auto angle = principalAngleDeg(mask);
+            ASSERT_TRUE(angle.isOk());
+            EXPECT_NEAR(fixture.value().angleDeg, angle.value(), 1e-12);
+        }
+    }
+}
+
+TEST(FixtureSpeedup, ComputingTheFixtureGotFaster) {
+    cv::Mat scene;
+    cv::Mat mask;
+    lSceneAndMask(scene, mask);
+
+    constexpr int kRuns = 20;
+    const auto time = [&](auto&& f) {
+        f();
+        const auto start = std::chrono::steady_clock::now();
+        for (int i = 0; i < kRuns; ++i) {
+            f();
+        }
+        return std::chrono::duration<double, std::milli>(
+                   std::chrono::steady_clock::now() - start)
+                   .count() /
+               kRuns;
+    };
+    // Referencia: las dos pasadas que se hacían antes sobre la máscara entera.
+    const double before = time([&] {
+        const cv::Moments m = cv::moments(mask, true);
+        (void)m.m10;
+        (void)principalAnisotropy(mask);
+    });
+    const double after = time([&] { (void)computeFixture(mask, false); });
+    std::printf("  computeFixture: antes ~%.2f ms  |  ahora %.2f ms  -> %.2fx\n", before,
+                after, before / after);
+    EXPECT_LT(after, before);
+}
+
+TEST(NormalizeSpeedup, TheUprightShortcutGivesThePixelsItAlwaysGave) {
+    // El caso por defecto (`autoOrient` false) hacía dos warpAffine con una
+    // rotación identidad. Saltárselos tiene que dar EXACTAMENTE la misma
+    // imagen, no una parecida.
+    cv::Mat scene;
+    cv::Mat mask;
+    lSceneAndMask(scene, mask);
+
+    Fixture fixture;
+    fixture.origin = {1000.0F, 700.0F};
+    fixture.angleDeg = 0.0;
+
+    const auto fast = normalizePiece(scene, mask, fixture, 256);
+    ASSERT_TRUE(fast.isOk());
+    const cv::Mat reference = normalizePieceReference(scene, mask, fixture, 256);
+
+    ASSERT_EQ(fast.value().size(), reference.size());
+    ASSERT_EQ(fast.value().type(), reference.type());
+    cv::Mat diff;
+    cv::absdiff(fast.value(), reference, diff);
+    double maxDiff = 0.0;
+    cv::minMaxLoc(diff, nullptr, &maxDiff);
+    std::printf("  recorte canónico: %d píxeles distintos, diferencia máxima %.0f\n",
+                cv::countNonZero(diff), maxDiff);
+    EXPECT_EQ(cv::countNonZero(diff), 0) << "el atajo tiene que ser exacto, no parecido";
+}
+
+TEST(NormalizeSpeedup, TheRotatedPathIsUntouched) {
+    // Con giro se sigue por el camino de siempre: se comprueba que no se rompió
+    // al meter el atajo.
+    cv::Mat scene;
+    cv::Mat mask;
+    lSceneAndMask(scene, mask);
+
+    Fixture fixture;
+    fixture.origin = {1000.0F, 700.0F};
+    fixture.angleDeg = 27.0;
+
+    const auto rotatedResult = normalizePiece(scene, mask, fixture, 256);
+    ASSERT_TRUE(rotatedResult.isOk());
+    const cv::Mat reference = normalizePieceReference(scene, mask, fixture, 256);
+    cv::Mat diff;
+    cv::absdiff(rotatedResult.value(), reference, diff);
+    EXPECT_EQ(cv::countNonZero(diff), 0);
+}
+
+TEST(NormalizeSpeedup, TheUprightCaseGotFaster) {
+    cv::Mat scene;
+    cv::Mat mask;
+    lSceneAndMask(scene, mask);
+    Fixture fixture;
+    fixture.origin = {1000.0F, 700.0F};
+    fixture.angleDeg = 0.0;
+
+    constexpr int kRuns = 20;
+    const auto time = [&](auto&& f) {
+        f();
+        const auto start = std::chrono::steady_clock::now();
+        for (int i = 0; i < kRuns; ++i) {
+            f();
+        }
+        return std::chrono::duration<double, std::milli>(
+                   std::chrono::steady_clock::now() - start)
+                   .count() /
+               kRuns;
+    };
+    const double before =
+        time([&] { (void)normalizePieceReference(scene, mask, fixture, 256); });
+    const double after = time([&] { (void)normalizePiece(scene, mask, fixture, 256); });
+    std::printf("  normalizePiece sin giro: antes %.2f ms  |  ahora %.2f ms  -> %.2fx\n",
+                before, after, before / after);
+    EXPECT_LT(after * 2.0, before) << "saltarse dos warpAffine tiene que notarse";
+}

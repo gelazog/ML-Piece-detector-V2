@@ -14,10 +14,17 @@ namespace pci::vision {
 // de rotación perfecta — irrelevante para comparación por embeddings.
 core::Result<double> principalAngleDeg(const cv::Mat& mask);
 
+// Igual, pero sobre unos momentos ya calculados. Existe porque recorrer la
+// máscara cuesta: `computeFixture` necesitaba el centroide, la anisotropía y el
+// ángulo, y cada uno pedía su propia pasada de `cv::moments` sobre millones de
+// píxeles. Con los momentos compartidos, una pasada basta.
+core::Result<double> principalAngleDeg(const cv::Moments& moments);
+
 // Anisotropía de la máscara en [0,1] a partir de los momentos centrales de
 // segundo orden: 0 = distribución circular (el eje principal no está
 // definido), 1 = alargada como una línea. Sirve para saber cuándo confiar en
 // el ángulo del eje principal.
 double principalAnisotropy(const cv::Mat& mask);
+double principalAnisotropy(const cv::Moments& moments);
 
 }  // namespace pci::vision

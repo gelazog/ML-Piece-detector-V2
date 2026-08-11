@@ -288,7 +288,11 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
   contorno 6 %. Un 10 % no paga un modo nuevo en la interfaz. Sustituido por
   `C4b`; el reparto queda documentado en ARQUITECTURA para no reintentarlo.
 
-- [ ] **C4b — Acelerar lo que de verdad cuesta: los momentos y el recorte.**
+- [x] **C4b — Acelerar lo que de verdad cuesta: los momentos y el recorte.**
+  *(Medido: análisis completo de 35,4 a 23,1 ms (1,53×); `computeFixture` 14,1
+  → 5,2 ms y `normalizePiece` 12,1 → 5,7 ms. Exacto: el recorte canónico sale
+  con 0 píxeles distintos frente a la implementación de referencia. Ahora el
+  mayor coste es la segmentación, con el 34 %.)*
   Sale de medir `C4`. Dos objetivos, cada uno con el mismo criterio de entrega
   que tenía `C4` —**si mueve las medidas, no se entrega**—:
   - **`computeFixture` (40 %)** calcula los momentos sobre una máscara de 3,7
