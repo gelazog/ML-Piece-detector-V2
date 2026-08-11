@@ -297,7 +297,7 @@ Formato: casilla, ID, tarea, por qué, algoritmo, archivos, cómo se verifica.
 
 ### D. Cierre
 
-- [ ] **D1 — Documentación.** README (herramientas nuevas y el botón, con las
+- [x] **D1 — Documentación.** README (herramientas nuevas y el botón, con las
   condiciones de iluminación y vista bien visibles) y ARQUITECTURA (sección
   nueva: cómo se mide una rosca y un engranaje a partir de una silueta, con la
   justificación de cada elección — Taubin frente a Kasa, autocorrelación frente

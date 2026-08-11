@@ -31,10 +31,10 @@ Diez módulos en capas. **La dependencia siempre baja**, nunca sube ni se cruza:
 | `core/` | `Result<T>`, log, contador de FPS, blindaje anti-caída | nada |
 | `domain/` | Veredicto, calidad de captura, calibración, modos de medición | `core` (**sin Qt ni OpenCV**) |
 | `camera/` | Enumeración nativa, hilo de captura, controles de la fuente | `core`, Qt, OpenCV |
-| `vision/` | Segmentación, contorno, fixture, estabilizador, tablero, escala | `core`, `domain`, OpenCV |
+| `vision/` | Segmentación, contorno, fixture, estabilizador, tablero, escala, ajustes geométricos y periodicidad | `core`, `domain`, OpenCV |
 | `ml/` | Extractor de embeddings ONNX, referencia estadística | `core` |
 | `database/` | SQLite envuelto en RAII, esquema y migraciones | `core` |
-| `inspection_editor/` | Geometrías, ejecutor de herramientas, lienzo | `vision`, `core`, Qt |
+| `inspection_editor/` | Geometrías, ejecutor de herramientas, perfiles, medición automática, lienzo | `vision`, `core`, Qt |
 | `repositories/` | Puente entre dominio y base de datos | `database`, `domain`, `ml`, `vision` |
 | `engine/` | Orquestador: registro e inspección completa | todos los anteriores |
 | `ui/` | Ventana principal y diálogos | todo |

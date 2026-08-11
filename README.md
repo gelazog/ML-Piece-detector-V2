@@ -168,6 +168,25 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      cero *en la propia pieza* la desviación es constante: usa el centro de la
      imagen o un punto fijado para que mida algo útil.
 
+   > **Antes de medir un diámetro, una rosca o un engranaje: cuatro
+   > condiciones.** Todo esto se saca de una **silueta**, y una silueta mala da
+   > números creíbles y falsos, que es la peor forma de fallar. Las
+   > herramientas avisan cuando detectan que falla alguna, pero es más barato
+   > montarlo bien:
+   >
+   > 1. **Luz.** Borde limpio y de alto contraste: **contraluz**
+   >    (retroiluminación) o fondo mate uniforme. Con luz frontal sobre metal
+   >    brillante, el borde que ve la cámara no es el borde de la pieza.
+   > 2. **Cámara de frente** al plano de la pieza. Inclinada, un círculo se lee
+   >    como elipse y los diámetros salen **cortos**. Con el marcador ArUco
+   >    puesto, el programa mide esa inclinación y lo avisa.
+   > 3. **Calibración.** Un paso de rosca en píxeles no identifica ningún
+   >    tornillo y el **módulo de un engranaje directamente no existe** sin
+   >    escala real. Sin calibrar, esas herramientas se niegan a darlos en vez
+   >    de inventar un número sin unidad.
+   > 4. **La vista que toca**: el engranaje **de cara**, la rosca y el eje **de
+   >    perfil**. Una rosca vista de frente no tiene paso medible.
+
    Los detalles de todas las herramientas incluyen **mm (y cm a partir de
    10 cm)** cuando hay calibración — también el círculo (diámetro, radio y
    redondez) y el área de los blobs (mm²). El Caliper empareja **bordes de
