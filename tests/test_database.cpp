@@ -882,3 +882,51 @@ TEST_F(DatabaseTest, RemovingAPieceOnlyTakesItsOwnTools) {
     EXPECT_EQ(tools.listForPiece(keep.value(), "principal").value().size(), 5U);
     EXPECT_TRUE(tools.listForPiece(drop.value(), "principal").value().empty());
 }
+
+// ---------------------------------------------------------------------------
+// v9: piezas esperadas por pieza (C5)
+// ---------------------------------------------------------------------------
+
+TEST_F(DatabaseTest, ExpectedPiecesRoundTripsAndDefaultsToOne) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+
+    auto id = pieces.createPiece("bandeja");
+    ASSERT_TRUE(id.isOk());
+
+    // Por defecto, una pieza: las que ya existían se comportan como siempre.
+    auto initial = pieces.loadMeasurement(id.value());
+    ASSERT_TRUE(initial.isOk());
+    EXPECT_EQ(initial.value().expectedPieces, 1);
+
+    auto measurement = initial.value();
+    measurement.expectedPieces = 6;
+    ASSERT_TRUE(pieces.saveMeasurement(id.value(), measurement).isOk());
+
+    auto reloaded = pieces.loadMeasurement(id.value());
+    ASSERT_TRUE(reloaded.isOk());
+    EXPECT_EQ(reloaded.value().expectedPieces, 6);
+    // Y no se llevó por delante lo que ya guardaba esa fila.
+    EXPECT_EQ(reloaded.value().mode, measurement.mode);
+    EXPECT_DOUBLE_EQ(reloaded.value().maxOffsetPx, measurement.maxOffsetPx);
+}
+
+TEST_F(DatabaseTest, EachPieceKeepsItsOwnExpectedCount) {
+    // "Seis tornillos en bandeja" es una propiedad del trabajo, no de la
+    // máquina: cambiar de pieza no puede arrastrar el número de la anterior.
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+
+    auto tray = pieces.createPiece("bandeja de seis");
+    auto single = pieces.createPiece("pieza suelta");
+    ASSERT_TRUE(tray.isOk());
+    ASSERT_TRUE(single.isOk());
+
+    auto measurement = pieces.loadMeasurement(tray.value());
+    ASSERT_TRUE(measurement.isOk());
+    measurement.value().expectedPieces = 6;
+    ASSERT_TRUE(pieces.saveMeasurement(tray.value(), measurement.value()).isOk());
+
+    EXPECT_EQ(pieces.loadMeasurement(tray.value()).value().expectedPieces, 6);
+    EXPECT_EQ(pieces.loadMeasurement(single.value()).value().expectedPieces, 1);
+}

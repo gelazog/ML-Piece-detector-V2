@@ -35,11 +35,24 @@ struct PositionCheck {
     std::string note;  // p. ej. "giro no evaluado: pieza casi simétrica"
 };
 
+// Recuento de piezas (C5). Hasta ahora la aplicación se quedaba con la pieza
+// mayor y borraba el resto en silencio: una bandeja con cinco tornillos y otra
+// con seis daban exactamente el mismo resultado. Con el número esperado
+// declarado, que falte una **es un NG por sí solo**, sin necesidad de tener
+// ninguna herramienta dibujada.
+struct CountCheck {
+    bool evaluated = false;  // false = no se declaró cuántas piezas esperar
+    int expected = 0;
+    int found = 0;
+    bool ok = true;
+};
+
 struct InspectionVerdict {
     bool ok = false;
     EmbeddingCheck embedding;
     std::vector<ToolCheck> tools;
     PositionCheck position;
+    CountCheck count;
     std::string summary;  // legible: "OK" o los motivos del NG
 };
 
@@ -49,7 +62,14 @@ struct InspectionVerdict {
 // están dentro de tolerancia y la pieza está bien colocada.
 InspectionVerdict combineVerdict(const EmbeddingCheck& embedding,
                                  const std::vector<ToolCheck>& tools,
-                                 const PositionCheck& position = {});
+                                 const PositionCheck& position = {},
+                                 const CountCheck& count = {});
+
+// Compara las piezas encontradas con las esperadas. `expected <= 0` significa
+// "no vigilar el recuento", así que quien no lo configure sigue igual que
+// antes: la regla de siempre, un aviso que salta siempre es un aviso que se
+// aprende a ignorar.
+[[nodiscard]] CountCheck evaluatePieceCount(int expected, int found);
 
 // Evalúa las reglas de posición del modo Especial. Las tolerancias <= 0 no se
 // vigilan; `axisReliable` en false salta la comprobación de giro (pieza casi

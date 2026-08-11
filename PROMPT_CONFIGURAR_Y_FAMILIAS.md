@@ -325,7 +325,10 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
   con factor ½, exigiendo que cada medida coincida dentro de **0,3 px**; más la
   ganancia relativa como en `C3`.
 
-- [ ] **C5 — Cuántas piezas espero (y avisar cuando no cuadra).** Hoy la app
+- [x] **C5 — Cuántas piezas espero (y avisar cuando no cuadra).** *(Medido:
+  seis piezas cuestan 1,62× lo que cuesta una, porque cada una se procesa
+  dentro de su propia envolvente. Migración v8→v9 verificada sobre la BD real.
+  El recuento solo se calcula cuando alguien va a mirarlo.)* Hoy la app
   asume una pieza —la mayor— y **borra el resto en silencio**: con una bandeja
   de seis tornillos, cinco tornillos y una bandeja casi vacía dan el mismo
   resultado.

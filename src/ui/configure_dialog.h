@@ -25,6 +25,7 @@ namespace pci::ui {
 class CameraImagePage;
 class DetectionPage;
 class PerformancePage;
+class PiecesPage;
 class PreferencesPage;
 
 // Panel «Configurar»: el único sitio donde se ajusta cómo se ve y cómo se
@@ -63,6 +64,7 @@ public:
         double kSigma = 3.0;
         vision::WorkingZoneMode zoneMode = vision::WorkingZoneMode::Off;
         bool hasFixedZone = false;
+        int expectedPieces = 1;
         repositories::SettingsRepository* settings = nullptr;
     };
 
@@ -74,6 +76,7 @@ public:
     [[nodiscard]] PreferencesPage* preferencesPage() const { return preferences_; }
     [[nodiscard]] CameraImagePage* cameraPage() const { return camera_; }
     [[nodiscard]] PerformancePage* performancePage() const { return performance_; }
+    [[nodiscard]] PiecesPage* piecesPage() const { return pieces_; }
 
     // Índice de la pestaña visible, para recordarla entre sesiones.
     [[nodiscard]] int currentTab() const;
@@ -90,6 +93,7 @@ private:
     QTabWidget* tabs_ = nullptr;
     DetectionPage* detection_ = nullptr;
     PerformancePage* performance_ = nullptr;
+    PiecesPage* pieces_ = nullptr;
     PreferencesPage* preferences_ = nullptr;
     CameraImagePage* camera_ = nullptr;
 };

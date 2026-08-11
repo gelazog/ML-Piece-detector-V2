@@ -23,6 +23,18 @@ using namespace pci::ui;
 
 namespace {
 
+// Las pestañas se buscan por NOMBRE y no por posición. Se probó con índices y
+// se rompió dos veces seguidas al añadir páginas nuevas: un test que hay que
+// reparar cada vez que crece lo que prueba no está protegiendo nada.
+int tabNamed(QTabWidget* tabs, const QString& name) {
+    for (int i = 0; i < tabs->count(); ++i) {
+        if (tabs->tabText(i).contains(name, Qt::CaseInsensitive)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 ConfigureDialog::Inputs sampleInputs() {
     ConfigureDialog::Inputs inputs;
     inputs.segmentation.manualThreshold = 137;
@@ -41,8 +53,13 @@ TEST(ConfigureDialog, EveryTabHasANameAndSomethingInside) {
     auto* tabs = dialog.findChild<QTabWidget*>();
     ASSERT_NE(tabs, nullptr);
 
-    // Cámara e imagen, Detección, Rendimiento, Escala, Preferencias, Atajos.
-    EXPECT_EQ(tabs->count(), 6);
+    // Todas las páginas previstas tienen que estar, cada una con su nombre.
+    for (const auto* expected :
+         {"Cámara", "Detección", "Piezas", "Rendimiento", "Escala", "Preferencias",
+          "Atajos"}) {
+        EXPECT_GE(tabNamed(tabs, QString::fromUtf8(expected)), 0)
+            << "falta la pestaña " << expected;
+    }
     for (int i = 0; i < tabs->count(); ++i) {
         EXPECT_FALSE(tabs->tabText(i).isEmpty()) << "pestaña " << i << " sin nombre";
         auto* page = tabs->widget(i);
@@ -108,7 +125,9 @@ TEST(ConfigureDialog, WithoutACameraThePageExplainsInsteadOfShowingDeadSliders) 
 
     auto* tabs = dialog.findChild<QTabWidget*>();
     ASSERT_NE(tabs, nullptr);
-    auto* page = tabs->widget(0);
+    const int index = tabNamed(tabs, QStringLiteral("Cámara"));
+    ASSERT_GE(index, 0);
+    auto* page = tabs->widget(index);
     ASSERT_NE(page, nullptr);
     EXPECT_TRUE(page->findChildren<QSlider*>().isEmpty());
     const auto labels = page->findChildren<QLabel*>();
@@ -145,9 +164,11 @@ TEST(ConfigureDialog, TheWizardTabsAskForTheirAssistant) {
 
     auto* tabs = dialog.findChild<QTabWidget*>();
     ASSERT_NE(tabs, nullptr);
-    for (const int index : {3, 5}) {
+    for (const auto* name : {"Escala", "Atajos"}) {
+        const int index = tabNamed(tabs, QString::fromUtf8(name));
+        ASSERT_GE(index, 0) << name;
         auto* button = tabs->widget(index)->findChild<QPushButton*>();
-        ASSERT_NE(button, nullptr) << "la pestaña " << index << " no abre nada";
+        ASSERT_NE(button, nullptr) << "la pestaña " << name << " no abre nada";
         button->click();
     }
     EXPECT_EQ(scaleAsked, 1);

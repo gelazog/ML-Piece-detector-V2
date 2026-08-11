@@ -194,7 +194,8 @@ core::Result<void> PieceRepository::saveMeasurement(std::int64_t pieceId,
     auto stmt = db_.prepare(
         "UPDATE Pieces SET measurement_mode = ?, board_origin = ?, board_fixed_x = ?, "
         "board_fixed_y = ?, board_follow_angle = ?, board_offset_x = ?, "
-        "board_offset_y = ?, board_tol_radius = ?, board_tol_angle = ? WHERE id = ?;");
+        "board_offset_y = ?, board_tol_radius = ?, board_tol_angle = ?, "
+        "expected_pieces = ? WHERE id = ?;");
     if (!stmt.isOk()) {
         return core::Result<void>::err(stmt.error().message);
     }
@@ -213,7 +214,8 @@ core::Result<void> PieceRepository::saveMeasurement(std::int64_t pieceId,
     if (auto b = s.bindDouble(7, measurement.board.manualOffset.y); !b.isOk()) return b;
     if (auto b = s.bindDouble(8, measurement.maxOffsetPx); !b.isOk()) return b;
     if (auto b = s.bindDouble(9, measurement.maxAngleDeg); !b.isOk()) return b;
-    if (auto b = s.bindInt(10, pieceId); !b.isOk()) return b;
+    if (auto b = s.bindInt(10, measurement.expectedPieces); !b.isOk()) return b;
+    if (auto b = s.bindInt(11, pieceId); !b.isOk()) return b;
     auto step = s.step();
     if (!step.isOk()) {
         return core::Result<void>::err(step.error().message);
@@ -226,7 +228,7 @@ core::Result<PieceMeasurement> PieceRepository::loadMeasurement(std::int64_t pie
     auto stmt = db_.prepare(
         "SELECT measurement_mode, board_origin, board_fixed_x, board_fixed_y, "
         "board_follow_angle, board_offset_x, board_offset_y, board_tol_radius, "
-        "board_tol_angle FROM Pieces WHERE id = ?;");
+        "board_tol_angle, expected_pieces FROM Pieces WHERE id = ?;");
     if (!stmt.isOk()) {
         return ResultT::err(stmt.error().message);
     }
@@ -250,6 +252,7 @@ core::Result<PieceMeasurement> PieceRepository::loadMeasurement(std::int64_t pie
                                       static_cast<float>(stmt.value().columnDouble(6))};
     measurement.maxOffsetPx = stmt.value().columnDouble(7);
     measurement.maxAngleDeg = stmt.value().columnDouble(8);
+    measurement.expectedPieces = stmt.value().columnInt(9);
     return ResultT::ok(measurement);
 }
 

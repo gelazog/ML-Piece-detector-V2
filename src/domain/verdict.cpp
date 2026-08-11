@@ -29,13 +29,23 @@ PositionCheck evaluatePosition(double radius, double maxRadius, double angleDeg,
     return check;
 }
 
+CountCheck evaluatePieceCount(int expected, int found) {
+    CountCheck check;
+    check.expected = expected;
+    check.found = found;
+    check.evaluated = expected > 0;
+    check.ok = !check.evaluated || found == expected;
+    return check;
+}
+
 InspectionVerdict combineVerdict(const EmbeddingCheck& embedding,
                                  const std::vector<ToolCheck>& tools,
-                                 const PositionCheck& position) {
+                                 const PositionCheck& position, const CountCheck& count) {
     InspectionVerdict verdict;
     verdict.embedding = embedding;
     verdict.tools = tools;
     verdict.position = position;
+    verdict.count = count;
 
     int failedTools = 0;
     for (const auto& tool : tools) {
@@ -46,7 +56,8 @@ InspectionVerdict combineVerdict(const EmbeddingCheck& embedding,
 
     const bool appearanceOk = !embedding.evaluated || !embedding.anomalous;
     const bool positionOk = !position.evaluated || position.ok;
-    verdict.ok = appearanceOk && failedTools == 0 && positionOk;
+    const bool countOk = !count.evaluated || count.ok;
+    verdict.ok = appearanceOk && failedTools == 0 && positionOk && countOk;
 
     if (verdict.ok) {
         verdict.summary = embedding.evaluated
@@ -62,6 +73,12 @@ InspectionVerdict combineVerdict(const EmbeddingCheck& embedding,
         }
         reasons += text;
     };
+    if (!countOk) {
+        // El motivo lleva los dos números: "faltan piezas" obliga a ir a
+        // contarlas a mano, y ese es justo el trabajo que esto ahorra.
+        addReason("se esperaban " + std::to_string(count.expected) + " piezas y se ven " +
+                  std::to_string(count.found));
+    }
     if (!appearanceOk) {
         addReason("anomalía de apariencia");
     }

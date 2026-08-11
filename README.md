@@ -111,6 +111,18 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    equivoca es peor que no tenerlo: mediría con confianza dentro de un
    rectángulo donde ya no hay nada.
 
+   **Piezas esperadas** (pestaña *Piezas* de *Configurar*): cuántas piezas
+   debería haber en la imagen. Hasta ahora la aplicación se quedaba con la
+   **mayor** y borraba el resto en silencio, así que una bandeja con cinco
+   tornillos y otra con seis daban el mismo resultado. Con el número declarado,
+   **que falte una es NG por sí solo** —"se esperaban 6 piezas y se ven 5"—, sin
+   necesidad de tener ninguna herramienta dibujada. El botón *Usar lo que se ve
+   ahora* rellena el número con lo que la cámara está detectando, y la propia
+   página avisa si lo que hay puesto no cuadra con lo que se ve, para que no te
+   enteres cuando ya estás en producción. El número **se guarda con la pieza**,
+   no con la máquina: "seis tornillos en bandeja" es una propiedad del trabajo.
+   Con 0 se desactiva la comprobación.
+
    **Orientación**: por defecto la pieza se muestra **vertical** (tal como la
    ve la cámara) — más estable y sin la inclinación arbitraria que daba el eje
    principal. Si tus piezas llegan giradas y quieres que las herramientas las

@@ -134,6 +134,20 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
         toolChecks.push_back({result.name, result.ok, result.measured, result.detail});
     }
 
+    // 2b. Recuento de piezas (C5). Solo se cuenta si la pieza lo pide: buscar
+    //     todas las piezas del frame cuesta, y quien inspecciona de una en una
+    //     no tiene por qué pagarlo. `expectedPieces <= 1` es el caso de
+    //     siempre y ni siquiera entra aquí.
+    domain::CountCheck countCheck;
+    if (auto measurement = pieces_.loadMeasurement(pieceId);
+        measurement.isOk() && measurement.value().expectedPieces > 1) {
+        const auto all = vision::analyzeFrames(frameBgr, options_.pipeline);
+        outcome.piecesFound = all.isOk() ? static_cast<int>(all.value().size()) : 0;
+        countCheck =
+            domain::evaluatePieceCount(measurement.value().expectedPieces,
+                                       outcome.piecesFound);
+    }
+
     // 3. Reglas del modo Especial (M4): centrado y giro respecto al tablero.
     //    Solo se evalúan si la pieza está en modo Especial y con tolerancias
     //    configuradas; el eje de una pieza casi simétrica no es de fiar, así que
@@ -153,7 +167,7 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
     }
 
     // 4. Veredicto combinado (lógica pura de domain/).
-    outcome.verdict = domain::combineVerdict(check, toolChecks, positionCheck);
+    outcome.verdict = domain::combineVerdict(check, toolChecks, positionCheck, countCheck);
 
     // 5. Historial + estadísticas (fallo de BD = avisado, nunca oculta el
     //    veredicto ni tumba la inspección).

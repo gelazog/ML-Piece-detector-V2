@@ -128,6 +128,35 @@ monotonía solo mientras la medida signifique algo, y por separado que el
 desenfoque fuerte deje el valor cien veces por debajo. Afirmar monotonía en la
 cola sería afirmar sobre ruido.
 
+### Contar piezas
+
+`analyzeFrames` devuelve **todas** las piezas de la imagen ordenadas de mayor a
+menor; `analyzeFrame` sigue devolviendo la mayor y **no cambia de contrato**.
+
+Van por separado, y no una encima de la otra, por coste: el camino de una sola
+pieza es el que corre en cada frame del vídeo, y hacerle analizar también las
+manchas que pasan el filtro de área sería pagar de más en el sitio más caliente.
+Contar solo se activa cuando alguien va a mirar el número — la pieza declara que
+espera más de una, o el panel Configurar está abierto — y entonces el análisis
+se hace **una sola vez**: la mayor de `analyzeFrames` es exactamente la que
+habría dado `analyzeFrame`.
+
+Cada pieza se procesa **dentro de su propia envolvente**, no a tamaño de frame.
+Sin eso, seis piezas costarían seis análisis completos y se perdería lo ganado
+en C4b. Medido: seis piezas cuestan **1,62×** lo que cuesta una, no 6×.
+
+El recuento es **una inspección por sí misma**: `domain::evaluatePieceCount`
+compara lo esperado con lo encontrado y `combineVerdict` lo suma al veredicto,
+con los dos números en el motivo ("se esperaban 6 piezas y se ven 5") — decir
+solo "faltan piezas" obligaría a ir a contarlas a mano, que es justo el trabajo
+que esto ahorra. Con `expected <= 0` no se juzga nada: la regla de siempre, un
+aviso que salta siempre acaba ignorándose.
+
+El número vive **en la pieza** (`Pieces.expected_pieces`, migración v9) y no en
+los ajustes de la máquina, porque "seis tornillos en bandeja" es una propiedad
+del trabajo. Al cambiar de pieza se recupera el suyo y no se arrastra el
+anterior.
+
 ### La zona de trabajo automática
 
 `vision/auto_roi.*` decide en qué rectángulo buscar la pieza en el próximo

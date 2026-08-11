@@ -11,6 +11,109 @@
 
 namespace pci::vision {
 
+namespace {
+
+// Convierte un contorno ya aceptado en un PieceAnalysis completo.
+//
+// La máscara limpia se construye **solo dentro de la envolvente de la pieza**:
+// con varias piezas, hacerlo a tamaño de frame para cada una multiplicaría por
+// N el coste de la parte que C4b acababa de abaratar.
+core::Result<PieceAnalysis> analyzePiece(const cv::Mat& working, PieceContour contour,
+                                         const PipelineConfig& config) {
+    const cv::Rect box = cv::boundingRect(contour.points) &
+                         cv::Rect(0, 0, working.cols, working.rows);
+    if (box.empty()) {
+        return core::Result<PieceAnalysis>::err("Contorno degenerado");
+    }
+
+    cv::Mat pieceMask = cv::Mat::zeros(box.size(), CV_8UC1);
+    std::vector<std::vector<cv::Point>> shifted{contour.points};
+    for (auto& point : shifted.front()) {
+        point -= box.tl();
+    }
+    cv::drawContours(pieceMask, shifted, 0, cv::Scalar(255), cv::FILLED);
+
+    auto fixture = computeFixture(pieceMask, config.autoOrient);
+    if (!fixture.isOk()) {
+        return core::Result<PieceAnalysis>::err(fixture.error().message);
+    }
+    fixture.value().origin += cv::Point2f(box.tl());
+
+    Fixture local = fixture.value();
+    local.origin -= cv::Point2f(box.tl());
+    auto normalized =
+        normalizePiece(working(box), pieceMask, local, config.canonicalSize);
+    if (!normalized.isOk()) {
+        return core::Result<PieceAnalysis>::err(normalized.error().message);
+    }
+
+    PieceAnalysis analysis;
+    analysis.contour = std::move(contour);
+    analysis.fixture = fixture.value();
+    analysis.normalized = std::move(normalized.value());
+    analysis.mask = cv::Mat::zeros(working.size(), CV_8UC1);
+    pieceMask.copyTo(analysis.mask(box));
+    return core::Result<PieceAnalysis>::ok(std::move(analysis));
+}
+
+// Lleva un análisis del marco del recorte al de la imagen completa.
+void shiftToFullFrame(PieceAnalysis& analysis, const cv::Rect& roi, const cv::Size& full) {
+    const cv::Point offset = roi.tl();
+    for (auto& point : analysis.contour.points) {
+        point += offset;
+    }
+    analysis.contour.centroid += cv::Point2f(offset);
+    analysis.contour.rotatedRect.center += cv::Point2f(offset);
+    analysis.fixture.origin += cv::Point2f(offset);
+
+    cv::Mat fullMask = cv::Mat::zeros(full, CV_8UC1);
+    analysis.mask.copyTo(fullMask(roi));
+    analysis.mask = std::move(fullMask);
+}
+
+}  // namespace
+
+core::Result<std::vector<PieceAnalysis>> analyzeFrames(const cv::Mat& image,
+                                                       const PipelineConfig& config) {
+    if (image.empty()) {
+        return core::Result<std::vector<PieceAnalysis>>::err("Imagen vacía");
+    }
+    const cv::Rect frameRect(0, 0, image.cols, image.rows);
+    const cv::Rect roi = config.roi & frameRect;
+    const bool useRoi = roi.area() > 0 && roi != frameRect;
+    const cv::Mat working = useRoi ? image(roi) : image;
+
+    auto mask = segmentPiece(working, config.segmentation);
+    if (!mask.isOk()) {
+        return core::Result<std::vector<PieceAnalysis>>::err(mask.error().message);
+    }
+
+    auto contours =
+        findPieceContours(mask.value(), config.minAreaFraction, config.maxAreaFraction);
+    if (contours.empty()) {
+        return core::Result<std::vector<PieceAnalysis>>::err(
+            "No se encontró ninguna pieza en la imagen");
+    }
+
+    std::vector<PieceAnalysis> pieces;
+    pieces.reserve(contours.size());
+    for (auto& contour : contours) {
+        auto analysis = analyzePiece(working, std::move(contour), config);
+        if (!analysis.isOk()) {
+            continue;  // una pieza degenerada no invalida a las demás
+        }
+        if (useRoi) {
+            shiftToFullFrame(analysis.value(), roi, image.size());
+        }
+        pieces.push_back(std::move(analysis.value()));
+    }
+    if (pieces.empty()) {
+        return core::Result<std::vector<PieceAnalysis>>::err(
+            "No se encontró ninguna pieza en la imagen");
+    }
+    return core::Result<std::vector<PieceAnalysis>>::ok(std::move(pieces));
+}
+
 core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image, const PipelineConfig& config) {
     if (image.empty()) {
         return core::Result<PieceAnalysis>::err("Imagen vacía");

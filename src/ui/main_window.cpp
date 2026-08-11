@@ -56,6 +56,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include "ui/performance_page.h"
+#include "ui/pieces_page.h"
 
 #include "vision/auto_roi.h"
 #include "vision/position_fixture.h"
@@ -81,7 +82,7 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                              std::optional<vision::Fixture> previousFixture,
                              double mmPerPixel, inspection::LengthUnit unit,
                              bool freezePose, double arucoMarkerMm,
-                             vision::BoardConfig boardConfig) {
+                             vision::BoardConfig boardConfig, bool countPieces) {
     AnalysisOverlay overlay;
     overlay.frameSize = frame.size();
 
@@ -129,7 +130,23 @@ AnalysisOverlay buildOverlay(const QImage& frame,
             return overlay;
         }
 
-        auto analysis = vision::analyzeFrame(image, pipeline);
+        // Contar piezas usa el mismo análisis, no uno aparte: `analyzeFrames`
+        // devuelve todas y la mayor es exactamente la que daría `analyzeFrame`.
+        core::Result<vision::PieceAnalysis> analysis =
+            core::Result<vision::PieceAnalysis>::err("sin analizar");
+        if (countPieces) {
+            auto all = vision::analyzeFrames(image, pipeline);
+            if (all.isOk()) {
+                overlay.piecesFound = static_cast<int>(all.value().size());
+                analysis = core::Result<vision::PieceAnalysis>::ok(
+                    std::move(all.value().front()));
+            } else {
+                overlay.piecesFound = 0;
+                analysis = core::Result<vision::PieceAnalysis>::err(all.error().message);
+            }
+        } else {
+            analysis = vision::analyzeFrame(image, pipeline);
+        }
         if (!analysis.isOk()) {
             overlay.error = QString::fromStdString(analysis.error().message);
             // Sin pieza todavía se puede enfocar: se mide el centro del
@@ -980,6 +997,34 @@ void MainWindow::updateWorkingZoneOverlay() {
     video_->setDetectionRegion(zone.area() > 0, zone);
 }
 
+void MainWindow::applyPiecesPage(PiecesPage* page) {
+    if (page == nullptr) {
+        return;
+    }
+    expectedPieces_ = page->expectedPieces();
+    const std::int64_t pieceId = selectedPieceId();
+    if (pieceId < 0 || repos_.pieces == nullptr) {
+        statusBar()->showMessage(
+            tr("Selecciona una pieza para guardar cuántas se esperan: el número va "
+               "con el trabajo, no con la máquina."));
+        return;
+    }
+    // Se lee y se reescribe la medición entera: es una sola fila y así no hay
+    // dos caminos distintos para tocar las columnas de la pieza.
+    auto measurement = repos_.pieces->loadMeasurement(pieceId);
+    if (!measurement.isOk()) {
+        core::logWarning("No se pudo leer la medición de la pieza: " +
+                         measurement.error().message);
+        return;
+    }
+    measurement.value().expectedPieces = expectedPieces_;
+    if (auto saved = repos_.pieces->saveMeasurement(pieceId, measurement.value());
+        !saved.isOk()) {
+        core::logWarning("No se pudieron guardar las piezas esperadas: " +
+                         saved.error().message);
+    }
+}
+
 // Vuelca la página de detección del panel Configurar en la configuración viva.
 void MainWindow::applyDetectionPage(DetectionPage* page) {
     if (page == nullptr) {
@@ -1444,6 +1489,15 @@ void MainWindow::onAnalysisFinished() {
         }
     }
 
+    if (overlay.piecesFound >= 0) {
+        lastPieceCount_ = overlay.piecesFound;
+    }
+    if (configureDialog_ != nullptr) {
+        if (auto* pieces = configureDialog_->piecesPage(); pieces != nullptr) {
+            pieces->setDetectedCount(lastPieceCount_);
+        }
+    }
+
     // Asistente de enfoque (C2): solo se alimenta si el panel está abierto por
     // esa pestaña; medir para nadie sería trabajo tirado.
     if (configureDialog_ != nullptr) {
@@ -1535,13 +1589,16 @@ void MainWindow::maybeStartAnalysis() {
     // sigue guardando la zona que dibujó el operador y no se toca.
     vision::PipelineConfig working = pipelineConfig_;
     working.roi = effectiveWorkingZone();
+    // Solo se cuentan las piezas si alguien va a mirar el número: la pieza
+    // declara que espera más de una, o el panel Configurar está abierto.
+    const bool countPieces = expectedPieces_ > 1 || configureDialog_ != nullptr;
     analysisWatcher_.setFuture(QtConcurrent::run(
         [frame, anchor, offset = currentOrientationOffset_, configs = std::move(configs),
          pipeline = working, previous = liveFixture_,
          mm = calibration_.mmPerPixel, unit = currentUnit(), freeze, markerMm,
-         board = boardConfig_] {
+         board = boardConfig_, countPieces] {
             return buildOverlay(frame, anchor, offset, configs, pipeline, previous, mm, unit,
-                                freeze, markerMm, board);
+                                freeze, markerMm, board, countPieces);
         }));
 }
 
@@ -1929,6 +1986,10 @@ void MainWindow::loadMeasurementForSelectedPiece() {
     }
     if (auto loaded = repos_.pieces->loadMeasurement(pieceId); loaded.isOk()) {
         applyMeasurement(loaded.value());
+        // Las piezas esperadas viajan con la pieza (C5): al cambiar de trabajo
+        // se recupera su recuento, y el de la anterior no se arrastra.
+        expectedPieces_ = loaded.value().expectedPieces;
+        lastPieceCount_ = -1;
     }
 }
 
@@ -2516,6 +2577,7 @@ void MainWindow::onConfigureClicked() {
     inputs.autoIntervalMs = autoIntervalMs_;
     inputs.kSigma = kSigma_;
     inputs.zoneMode = zoneMode_;
+    inputs.expectedPieces = expectedPieces_;
     inputs.hasFixedZone = pipelineConfig_.roi.area() > 0;
     inputs.settings = repos_.settings;
 
@@ -2534,7 +2596,12 @@ void MainWindow::onConfigureClicked() {
     connect(dialog, &ConfigureDialog::applied, this, [this, dialog] {
         applyDetectionPage(dialog->detectionPage());
         applyPreferencesPage(dialog->preferencesPage());
+        applyPiecesPage(dialog->piecesPage());
     });
+    if (auto* pieces = dialog->piecesPage(); pieces != nullptr) {
+        connect(pieces, &PiecesPage::useDetectedRequested, this,
+                [this, pieces] { pieces->setDetectedCount(lastPieceCount_); });
+    }
     connect(dialog, &ConfigureDialog::scaleWizardRequested, this,
             &MainWindow::onCalibrateClicked);
     connect(dialog, &ConfigureDialog::shortcutsRequested, this,

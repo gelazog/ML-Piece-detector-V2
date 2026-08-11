@@ -168,6 +168,14 @@ CREATE TABLE IF NOT EXISTS DetectionProfiles (
 ALTER TABLE Pieces ADD COLUMN detection_profile_id INTEGER NOT NULL DEFAULT 0;
 )sql";
 
+// v9: cuantas piezas se esperan en la imagen (C5). Va POR PIEZA y no en los
+// ajustes globales porque "seis tornillos en bandeja" es una propiedad del
+// trabajo, no de la maquina. 1 = una pieza, que es como se comportaba hasta
+// ahora.
+const char* const kMigrationV9 = R"sql(
+ALTER TABLE Pieces ADD COLUMN expected_pieces INTEGER NOT NULL DEFAULT 1;
+)sql";
+
 const char* migrationFor(int targetVersion) {
     switch (targetVersion) {
         case 1: return kSchemaV1;
@@ -178,6 +186,7 @@ const char* migrationFor(int targetVersion) {
         case 6: return kMigrationV6;
         case 7: return kMigrationV7;
         case 8: return kMigrationV8;
+        case 9: return kMigrationV9;
     }
     return nullptr;
 }

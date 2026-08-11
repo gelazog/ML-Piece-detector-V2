@@ -29,6 +29,10 @@ struct PieceMeasurement {
     // Reglas del modo Especial (M4). 0 = no vigilar esa desviación.
     double maxOffsetPx = 0.0;   // distancia máxima del centro al cero
     double maxAngleDeg = 0.0;   // giro máximo respecto a los ejes del tablero
+    // Cuántas piezas se esperan en la imagen (C5). Va con la pieza y no en los
+    // ajustes globales porque "seis tornillos en bandeja" es una propiedad del
+    // trabajo. 1 = una pieza; 0 = no vigilar el recuento.
+    int expectedPieces = 1;
 };
 
 struct StoredReference {

@@ -236,3 +236,57 @@ TEST(PositionRules, PositionFailureCombinesWithToolFailures) {
     EXPECT_NE(verdict.summary.find("herramienta"), std::string::npos) << verdict.summary;
     EXPECT_NE(verdict.summary.find("descentrada"), std::string::npos) << verdict.summary;
 }
+
+// ---------------------------------------------------------------------------
+// Recuento de piezas (C5)
+// ---------------------------------------------------------------------------
+
+TEST(PieceCount, MissingAPieceIsNgAllByItself) {
+    // El caso que motiva el ítem: una bandeja de seis con cinco tornillos daba
+    // exactamente el mismo resultado que una llena.
+    const auto check = evaluatePieceCount(6, 5);
+    EXPECT_TRUE(check.evaluated);
+    EXPECT_FALSE(check.ok);
+
+    const auto verdict = combineVerdict({}, {}, {}, check);
+    EXPECT_FALSE(verdict.ok) << "faltando una pieza no puede salir OK";
+    // El motivo lleva los dos números: "faltan piezas" obligaría a ir a
+    // contarlas a mano, que es el trabajo que esto ahorra.
+    EXPECT_NE(verdict.summary.find("6"), std::string::npos) << verdict.summary;
+    EXPECT_NE(verdict.summary.find("5"), std::string::npos) << verdict.summary;
+}
+
+TEST(PieceCount, TooManyPiecesIsAlsoNg) {
+    const auto check = evaluatePieceCount(2, 3);
+    EXPECT_FALSE(check.ok);
+    EXPECT_FALSE(combineVerdict({}, {}, {}, check).ok);
+}
+
+TEST(PieceCount, TheRightNumberDoesNotComplain) {
+    const auto check = evaluatePieceCount(6, 6);
+    EXPECT_TRUE(check.evaluated);
+    EXPECT_TRUE(check.ok);
+    EXPECT_TRUE(combineVerdict({}, {}, {}, check).ok);
+}
+
+TEST(PieceCount, NotDeclaringANumberNeverWarns) {
+    // La regla de siempre: un aviso que salta siempre es un aviso que se
+    // aprende a ignorar. Sin número declarado, el recuento no se juzga.
+    for (const int found : {0, 1, 7}) {
+        const auto check = evaluatePieceCount(0, found);
+        EXPECT_FALSE(check.evaluated) << "encontradas " << found;
+        EXPECT_TRUE(check.ok);
+        EXPECT_TRUE(combineVerdict({}, {}, {}, check).ok);
+    }
+    // Y el veredicto sin el parámetro se comporta igual que siempre.
+    EXPECT_TRUE(combineVerdict({}, {}).ok);
+}
+
+TEST(PieceCount, TheCountTravelsInTheVerdict) {
+    // Quien enseñe el resultado tiene que poder decir los dos números sin
+    // volver a calcular nada.
+    const auto verdict = combineVerdict({}, {}, {}, evaluatePieceCount(4, 2));
+    EXPECT_EQ(verdict.count.expected, 4);
+    EXPECT_EQ(verdict.count.found, 2);
+    EXPECT_TRUE(verdict.count.evaluated);
+}

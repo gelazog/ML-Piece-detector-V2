@@ -2,6 +2,8 @@
 
 #include <opencv2/core.hpp>
 
+#include <vector>
+
 #include "core/result.h"
 #include "vision/segmentation.h"
 #include "vision/types.h"
@@ -23,11 +25,23 @@ struct PipelineConfig {
     // objetos fuera de la zona dejan de estorbar. Los resultados se devuelven
     // en coordenadas de la imagen completa.
     cv::Rect roi;
+    // Cuántas piezas se esperan en la imagen (C5). No cambia la detección: la
+    // usa quien juzga, para poder decir "esperaba 6, veo 5". 0 = no vigilar.
+    int expectedPieces = 1;
 };
 
 // Punto de entrada único del módulo: segmentación -> contorno mayor ->
 // fixture -> recorte normalizado. Todos los fallos regresan como Result.
 core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image,
                                          const PipelineConfig& config = {});
+
+// Todas las piezas de la imagen, **ordenadas de mayor a menor**.
+//
+// Va aparte de `analyzeFrame` y no al revés (analyzeFrame = la primera de
+// estas) por una razón de coste: el camino de una sola pieza es el que corre en
+// cada frame del vídeo, y hacerle analizar también las manchas de ruido que
+// pasan el filtro de área sería pagar de más en el sitio más caliente.
+[[nodiscard]] core::Result<std::vector<PieceAnalysis>> analyzeFrames(
+    const cv::Mat& image, const PipelineConfig& config = {});
 
 }  // namespace pci::vision

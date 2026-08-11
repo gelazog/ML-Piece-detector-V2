@@ -1605,3 +1605,140 @@ TEST(NormalizeSpeedup, TheUprightCaseGotFaster) {
                 before, after, before / after);
     EXPECT_LT(after * 2.0, before) << "saltarse dos warpAffine tiene que notarse";
 }
+
+// ---------------------------------------------------------------------------
+// Varias piezas en la imagen (C5)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Bandeja con `count` piezas cuadradas de tamanos decrecientes, bien separadas.
+cv::Mat trayWith(int count, cv::Size frame = {1280, 720}) {
+    cv::Mat scene(frame, CV_8UC1, cv::Scalar(20));
+    for (int i = 0; i < count; ++i) {
+        const int side = 170 - i * 12;  // decrecientes: el orden por area es conocido
+        const int x = 60 + (i % 3) * 380;
+        const int y = 60 + (i / 3) * 320;
+        cv::rectangle(scene, cv::Rect(x, y, side, side), cv::Scalar(220), cv::FILLED);
+    }
+    return scene;
+}
+
+}  // namespace
+
+TEST(MultiPiece, FindsThemAllAndInOrderOfSize) {
+    for (const int count : {1, 3, 6}) {
+        const cv::Mat scene = trayWith(count);
+        const auto pieces = analyzeFrames(scene);
+        ASSERT_TRUE(pieces.isOk()) << count << " piezas: " << pieces.error().message;
+        EXPECT_EQ(static_cast<int>(pieces.value().size()), count);
+
+        // De mayor a menor: quien las numere en pantalla necesita un orden
+        // estable, y el area es el unico que no depende de por donde empiece
+        // findContours.
+        for (std::size_t i = 1; i < pieces.value().size(); ++i) {
+            EXPECT_GE(pieces.value()[i - 1].contour.area, pieces.value()[i].contour.area)
+                << "piezas " << i - 1 << " y " << i;
+        }
+        std::printf("  %d piezas -> areas:", count);
+        for (const auto& piece : pieces.value()) {
+            std::printf(" %.0f", piece.contour.area);
+        }
+        std::printf("\n");
+    }
+}
+
+TEST(MultiPiece, EachOneGetsItsOwnFixtureAndMask) {
+    const cv::Mat scene = trayWith(3);
+    const auto pieces = analyzeFrames(scene);
+    ASSERT_TRUE(pieces.isOk());
+    ASSERT_EQ(pieces.value().size(), 3U);
+
+    for (const auto& piece : pieces.value()) {
+        // La mascara es del tamano del frame y contiene SOLO a esa pieza.
+        EXPECT_EQ(piece.mask.size(), scene.size());
+        const double maskArea = cv::countNonZero(piece.mask);
+        EXPECT_NEAR(maskArea, piece.contour.area, piece.contour.area * 0.05);
+        // Y el fixture cae dentro de su propia envolvente.
+        const cv::Rect box = cv::boundingRect(piece.contour.points);
+        EXPECT_TRUE(box.contains(cv::Point(static_cast<int>(piece.fixture.origin.x),
+                                           static_cast<int>(piece.fixture.origin.y))));
+        EXPECT_FALSE(piece.normalized.empty());
+    }
+}
+
+TEST(MultiPiece, TheFirstOneIsExactlyWhatAnalyzeFrameReturns) {
+    // El contrato de `analyzeFrame` no cambia: sigue siendo la pieza mayor.
+    const cv::Mat scene = trayWith(4);
+    const auto one = analyzeFrame(scene);
+    const auto many = analyzeFrames(scene);
+    ASSERT_TRUE(one.isOk());
+    ASSERT_TRUE(many.isOk());
+    EXPECT_NEAR(many.value().front().fixture.origin.x, one.value().fixture.origin.x, 0.01);
+    EXPECT_NEAR(many.value().front().fixture.origin.y, one.value().fixture.origin.y, 0.01);
+    EXPECT_NEAR(many.value().front().contour.area, one.value().contour.area, 1.0);
+}
+
+TEST(MultiPiece, SpecklesBelowTheMinimumAreaAreNotPieces) {
+    cv::Mat scene = trayWith(2);
+    // Motas: por debajo de minAreaFraction (0,5 % de 1280x720 = 4608 px).
+    cv::circle(scene, {900, 600}, 8, cv::Scalar(220), cv::FILLED);
+    cv::circle(scene, {1000, 650}, 5, cv::Scalar(220), cv::FILLED);
+    const auto pieces = analyzeFrames(scene);
+    ASSERT_TRUE(pieces.isOk());
+    EXPECT_EQ(pieces.value().size(), 2U) << "una mota no es una pieza";
+}
+
+TEST(MultiPiece, AnEmptySceneFailsWithTheSameMessageAsBefore) {
+    const cv::Mat empty(720, 1280, CV_8UC1, cv::Scalar(20));
+    const auto pieces = analyzeFrames(empty);
+    EXPECT_FALSE(pieces.isOk());
+    const auto one = analyzeFrame(empty);
+    EXPECT_FALSE(one.isOk());
+    // Mismo motivo: quien lo enseñe no tiene que distinguir dos textos.
+    EXPECT_EQ(pieces.error().message, one.error().message);
+
+    EXPECT_FALSE(analyzeFrames(cv::Mat()).isOk());
+}
+
+TEST(MultiPiece, TheDetectionZoneStillApplies) {
+    // Con zona de deteccion, las piezas de fuera no se cuentan y las de dentro
+    // salen en coordenadas de la imagen completa.
+    const cv::Mat scene = trayWith(6);
+    PipelineConfig config;
+    config.roi = cv::Rect(0, 0, 640, 400);
+    const auto pieces = analyzeFrames(scene, config);
+    ASSERT_TRUE(pieces.isOk());
+    EXPECT_LT(pieces.value().size(), 6U) << "la zona tiene que dejar fuera a alguna";
+    for (const auto& piece : pieces.value()) {
+        EXPECT_TRUE(config.roi.contains(cv::Point(static_cast<int>(piece.fixture.origin.x),
+                                                  static_cast<int>(piece.fixture.origin.y))))
+            << "el resultado tiene que venir en coordenadas de la imagen completa";
+        EXPECT_EQ(piece.mask.size(), scene.size());
+    }
+}
+
+TEST(MultiPiece, CountingManyPiecesIsNotAbsurdlySlower) {
+    // Analizar seis piezas no puede costar seis veces analizar una: cada una se
+    // procesa dentro de su propia envolvente, no a tamano de frame.
+    const cv::Mat one = trayWith(1);
+    const cv::Mat six = trayWith(6);
+    constexpr int kRuns = 20;
+    const auto time = [](const cv::Mat& scene) {
+        (void)analyzeFrames(scene);
+        const auto start = std::chrono::steady_clock::now();
+        for (int i = 0; i < kRuns; ++i) {
+            (void)analyzeFrames(scene);
+        }
+        return std::chrono::duration<double, std::milli>(
+                   std::chrono::steady_clock::now() - start)
+                   .count() /
+               kRuns;
+    };
+    const double oneMs = time(one);
+    const double sixMs = time(six);
+    std::printf("  1 pieza %.2f ms  |  6 piezas %.2f ms  -> %.2fx\n", oneMs, sixMs,
+                sixMs / oneMs);
+    EXPECT_LT(sixMs, oneMs * 3.0)
+        << "seis piezas no pueden costar como seis analisis completos";
+}

@@ -41,6 +41,9 @@ struct AnalysisOverlay {
     // puede subir mientras la de la pieza baja.
     double sharpness = 0.0;
     bool sharpnessOnPiece = false;
+    // Piezas encontradas en el frame (C5). -1 = no se contaron: contar cuesta y
+    // solo se hace cuando alguien mira el número.
+    int piecesFound = -1;
 };
 
 }  // namespace pci::ui

@@ -42,6 +42,7 @@ class CameraImagePage;
 class ConfigureDialog;
 class DetectionPage;
 class PerformancePage;
+class PiecesPage;
 class PreferencesPage;
 
 // Ventana principal: video en vivo sobre el que se dibujan las herramientas
@@ -147,6 +148,8 @@ private:
     // Páginas del panel Configurar (C1). Las de formulario se vuelcan al pulsar
     // Aplicar; la de cámara aplica sola y aquí solo se persiste lo que deja.
     void applyDetectionPage(DetectionPage* page);
+    // Piezas esperadas (C5): va con la pieza seleccionada, no con la máquina.
+    void applyPiecesPage(PiecesPage* page);
     // Zona de trabajo (C3): elige con qué recorte se analiza el próximo frame.
     // El recorte automático NO pisa la zona manual del operador: son dos
     // cosas distintas y el modo decide cuál manda.
@@ -188,6 +191,8 @@ private:
     // Zona de trabajo automática (C3).
     vision::WorkingZoneMode zoneMode_ = vision::WorkingZoneMode::Off;
     vision::AutoRoiTracker autoRoi_;
+    int expectedPieces_ = 1;  // de la pieza seleccionada (C5)
+    int lastPieceCount_ = -1;  // piezas vistas en el último análisis
     QAction* registerWizardAction_ = nullptr;
     QAction* managePiecesAction_ = nullptr;
     QAction* editorAction_ = nullptr;
