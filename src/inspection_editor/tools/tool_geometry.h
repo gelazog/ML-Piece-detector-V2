@@ -196,6 +196,13 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta);
 // la misma herramienta acabaría llamándose distinto en cada pantalla.
 const char* toolTypeLabel(ToolType type);
 
+// La referencia de una herramienta viaja dentro de `paramsJson` (columna
+// `params`, que existía sin usarse). Estas dos funciones son el único sitio que
+// conoce ese formato, para que la base de datos y la exportación de plantillas
+// no lo escriban cada una a su manera.
+[[nodiscard]] std::string paramsWithReference(const std::string& reference);
+[[nodiscard]] std::string referenceFromParams(const std::string& paramsJson);
+
 // Descripción de uso para tooltips/ayuda (UTF-8, en español): qué mide la
 // herramienta y cómo dibujarla.
 const char* toolTypeDescription(ToolType type);

@@ -126,6 +126,37 @@ std::vector<ToolType> toolsInCategory(ToolCategory category) {
     return tools;
 }
 
+std::string paramsWithReference(const std::string& reference) {
+    if (reference.empty()) {
+        return "{}";
+    }
+    cv::FileStorage fs(".json", cv::FileStorage::WRITE | cv::FileStorage::MEMORY);
+    fs << "ref" << reference;
+    return fs.releaseAndGetString();
+}
+
+std::string referenceFromParams(const std::string& paramsJson) {
+    if (paramsJson.empty() || paramsJson == "{}") {
+        return {};
+    }
+    try {
+        cv::FileStorage fs(paramsJson, cv::FileStorage::READ | cv::FileStorage::MEMORY);
+        if (!fs.isOpened()) {
+            return {};
+        }
+        const cv::FileNode node = fs["ref"];
+        if (node.empty() || !node.isString()) {
+            return {};
+        }
+        return static_cast<std::string>(node);
+    } catch (const cv::Exception&) {
+        // Parámetros corruptos: se ignoran. Una referencia ilegible hace que la
+        // herramienta se comporte como si no la tuviera, y eso se nota al
+        // medir; reventar aquí tumbaría la carga de la plantilla entera.
+        return {};
+    }
+}
+
 const char* toolTypeLabel(ToolType type) {
     switch (type) {
         case ToolType::Caliper: return "Caliper";

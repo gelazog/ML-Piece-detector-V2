@@ -2508,3 +2508,163 @@ TEST(ToolCoherence, ConstructionsAreEmptyOnPurposeAndTheRestAreNot) {
         EXPECT_FALSE(toolsInCategory(category).empty()) << categoryLabel(category);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Referencias entre herramientas (X0)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Regla entre dos puntos de pieza, con nombre y referencia opcional.
+ToolConfig makeRuler(const std::string& name, cv::Point2f a, cv::Point2f b,
+                     const std::string& reference = {}) {
+    ToolConfig config;
+    config.type = ToolType::Ruler;
+    config.name = name;
+    config.reference = reference;
+    config.geometryJson = toJson(ToolGeometry(RulerGeometry{a, b}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+const ToolRunResult* findByName(const std::vector<ToolRunResult>& results,
+                                const std::string& name) {
+    for (const auto& result : results) {
+        if (result.name == name) {
+            return &result;
+        }
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+TEST(ToolReferences, AToolThatCanBeADatumOffersItsElement) {
+    const cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(128));
+    const auto result = runTool(gray, kIdentity, makeRuler("cara A", {0, 0}, {100, 0}));
+    ASSERT_TRUE(result.isOk());
+    ASSERT_TRUE(result.value().derived.valid());
+    EXPECT_EQ(result.value().derived.kind, DerivedKind::Line);
+    // Dirección unitaria y en coordenadas de PIEZA: la referencia tiene que
+    // seguir a la pieza igual que la herramienta que la usa.
+    EXPECT_NEAR(result.value().derived.direction.x, 1.0, 1e-6);
+    EXPECT_NEAR(result.value().derived.direction.y, 0.0, 1e-6);
+    EXPECT_NEAR(cv::norm(result.value().derived.direction), 1.0, 1e-6);
+}
+
+TEST(ToolReferences, AChainOfThreeToolsResolvesInDependencyOrder) {
+    // A -> B -> C, pero declaradas al revés en la lista: el orden de ejecución
+    // lo decide la dependencia, no el orden en que el operador las dibujó.
+    const cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(128));
+    std::vector<ToolConfig> tools{
+        makeRuler("C", {0, 60}, {80, 60}, "B"),
+        makeRuler("B", {0, 30}, {80, 30}, "A"),
+        makeRuler("A", {0, 0}, {80, 0}),
+    };
+    const auto results = runTools(gray, kIdentity, tools);
+    ASSERT_EQ(results.size(), 3U);
+    for (const auto* name : {"A", "B", "C"}) {
+        const auto* result = findByName(results, name);
+        ASSERT_NE(result, nullptr) << name;
+        EXPECT_TRUE(result->ok) << name << ": " << result->detail;
+    }
+    // Y los resultados salen en el ORDEN DE LA LISTA, no en el de ejecución:
+    // si bailaran, la tabla de resultados cambiaría al añadir una referencia.
+    EXPECT_EQ(results[0].name, "C");
+    EXPECT_EQ(results[1].name, "B");
+    EXPECT_EQ(results[2].name, "A");
+}
+
+TEST(ToolReferences, AMissingReferenceMeansTheToolDoesNotMeasure) {
+    // Nunca se cae a una referencia implícita: un GD&T medido contra otro datum
+    // del que cree el operador es el fallo que este programa existe para
+    // evitar, porque el número sale creíble y es falso.
+    const cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(128));
+    std::vector<ToolConfig> tools{makeRuler("mide", {0, 0}, {80, 0}, "no existe")};
+    const auto results = runTools(gray, kIdentity, tools);
+    ASSERT_EQ(results.size(), 1U);
+    EXPECT_FALSE(results[0].ok);
+    EXPECT_NE(results[0].detail.find("referencia"), std::string::npos) << results[0].detail;
+    EXPECT_NE(results[0].detail.find("no existe"), std::string::npos) << results[0].detail;
+}
+
+TEST(ToolReferences, ADisabledReferenceIsAMissingReference) {
+    const cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(128));
+    std::vector<ToolConfig> tools{
+        makeRuler("datum", {0, 0}, {80, 0}),
+        makeRuler("mide", {0, 30}, {80, 30}, "datum"),
+    };
+    tools[0].enabled = false;
+    const auto results = runTools(gray, kIdentity, tools);
+    ASSERT_EQ(results.size(), 1U) << "la deshabilitada no se ejecuta";
+    EXPECT_FALSE(results[0].ok) << "y quien la referenciaba no puede medir";
+}
+
+TEST(ToolReferences, ACircleIsFailedReferenceAlsoStopsTheOneThatUsesIt) {
+    // Una referencia que EXISTE pero falla al medir tampoco vale. El caso es
+    // distinto del anterior y el operador tiene que poder distinguirlos.
+    const cv::Mat empty(400, 400, CV_8UC1, cv::Scalar(128));
+    ToolConfig circle;
+    circle.type = ToolType::Circle;
+    circle.name = "agujero";
+    circle.geometryJson =
+        toJson(ToolGeometry(CircleGeometry{{200.0F, 200.0F}, 60.0F, 12.0F, 36}));
+    circle.toleranceMin = 0.0;
+    circle.toleranceMax = 1e9;
+
+    std::vector<ToolConfig> tools{circle, makeRuler("mide", {0, 0}, {80, 0}, "agujero")};
+    const auto results = runTools(empty, kIdentity, tools);
+    ASSERT_EQ(results.size(), 2U);
+    // Sobre una imagen plana el círculo no encuentra bordes.
+    EXPECT_FALSE(results[0].ok) << results[0].detail;
+    EXPECT_FALSE(results[1].ok) << "no se mide contra una referencia que falló";
+}
+
+TEST(ToolReferences, TwoToolsPointingAtEachOtherFailInsteadOfHanging) {
+    const cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(128));
+    std::vector<ToolConfig> tools{
+        makeRuler("A", {0, 0}, {80, 0}, "B"),
+        makeRuler("B", {0, 30}, {80, 30}, "A"),
+    };
+    const auto results = runTools(gray, kIdentity, tools);
+    ASSERT_EQ(results.size(), 2U);
+    for (const auto& result : results) {
+        EXPECT_FALSE(result.ok) << result.name;
+        EXPECT_NE(result.detail.find("circular"), std::string::npos) << result.detail;
+    }
+}
+
+TEST(ToolReferences, ToolsWithoutReferencesBehaveExactlyAsBefore) {
+    // Las catorce de siempre no declaran referencia: nada de esto puede
+    // haberles cambiado el resultado ni el orden.
+    const cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(128));
+    std::vector<ToolConfig> tools{
+        makeRuler("uno", {0, 0}, {50, 0}),
+        makeRuler("dos", {0, 10}, {70, 10}),
+        makeRuler("tres", {0, 20}, {90, 20}),
+    };
+    const auto results = runTools(gray, kIdentity, tools);
+    ASSERT_EQ(results.size(), 3U);
+    EXPECT_EQ(results[0].name, "uno");
+    EXPECT_EQ(results[1].name, "dos");
+    EXPECT_EQ(results[2].name, "tres");
+    EXPECT_NEAR(results[0].measured, 50.0, 1e-6);
+    EXPECT_NEAR(results[2].measured, 90.0, 1e-6);
+}
+
+TEST(ToolReferences, TheReferenceSurvivesTheParamsRoundTrip) {
+    // Viaja dentro de `paramsJson`, así que pasa por la base de datos y por la
+    // exportación de plantillas sin tocar el esquema.
+    EXPECT_EQ(referenceFromParams(paramsWithReference("cara A")), "cara A");
+    EXPECT_EQ(referenceFromParams(paramsWithReference("")), "");
+    EXPECT_EQ(paramsWithReference(""), "{}") << "sin referencia, params se queda como estaba";
+    // Nombres con acentos y comillas, que son los que rompen un formato mal
+    // hecho.
+    for (const auto* name : {"Ángulo 1", "cara \"A\"", "eje / diámetro"}) {
+        EXPECT_EQ(referenceFromParams(paramsWithReference(name)), name);
+    }
+    // Y unos parámetros corruptos no tumban nada: se ignoran.
+    EXPECT_EQ(referenceFromParams("{no es json"), "");
+    EXPECT_EQ(referenceFromParams(""), "");
+}

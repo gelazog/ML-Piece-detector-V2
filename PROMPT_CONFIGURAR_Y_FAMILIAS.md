@@ -467,7 +467,11 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
 
 ### X — Construcciones geométricas (habilitan el GD&T)
 
-- [ ] **X0 — Elementos derivados y referencias entre herramientas.** El
+- [x] **X0 — Elementos derivados y referencias entre herramientas.** *(La
+  referencia se guarda en `paramsJson`, que existía sin usarse: no hizo falta
+  migrar el esquema. Falta el desplegable de referencia en el panel y la flecha
+  de dependencia en el lienzo, que van con `X1`, cuando haya herramientas que
+  de verdad la usen.)* El
   mecanismo del que cuelgan `X` y `G` enteras (ver decisión de diseño 2).
   - `ToolConfig` gana `reference` (nombre de otra herramienta) y, donde haga
     falta, `reference2` para un marco de dos datums.

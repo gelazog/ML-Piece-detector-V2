@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core/result.h"
+#include "inspection_editor/tools/derived_element.h"
 #include "inspection_editor/tools/tool_geometry.h"
 #include "inspection_editor/tools/tool_types.h"
 #include "vision/board_frame.h"
@@ -31,6 +32,9 @@ struct ToolRunResult {
     // resultado para que la cadena entera —motor, historial, interfaz— sepa a
     // quién pertenece sin tener que llevar la cuenta por separado.
     int pieceIndex = 0;
+    // Elemento geométrico que esta herramienta ofrece como referencia (X0), en
+    // coordenadas de pieza. Vacío si no produce ninguno.
+    DerivedElement derived;
     // Para pintar sobre la imagen inspeccionada (coordenadas de imagen).
     std::vector<cv::Point2f> overlayPoints;
     std::vector<std::array<cv::Point2f, 2>> overlaySegments;
@@ -63,7 +67,8 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
                                     LengthUnit unit = LengthUnit::Auto,
                                     const cv::Mat& imageToMm = cv::Mat(),
                                     const vision::BoardFrame* board = nullptr,
-                                    double scaleQuality = -1.0);
+                                    double scaleQuality = -1.0,
+                                    const DerivedElements* references = nullptr);
 
 // Ejecuta todas las herramientas habilitadas; nunca lanza. Los errores de
 // configuración se convierten en resultados NG con el motivo en detail.

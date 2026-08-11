@@ -3,6 +3,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
+#include <set>
 #include <cmath>
 #include <numeric>
 #include <cstdio>
@@ -230,6 +231,14 @@ ToolRunResult runRuler(const Fixture& fixture, const ToolConfig& config,
     result.measured = cv::norm(p1 - p0);
     result.ok = withinTolerance(config, result.measured);
     result.detail = "L=" + fmtLenPts(p0, p1, fmt);
+    // Ofrece su recta como referencia (X0): dos puntos trazados a mano son la
+    // forma más directa de declarar un datum.
+    const double length = cv::norm(g.p1 - g.p0);
+    if (length > 1e-6) {
+        result.derived.kind = DerivedKind::Line;
+        result.derived.point = g.p0;
+        result.derived.direction = (g.p1 - g.p0) / static_cast<float>(length);
+    }
     return result;
 }
 
@@ -257,6 +266,9 @@ ToolRunResult runPosition(const Fixture& fixture, const ToolConfig& config,
             break;
     }
     result.ok = withinTolerance(config, result.measured);
+    // El rasgo marcado, como referencia puntual (X0).
+    result.derived.kind = DerivedKind::Point;
+    result.derived.point = g.point;
     result.detail = "dx=" + fmtLen(reading.dx, fmt) + " dy=" + fmtLen(reading.dy, fmt) +
                     " r=" + fmtLen(reading.radius, fmt) + " " + fmt2(reading.angleDeg) + "deg";
     return result;
@@ -396,6 +408,12 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
 
     result.measured = 2.0 * r;
     result.ok = withinTolerance(config, result.measured);
+    // El círculo AJUSTADO como referencia, no el trazado: el centro que vale
+    // para un datum es el que sale del borde real, no el que puso el operador.
+    result.derived.kind = DerivedKind::Circle;
+    result.derived.point = vision::toPieceCoords(fixture, cv::Point2f(
+        static_cast<float>(cx), static_cast<float>(cy)));
+    result.derived.radius = r;
     result.detail = "D=" + fmtLen(result.measured, fmt) +
                     ", R=" + fmtLen(r, fmt) +
                     ", redondez=" + fmtLen(roundness, fmt);
@@ -1295,9 +1313,27 @@ ToolRunResult runPolyBlob(const cv::Mat& gray, const Fixture& fixture, const Too
 core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture& fixture,
                                     const ToolConfig& config, double mmPerPixel,
                                     LengthUnit unit, const cv::Mat& imageToMm,
-                                    const vision::BoardFrame* board, double scaleQuality) {
+                                    const vision::BoardFrame* board, double scaleQuality,
+                                    const DerivedElements* references) {
     using ResultT = core::Result<ToolRunResult>;
     const Fmt fmt{mmPerPixel, unit, imageToMm, scaleQuality};
+
+    // Una herramienta que declara referencia y no la tiene resuelta NO MIDE.
+    // Nunca cae a una referencia implícita: un GD&T medido contra otro datum
+    // del que cree el operador es exactamente el fallo que este programa
+    // existe para evitar, porque el número sale creíble y es falso.
+    if (!config.reference.empty()) {
+        if (references == nullptr || references->find(config.reference) == references->end()) {
+            ToolRunResult missing;
+            missing.toolId = config.id;
+            missing.name = config.name;
+            missing.type = config.type;
+            missing.ok = false;
+            missing.detail = "no se pudo usar la referencia '" + config.reference +
+                             "': no existe, está desactivada o falló al medir";
+            return ResultT::ok(std::move(missing));
+        }
+    }
 
     if (image.empty()) {
         return ResultT::err("Imagen vacía");
@@ -1379,30 +1415,107 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
     }
 }
 
+namespace {
+
+// Ejecuta una herramienta y la convierte SIEMPRE en un resultado: un error de
+// configuración es un NG con su motivo, no una excepción que tumbe la tanda.
+ToolRunResult runOrExplain(const cv::Mat& image, const vision::Fixture& fixture,
+                           const ToolConfig& config, double mmPerPixel, LengthUnit unit,
+                           const cv::Mat& imageToMm, const vision::BoardFrame* board,
+                           double scaleQuality, const DerivedElements& references) {
+    auto result = runTool(image, fixture, config, mmPerPixel, unit, imageToMm, board,
+                          scaleQuality, &references);
+    if (result.isOk()) {
+        return std::move(result.value());
+    }
+    ToolRunResult failed;
+    failed.toolId = config.id;
+    failed.name = config.name;
+    failed.type = config.type;
+    failed.ok = false;
+    failed.detail = result.error().message;
+    return failed;
+}
+
+}  // namespace
+
 std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture& fixture,
                                     const std::vector<ToolConfig>& tools, double mmPerPixel,
                                     LengthUnit unit, const cv::Mat& imageToMm,
                                     const vision::BoardFrame* board, double scaleQuality) {
+    // Las herramientas se ejecutan en ORDEN DE DEPENDENCIA —primero las que
+    // pueden ser referencia, después las que la consumen— pero los resultados
+    // se devuelven en el orden en que el operador las tiene en la lista. Si se
+    // reordenaran, la lista de resultados bailaría cada vez que alguien añade
+    // una referencia.
+    std::vector<const ToolConfig*> pending;
+    std::set<std::string> known;  // nombres de herramientas habilitadas
+    for (const auto& config : tools) {
+        if (config.enabled) {
+            pending.push_back(&config);
+            known.insert(config.name);
+        }
+    }
+
     std::vector<ToolRunResult> results;
+    results.reserve(pending.size());
+    DerivedElements references;
+    std::set<std::string> attempted;
+
+    bool progressed = true;
+    while (progressed && !pending.empty()) {
+        progressed = false;
+        std::vector<const ToolConfig*> stillPending;
+        for (const auto* config : pending) {
+            const bool ready = config->reference.empty() ||
+                               attempted.find(config->reference) != attempted.end() ||
+                               known.find(config->reference) == known.end();
+            if (!ready) {
+                stillPending.push_back(config);
+                continue;
+            }
+            ToolRunResult result =
+                runOrExplain(image, fixture, *config, mmPerPixel, unit, imageToMm, board,
+                             scaleQuality, references);
+            attempted.insert(config->name);
+            if (result.ok && result.derived.valid()) {
+                references[config->name] = result.derived;
+            }
+            results.push_back(std::move(result));
+            progressed = true;
+        }
+        pending = std::move(stillPending);
+    }
+
+    // Lo que queda no pudo ordenarse: solo hay una forma de que eso pase con
+    // una referencia por herramienta, y es que se referencien en círculo. Las
+    // dos (o las que sean) fallan diciéndolo, en vez de colgarse.
+    for (const auto* config : pending) {
+        ToolRunResult cyclic;
+        cyclic.toolId = config->id;
+        cyclic.name = config->name;
+        cyclic.type = config->type;
+        cyclic.ok = false;
+        cyclic.detail = "referencia circular: '" + config->name + "' y '" +
+                        config->reference + "' se referencian entre sí";
+        results.push_back(std::move(cyclic));
+    }
+
+    // De vuelta al orden de la lista del operador.
+    std::vector<ToolRunResult> ordered;
+    ordered.reserve(results.size());
     for (const auto& config : tools) {
         if (!config.enabled) {
             continue;
         }
-        auto result =
-            runTool(image, fixture, config, mmPerPixel, unit, imageToMm, board, scaleQuality);
-        if (result.isOk()) {
-            results.push_back(std::move(result.value()));
-        } else {
-            ToolRunResult failed;
-            failed.toolId = config.id;
-            failed.name = config.name;
-            failed.type = config.type;
-            failed.ok = false;
-            failed.detail = result.error().message;
-            results.push_back(std::move(failed));
+        for (auto& result : results) {
+            if (result.name == config.name && result.toolId == config.id) {
+                ordered.push_back(std::move(result));
+                break;
+            }
         }
     }
-    return results;
+    return ordered.size() == results.size() ? ordered : results;
 }
 
 std::string formatLength(double px, double mmPerPixel, LengthUnit unit) {

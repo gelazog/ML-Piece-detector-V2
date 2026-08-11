@@ -439,6 +439,35 @@ resultado con la medida, el veredicto y los puntos para dibujarla.
 | Rosca | Paso, Ø exterior, Ø de fondo y ángulo de flanco | Perfil axial a los dos lados + periodo por autocorrelación (el paso) + plegado síncrono por ese periodo y ajuste de recta a los flancos |
 | Engranaje | Dientes, Ø de cabeza y raíz, módulo, Ø primitivo, excentricidad | Perfil radial + periodo circular (los dientes) + ajuste de círculo a las puntas (la excentricidad) |
 
+### Referencias entre herramientas
+
+`tools/derived_element.h` y las dos pasadas de `runTools` son el mecanismo del
+que cuelgan las construcciones geométricas y todo el GD&T. Existe porque
+paralelismo, perpendicularidad, angularidad y posición verdadera **no son
+medidas absolutas**: son medidas respecto a una referencia declarada.
+
+- Una herramienta puede producir, además de su medida, un **elemento derivado**
+  (punto, recta o círculo) en **coordenadas de pieza**, para que la referencia
+  siga a la pieza igual que quien la usa. Las que ya existían lo llenan casi
+  gratis: la Regla ofrece su recta, el Círculo su circunferencia **ajustada**
+  (no la trazada: el centro que vale para un datum es el que sale del borde
+  real) y Posición su punto.
+- `ToolConfig::reference` es el **nombre** de otra herramienta, no su id: el
+  operador referencia lo que ve escrito en la lista, y una plantilla exportada
+  e importada en otra pieza cambia de ids pero conserva los nombres. Se
+  persiste dentro de `paramsJson` — esa columna existía sin usarse y es el sitio
+  previsto para parámetros por herramienta, así que **no hizo falta migrar**.
+- `runTools` ejecuta en **orden de dependencia** pero devuelve los resultados
+  **en el orden de la lista del operador**. Si se reordenaran, la tabla de
+  resultados bailaría cada vez que alguien añade una referencia.
+- **Una referencia que no está no se sustituye por nada.** Si no existe, está
+  desactivada o falló al medir, la herramienta **no mide** y lo dice. Nunca cae
+  a una referencia implícita: un GD&T medido contra otro datum del que cree el
+  operador es exactamente el fallo que este programa existe para evitar, porque
+  el número sale creíble y es falso.
+- Dos herramientas que se referencian en círculo **fallan diciéndolo** en vez
+  de colgar el análisis.
+
 **Ninguna herramienta muda.** Las cinco cadenas de `if constexpr` sobre la
 variante terminan ahora en `static_assert(alwaysFalse<T>)`, con un mensaje que
 dice qué se rompería: sin `referencePoints` el marco de selección no encuadra;
