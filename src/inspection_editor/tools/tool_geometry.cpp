@@ -9,13 +9,6 @@
 
 namespace pci::inspection {
 
-namespace {
-// Falso, pero dependiente del tipo: permite que un `static_assert` en la última
-// rama de un `if constexpr` solo salte cuando esa rama se instancia de verdad.
-template <typename T>
-inline constexpr bool alwaysFalse = false;
-}  // namespace
-
 const char* toolTypeName(ToolType type) {
     switch (type) {
         case ToolType::Caliper: return "caliper";

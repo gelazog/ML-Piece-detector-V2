@@ -145,8 +145,13 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
                         g.center + cv::Point2f(g.outerRadius, 0.0F),
                         g.center + cv::Point2f(0.0F, -g.outerRadius),
                         g.center + cv::Point2f(0.0F, g.outerRadius)};
-            } else {
+            } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
                 return {g.lineA, g.lineB, g.scanA, g.scanB};
+            } else {
+                static_assert(alwaysFalse<T>,
+                              "Falta el caso de esta geometría en referencePoints: sin "
+                              "puntos de referencia, el marco de selección múltiple no "
+                              "encuadra la herramienta.");
             }
         },
         geometry);
@@ -187,8 +192,12 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
                 // ajustar sin volver a trazar la herramienta.
                 return {g.center, g.center + cv::Point2f(g.innerRadius, 0.0F),
                         g.center + cv::Point2f(g.outerRadius, 0.0F)};
-            } else {  // PolyBlobGeometry
+            } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
                 return g.vertices;
+            } else {
+                static_assert(alwaysFalse<T>,
+                              "Falta el caso de esta geometría en handlePoints: sin "
+                              "manijas, la herramienta no se puede editar con el ratón.");
             }
         },
         geometry);
@@ -275,10 +284,14 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
                     g.outerRadius = std::max(g.innerRadius + 2.0F,
                                              static_cast<float>(cv::norm(q - g.center)));
                 }
-            } else {  // PolyBlobGeometry
+            } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
                 if (handle >= 0 && handle < static_cast<int>(g.vertices.size())) {
                     g.vertices[static_cast<std::size_t>(handle)] = q;
                 }
+            } else {
+                static_assert(alwaysFalse<T>,
+                              "Falta el caso de esta geometría en setHandlePoint: sus "
+                              "manijas se dibujarían pero no se moverían.");
             }
         },
         geometry);
@@ -357,6 +370,15 @@ double distanceToGeometry(const ToolGeometry& geometry, const vision::Fixture& f
                             d = std::min(cv::norm(p - s), cv::norm(p - e));
                         }
                     }
+                } else {
+                    // TRAMPA SILENCIOSA cerrada: esta cadena no tenía `else`.
+                    // Un tipo nuevo compilaba, dejaba `d` en 1e9 y la
+                    // herramienta salía dibujada pero imposible de seleccionar
+                    // con el ratón — sin que nada lo dijera.
+                    static_assert(alwaysFalse<T>,
+                                  "Falta el caso de esta geometría en distanceToGeometry: "
+                                  "la herramienta se dibujaría pero no se podría "
+                                  "seleccionar con un clic.");
                 }
             },
             geometry);

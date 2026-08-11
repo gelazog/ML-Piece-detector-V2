@@ -1161,6 +1161,50 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 }
                 painter.drawEllipse(w0, 3.0, 3.0);
                 painter.drawEllipse(w1, 3.0, 3.0);
+            } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
+                                 std::is_same_v<T, ThreadGeometry>) {
+                // El eje trazado y, a rayas, hasta dónde busca el borde a cada
+                // lado. Sin la banda, un "no encuentro bordes" no se entiende:
+                // el operador no ve que su alcance se queda corto.
+                const cv::Point2f from = toImg(g.axisFrom);
+                const cv::Point2f to = toImg(g.axisTo);
+                const QPointF a = imageToWidget(from);
+                const QPointF b = imageToWidget(to);
+                painter.drawLine(a, b);
+                painter.drawEllipse(a, 3.0, 3.0);
+                painter.drawEllipse(b, 3.0, 3.0);
+                const cv::Point2f delta = to - from;
+                const float length = static_cast<float>(cv::norm(delta));
+                if (length > 1.0F) {
+                    const cv::Point2f u = delta / length;
+                    const cv::Point2f n(-u.y * g.searchBand, u.x * g.searchBand);
+                    QPen dashed = painter.pen();
+                    dashed.setStyle(Qt::DashLine);
+                    dashed.setWidthF(1.0);
+                    painter.save();
+                    painter.setPen(dashed);
+                    painter.drawLine(imageToWidget(from + n), imageToWidget(to + n));
+                    painter.drawLine(imageToWidget(from - n), imageToWidget(to - n));
+                    painter.restore();
+                }
+                labelPos = (a + b) / 2.0;
+            } else if constexpr (std::is_same_v<T, GearGeometry>) {
+                // Los dos aros entre los que se buscan los dientes.
+                const QPointF c = imageToWidget(toImg(g.center));
+                const double scale = displayScale();
+                painter.drawEllipse(c, g.innerRadius * scale, g.innerRadius * scale);
+                painter.drawEllipse(c, g.outerRadius * scale, g.outerRadius * scale);
+                painter.drawLine(c + QPointF(-4, 0), c + QPointF(4, 0));
+                painter.drawLine(c + QPointF(0, -4), c + QPointF(0, 4));
+                labelPos = c + QPointF(0, -g.outerRadius * scale);
+            } else {
+                // TRAMPA SILENCIOSA cerrada: esta cadena tampoco tenía `else`.
+                // Eje, Rosca y Engranaje llevaban desde su entrega SIN rama de
+                // dibujo: solo se veían cuando ya habían medido, y antes de eso
+                // eran invisibles en el lienzo. Nada avisó.
+                static_assert(alwaysFalse<T>,
+                              "Falta el caso de esta geometría en paintTool: la "
+                              "herramienta sería invisible en el lienzo.");
             }
         },
         tool.geometry);

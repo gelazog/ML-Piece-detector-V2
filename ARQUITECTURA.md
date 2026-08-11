@@ -439,6 +439,31 @@ resultado con la medida, el veredicto y los puntos para dibujarla.
 | Rosca | Paso, Ø exterior, Ø de fondo y ángulo de flanco | Perfil axial a los dos lados + periodo por autocorrelación (el paso) + plegado síncrono por ese periodo y ajuste de recta a los flancos |
 | Engranaje | Dientes, Ø de cabeza y raíz, módulo, Ø primitivo, excentricidad | Perfil radial + periodo circular (los dientes) + ajuste de círculo a las puntas (la excentricidad) |
 
+**Ninguna herramienta muda.** Las cinco cadenas de `if constexpr` sobre la
+variante terminan ahora en `static_assert(alwaysFalse<T>)`, con un mensaje que
+dice qué se rompería: sin `referencePoints` el marco de selección no encuadra;
+sin `handlePoints` no se puede editar; sin `setHandlePoint` las manijas se
+dibujan pero no se mueven; sin `distanceToGeometry` no se puede seleccionar; sin
+`paintTool` la herramienta es invisible.
+
+**El inventario contaba de más y se comprobó.** Se añadió un tipo sonda a la
+variante y se miró qué dejaba de compilar. Resultado medido: `referencePoints`,
+`handlePoints` y `setHandlePoint` **ya** daban error (su `else` final usaba
+miembros que el tipo nuevo no tiene). Las trampas silenciosas eran **dos**, no
+cuatro: `distanceToGeometry`, cuya cadena no tenía `else` y dejaba la distancia
+en 1e9, y `paintTool`, que tampoco lo tenía.
+
+Y el experimento destapó un fallo ya entregado: **Eje, Rosca y Engranaje no
+tenían rama en `paintTool`** desde T2–T4. Se veían solo cuando ya habían medido
+—`paintResults` sí dibuja sus puntos— y antes de eso eran invisibles en el
+lienzo. Nada lo dijo en su momento. Ya tienen su dibujo: el eje con su banda de
+búsqueda a rayas, y el engranaje con los dos aros entre los que busca los
+dientes.
+
+Además del `static_assert`, que solo garantiza que la rama **exista**, un
+barrido renderiza cada herramienta sobre un lienzo vacío y exige que **pinte
+algo**. El compilador no puede comprobar eso.
+
 **La paleta** (`canvas/tool_palette.*`) construye los botones desde
 `toolsInCategory()` y la comparten las dos superficies, así que el orden, los
 iconos y las descripciones son los mismos en las dos. Tiene dos formas porque

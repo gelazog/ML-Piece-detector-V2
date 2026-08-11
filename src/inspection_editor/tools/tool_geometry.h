@@ -12,6 +12,13 @@
 
 namespace pci::inspection {
 
+// Falso, pero dependiente del tipo: permite cerrar una cadena de `if constexpr`
+// sobre la variante con un `static_assert` que solo salta cuando de verdad se
+// instancia esa rama. Es lo que convierte "se me olvidó tratar el tipo nuevo"
+// en un error de compilación con nombre, en vez de una herramienta muda.
+template <typename T>
+inline constexpr bool alwaysFalse = false;
+
 // Geometrías tipadas por herramienta, en coordenadas de PIEZA (píxeles).
 // Las distancias se conservan al pasar a coordenadas de imagen porque el
 // fixture es rotación + traslación pura (sin escala).

@@ -448,7 +448,11 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
   activa la herramienta correcta.
   Skills: `qt-ui-design`.
 
-- [ ] **R3 — Que olvidarse deje de compilar.** Los cuatro visitors de
+- [x] **R3 — Que olvidarse deje de compilar.** *(Se comprobó con un tipo sonda
+  en vez de dar por buena la cuenta del inventario: las trampas silenciosas
+  eran **dos** —`distanceToGeometry` y `paintTool`—, no cuatro. Y el
+  experimento destapó un fallo ya entregado: Eje, Rosca y Engranaje no tenían
+  rama de dibujo desde T2–T4.)* Los cuatro visitors de
   `canvas/canvas_geometry.cpp` y el `paintTool` de `canvas/editor_canvas.cpp`
   recorren la variante con cadenas de `if constexpr` **sin cierre**: una
   herramienta nueva que no se añada ahí compila y se queda muda.

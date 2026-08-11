@@ -34,6 +34,7 @@
 #include "inspection_editor/canvas/editor_canvas.h"
 #include "inspection_editor/canvas/tool_icons.h"
 #include "inspection_editor/canvas/tool_palette.h"
+#include "sample_geometries.h"
 
 using namespace pci::inspection;
 
@@ -676,4 +677,51 @@ TEST(ToolPaletteTest, ChoosingATooolAnnouncesItAndShowingDoesNot) {
     palette.activate(std::nullopt);
     EXPECT_EQ(announced, 2);
     EXPECT_FALSE(palette.currentTool().has_value());
+}
+
+// ---------------------------------------------------------------------------
+// Ninguna herramienta muda (R3)
+// ---------------------------------------------------------------------------
+
+TEST(ToolCoherence, EveryToolActuallyGetsPaintedOnTheCanvas) {
+    // Este barrido nació de un fallo real: Eje, Rosca y Engranaje llevaban
+    // desde su entrega SIN rama en `paintTool`. Se veían solo cuando ya habían
+    // medido; antes de eso eran invisibles, y nada lo dijo. Ahora la cadena
+    // termina en un `static_assert`, pero el barrido comprueba lo que el
+    // compilador no puede: que la rama de verdad pinte algo.
+    for (const ToolType type : allToolTypes()) {
+        EditorCanvas canvas;
+        canvas.resize(kWidgetWidth, kWidgetHeight);
+        QImage scene(kImageWidth, kImageHeight, QImage::Format_RGB888);
+        scene.fill(QColor(20, 20, 20));
+        canvas.setScene(scene, pci::vision::Fixture{});
+
+        QImage before(canvas.size(), QImage::Format_RGB888);
+        before.fill(Qt::black);
+        canvas.render(&before);
+
+        std::vector<EditedTool> tools(1);
+        tools[0].config.id = 1;
+        tools[0].config.type = type;
+        tools[0].geometry = pci::inspection::testing_support::sampleGeometry(type);
+        // La geometría de ejemplo está centrada en el origen; se lleva al medio
+        // del frame para que caiga dentro de la vista.
+        translateGeometry(tools[0].geometry, {kImageWidth / 2.0F, kImageHeight / 2.0F});
+        canvas.setTools(&tools);
+
+        QImage after(canvas.size(), QImage::Format_RGB888);
+        after.fill(Qt::black);
+        canvas.render(&after);
+
+        int changed = 0;
+        for (int y = 0; y < after.height(); ++y) {
+            for (int x = 0; x < after.width(); ++x) {
+                if (after.pixel(x, y) != before.pixel(x, y)) {
+                    ++changed;
+                }
+            }
+        }
+        std::printf("  %-16s %5d px pintados\n", toolTypeLabel(type), changed);
+        EXPECT_GT(changed, 30) << toolTypeLabel(type) << " no se dibuja en el lienzo";
+    }
 }
