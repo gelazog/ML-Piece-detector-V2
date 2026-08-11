@@ -2,6 +2,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include <chrono>
 #include <cmath>
 #include <vector>
 
@@ -9,6 +10,7 @@
 
 #include <array>
 
+#include "vision/auto_roi.h"
 #include "vision/board_frame.h"
 #include "vision/contour_analysis.h"
 #include "vision/fixture_stabilizer.h"
@@ -1218,4 +1220,182 @@ TEST(Sharpness, DegenerateInputsGiveZeroInsteadOfGarbage) {
     EXPECT_GE(sharpnessOf(image, cv::Rect(50, 50, 500, 500)), 0.0);
     // Y una imagen plana no tiene nada que enfocar.
     EXPECT_NEAR(sharpnessOf(image), 0.0, 1e-9);
+}
+
+// ---------------------------------------------------------------------------
+// Zona de trabajo automática (C3)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Escena con una pieza rectangular clara sobre fondo oscuro, en la posición que
+// se pida. Tamaño de frame realista para que el test de rendimiento signifique
+// algo.
+cv::Mat sceneWithPieceAt(cv::Point topLeft, cv::Size pieceSize,
+                         cv::Size frameSize = {1280, 720}) {
+    cv::Mat scene(frameSize, CV_8UC1, cv::Scalar(20));
+    cv::rectangle(scene, cv::Rect(topLeft, pieceSize), cv::Scalar(220), cv::FILLED);
+    return scene;
+}
+
+cv::Rect boundsOf(const PieceAnalysis& analysis) {
+    return cv::boundingRect(analysis.contour.points);
+}
+
+}  // namespace
+
+TEST(AutoRoi, FollowsAMovingPieceAndGivesTheSameFixtureAsTheWholeFrame) {
+    // Lo que hay que demostrar antes que nada: recortar NO cambia el resultado.
+    // Si el fixture saliera distinto, todas las herramientas se desplazarían.
+    AutoRoiTracker tracker;
+    const cv::Size piece(160, 120);
+
+    for (int step = 0; step < 12; ++step) {
+        const cv::Point at(120 + step * 40, 200 + step * 15);
+        const cv::Mat scene = sceneWithPieceAt(at, piece);
+
+        PipelineConfig cropped;
+        cropped.roi = tracker.roi();
+        const auto withRoi = analyzeFrame(scene, cropped);
+        const auto whole = analyzeFrame(scene, PipelineConfig{});
+        ASSERT_TRUE(whole.isOk()) << "paso " << step;
+        ASSERT_TRUE(withRoi.isOk())
+            << "paso " << step << ": el recorte perdió la pieza — " << withRoi.error().message;
+
+        // El fixture es lo que coloca las herramientas: tiene que coincidir.
+        EXPECT_NEAR(withRoi.value().fixture.origin.x, whole.value().fixture.origin.x, 0.5)
+            << "paso " << step;
+        EXPECT_NEAR(withRoi.value().fixture.origin.y, whole.value().fixture.origin.y, 0.5)
+            << "paso " << step;
+
+        // Y el recorte que se usó contenía de verdad a la pieza.
+        if (cropped.roi.area() > 0) {
+            EXPECT_EQ(cropped.roi & boundsOf(whole.value()), boundsOf(whole.value()))
+                << "paso " << step << ": el recorte cortaba la pieza";
+        }
+        tracker.update(true, boundsOf(withRoi.value()), scene.size());
+    }
+    EXPECT_TRUE(tracker.tracking()) << "tras doce frames buenos deberia estar siguiendo";
+}
+
+TEST(AutoRoi, GivesUpQuicklyWhenThePieceDisappears) {
+    AutoRoiTracker tracker;
+    const cv::Size frame(1280, 720);
+    tracker.update(true, cv::Rect(400, 300, 160, 120), frame);
+    ASSERT_TRUE(tracker.tracking());
+
+    // Un parpadeo suelto no tira el seguimiento.
+    tracker.update(false, cv::Rect(), frame);
+    EXPECT_TRUE(tracker.tracking()) << "un frame malo no puede tirar el seguimiento";
+
+    // Pero desaparecer de verdad si.
+    for (int i = 0; i < 3; ++i) {
+        tracker.update(false, cv::Rect(), frame);
+    }
+    EXPECT_FALSE(tracker.tracking());
+    EXPECT_EQ(tracker.lastGiveUp(), AutoRoiGiveUp::PieceLost);
+    EXPECT_STRNE(giveUpReason(tracker.lastGiveUp()), "");
+}
+
+TEST(AutoRoi, GivesUpWhenThePieceReachesTheEdgeOfTheCrop) {
+    // Una pieza tocando el borde del recorte puede estar ya cortada: lo que se
+    // mida de ella no vale, y perseguirla arrastraria el error.
+    AutoRoiTracker tracker;
+    const cv::Size frame(1280, 720);
+    tracker.update(true, cv::Rect(400, 300, 160, 120), frame);
+    const cv::Rect roi = tracker.roi();
+    ASSERT_GT(roi.area(), 0);
+
+    tracker.update(true, cv::Rect(roi.x, roi.y, 160, 120), frame);
+    EXPECT_FALSE(tracker.tracking());
+    EXPECT_EQ(tracker.lastGiveUp(), AutoRoiGiveUp::PieceEscaping);
+}
+
+TEST(AutoRoi, GivesUpWhenSomeoneSwapsThePiece) {
+    AutoRoiTracker tracker;
+    const cv::Size frame(1280, 720);
+    tracker.update(true, cv::Rect(400, 300, 160, 120), frame);
+    ASSERT_TRUE(tracker.tracking());
+    // Mas del doble de area, y DENTRO del recorte anterior: si sobresaliera,
+    // saltaria antes la guarda de "se esta saliendo" y este test no probaria
+    // lo que dice probar. Ese orden es deliberado — ver el comentario de
+    // AutoRoiTracker::update.
+    tracker.update(true, cv::Rect(360, 270, 240, 180), frame);
+    EXPECT_FALSE(tracker.tracking());
+    EXPECT_EQ(tracker.lastGiveUp(), AutoRoiGiveUp::AreaJumped);
+}
+
+TEST(AutoRoi, DoesNotCropWhenThereIsNothingToGain) {
+    const cv::Size frame(1280, 720);
+    AutoRoiTracker tracker;
+    // Pieza diminuta: el recorte seria mas pequeno que el minimo util.
+    tracker.update(true, cv::Rect(600, 350, 10, 10), frame);
+    EXPECT_FALSE(tracker.tracking()) << "recortar 10 px no ahorra nada y si puede fallar";
+
+    // Pieza casi tan grande como el frame: recortar no ahorra y anade riesgo.
+    AutoRoiTracker big;
+    big.update(true, cv::Rect(20, 20, 1240, 680), frame);
+    EXPECT_FALSE(big.tracking());
+
+    // Y un frame degenerado no revienta.
+    AutoRoiTracker degenerate;
+    degenerate.update(true, cv::Rect(0, 0, 10, 10), cv::Size(0, 0));
+    EXPECT_FALSE(degenerate.tracking());
+}
+
+TEST(AutoRoi, TheCropGrowsAtOnceAndShrinksSlowly) {
+    // Crecer tarde recortaria a la pieza; encoger de golpe haria latir el
+    // rectangulo con el ruido de la segmentacion.
+    AutoRoiTracker tracker;
+    const cv::Size frame(1280, 720);
+    tracker.update(true, cv::Rect(500, 300, 200, 150), frame);
+    const cv::Rect wide = tracker.roi();
+
+    // La pieza encoge POCO, como encoge el ruido de la segmentacion de un
+    // frame a otro. Un encogimiento grande seria otra cosa (otra pieza) y la
+    // guarda de area lo trataria como tal.
+    tracker.update(true, cv::Rect(510, 308, 180, 135), frame);
+    EXPECT_GT(tracker.roi().area(), 0);
+    EXPECT_LT(tracker.roi().area(), wide.area()) << "algo tiene que encoger";
+    EXPECT_GT(tracker.roi().area(), wide.area() / 2) << "pero no de golpe";
+}
+
+TEST(AutoRoi, CroppingIsAtLeastTwiceAsFastOnASmallPiece) {
+    // La razon de ser del item. Se mide RELATIVO y en el mismo proceso: en
+    // milisegundos absolutos dependeria de la maquina y el test se convertiria
+    // en un generador de fallos intermitentes.
+    const cv::Mat scene = sceneWithPieceAt({520, 280}, {180, 140}, {1280, 720});
+    AutoRoiTracker tracker;
+    const auto first = analyzeFrame(scene, PipelineConfig{});
+    ASSERT_TRUE(first.isOk());
+    tracker.update(true, boundsOf(first.value()), scene.size());
+    ASSERT_TRUE(tracker.tracking());
+
+    PipelineConfig cropped;
+    cropped.roi = tracker.roi();
+    constexpr int kRuns = 40;
+
+    // Una pasada de calentamiento de cada una: la primera paga cachés y
+    // reservas que no tienen nada que ver con el tamaño del recorte.
+    (void)analyzeFrame(scene, PipelineConfig{});
+    (void)analyzeFrame(scene, cropped);
+
+    const auto time = [&](const PipelineConfig& config) {
+        const auto start = std::chrono::steady_clock::now();
+        for (int i = 0; i < kRuns; ++i) {
+            (void)analyzeFrame(scene, config);
+        }
+        return std::chrono::duration<double, std::milli>(
+                   std::chrono::steady_clock::now() - start)
+                   .count() /
+               kRuns;
+    };
+    const double wholeMs = time(PipelineConfig{});
+    const double croppedMs = time(cropped);
+    const double fraction = static_cast<double>(cropped.roi.area()) /
+                            (scene.cols * static_cast<double>(scene.rows));
+    std::printf("  frame entero %.2f ms  |  recorte %.2f ms (%.1f %% del area)  -> %.1fx\n",
+                wholeMs, croppedMs, 100.0 * fraction, wholeMs / croppedMs);
+    EXPECT_LT(croppedMs * 2.0, wholeMs)
+        << "el recorte tiene que ir al menos el doble de rapido";
 }

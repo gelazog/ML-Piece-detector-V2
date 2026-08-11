@@ -41,8 +41,8 @@ TEST(ConfigureDialog, EveryTabHasANameAndSomethingInside) {
     auto* tabs = dialog.findChild<QTabWidget*>();
     ASSERT_NE(tabs, nullptr);
 
-    // Cámara e imagen, Detección, Escala, Preferencias, Atajos.
-    EXPECT_EQ(tabs->count(), 5);
+    // Cámara e imagen, Detección, Rendimiento, Escala, Preferencias, Atajos.
+    EXPECT_EQ(tabs->count(), 6);
     for (int i = 0; i < tabs->count(); ++i) {
         EXPECT_FALSE(tabs->tabText(i).isEmpty()) << "pestaña " << i << " sin nombre";
         auto* page = tabs->widget(i);
@@ -145,7 +145,7 @@ TEST(ConfigureDialog, TheWizardTabsAskForTheirAssistant) {
 
     auto* tabs = dialog.findChild<QTabWidget*>();
     ASSERT_NE(tabs, nullptr);
-    for (const int index : {2, 4}) {
+    for (const int index : {3, 5}) {
         auto* button = tabs->widget(index)->findChild<QPushButton*>();
         ASSERT_NE(button, nullptr) << "la pestaña " << index << " no abre nada";
         button->click();

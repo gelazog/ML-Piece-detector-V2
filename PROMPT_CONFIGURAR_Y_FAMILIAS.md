@@ -251,7 +251,10 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
   claramente mayor que la del frame entero — ese test es el que justifica el
   ROI.
 
-- [ ] **C3 — Zoom de trabajo automático (el ROI que sigue a la pieza).** Es el
+- [x] **C3 — Zoom de trabajo automático (el ROI que sigue a la pieza).**
+  *(Medido: 6× más rápido con la pieza al 7,9 % del área, y el fixture coincide
+  con el del frame completo dentro de ±0,5 px. La pestaña «Rendimiento» nace
+  aquí, como se anotó en `C1`.)* Es el
   "zoom automático para que el programa trabaje menos". Hoy cada frame se
   segmenta entero aunque la pieza ocupe un 6 %.
   **No hace falta mecanismo nuevo**: `PipelineConfig::roi` ya recorta y

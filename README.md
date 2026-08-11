@@ -96,6 +96,21 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    frames y las medidas bailan. Los valores que toques se guardan y se
    reaplican la próxima vez que inicies la cámara.
 
+   **Zona de trabajo** (pestaña *Rendimiento* de *Configurar*): dónde busca el
+   programa la pieza en cada imagen. Si la pieza ocupa una esquina, mirar la
+   imagen entera es tirar el resto del trabajo — medido sobre 1280×720 con una
+   pieza de 180×140, recortar va **6 veces más rápido**. Tres opciones:
+   **imagen entera** (nunca recorta), **zona automática** (recomendado: un
+   recorte que sigue a la pieza) y **zona de detección fija** (el rectángulo que
+   dibujaste a mano). La zona activa se **dibuja sobre el vídeo**: tienes que
+   poder ver por dónde está mirando el programa.
+
+   La zona automática **se rinde y vuelve a la imagen entera** en cuanto duda —
+   si pierde la pieza, si la pieza toca el borde del recorte o si cambia de
+   tamaño de golpe — y dice cuál de las tres cosas pasó. Un recorte que se
+   equivoca es peor que no tenerlo: mediría con confianza dentro de un
+   rectángulo donde ya no hay nada.
+
    **Orientación**: por defecto la pieza se muestra **vertical** (tal como la
    ve la cámara) — más estable y sin la inclinación arbitraria que daba el eje
    principal. Si tus piezas llegan giradas y quieres que las herramientas las

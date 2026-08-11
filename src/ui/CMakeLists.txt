@@ -7,6 +7,7 @@ add_library(pci_ui STATIC
   inspection_result_dialog.cpp
   main_window.cpp
   measurement_mode_dialog.cpp
+  performance_page.cpp
   piece_manager_dialog.cpp
   preferences_page.cpp
   registration_wizard.cpp

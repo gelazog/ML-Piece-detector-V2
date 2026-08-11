@@ -128,6 +128,46 @@ monotonía solo mientras la medida signifique algo, y por separado que el
 desenfoque fuerte deje el valor cien veces por debajo. Afirmar monotonía en la
 cola sería afirmar sobre ruido.
 
+### La zona de trabajo automática
+
+`vision/auto_roi.*` decide en qué rectángulo buscar la pieza en el próximo
+frame. **No hizo falta mecanismo nuevo**: `PipelineConfig::roi` ya recortaba y
+`analyzeFrame` ya devolvía las coordenadas en el marco completo; lo que faltaba
+era quién calcula ese rectángulo y lo mueve con la pieza.
+
+Lo primero que hubo que demostrar es que **recortar no cambia el resultado**: si
+el fixture saliera distinto, todas las herramientas se desplazarían. El test
+recorre una secuencia de doce frames con la pieza moviéndose y compara el
+fixture del recorte con el del frame completo — coinciden dentro de **±0,5 px**,
+y el recorte contiene a la pieza en todos ellos.
+
+La ganancia, medida en el mismo proceso: sobre 1280×720 con una pieza de
+180×140, el recorte ocupa el **7,9 %** del área y el análisis pasa de ~13 ms a
+~2 ms, **6×**. El test exige solo 2× porque el margen sobra y afinar el umbral
+lo convertiría en un generador de fallos intermitentes; y compara **relativo**,
+nunca milisegundos absolutos, que dependen de la máquina.
+
+Cuatro decisiones de diseño:
+
+- **Ante la duda, la imagen entera.** El seguimiento se rinde si pierde la
+  pieza varios frames, si la pieza toca el borde del recorte o si su área salta
+  de golpe. Volver cuesta un frame; medir dentro de un rectángulo equivocado no
+  se nota, y esa es exactamente la forma de fallar que hay que evitar.
+- **El orden de las comprobaciones importa.** "Se está saliendo" se mira antes
+  que "saltó el área", porque una pieza que se sale acaba recortada y al
+  recortarse su área cae: salirse es la causa y el salto el síntoma. Al revés,
+  el motivo que se le enseñaría al operador sería el equivocado.
+- **Crecer es inmediato, encoger es lento.** El recorte se une siempre con el
+  objetivo (así nunca corta a la pieza) y solo se encoge interpolando. Sin eso,
+  el rectángulo late al ritmo del ruido de la segmentación.
+- **No recorta cuando no hay nada que ganar**: ni piezas diminutas (el ahorro no
+  compensa el riesgo) ni piezas que ocupan casi todo el frame.
+
+La zona automática **no pisa la zona manual** del operador: `pipelineConfig_.roi`
+sigue guardando la que él dibujó y el modo (`Off` / `Automatic` / `Fixed`)
+decide cuál se usa. Y la zona activa se dibuja sobre el vídeo, porque un recorte
+invisible convierte cualquier fallo en un misterio.
+
 ### El panel «Configurar»: un solo sitio
 
 `ui/configure_dialog.*` es un `QTabWidget` que aloja las páginas de ajuste.

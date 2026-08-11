@@ -1,4 +1,5 @@
 add_library(pci_vision STATIC
+  auto_roi.cpp
   board_frame.cpp
   contour_analysis.cpp
   fitting.cpp

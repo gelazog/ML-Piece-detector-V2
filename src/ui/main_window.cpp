@@ -55,6 +55,9 @@
 #include "vision/plane_scale.h"
 #include <opencv2/imgproc.hpp>
 
+#include "ui/performance_page.h"
+
+#include "vision/auto_roi.h"
 #include "vision/position_fixture.h"
 #include "vision/quality_metrics.h"
 
@@ -594,6 +597,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         // ignora un índice que no exista, que es lo que pasará si una versión
         // futura tiene menos pestañas que la que guardó el número.
         configureTab_ = std::max(0, repos_.settings->getInt("config_last_tab", 0).value());
+        zoneMode_ = vision::workingZoneModeFromKey(
+            repos_.settings->getString("work_zone_mode", "off").value().c_str());
     }
     autoTimer_.setInterval(autoIntervalMs_);
     if (repos_.engine != nullptr) {
@@ -937,10 +942,42 @@ void MainWindow::persistPipelineConfig() {
 
 void MainWindow::updateRoiButton() {
     const bool hasRoi = pipelineConfig_.roi.area() > 0;
-    video_->setDetectionRegion(hasRoi, pipelineConfig_.roi);
+    updateWorkingZoneOverlay();
     QSignalBlocker blocker(roiButton_);
     roiButton_->setChecked(false);
     roiButton_->setText(hasRoi ? tr("Quitar zona") : tr("Zona de detección"));
+}
+
+cv::Rect MainWindow::effectiveWorkingZone() const {
+    switch (zoneMode_) {
+        case vision::WorkingZoneMode::Off: return {};
+        case vision::WorkingZoneMode::Automatic: return autoRoi_.roi();
+        case vision::WorkingZoneMode::Fixed: return pipelineConfig_.roi;
+    }
+    return {};
+}
+
+void MainWindow::setWorkingZoneMode(vision::WorkingZoneMode mode) {
+    if (mode == zoneMode_) {
+        return;
+    }
+    zoneMode_ = mode;
+    // Al cambiar de modo se olvida lo seguido hasta ahora: reanudar con un
+    // recorte viejo mediría dentro de una ventana que ya no corresponde.
+    autoRoi_.reset();
+    if (repos_.settings != nullptr) {
+        repos_.settings->setString("work_zone_mode",
+                                   vision::workingZoneModeKey(mode));
+    }
+    updateWorkingZoneOverlay();
+}
+
+// La zona que se está procesando, dibujada sobre el vídeo. Sin esto, el
+// operador no tiene forma de saber por dónde está mirando el programa cuando
+// algo falla.
+void MainWindow::updateWorkingZoneOverlay() {
+    const cv::Rect zone = effectiveWorkingZone();
+    video_->setDetectionRegion(zone.area() > 0, zone);
 }
 
 // Vuelca la página de detección del panel Configurar en la configuración viva.
@@ -1387,6 +1424,26 @@ void MainWindow::onFrame(const QImage& frame) {
 
 void MainWindow::onAnalysisFinished() {
     const AnalysisOverlay overlay = analysisWatcher_.result();
+    // Zona de trabajo automática (C3): el seguimiento se alimenta SIEMPRE, esté
+    // o no abierto el panel, porque es lo que decide el recorte del próximo
+    // frame. Si el modo no es automático, el tracker se mantiene en reposo.
+    if (zoneMode_ == vision::WorkingZoneMode::Automatic) {
+        const QRectF bounds = overlay.contour.boundingRect();
+        autoRoi_.update(overlay.valid && !overlay.contour.isEmpty(),
+                        cv::Rect(static_cast<int>(bounds.x()), static_cast<int>(bounds.y()),
+                                 static_cast<int>(bounds.width()),
+                                 static_cast<int>(bounds.height())),
+                        cv::Size(overlay.frameSize.width(), overlay.frameSize.height()));
+    }
+    if (configureDialog_ != nullptr) {
+        if (auto* page = configureDialog_->performancePage(); page != nullptr) {
+            page->setZoneStatus(effectiveWorkingZone(),
+                                cv::Size(overlay.frameSize.width(),
+                                         overlay.frameSize.height()),
+                                autoRoi_.lastGiveUp());
+        }
+    }
+
     // Asistente de enfoque (C2): solo se alimenta si el panel está abierto por
     // esa pestaña; medir para nadie sería trabajo tirado.
     if (configureDialog_ != nullptr) {
@@ -1474,9 +1531,13 @@ void MainWindow::maybeStartAnalysis() {
 
     const bool freeze = !showContourAction_->isChecked();
     const double markerMm = arucoLiveScale_ ? markerSizeMm_ : 0.0;
+    // La zona con la que se analiza sale del modo elegido; `pipelineConfig_.roi`
+    // sigue guardando la zona que dibujó el operador y no se toca.
+    vision::PipelineConfig working = pipelineConfig_;
+    working.roi = effectiveWorkingZone();
     analysisWatcher_.setFuture(QtConcurrent::run(
         [frame, anchor, offset = currentOrientationOffset_, configs = std::move(configs),
-         pipeline = pipelineConfig_, previous = liveFixture_,
+         pipeline = working, previous = liveFixture_,
          mm = calibration_.mmPerPixel, unit = currentUnit(), freeze, markerMm,
          board = boardConfig_] {
             return buildOverlay(frame, anchor, offset, configs, pipeline, previous, mm, unit,
@@ -2454,6 +2515,8 @@ void MainWindow::onConfigureClicked() {
     inputs.currentResolution = currentResolution_;
     inputs.autoIntervalMs = autoIntervalMs_;
     inputs.kSigma = kSigma_;
+    inputs.zoneMode = zoneMode_;
+    inputs.hasFixedZone = pipelineConfig_.roi.area() > 0;
     inputs.settings = repos_.settings;
 
     auto* dialog = new ConfigureDialog(std::move(inputs), this);
@@ -2462,6 +2525,12 @@ void MainWindow::onConfigureClicked() {
     dialog->setCurrentTab(configureTab_);
 
     wireCameraPage(dialog->cameraPage());
+    // El modo de zona se aplica AL MOMENTO y no al pulsar Aplicar: es un
+    // conmutador, no un formulario, y su efecto se ve en el vídeo.
+    if (auto* performance = dialog->performancePage(); performance != nullptr) {
+        connect(performance, &PerformancePage::modeChanged, this,
+                &MainWindow::setWorkingZoneMode);
+    }
     connect(dialog, &ConfigureDialog::applied, this, [this, dialog] {
         applyDetectionPage(dialog->detectionPage());
         applyPreferencesPage(dialog->preferencesPage());

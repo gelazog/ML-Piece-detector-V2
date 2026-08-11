@@ -18,6 +18,7 @@
 #include "engine/registration_session.h"
 #include "inspection_editor/canvas/editor_canvas.h"
 #include "ui/analysis_overlay.h"
+#include "vision/auto_roi.h"
 #include "ui/app_repositories.h"
 #include "repositories/piece_repository.h"
 #include "vision/board_frame.h"
@@ -40,6 +41,7 @@ namespace pci::ui {
 class CameraImagePage;
 class ConfigureDialog;
 class DetectionPage;
+class PerformancePage;
 class PreferencesPage;
 
 // Ventana principal: video en vivo sobre el que se dibujan las herramientas
@@ -145,6 +147,12 @@ private:
     // Páginas del panel Configurar (C1). Las de formulario se vuelcan al pulsar
     // Aplicar; la de cámara aplica sola y aquí solo se persiste lo que deja.
     void applyDetectionPage(DetectionPage* page);
+    // Zona de trabajo (C3): elige con qué recorte se analiza el próximo frame.
+    // El recorte automático NO pisa la zona manual del operador: son dos
+    // cosas distintas y el modo decide cuál manda.
+    [[nodiscard]] cv::Rect effectiveWorkingZone() const;
+    void setWorkingZoneMode(pci::vision::WorkingZoneMode mode);
+    void updateWorkingZoneOverlay();
     void applyPreferencesPage(PreferencesPage* page);
     void wireCameraPage(CameraImagePage* page);
     void updateRoiButton();
@@ -177,6 +185,9 @@ private:
     // Panel Configurar abierto (no modal, uno solo) y su última pestaña.
     ConfigureDialog* configureDialog_ = nullptr;
     int configureTab_ = 0;
+    // Zona de trabajo automática (C3).
+    vision::WorkingZoneMode zoneMode_ = vision::WorkingZoneMode::Off;
+    vision::AutoRoiTracker autoRoi_;
     QAction* registerWizardAction_ = nullptr;
     QAction* managePiecesAction_ = nullptr;
     QAction* editorAction_ = nullptr;

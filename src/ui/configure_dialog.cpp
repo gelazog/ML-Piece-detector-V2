@@ -10,6 +10,7 @@
 
 #include "ui/camera_image_page.h"
 #include "ui/detection_page.h"
+#include "ui/performance_page.h"
 #include "ui/preferences_page.h"
 
 namespace pci::ui {
@@ -67,6 +68,10 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
     detection_ = new DetectionPage(inputs.segmentation, this, inputs.profiles,
                                    inputs.detectionProfileId);
     tabs_->addTab(detection_, tr("Detección"));
+
+    // --- Rendimiento ---
+    performance_ = new PerformancePage(inputs.zoneMode, inputs.hasFixedZone, this);
+    tabs_->addTab(performance_, tr("Rendimiento"));
 
     // --- Escala (asistente) ---
     QPushButton* scaleButton = nullptr;
