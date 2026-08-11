@@ -3486,7 +3486,7 @@ void MainWindow::onOpenEditorClicked() {
     inspection::EditorWindow editor(reference, analysis.value().fixture, pieceId,
                                     pieceId >= 0 ? repos_.tools : nullptr, calibration_,
                                     activeTemplate(), this, &liveTools_,
-                                    live ? &controller_ : nullptr);
+                                    live ? &controller_ : nullptr, pipelineConfig_);
     editor.exec();
 
     // Devolver las herramientas editadas a la vista en vivo (ida y vuelta), en

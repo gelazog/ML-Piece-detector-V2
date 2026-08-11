@@ -1742,3 +1742,70 @@ TEST(MultiPiece, CountingManyPiecesIsNotAbsurdlySlower) {
     EXPECT_LT(sixMs, oneMs * 3.0)
         << "seis piezas no pueden costar como seis analisis completos";
 }
+
+// ---------------------------------------------------------------------------
+// Los ajustes de detección del operador tienen que llegar (C7)
+// ---------------------------------------------------------------------------
+
+TEST(DetectionSettings, TheManualThresholdChangesWhichBlobIsThePiece) {
+    // Escena preparada para que el UMBRAL decida, y de forma determinista: un
+    // fondo oscuro, una pieza grande gris medio y una pequena muy clara.
+    //   - Con Otsu, el corte cae bajo y las dos son pieza: gana la grande.
+    //   - Con umbral manual 180, solo la clara pasa: gana la pequena.
+    //
+    // Se probo antes con la polaridad sobre una escena de tres niveles y se
+    // descarto: con un histograma trimodal, donde cae Otsu no es predecible y
+    // el test medía la suerte, no la configuracion.
+    //
+    // Este test existe por un fallo real: el editor de plantilla llamaba a
+    // analyzeFrame SIN configuracion, asi que detectaba con Otsu diera igual lo
+    // que el operador tuviera puesto. Lo que se dibujaba encima y lo que luego
+    // se inspeccionaba podian no ser la misma pieza.
+    cv::Mat scene(720, 1280, CV_8UC1, cv::Scalar(20));
+    const cv::Rect big(120, 200, 420, 320);
+    const cv::Rect brightSmall(800, 260, 240, 200);
+    cv::rectangle(scene, big, cv::Scalar(120), cv::FILLED);
+    cv::rectangle(scene, brightSmall, cv::Scalar(240), cv::FILLED);
+
+    const auto byDefault = analyzeFrame(scene, PipelineConfig{});
+    ASSERT_TRUE(byDefault.isOk()) << byDefault.error().message;
+
+    PipelineConfig manual;
+    manual.segmentation.manualThreshold = 180;
+    const auto forced = analyzeFrame(scene, manual);
+    ASSERT_TRUE(forced.isOk()) << forced.error().message;
+
+    const cv::Rect defaultBox = cv::boundingRect(byDefault.value().contour.points);
+    const cv::Rect forcedBox = cv::boundingRect(forced.value().contour.points);
+    std::printf("  Otsu -> %dx%d en (%d,%d)  |  umbral 180 -> %dx%d en (%d,%d)\n",
+                defaultBox.width, defaultBox.height, defaultBox.x, defaultBox.y,
+                forcedBox.width, forcedBox.height, forcedBox.x, forcedBox.y);
+
+    // La configuracion CAMBIA que pieza se detecta: si el editor la ignora,
+    // se dibuja sobre una y se inspecciona la otra.
+    EXPECT_NE(defaultBox, forcedBox)
+        << "si el umbral no cambiara nada, este test no probaria nada";
+    EXPECT_NEAR(defaultBox.width, big.width, 6);
+    EXPECT_NEAR(forcedBox.width, brightSmall.width, 6);
+    EXPECT_NEAR(forcedBox.height, brightSmall.height, 6);
+}
+
+TEST(DetectionSettings, TheDetectionZoneAlsoDecides) {
+    // El otro ajuste que el editor se saltaba: la zona de deteccion. Con dos
+    // piezas, la zona elige cual es "la pieza".
+    cv::Mat scene(720, 1280, CV_8UC1, cv::Scalar(20));
+    cv::rectangle(scene, cv::Rect(100, 200, 300, 260), cv::Scalar(220), cv::FILLED);
+    cv::rectangle(scene, cv::Rect(800, 200, 260, 220), cv::Scalar(220), cv::FILLED);
+
+    const auto whole = analyzeFrame(scene, PipelineConfig{});
+    ASSERT_TRUE(whole.isOk());
+
+    PipelineConfig zoned;
+    zoned.roi = cv::Rect(700, 100, 500, 500);
+    const auto zonedResult = analyzeFrame(scene, zoned);
+    ASSERT_TRUE(zonedResult.isOk());
+
+    EXPECT_LT(whole.value().fixture.origin.x, 500.0F) << "sin zona gana la mayor";
+    EXPECT_GT(zonedResult.value().fixture.origin.x, 700.0F)
+        << "con zona gana la que cae dentro";
+}

@@ -285,6 +285,24 @@ alguna vez hiciera falta más, ahí sí volvería a tener sentido mirar la escal
 trabajo: sobre el total de hoy valdría ~1,33× en vez del 1,10× que se midió
 antes. Sigue sin justificar un modo nuevo en la interfaz.
 
+### El editor mide con lo que el operador puso
+
+Fallo real encontrado en el inventario: `EditorWindow` llamaba a
+`vision::analyzeFrame(image)` **sin `PipelineConfig`** en sus tres puntos de
+análisis. El editor detectaba con Otsu, polaridad automática y sin zona, diera
+igual lo que el operador tuviera configurado — así que **lo que se dibujaba
+encima y lo que luego se inspeccionaba podían no ser la misma pieza**.
+
+La configuración se pasa ahora en el constructor. El test lo fija con una escena
+donde el ajuste **decide**: fondo oscuro, una pieza grande gris medio y una
+pequeña muy clara. Con Otsu gana la grande (420×320); con umbral manual 180 gana
+la clara (238×198). Si el editor volviera a ignorar la configuración, el test lo
+diría.
+
+Se intentó primero con la **polaridad** sobre una escena de tres niveles y se
+descartó: con un histograma trimodal, dónde cae Otsu no es predecible y el test
+medía la suerte en vez de la configuración.
+
 ### El panel «Configurar»: un solo sitio
 
 `ui/configure_dialog.*` es un `QTabWidget` que aloja las páginas de ajuste.

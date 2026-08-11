@@ -367,7 +367,9 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
   Verificación: bandeja sintética de 3 piezas iguales salvo una fuera de
   tolerancia → 3 juegos de resultados, veredicto NG, historial con las tres.
 
-- [ ] **C7 — El editor de plantilla usa los ajustes del operador.** Fallo real:
+- [x] **C7 — El editor de plantilla usa los ajustes del operador.** *(El test
+  se hizo con el umbral manual y no con la polaridad: sobre un histograma
+  trimodal, dónde cae Otsu no es predecible y el test medía la suerte.)* Fallo real:
   `editor_window.cpp:472`, `:713` y `:735` llaman `analyzeFrame(image)` **sin
   `PipelineConfig`**, así que el editor detecta con Otsu, polaridad automática
   y sin zona, dé igual lo que el operador tenga puesto. Lo que se dibuja y lo

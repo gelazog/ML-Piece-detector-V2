@@ -10,6 +10,7 @@
 #include "domain/calibration.h"
 #include "inspection_editor/canvas/editor_canvas.h"
 #include "inspection_editor/tools/undo_stack.h"
+#include "vision/pipeline.h"
 #include "vision/types.h"
 
 class QButtonGroup;
@@ -50,7 +51,8 @@ public:
                  domain::ScaleCalibration calibration = {},
                  const std::string& templateName = "principal", QWidget* parent = nullptr,
                  const std::vector<EditedTool>* initialTools = nullptr,
-                 camera::CameraController* liveController = nullptr);
+                 camera::CameraController* liveController = nullptr,
+                 vision::PipelineConfig pipeline = {});
 
     // Herramientas resultantes tras editar (sin las borradas, con su JSON al
     // día), para devolverlas a la vista en vivo. Y si se guardó a la BD.
@@ -118,6 +120,11 @@ private:
     domain::ScaleCalibration calibration_;
     std::string templateName_ = "principal";
     camera::CameraController* liveController_ = nullptr;
+    // Ajustes de detección del operador (C7). Sin esto, el editor detectaba
+    // con Otsu, polaridad automática y sin zona, diera igual lo que hubiera
+    // puesto: lo que se dibuja encima y lo que luego se inspecciona podían no
+    // ser la misma pieza.
+    vision::PipelineConfig pipeline_;
     QImage latestLiveFrame_;  // último frame recibido de la cámara en marcha
 
     vision::ContourReport contour_;  // contorno descrito de la imagen actual (A4)

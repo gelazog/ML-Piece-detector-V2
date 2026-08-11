@@ -50,10 +50,11 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
                            domain::ScaleCalibration calibration,
                            const std::string& templateName, QWidget* parent,
                            const std::vector<EditedTool>* initialTools,
-                           camera::CameraController* liveController)
+                           camera::CameraController* liveController,
+                           vision::PipelineConfig pipeline)
     : QDialog(parent), reference_(reference), fixture_(fixture), pieceId_(pieceId),
       repo_(repo), calibration_(calibration), templateName_(templateName),
-      liveController_(liveController) {
+      liveController_(liveController), pipeline_(std::move(pipeline)) {
     setWindowTitle(tr("Editor de plantilla '%1'")
                        .arg(QString::fromStdString(templateName)));
     resize(1100, 700);
@@ -469,7 +470,7 @@ void EditorWindow::syncPanelFromSelection() {
 
 void EditorWindow::onAutoMeasureClicked() {
     const cv::Mat image = camera::qImageToMat(reference_);
-    const auto analysis = vision::analyzeFrame(image);
+    const auto analysis = vision::analyzeFrame(image, pipeline_);
     if (!analysis.isOk()) {
         statusLabel_->setText(tr("No se puede medir sola: no se detecta la pieza (%1)")
                                   .arg(QString::fromStdString(analysis.error().message)));
@@ -710,7 +711,7 @@ void EditorWindow::onRefreshFromCamera() {
         return;
     }
     const QImage frame = latestLiveFrame_;
-    const auto analysis = vision::analyzeFrame(camera::qImageToMat(frame));
+    const auto analysis = vision::analyzeFrame(camera::qImageToMat(frame), pipeline_);
     if (!analysis.isOk()) {
         statusLabel_->setText(tr("No se pudo detectar la pieza en la imagen nueva: %1")
                                   .arg(QString::fromStdString(analysis.error().message)));
@@ -732,7 +733,8 @@ bool EditorWindow::ensureContourReport() {
     if (contour_.valid) {
         return true;
     }
-    const auto analysis = vision::analyzeFrame(camera::qImageToMat(reference_));
+    const auto analysis =
+        vision::analyzeFrame(camera::qImageToMat(reference_), pipeline_);
     if (!analysis.isOk()) {
         statusLabel_->setText(tr("No se ve el contorno: no se detecta la pieza (%1)")
                                   .arg(QString::fromStdString(analysis.error().message)));
