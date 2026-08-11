@@ -69,8 +69,8 @@ core::Result<std::int64_t> InspectionRepository::saveInspection(
                 continue;
             }
             auto stmt = db_.prepare(
-                "INSERT INTO ToolResults (inspection_id, tool_id, ok, measured, detail) "
-                "VALUES (?, ?, ?, ?, ?);");
+                "INSERT INTO ToolResults (inspection_id, tool_id, ok, measured, detail, "
+                "piece_index) VALUES (?, ?, ?, ?, ?, ?);");
             if (!stmt.isOk()) {
                 return core::Result<void>::err(stmt.error().message);
             }
@@ -80,6 +80,7 @@ core::Result<std::int64_t> InspectionRepository::saveInspection(
             if (auto b = s.bindInt(3, tool.ok ? 1 : 0); !b.isOk()) return b;
             if (auto b = s.bindDouble(4, tool.measured); !b.isOk()) return b;
             if (auto b = s.bindText(5, tool.detail); !b.isOk()) return b;
+            if (auto b = s.bindInt(6, tool.pieceIndex); !b.isOk()) return b;
             if (auto step = s.step(); !step.isOk()) {
                 return core::Result<void>::err(step.error().message);
             }

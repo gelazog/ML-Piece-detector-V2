@@ -123,6 +123,15 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    no con la máquina: "seis tornillos en bandeja" es una propiedad del trabajo.
    Con 0 se desactiva la comprobación.
 
+   Y no solo se cuentan: **se miden todas con la misma plantilla**. Las
+   herramientas viven en coordenadas de pieza, así que medir la segunda barra
+   de la bandeja es aplicarle la misma plantilla desde su propio centro. El
+   veredicto de la bandeja es **el de la peor pieza**, y el motivo del NG dice
+   **en cuál mirar** ("ancho (pieza 3) fuera de tolerancia") — sin eso habría
+   que ir pieza por pieza a mano. En el vídeo se dibujan las marcas de todas
+   pero **los números de una sola**: treinta etiquetas encima de seis piezas no
+   se leen.
+
    **Orientación**: por defecto la pieza se muestra **vertical** (tal como la
    ve la cámara) — más estable y sin la inclinación arbitraria que daba el eje
    principal. Si tus piezas llegan giradas y quieres que las herramientas las

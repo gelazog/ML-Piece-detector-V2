@@ -165,6 +165,14 @@ void EditorCanvas::setAnchorMarker(bool visible, const cv::Point2f& piecePoint) 
     update();
 }
 
+void EditorCanvas::setFocusedPiece(int pieceIndex) {
+    if (focusedPiece_ == pieceIndex) {
+        return;
+    }
+    focusedPiece_ = pieceIndex;
+    update();
+}
+
 void EditorCanvas::setResults(const std::vector<ToolRunResult>& results) {
     results_ = results;
     update();
@@ -1243,6 +1251,13 @@ void EditorCanvas::paintResults(QPainter& painter) const {
         } else if (!result.overlaySegments.empty()) {
             labelPos = imageToWidget(result.overlaySegments.front()[0]);
         } else {
+            continue;
+        }
+
+        // Las marcas de todas las piezas se ven; el texto solo de la enfocada.
+        // Con seis piezas y cinco herramientas serían treinta etiquetas encima
+        // del vídeo, y eso no se lee: se tapa la pieza y no se entiende nada.
+        if (focusedPiece_ >= 0 && result.pieceIndex != focusedPiece_) {
             continue;
         }
 

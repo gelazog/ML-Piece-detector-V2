@@ -109,6 +109,30 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
         }
     }
 
+    // 1b. Piezas adicionales (C5/C6). Se buscan una sola vez y sirven para las
+    //     dos cosas: contar y medir. La pieza 0 sigue siendo `outcome.analysis`
+    //     —la que ya lleva aplicado el rasgo distintivo y el giro—, así que
+    //     inspeccionar de una en una da exactamente lo mismo que antes.
+    int expectedPieces = 1;
+    if (auto measurement = pieces_.loadMeasurement(pieceId); measurement.isOk()) {
+        expectedPieces = measurement.value().expectedPieces;
+    }
+    std::vector<vision::Fixture> extraFixtures;
+    if (expectedPieces > 1) {
+        if (auto all = vision::analyzeFrames(frameBgr, options_.pipeline); all.isOk()) {
+            outcome.piecesFound = static_cast<int>(all.value().size());
+            for (std::size_t i = 1; i < all.value().size(); ++i) {
+                extraFixtures.push_back(all.value()[i].fixture);
+            }
+        } else {
+            outcome.piecesFound = 0;
+        }
+    }
+    outcome.pieceFixtures.push_back(outcome.analysis.fixture);
+    for (const auto& fixture : extraFixtures) {
+        outcome.pieceFixtures.push_back(fixture);
+    }
+
     // 2. Herramientas geométricas sobre la imagen original (sin warp).
     std::vector<inspection::ToolConfig> toolConfigs;
     if (auto listed = tools_.listForPiece(pieceId, options_.templateName); listed.isOk()) {
@@ -128,25 +152,42 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
         inspection::runTools(frameBgr, outcome.analysis.fixture, toolConfigs,
                              options_.mmPerPixel, options_.unit, cv::Mat(), &board);
 
+    // Las demás piezas se miden con LA MISMA plantilla. Sale casi gratis porque
+    // las herramientas viven en coordenadas de pieza: cambiar de pieza es
+    // cambiar de fixture y volver a ejecutar, sin tocar ni una herramienta.
+    for (std::size_t i = 0; i < extraFixtures.size(); ++i) {
+        const vision::BoardFrame pieceBoard = vision::resolveBoardFrame(
+            options_.board, extraFixtures[i], true,
+            cv::Size(frameBgr.cols, frameBgr.rows));
+        auto results =
+            inspection::runTools(frameBgr, extraFixtures[i], toolConfigs,
+                                 options_.mmPerPixel, options_.unit, cv::Mat(), &pieceBoard);
+        for (auto& result : results) {
+            result.pieceIndex = static_cast<int>(i) + 1;
+            outcome.toolResults.push_back(std::move(result));
+        }
+    }
+
     std::vector<domain::ToolCheck> toolChecks;
     toolChecks.reserve(outcome.toolResults.size());
     for (const auto& result : outcome.toolResults) {
-        toolChecks.push_back({result.name, result.ok, result.measured, result.detail});
+        // Con varias piezas, el nombre lleva de cuál es. Sin eso, un NG diría
+        // "Ø agujero fuera de tolerancia" y habría que adivinar en qué tornillo
+        // de la bandeja mirar.
+        const std::string name =
+            result.pieceIndex > 0
+                ? result.name + " (pieza " + std::to_string(result.pieceIndex + 1) + ")"
+                : result.name;
+        toolChecks.push_back({name, result.ok, result.measured, result.detail});
     }
 
     // 2b. Recuento de piezas (C5). Solo se cuenta si la pieza lo pide: buscar
     //     todas las piezas del frame cuesta, y quien inspecciona de una en una
     //     no tiene por qué pagarlo. `expectedPieces <= 1` es el caso de
     //     siempre y ni siquiera entra aquí.
-    domain::CountCheck countCheck;
-    if (auto measurement = pieces_.loadMeasurement(pieceId);
-        measurement.isOk() && measurement.value().expectedPieces > 1) {
-        const auto all = vision::analyzeFrames(frameBgr, options_.pipeline);
-        outcome.piecesFound = all.isOk() ? static_cast<int>(all.value().size()) : 0;
-        countCheck =
-            domain::evaluatePieceCount(measurement.value().expectedPieces,
-                                       outcome.piecesFound);
-    }
+    const domain::CountCheck countCheck =
+        expectedPieces > 1 ? domain::evaluatePieceCount(expectedPieces, outcome.piecesFound)
+                           : domain::CountCheck{};
 
     // 3. Reglas del modo Especial (M4): centrado y giro respecto al tablero.
     //    Solo se evalúan si la pieza está en modo Especial y con tolerancias

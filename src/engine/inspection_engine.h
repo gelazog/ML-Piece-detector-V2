@@ -55,10 +55,12 @@ public:
         std::vector<float> embedding;     // para "actualizar referencia"
         vision::PieceAnalysis analysis;   // para overlay
         std::vector<inspection::ToolRunResult> toolResults;
-        // Piezas encontradas en el frame (C5). La medida es siempre sobre la
-        // mayor —`analysis`—; esto es el recuento, que se compara con lo que la
-        // pieza tenga declarado.
+        // Piezas encontradas en el frame (C5/C6). `analysis` es siempre la
+        // mayor; si se esperan varias, `toolResults` trae las medidas de todas,
+        // cada una con su `pieceIndex`, y `pieceFixtures` sus fixtures para
+        // poder dibujarlas.
         int piecesFound = 1;
+        std::vector<vision::Fixture> pieceFixtures;
     };
 
     // Síncrono (inferencia incluida): llamar desde un hilo de trabajo.

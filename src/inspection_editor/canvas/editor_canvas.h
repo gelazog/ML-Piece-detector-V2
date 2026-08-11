@@ -44,6 +44,11 @@ public:
     void setTools(std::vector<EditedTool>* tools);
     void setCreateType(std::optional<ToolType> type);
     void setResults(const std::vector<ToolRunResult>& results);
+    // Con varias piezas medidas (C6), cuál de ellas enseña sus cotas. -1 = solo
+    // la principal. Catorce etiquetas por seis piezas es ruido, no información:
+    // se dibujan las marcas de todas pero los números de una sola.
+    void setFocusedPiece(int pieceIndex);
+    [[nodiscard]] int focusedPiece() const { return focusedPiece_; }
     void clearResults();
     void setSelectedIndex(int index);
     [[nodiscard]] int selectedIndex() const { return selected_; }
@@ -211,6 +216,7 @@ private:
     vision::Fixture fixture_;
     std::vector<EditedTool>* tools_ = nullptr;
     std::vector<ToolRunResult> results_;
+    int focusedPiece_ = 0;
     std::optional<ToolType> createType_;
     int selected_ = -1;
     std::vector<int> multiSelected_;

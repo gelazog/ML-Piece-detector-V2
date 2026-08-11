@@ -2,12 +2,14 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <memory>
 #include <string>
 
 #include "database/db.h"
 #include "database/schema.h"
+#include "database/statement.h"
 #include "domain/verdict.h"
 #include "engine/inspection_engine.h"
 #include "engine/registration_session.h"
@@ -479,4 +481,162 @@ TEST_F(EngineTest, RepeatedIncrementalLearningKeepsTheReferenceUsable) {
     const auto stored = pieces_->loadLatestReference(pieceId);
     ASSERT_TRUE(stored.isOk());
     EXPECT_GT(stored.value().reference.sampleCount, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Medir varias piezas con la misma plantilla (C6)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Bandeja de tres barras iguales salvo la del medio, mas estrecha: al medirlas
+// con la misma plantilla, esa tiene que ser la unica que salga fuera.
+cv::Mat trayOfBars(int narrowIndex, int narrowWidth) {
+    cv::Mat scene(720, 1280, CV_8UC1, cv::Scalar(20));
+    for (int i = 0; i < 3; ++i) {
+        const int width = (i == narrowIndex) ? narrowWidth : 200;
+        // Separadas de sobra; alturas distintas para que el orden por area sea
+        // el mismo en todas las ejecuciones y no dependa de findContours.
+        cv::rectangle(scene, cv::Rect(80 + i * 400, 250, width, 200 - i * 10),
+                      cv::Scalar(220), cv::FILLED);
+    }
+    return scene;
+}
+
+}  // namespace
+
+TEST_F(EngineTest, MeasuresEveryPieceWithTheSameTemplate) {
+    auto& pieces = *pieces_;
+    auto& tools = *tools_;
+    auto& history = *history_;
+    auto pieceId = pieces.createPiece("bandeja");
+    ASSERT_TRUE(pieceId.isOk());
+    auto measurement = pieces.loadMeasurement(pieceId.value());
+    ASSERT_TRUE(measurement.isOk());
+    measurement.value().expectedPieces = 3;
+    ASSERT_TRUE(pieces.saveMeasurement(pieceId.value(), measurement.value()).isOk());
+
+    // Una regla que cruza la barra a lo ancho, en coordenadas de pieza: el
+    // centro de la barra es el origen, asi que va de -120 a +120 en x.
+    inspection::ToolConfig caliper;
+    caliper.type = inspection::ToolType::Caliper;
+    caliper.name = "ancho";
+    caliper.geometryJson = inspection::toJson(inspection::ToolGeometry(
+        inspection::CaliperGeometry{{-160.0F, 0.0F}, {160.0F, 0.0F}, 20.0F}));
+    caliper.toleranceMin = 180.0;
+    caliper.toleranceMax = 220.0;
+    ASSERT_TRUE(tools.save(pieceId.value(), caliper, "principal").isOk());
+
+    // Motor propio sin autoOrient: las barras son simetricas y su eje
+    // principal podria voltear entre ejecuciones, que no es lo que se prueba.
+    engine::InspectionEngine engine(nullptr, pieces, tools, history);
+    cv::Mat scene;
+    cv::cvtColor(trayOfBars(1, 120), scene, cv::COLOR_GRAY2BGR);
+    auto outcome = engine.inspect(scene, pieceId.value());
+    ASSERT_TRUE(outcome.isOk()) << outcome.error().message;
+
+    EXPECT_EQ(outcome.value().piecesFound, 3);
+    EXPECT_EQ(outcome.value().pieceFixtures.size(), 3U);
+    // Tres piezas x una herramienta = tres medidas, cada una con su indice.
+    ASSERT_EQ(outcome.value().toolResults.size(), 3U);
+    std::vector<int> indices;
+    for (const auto& result : outcome.value().toolResults) {
+        indices.push_back(result.pieceIndex);
+        std::printf("  pieza %d: %s -> %.1f (%s)\n", result.pieceIndex, result.name.c_str(),
+                    result.measured, result.ok ? "OK" : "NG");
+    }
+    std::sort(indices.begin(), indices.end());
+    EXPECT_EQ(indices, (std::vector<int>{0, 1, 2}));
+
+    // La bandeja entera es NG porque una barra lo es: el veredicto es el peor.
+    EXPECT_FALSE(outcome.value().verdict.ok);
+    int failed = 0;
+    for (const auto& tool : outcome.value().verdict.tools) {
+        if (!tool.ok) {
+            ++failed;
+            // El nombre dice EN QUE PIEZA mirar: sin eso habria que ir barra
+            // por barra a mano, que es justo el trabajo que esto ahorra.
+            EXPECT_NE(tool.name.find("pieza"), std::string::npos) << tool.name;
+        }
+    }
+    EXPECT_EQ(failed, 1) << "solo una de las tres barras esta fuera";
+}
+
+TEST_F(EngineTest, WithOnePieceExpectedNothingChanges) {
+    // El caso de siempre no puede haberse movido: una sola pieza, una sola
+    // medida, sin indices ni nombres decorados.
+    auto& pieces = *pieces_;
+    auto& tools = *tools_;
+    auto& history = *history_;
+    auto pieceId = pieces.createPiece("suelta");
+    ASSERT_TRUE(pieceId.isOk());
+
+    inspection::ToolConfig caliper;
+    caliper.type = inspection::ToolType::Caliper;
+    caliper.name = "ancho";
+    caliper.geometryJson = inspection::toJson(inspection::ToolGeometry(
+        inspection::CaliperGeometry{{-160.0F, 0.0F}, {160.0F, 0.0F}, 20.0F}));
+    caliper.toleranceMin = 180.0;
+    caliper.toleranceMax = 220.0;
+    ASSERT_TRUE(tools.save(pieceId.value(), caliper, "principal").isOk());
+
+    // Motor propio sin autoOrient: las barras son simetricas y su eje
+    // principal podria voltear entre ejecuciones, que no es lo que se prueba.
+    engine::InspectionEngine engine(nullptr, pieces, tools, history);
+    cv::Mat scene;
+    cv::cvtColor(trayOfBars(-1, 200), scene, cv::COLOR_GRAY2BGR);
+    auto outcome = engine.inspect(scene, pieceId.value());
+    ASSERT_TRUE(outcome.isOk());
+
+    ASSERT_EQ(outcome.value().toolResults.size(), 1U) << "sin declararlo, una sola pieza";
+    EXPECT_EQ(outcome.value().toolResults.front().pieceIndex, 0);
+    EXPECT_EQ(outcome.value().verdict.tools.front().name, "ancho")
+        << "sin varias piezas, el nombre no se decora";
+    EXPECT_FALSE(outcome.value().verdict.count.evaluated);
+}
+
+TEST_F(EngineTest, TheHistoryRemembersWhichPieceEachMeasurementCameFrom) {
+    auto& pieces = *pieces_;
+    auto& tools = *tools_;
+    auto& history = *history_;
+    auto pieceId = pieces.createPiece("bandeja");
+    ASSERT_TRUE(pieceId.isOk());
+    auto measurement = pieces.loadMeasurement(pieceId.value());
+    ASSERT_TRUE(measurement.isOk());
+    measurement.value().expectedPieces = 3;
+    ASSERT_TRUE(pieces.saveMeasurement(pieceId.value(), measurement.value()).isOk());
+
+    inspection::ToolConfig caliper;
+    caliper.type = inspection::ToolType::Caliper;
+    caliper.name = "ancho";
+    caliper.geometryJson = inspection::toJson(inspection::ToolGeometry(
+        inspection::CaliperGeometry{{-160.0F, 0.0F}, {160.0F, 0.0F}, 20.0F}));
+    caliper.toleranceMin = 0.0;
+    caliper.toleranceMax = 1e9;
+    ASSERT_TRUE(tools.save(pieceId.value(), caliper, "principal").isOk());
+
+    // Motor propio sin autoOrient: las barras son simetricas y su eje
+    // principal podria voltear entre ejecuciones, que no es lo que se prueba.
+    engine::InspectionEngine engine(nullptr, pieces, tools, history);
+    cv::Mat scene;
+    cv::cvtColor(trayOfBars(-1, 200), scene, cv::COLOR_GRAY2BGR);
+    auto outcome = engine.inspect(scene, pieceId.value());
+    ASSERT_TRUE(outcome.isOk());
+    ASSERT_GE(outcome.value().historyId, 0) << outcome.value().persistError;
+
+    // Las tres medidas quedan guardadas, cada una con su indice de pieza.
+    auto stmt = db_->prepare(
+        "SELECT piece_index FROM ToolResults WHERE inspection_id = ? ORDER BY piece_index;");
+    ASSERT_TRUE(stmt.isOk());
+    ASSERT_TRUE(stmt.value().bindInt(1, outcome.value().historyId).isOk());
+    std::vector<int> stored;
+    while (true) {
+        auto row = stmt.value().step();
+        ASSERT_TRUE(row.isOk());
+        if (!row.value()) {
+            break;
+        }
+        stored.push_back(stmt.value().columnInt(0));
+    }
+    EXPECT_EQ(stored, (std::vector<int>{0, 1, 2}));
 }

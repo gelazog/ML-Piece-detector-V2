@@ -157,6 +157,31 @@ los ajustes de la máquina, porque "seis tornillos en bandeja" es una propiedad
 del trabajo. Al cambiar de pieza se recupera el suyo y no se arrastra el
 anterior.
 
+**Medir las N piezas sale casi gratis**, y esa es la recompensa de haber puesto
+las herramientas en coordenadas de pieza desde la fase 2: medir la segunda barra
+de la bandeja es `runTools` con **otro fixture**, sin tocar ni una herramienta.
+Lo que hubo que decidir es todo lo demás:
+
+- **La pieza 0 sigue siendo la de siempre.** Es `outcome.analysis`, con su rasgo
+  distintivo y su giro ya aplicados; las demás salen de `analyzeFrames`, que ya
+  se llamó para contar. Así, inspeccionar de una en una da exactamente el mismo
+  resultado que antes, y no se analiza dos veces.
+- **El veredicto es el de la peor pieza**, y el nombre de cada medida dice de
+  cuál es ("ancho (pieza 3)"). Un NG que dijera solo "ancho fuera de tolerancia"
+  obligaría a ir barra por barra, que es el trabajo que esto ahorra.
+- **`ToolRunResult` lleva su `pieceIndex`.** Viaja en el propio resultado y no
+  en una lista paralela, así la cadena entera —motor, historial, lienzo— sabe a
+  quién pertenece cada medida sin llevar la cuenta aparte. El historial lo
+  guarda en `ToolResults.piece_index` (migración v10); `0` es la pieza
+  principal, así que lo ya guardado se lee igual.
+- **En el vídeo se pintan las marcas de todas y los números de una.** Seis
+  piezas por cinco herramientas son treinta etiquetas encima de la imagen: eso
+  no se lee, se tapa la pieza.
+
+Limitación anotada: el **rasgo distintivo** solo se aplica a la pieza principal.
+Es un punto concreto de *una* pieza y no significa nada en las demás; con
+`autoOrient` activo, las piezas 2..N usan su propio eje principal.
+
 ### La zona de trabajo automática
 
 `vision/auto_roi.*` decide en qué rectángulo buscar la pieza en el próximo

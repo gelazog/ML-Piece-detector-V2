@@ -26,6 +26,11 @@ struct ToolRunResult {
     double measured = 0.0;  // valor principal (px, conteo o grados)
     bool measuredIsAngle = false;  // true = 'measured' está en grados
     std::string detail;
+    // De qué pieza del frame es esta medida (C6). 0 = la pieza principal, que
+    // es el único caso cuando se inspecciona de una en una. Viaja en el propio
+    // resultado para que la cadena entera —motor, historial, interfaz— sepa a
+    // quién pertenece sin tener que llevar la cuenta por separado.
+    int pieceIndex = 0;
     // Para pintar sobre la imagen inspeccionada (coordenadas de imagen).
     std::vector<cv::Point2f> overlayPoints;
     std::vector<std::array<cv::Point2f, 2>> overlaySegments;

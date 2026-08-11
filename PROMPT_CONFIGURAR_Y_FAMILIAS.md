@@ -349,7 +349,11 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
   no cuenta; el veredicto por recuento salta cuando falta una y **no** salta
   cuando están todas; migración v8→v9 probada sobre una BD con piezas.
 
-- [ ] **C6 — Medir las N piezas con la misma plantilla.** *(El más caro de `C`;
+- [x] **C6 — Medir las N piezas con la misma plantilla.** *(Salió más barato de
+  lo previsto: las herramientas ya viven en coordenadas de pieza, así que medir
+  la siguiente es cambiar de fixture. Migración v10 para el índice de pieza en
+  el historial, verificada sobre la BD real. Limitación anotada: el rasgo
+  distintivo solo se aplica a la pieza principal.)* *(El más caro de `C`;
   puede quedarse fuera sin dejar `C5` cojo.)* Hoy
   `InspectionEngine::Outcome` es de **una** pieza.
   A favor: como las herramientas viven en **coordenadas de pieza**, medir la
