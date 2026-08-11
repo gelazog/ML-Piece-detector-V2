@@ -401,7 +401,9 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
 
 ### R — Registro y paleta (andamio: antes de cualquier herramienta nueva)
 
-- [ ] **R1 — Familias como dato, no como orden de los botones.** Nuevo
+- [x] **R1 — Familias como dato, no como orden de los botones.** *(Reparto
+  final 3 / 7 / 0 / 1 / 3 = 14, con un barrido que exige que las familias sean
+  una partición exacta de `allToolTypes()`.)* Nuevo
   `enum class ToolCategory { BasicShape, InLine, Construction, Gdt,
   TurnedAndExtremes }` junto a `ToolType`, con `categoryOf(ToolType)`,
   `categoryLabel`, `categoryDescription` y `toolsInCategory(category)`.

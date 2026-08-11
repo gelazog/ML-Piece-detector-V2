@@ -2450,3 +2450,61 @@ TEST(ToolCoherence, EveryToolSuggestsABandThatAcceptsTheGoodPiece) {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Familias de herramientas (R1)
+// ---------------------------------------------------------------------------
+
+TEST(ToolCoherence, TheFamiliesPartitionEveryToolWithoutGapsOrRepeats) {
+    // Las familias son una PARTICIÓN: cada herramienta en una y solo una. Si
+    // faltara alguna quedaría escondida en la paleta, y si estuviera en dos
+    // aparecería duplicada.
+    std::vector<ToolType> gathered;
+    for (const ToolCategory category : allToolCategories()) {
+        const auto tools = toolsInCategory(category);
+        std::printf("  %-24s %zu herramienta(s)\n", categoryLabel(category), tools.size());
+        for (const ToolType type : tools) {
+            EXPECT_EQ(categoryOf(type), category) << toolTypeLabel(type);
+            gathered.push_back(type);
+        }
+    }
+
+    auto expected = std::vector<ToolType>(allToolTypes().begin(), allToolTypes().end());
+    std::sort(gathered.begin(), gathered.end());
+    std::sort(expected.begin(), expected.end());
+    EXPECT_EQ(gathered, expected)
+        << "las familias tienen que reconstruir exactamente allToolTypes()";
+    EXPECT_EQ(std::adjacent_find(gathered.begin(), gathered.end()), gathered.end())
+        << "una herramienta no puede estar en dos familias";
+}
+
+TEST(ToolCoherence, EveryFamilyHasANameAndAnExplanation) {
+    std::vector<std::string> labels;
+    for (const ToolCategory category : allToolCategories()) {
+        const std::string label = categoryLabel(category);
+        const std::string description = categoryDescription(category);
+        EXPECT_FALSE(label.empty());
+        EXPECT_NE(label, "?") << "familia sin nombre";
+        // La descripción es lo que le dice al operador qué esperar de la
+        // familia; una de una línea no orienta a nadie.
+        EXPECT_GT(description.size(), 60U) << label << ": descripción demasiado corta";
+        labels.push_back(label);
+    }
+    std::sort(labels.begin(), labels.end());
+    EXPECT_EQ(std::adjacent_find(labels.begin(), labels.end()), labels.end())
+        << "dos familias con el mismo nombre serían indistinguibles";
+}
+
+TEST(ToolCoherence, ConstructionsAreEmptyOnPurposeAndTheRestAreNot) {
+    // «Construcciones» nace vacía y se llena en X. No es un hueco por simetría:
+    // sin construcciones no se puede declarar un datum, y sin datum no hay
+    // GD&T. Cuando X entre, este test lo dirá y habrá que actualizarlo.
+    EXPECT_TRUE(toolsInCategory(ToolCategory::Construction).empty())
+        << "si ya hay construcciones, actualiza este test y el plan";
+    for (const ToolCategory category : allToolCategories()) {
+        if (category == ToolCategory::Construction) {
+            continue;
+        }
+        EXPECT_FALSE(toolsInCategory(category).empty()) << categoryLabel(category);
+    }
+}

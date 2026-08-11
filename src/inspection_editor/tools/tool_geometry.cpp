@@ -54,6 +54,85 @@ core::Result<ToolType> toolTypeFromName(const std::string& name) {
     return core::Result<ToolType>::err("Tipo de herramienta desconocido: '" + name + "'");
 }
 
+const std::array<ToolCategory, 5>& allToolCategories() {
+    static const std::array<ToolCategory, 5> kCategories{
+        ToolCategory::BasicShape, ToolCategory::InLine, ToolCategory::Construction,
+        ToolCategory::Gdt, ToolCategory::TurnedAndExtremes};
+    return kCategories;
+}
+
+ToolCategory categoryOf(ToolType type) {
+    switch (type) {
+        // Forma y región: lo que describe la silueta o cuenta lo que hay dentro.
+        case ToolType::Blob:
+        case ToolType::PolyBlob:
+        case ToolType::EdgeFlaw:
+            return ToolCategory::BasicShape;
+        // La cota directa, que es lo que se pide en un plano.
+        case ToolType::Caliper:
+        case ToolType::Circle:
+        case ToolType::PointToLine:
+        case ToolType::Ruler:
+        case ToolType::LineToLine:
+        case ToolType::Angle:
+        case ToolType::Arc:
+            return ToolCategory::InLine;
+        // Posición es una tolerancia geométrica: mide contra una referencia.
+        case ToolType::Position:
+            return ToolCategory::Gdt;
+        case ToolType::Shaft:
+        case ToolType::Thread:
+        case ToolType::Gear:
+            return ToolCategory::TurnedAndExtremes;
+    }
+    return ToolCategory::InLine;
+}
+
+const char* categoryLabel(ToolCategory category) {
+    switch (category) {
+        case ToolCategory::BasicShape: return "Figuras básicas";
+        case ToolCategory::InLine: return "Medición en línea";
+        case ToolCategory::Construction: return "Construcciones";
+        case ToolCategory::Gdt: return "GD&T";
+        case ToolCategory::TurnedAndExtremes: return "Máx./mín. y torneadas";
+    }
+    return "?";
+}
+
+const char* categoryDescription(ToolCategory category) {
+    switch (category) {
+        case ToolCategory::BasicShape:
+            return "Figuras básicas — qué forma tiene la pieza y qué hay dentro:\n"
+                   "área, perímetro, simetría, lados, manchas y defectos del borde.";
+        case ToolCategory::InLine:
+            return "Medición en línea — la cota directa, la que aparece en un plano:\n"
+                   "distancias, diámetros, radios y ángulos.";
+        case ToolCategory::Construction:
+            return "Construcciones — puntos y rectas derivados de otras herramientas\n"
+                   "(punto medio, intersección, bisectriz, eje medio). No miden por sí\n"
+                   "solas: existen para servir de referencia a las de GD&T.";
+        case ToolCategory::Gdt:
+            return "GD&T — tolerancias geométricas medidas contra una referencia\n"
+                   "declarada: rectitud, redondez, paralelismo, posición verdadera.\n"
+                   "Sobre una silueta 2D hay cotas que no se pueden dar, y se dice.";
+        case ToolCategory::TurnedAndExtremes:
+            return "Máximos, mínimos y piezas torneadas — la medida más grande y la\n"
+                   "más pequeña en cualquier dirección, y lo propio del torno:\n"
+                   "diámetros, chaflanes, roscas y engranajes.";
+    }
+    return "";
+}
+
+std::vector<ToolType> toolsInCategory(ToolCategory category) {
+    std::vector<ToolType> tools;
+    for (const ToolType type : allToolTypes()) {
+        if (categoryOf(type) == category) {
+            tools.push_back(type);
+        }
+    }
+    return tools;
+}
+
 const char* toolTypeLabel(ToolType type) {
     switch (type) {
         case ToolType::Caliper: return "Caliper";

@@ -439,6 +439,23 @@ resultado con la medida, el veredicto y los puntos para dibujarla.
 | Rosca | Paso, Ø exterior, Ø de fondo y ángulo de flanco | Perfil axial a los dos lados + periodo por autocorrelación (el paso) + plegado síncrono por ese periodo y ajuste de recta a los flancos |
 | Engranaje | Dientes, Ø de cabeza y raíz, módulo, Ø primitivo, excentricidad | Perfil radial + periodo circular (los dientes) + ajuste de círculo a las puntas (la excentricidad) |
 
+**Familias de herramientas** (`ToolCategory`). Cinco: *Figuras básicas* (3),
+*Medición en línea* (7), *Construcciones* (0 por ahora), *GD&T* (1) y *Máximos,
+mínimos y torneadas* (3). Son un **dato**, no el orden en que se pintan los
+botones, y viven junto a `allToolTypes()` por la misma razón: con la agrupación
+escrita en cada superficie de interfaz, la fila de la vista en vivo y la columna
+del editor acabarían agrupando distinto.
+
+Un barrido exige que las familias sean una **partición**: cada herramienta en
+una y solo una, y las cinco juntas reconstruyen exactamente `allToolTypes()`.
+Una herramienta que faltara quedaría escondida en la paleta; una repetida
+aparecería dos veces.
+
+*Construcciones* nace vacía **a propósito** y se llena en `X`. No es un hueco
+por simetría con Cognex: sin construcciones no se puede declarar un datum, y sin
+datum no hay GD&T. Hay un test que lo afirma y que avisará cuando deje de ser
+cierto.
+
 **Una sola lista de herramientas** (`allToolTypes()`). El repaso de coherencia
 encontró que las cuatro herramientas de pieza torneada estaban en el editor de
 plantilla y **no** en la fila "Dibujar" de la vista en vivo: existían, se

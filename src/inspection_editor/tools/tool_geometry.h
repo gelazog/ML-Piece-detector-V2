@@ -155,6 +155,30 @@ ToolType typeOf(const ToolGeometry& geometry);
 // todas partes; las pruebas de coherencia recorren esta misma lista.
 [[nodiscard]] const std::array<ToolType, 14>& allToolTypes();
 
+// Familias de herramientas. Son un DATO, no el orden en que se pintan los
+// botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que
+// esa lista existe — una sola fuente de verdad, o las dos superficies de
+// interfaz (la fila de la vista en vivo y la columna del editor) acabarían
+// agrupando distinto.
+//
+// «Construcciones geométricas» nace vacía y se llena en `X`. No es un hueco por
+// simetría: sin construcciones no se puede declarar un datum, y sin datum no
+// hay GD&T.
+enum class ToolCategory {
+    BasicShape,         // forma, región, presencia y conteo
+    InLine,             // la cota directa: distancias, diámetros, ángulos
+    Construction,       // elementos derivados que otras herramientas referencian
+    Gdt,                // tolerancias geométricas, siempre contra un datum
+    TurnedAndExtremes,  // máximos y mínimos, y piezas de torno
+};
+
+[[nodiscard]] const std::array<ToolCategory, 5>& allToolCategories();
+[[nodiscard]] ToolCategory categoryOf(ToolType type);
+[[nodiscard]] const char* categoryLabel(ToolCategory category);
+[[nodiscard]] const char* categoryDescription(ToolCategory category);
+// Las herramientas de una familia, en el orden de `allToolTypes()`.
+[[nodiscard]] std::vector<ToolType> toolsInCategory(ToolCategory category);
+
 // Traslada in situ todos los puntos de la geometría (coords de pieza). Útil
 // para mover o duplicar una herramienta con un pequeño desplazamiento.
 void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta);
