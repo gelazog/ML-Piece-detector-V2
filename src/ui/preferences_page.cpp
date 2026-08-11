@@ -1,6 +1,5 @@
-#include "ui/preferences_dialog.h"
+#include "ui/preferences_page.h"
 
-#include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QLabel>
@@ -9,10 +8,8 @@
 
 namespace pci::ui {
 
-PreferencesDialog::PreferencesDialog(int autoIntervalMs, double kSigma, QWidget* parent)
-    : QDialog(parent) {
-    setWindowTitle(tr("Preferencias"));
-
+PreferencesPage::PreferencesPage(int autoIntervalMs, double kSigma, QWidget* parent)
+    : QWidget(parent) {
     auto* root = new QVBoxLayout(this);
     auto* form = new QFormLayout();
 
@@ -43,17 +40,14 @@ PreferencesDialog::PreferencesDialog(int autoIntervalMs, double kSigma, QWidget*
     note->setWordWrap(true);
     root->addWidget(note);
 
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    root->addWidget(buttons);
+    root->addStretch(1);
 }
 
-int PreferencesDialog::autoIntervalMs() const {
+int PreferencesPage::autoIntervalMs() const {
     return intervalSpin_->value();
 }
 
-double PreferencesDialog::kSigma() const {
+double PreferencesPage::kSigma() const {
     return sigmaSpin_->value();
 }
 

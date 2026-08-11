@@ -39,13 +39,14 @@
 #include "inspection_editor/canvas/tool_icons.h"
 #include "repositories/tool_repository.h"
 #include "ui/calibration_dialog.h"
-#include "ui/camera_controls_dialog.h"
-#include "ui/detection_dialog.h"
+#include "ui/camera_image_page.h"
+#include "ui/configure_dialog.h"
+#include "ui/detection_page.h"
 #include "ui/inspection_result_dialog.h"
 #include "ui/history_dialog.h"
 #include "ui/piece_manager_dialog.h"
 #include "ui/measurement_mode_dialog.h"
-#include "ui/preferences_dialog.h"
+#include "ui/preferences_page.h"
 #include "ui/registration_wizard.h"
 #include "ui/template_manager_dialog.h"
 #include "vision/fixture_stabilizer.h"
@@ -574,6 +575,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             std::clamp(repos_.settings->getInt("pref_auto_interval_ms", 1000).value(),
                        200, 10000);
         kSigma_ = std::clamp(repos_.settings->getDouble("pref_ksigma", 3.0).value(), 0.5, 6.0);
+        // Pestaña del panel Configurar (C1). Sin acotar por arriba: el diálogo
+        // ignora un índice que no exista, que es lo que pasará si una versión
+        // futura tiene menos pestañas que la que guardó el número.
+        configureTab_ = std::max(0, repos_.settings->getInt("config_last_tab", 0).value());
     }
     autoTimer_.setInterval(autoIntervalMs_);
     if (repos_.engine != nullptr) {
@@ -708,17 +713,16 @@ void MainWindow::buildMenuBar() {
     refreshAction_ = cameraMenu->addAction(tr("Actualizar cámaras"), this,
                                            &MainWindow::refreshCameras);
     cameraMenu->addSeparator();
+    // Una sola entrada: los ajustes estaban repartidos en cuatro menús y para
+    // cambiar el enfoque y el umbral había que saber en cuál vivía cada uno.
+    configureAction_ = cameraMenu->addAction(tr("Configurar…"), this,
+                                             &MainWindow::onConfigureClicked);
+    configureAction_->setToolTip(
+        tr("Cámara e imagen, detección, escala, preferencias y atajos, todo en el\n"
+           "mismo sitio. Se abre sin bloquear el vídeo: lo que ajustes se ve al\n"
+           "momento sobre la pieza."));
     calibrateAction_ = cameraMenu->addAction(tr("Calibrar escala (mm)…"), this,
                                              &MainWindow::onCalibrateClicked);
-    detectionAction_ = cameraMenu->addAction(tr("Ajustes de detección…"), this,
-                                             &MainWindow::onDetectionClicked);
-    cameraControlsAction_ = cameraMenu->addAction(tr("Controles de la cámara…"), this,
-                                                  &MainWindow::onCameraControlsClicked);
-    cameraControlsAction_->setEnabled(false);  // necesita la cámara en marcha
-    cameraControlsAction_->setToolTip(
-        tr("Brillo, contraste, ganancia, exposición y enfoque de la propia cámara\n"
-           "(no del procesado). Requiere la transmisión en marcha."));
-    cameraMenu->addAction(tr("Preferencias…"), this, &MainWindow::onPreferencesClicked);
     cameraMenu->addSeparator();
     auto* arucoAction = cameraMenu->addAction(tr("Escala por marcador ArUco (en vivo)"));
     arucoAction->setCheckable(true);
@@ -924,18 +928,17 @@ void MainWindow::updateRoiButton() {
     roiButton_->setText(hasRoi ? tr("Quitar zona") : tr("Zona de detección"));
 }
 
-void MainWindow::onDetectionClicked() {
-    DetectionDialog dialog(pipelineConfig_.segmentation, this, repos_.detectionProfiles,
-                           currentProfileId_);
-    if (dialog.exec() != QDialog::Accepted) {
+// Vuelca la página de detección del panel Configurar en la configuración viva.
+void MainWindow::applyDetectionPage(DetectionPage* page) {
+    if (page == nullptr) {
         return;
     }
-    pipelineConfig_.segmentation = dialog.options();
+    pipelineConfig_.segmentation = page->options();
     persistPipelineConfig();
 
     // El perfil elegido se guarda CON LA PIEZA: cada pieza puede necesitar una
     // iluminación distinta y así no hay que reajustar al cambiar de una a otra.
-    currentProfileId_ = dialog.selectedProfileId();
+    currentProfileId_ = page->selectedProfileId();
     const std::int64_t pieceId = selectedPieceId();
     if (pieceId >= 0 && repos_.detectionProfiles != nullptr) {
         if (auto saved = repos_.detectionProfiles->assignToPiece(pieceId, currentProfileId_);
@@ -1486,13 +1489,11 @@ void MainWindow::onStreamStopped() {
     video_->clearLive();
     liveFixture_.reset();
     cameraControls_.clear();
-    if (cameraControlsAction_ != nullptr) {
-        cameraControlsAction_->setEnabled(false);  // sin cámara no hay qué ajustar
-    }
-    // El diálogo de controles es no modal: si sigue abierto tras detener la
-    // cámara, sus deslizadores no harían nada. Se cierra en vez de mentir.
-    for (auto* dialog : findChildren<CameraControlsDialog*>()) {
-        dialog->close();
+    // El panel Configurar es no modal: si sigue abierto tras detener la cámara,
+    // los deslizadores de su página de cámara no harían nada. Se cierra en vez
+    // de mentir; al volver a abrirlo se reconstruye con lo que haya.
+    if (configureDialog_ != nullptr) {
+        configureDialog_->close();
     }
     updateBoardReadout();      // "sin pieza detectada" al cortar la transmisión
     updateStatusIndicators();  // cámara vuelve a rojo (S4)
@@ -2280,28 +2281,21 @@ void MainWindow::onControlsProbed(const std::vector<camera::CameraControlState>&
     for (const auto& control : controls) {
         anySupported = anySupported || control.supported;
     }
-    if (cameraControlsAction_ != nullptr) {
-        cameraControlsAction_->setEnabled(anySupported);
-    }
     if (!anySupported) {
         core::logInfo("La cámara no expone ningún control ajustable");
     }
+    // «Configurar» no se deshabilita nunca: aunque la cámara no exponga nada,
+    // ahí siguen estando la detección, la escala y las preferencias. La página
+    // de cámara es la que dice que no hay nada que ajustar.
 }
 
-void MainWindow::onCameraControlsClicked() {
-    if (!streaming_ || cameraControls_.empty()) {
-        QMessageBox::information(
-            this, tr("Sin cámara"),
-            tr("Inicia la transmisión para ajustar los controles de la cámara."));
+// La página de cámara aplica sola (mover y mirar); aquí solo se persiste lo
+// que el operador deja puesto, para reaplicarlo en el próximo arranque.
+void MainWindow::wireCameraPage(CameraImagePage* page) {
+    if (page == nullptr) {
         return;
     }
-    // No modal: el operador mueve un deslizador y ve el efecto en el vídeo.
-    // Las resoluciones ya sondeadas de ESTA cámara se pasan hechas: volver a
-    // preguntarlas cuesta segundos y detiene el vídeo.
-    auto* dialog = new CameraControlsDialog(controller_, cameraControls_,
-                                            knownResolutions_, currentResolution_, this);
-    dialog->setAttribute(Qt::WA_DeleteOnClose);
-    connect(dialog, &CameraControlsDialog::resolutionChosen, this,
+    connect(page, &CameraImagePage::resolutionChosen, this,
             [this](const camera::CameraResolution& resolution) {
                 savedResolution_ = resolution;
                 if (repos_.settings != nullptr) {
@@ -2309,7 +2303,7 @@ void MainWindow::onCameraControlsClicked() {
                     repos_.settings->setInt("cam_height", resolution.height);
                 }
             });
-    connect(dialog, &CameraControlsDialog::controlChanged, this,
+    connect(page, &CameraImagePage::controlChanged, this,
             [this](const camera::CameraControlValue& control) {
                 // Se recuerda el último valor de cada propiedad para reaplicarlo
                 // en el próximo arranque.
@@ -2330,7 +2324,6 @@ void MainWindow::onCameraControlsClicked() {
                         std::string(camera::propertyKey(control.property)), control.value);
                 }
             });
-    dialog->show();
 }
 
 // Exportar/importar la configuración de la máquina (O4): calibración, ajustes
@@ -2399,13 +2392,12 @@ void MainWindow::onImportConfigClicked() {
     statusBar()->showMessage(tr("Configuración importada desde %1").arg(path));
 }
 
-void MainWindow::onPreferencesClicked() {
-    PreferencesDialog dialog(autoIntervalMs_, kSigma_, this);
-    if (dialog.exec() != QDialog::Accepted) {
+void MainWindow::applyPreferencesPage(PreferencesPage* page) {
+    if (page == nullptr) {
         return;
     }
-    autoIntervalMs_ = dialog.autoIntervalMs();
-    kSigma_ = dialog.kSigma();
+    autoIntervalMs_ = page->autoIntervalMs();
+    kSigma_ = page->kSigma();
 
     // Aplicar de inmediato.
     autoTimer_.setInterval(autoIntervalMs_);
@@ -2417,6 +2409,59 @@ void MainWindow::onPreferencesClicked() {
         repos_.settings->setDouble("pref_ksigma", kSigma_);
     }
     statusBar()->showMessage(tr("Preferencias guardadas."));
+}
+
+void MainWindow::onConfigureClicked() {
+    // Uno solo: volver a pulsar trae al frente el que ya está abierto en vez de
+    // apilar paneles que se pisan entre sí.
+    if (configureDialog_ != nullptr) {
+        configureDialog_->raise();
+        configureDialog_->activateWindow();
+        return;
+    }
+
+    ConfigureDialog::Inputs inputs;
+    inputs.segmentation = pipelineConfig_.segmentation;
+    inputs.detectionProfileId = currentProfileId_;
+    inputs.profiles = repos_.detectionProfiles;
+    // Las resoluciones ya sondeadas de ESTA cámara se pasan hechas: volver a
+    // preguntarlas cuesta segundos y detiene el vídeo.
+    inputs.controller = (streaming_ && !cameraControls_.empty()) ? &controller_ : nullptr;
+    inputs.probedControls = cameraControls_;
+    inputs.knownResolutions = knownResolutions_;
+    inputs.currentResolution = currentResolution_;
+    inputs.autoIntervalMs = autoIntervalMs_;
+    inputs.kSigma = kSigma_;
+    inputs.settings = repos_.settings;
+
+    auto* dialog = new ConfigureDialog(std::move(inputs), this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    configureDialog_ = dialog;
+    dialog->setCurrentTab(configureTab_);
+
+    wireCameraPage(dialog->cameraPage());
+    connect(dialog, &ConfigureDialog::applied, this, [this, dialog] {
+        applyDetectionPage(dialog->detectionPage());
+        applyPreferencesPage(dialog->preferencesPage());
+    });
+    connect(dialog, &ConfigureDialog::scaleWizardRequested, this,
+            &MainWindow::onCalibrateClicked);
+    connect(dialog, &ConfigureDialog::shortcutsRequested, this,
+            &MainWindow::onShowShortcuts);
+    connect(dialog, &QObject::destroyed, this, [this, dialog] {
+        if (configureDialog_ == dialog) {
+            configureDialog_ = nullptr;
+        }
+    });
+    // La pestaña abierta se recuerda: quien está peleando con la iluminación
+    // vuelve diez veces a la misma.
+    connect(dialog, &QDialog::finished, this, [this, dialog] {
+        configureTab_ = dialog->currentTab();
+        if (repos_.settings != nullptr) {
+            repos_.settings->setInt("config_last_tab", configureTab_);
+        }
+    });
+    dialog->show();
 }
 
 void MainWindow::onShowHistoryClicked() {

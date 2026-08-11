@@ -1,8 +1,7 @@
-#include "ui/detection_dialog.h"
+#include "ui/detection_page.h"
 
 #include <QCheckBox>
 #include <QComboBox>
-#include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QInputDialog>
@@ -17,13 +16,10 @@
 
 namespace pci::ui {
 
-DetectionDialog::DetectionDialog(vision::SegmentationOptions current, QWidget* parent,
+DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* parent,
                                  repositories::DetectionProfileRepository* profiles,
                                  std::int64_t selectedProfileId)
-    : QDialog(parent), profiles_(profiles) {
-    setWindowTitle(tr("Ajustes de detección del contorno"));
-    resize(460, 360);
-
+    : QWidget(parent), profiles_(profiles) {
     auto* rootLayout = new QVBoxLayout(this);
     auto* help = new QLabel(
         tr("Si las luces o sombras arruinan el contorno automático: fija el umbral a "
@@ -49,10 +45,10 @@ DetectionDialog::DetectionDialog(vision::SegmentationOptions current, QWidget* p
         profileRow->addWidget(saveButton);
         profileRow->addWidget(deleteButton);
         rootLayout->addLayout(profileRow);
-        connect(saveButton, &QPushButton::clicked, this, &DetectionDialog::onSaveProfile);
-        connect(deleteButton, &QPushButton::clicked, this, &DetectionDialog::onDeleteProfile);
+        connect(saveButton, &QPushButton::clicked, this, &DetectionPage::onSaveProfile);
+        connect(deleteButton, &QPushButton::clicked, this, &DetectionPage::onDeleteProfile);
         connect(profileCombo_, &QComboBox::currentIndexChanged, this,
-                &DetectionDialog::onProfileChosen);
+                &DetectionPage::onProfileChosen);
     }
 
     auto* form = new QFormLayout();
@@ -96,22 +92,16 @@ DetectionDialog::DetectionDialog(vision::SegmentationOptions current, QWidget* p
     rootLayout->addLayout(form);
     rootLayout->addStretch(1);
 
-    auto* buttons =
-        new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    rootLayout->addWidget(buttons);
-
     connect(autoThreshold_, &QCheckBox::toggled, this,
-            &DetectionDialog::onAutoThresholdToggled);
-    connect(threshold_, &QSlider::valueChanged, this, &DetectionDialog::onThresholdMoved);
-    connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+            &DetectionPage::onAutoThresholdToggled);
+    connect(threshold_, &QSlider::valueChanged, this, &DetectionPage::onThresholdMoved);
 
     if (profiles_ != nullptr) {
         reloadProfiles(selectedProfileId);
     }
 }
 
-void DetectionDialog::reloadProfiles(std::int64_t selectId) {
+void DetectionPage::reloadProfiles(std::int64_t selectId) {
     QSignalBlocker blocker(profileCombo_);
     profileCombo_->clear();
     profileCombo_->addItem(tr("(ajustes sueltos, sin perfil)"), QVariant::fromValue<qint64>(0));
@@ -127,7 +117,7 @@ void DetectionDialog::reloadProfiles(std::int64_t selectId) {
     profileCombo_->setCurrentIndex(index >= 0 ? index : 0);
 }
 
-void DetectionDialog::applyOptions(const vision::SegmentationOptions& options) {
+void DetectionPage::applyOptions(const vision::SegmentationOptions& options) {
     autoThreshold_->setChecked(options.manualThreshold < 0);
     threshold_->setValue(options.manualThreshold >= 0 ? options.manualThreshold : 128);
     threshold_->setEnabled(options.manualThreshold >= 0);
@@ -136,7 +126,7 @@ void DetectionDialog::applyOptions(const vision::SegmentationOptions& options) {
     morph_->setValue(options.morphKernel);
 }
 
-void DetectionDialog::onProfileChosen(int index) {
+void DetectionPage::onProfileChosen(int index) {
     if (profiles_ == nullptr || index < 0) {
         return;
     }
@@ -149,7 +139,7 @@ void DetectionDialog::onProfileChosen(int index) {
     }
 }
 
-void DetectionDialog::onSaveProfile() {
+void DetectionPage::onSaveProfile() {
     if (profiles_ == nullptr) {
         return;
     }
@@ -174,7 +164,7 @@ void DetectionDialog::onSaveProfile() {
     reloadProfiles(saved.value());
 }
 
-void DetectionDialog::onDeleteProfile() {
+void DetectionPage::onDeleteProfile() {
     if (profiles_ == nullptr) {
         return;
     }
@@ -198,19 +188,19 @@ void DetectionDialog::onDeleteProfile() {
     reloadProfiles(0);
 }
 
-std::int64_t DetectionDialog::selectedProfileId() const {
+std::int64_t DetectionPage::selectedProfileId() const {
     return profileCombo_ != nullptr ? profileCombo_->currentData().toLongLong() : 0;
 }
 
-void DetectionDialog::onAutoThresholdToggled(bool automatic) {
+void DetectionPage::onAutoThresholdToggled(bool automatic) {
     threshold_->setEnabled(!automatic);
 }
 
-void DetectionDialog::onThresholdMoved(int value) {
+void DetectionPage::onThresholdMoved(int value) {
     thresholdValue_->setText(QString::number(value));
 }
 
-vision::SegmentationOptions DetectionDialog::options() const {
+vision::SegmentationOptions DetectionPage::options() const {
     vision::SegmentationOptions result;
     result.manualThreshold = autoThreshold_->isChecked() ? -1 : threshold_->value();
     result.polarity = static_cast<vision::SegmentationPolarity>(polarity_->currentIndex());

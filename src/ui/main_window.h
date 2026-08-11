@@ -37,6 +37,11 @@ class QToolButton;
 
 namespace pci::ui {
 
+class CameraImagePage;
+class ConfigureDialog;
+class DetectionPage;
+class PreferencesPage;
+
 // Ventana principal: video en vivo sobre el que se dibujan las herramientas
 // en tiempo real (ancladas a la pieza), registro con captura automática de
 // referencias y auto-inspección continua con veredicto OK/NG en vivo.
@@ -89,7 +94,6 @@ private slots:
     void onInspectClicked();
     void onInspectionFinished();
     void onCalibrateClicked();
-    void onDetectionClicked();
     void onRoiButtonToggled(bool enabled);
     void onRegionPicked(const cv::Rect& imageRect);
     void onUnitChanged();
@@ -97,8 +101,7 @@ private slots:
     void onNewTemplateClicked();
     void onManageTemplatesClicked();  // gestor de plantillas (M1)
     void onShowHistoryClicked();      // pantalla de historial (S1)
-    void onPreferencesClicked();      // diálogo de preferencias (O1)
-    void onCameraControlsClicked();   // controles de la fuente (O2)
+    void onConfigureClicked();        // panel Configurar, un solo sitio (C1)
     void onExportConfigClicked();     // exportar configuración (O4)
     void onImportConfigClicked();
     void onControlsProbed(const std::vector<pci::camera::CameraControlState>& controls);
@@ -139,6 +142,11 @@ private:
     void commitUndoState();
     void restoreTools(std::vector<inspection::EditedTool> tools);
     void persistPipelineConfig();
+    // Páginas del panel Configurar (C1). Las de formulario se vuelcan al pulsar
+    // Aplicar; la de cámara aplica sola y aquí solo se persiste lo que deja.
+    void applyDetectionPage(DetectionPage* page);
+    void applyPreferencesPage(PreferencesPage* page);
+    void wireCameraPage(CameraImagePage* page);
     void updateRoiButton();
     void rotatePieceView(double deltaDeg);
     void loadPieceList(std::int64_t selectId = -1);
@@ -165,8 +173,10 @@ private:
     // Menú y acciones de baja frecuencia (antes botones sueltos).
     QAction* refreshAction_ = nullptr;
     QAction* calibrateAction_ = nullptr;
-    QAction* detectionAction_ = nullptr;
-    QAction* cameraControlsAction_ = nullptr;  // Cámara > Controles… (O2)
+    QAction* configureAction_ = nullptr;  // Cámara > Configurar… (C1)
+    // Panel Configurar abierto (no modal, uno solo) y su última pestaña.
+    ConfigureDialog* configureDialog_ = nullptr;
+    int configureTab_ = 0;
     QAction* registerWizardAction_ = nullptr;
     QAction* managePiecesAction_ = nullptr;
     QAction* editorAction_ = nullptr;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <QDialog>
+#include <QWidget>
 
 #include <cstdint>
 
@@ -15,17 +15,17 @@ class QSpinBox;
 
 namespace pci::ui {
 
-// Controles de detección del contorno automático: umbral (Otsu o manual),
-// polaridad de la pieza, suavizado y limpieza morfológica — para pelear
-// contra luces y sombras difíciles. Los cambios aplican al aceptar y se ven
-// al instante en el video en vivo.
-class DetectionDialog : public QDialog {
+// Pagina «Deteccion» del panel Configurar: umbral (Otsu o manual), polaridad
+// de la pieza, suavizado y limpieza morfologica — para pelear contra luces y
+// sombras dificiles. Es un formulario: no aplica nada por su cuenta, la ventana
+// le pide los valores cuando el operador pulsa Aplicar.
+class DetectionPage : public QWidget {
     Q_OBJECT
 
 public:
     // profiles puede ser nulo (sin base de datos): el diálogo funciona igual,
     // solo sin la parte de perfiles con nombre (O3).
-    DetectionDialog(vision::SegmentationOptions current, QWidget* parent = nullptr,
+    DetectionPage(vision::SegmentationOptions current, QWidget* parent = nullptr,
                     repositories::DetectionProfileRepository* profiles = nullptr,
                     std::int64_t selectedProfileId = 0);
 

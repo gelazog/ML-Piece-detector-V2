@@ -45,10 +45,10 @@ gtest_discover_tests(pci_tests DISCOVERY_MODE PRE_TEST)
 
 # Pruebas de gesto sobre el widget: necesitan Qt y una plataforma sin pantalla,
 # por eso van aparte de la suite principal.
-add_executable(pci_gui_tests test_canvas_gestures.cpp)
+add_executable(pci_gui_tests test_canvas_gestures.cpp test_configure_dialog.cpp)
 set_target_properties(pci_gui_tests PROPERTIES AUTOMOC ON)
 target_link_libraries(pci_gui_tests
-  PRIVATE pci_editor pci_inspection pci_vision pci_core Qt6::Widgets
+  PRIVATE pci_editor pci_inspection pci_ui pci_vision pci_core Qt6::Widgets
           GTest::gtest ${OpenCV_LIBS} project_warnings
 )
 gtest_discover_tests(pci_gui_tests

@@ -209,7 +209,13 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
 
 ### C — Configurar
 
-- [ ] **C1 — El panel «Configurar»: un solo sitio.** Hoy los ajustes viven en
+- [x] **C1 — El panel «Configurar»: un solo sitio.** *(Dos desvíos del plan, los
+  dos por coherencia: (a) **no se dejaron cáscaras `QDialog`** de los diálogos
+  convertidos, porque `MainWindow` era el único que los abría y habrían quedado
+  como código muerto; (b) **Piezas y Rendimiento no se crean aquí** sino en `C3`
+  y `C5`, cuando tengan contenido — una pestaña vacía contradice la propia
+  verificación de este ítem. Y **Escala y Atajos son asistentes, no
+  formularios**: su pestaña explica y abre el de siempre.)* Hoy los ajustes viven en
   siete diálogos colgados de cuatro menús, y para cambiar el enfoque y el
   umbral hay que saber que uno está en *Cámara* y el otro en *Inspección*.
   Nuevo `ui/configure_dialog.{h,cpp}`: un `QTabWidget` con las páginas **Cámara

@@ -1,8 +1,7 @@
-#include "ui/camera_controls_dialog.h"
+#include "ui/camera_image_page.h"
 
 #include <QCheckBox>
 #include <QComboBox>
-#include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -35,14 +34,12 @@ QString formatValue(double value, const camera::PropertyRange& range) {
 
 }  // namespace
 
-CameraControlsDialog::CameraControlsDialog(
+CameraImagePage::CameraImagePage(
     camera::CameraController& controller,
     const std::vector<camera::CameraControlState>& probed,
     const std::vector<camera::CameraResolution>& knownResolutions,
     const camera::CameraResolution& currentResolution, QWidget* parent)
-    : QDialog(parent), controller_(controller) {
-    setWindowTitle(tr("Controles de la cámara"));
-
+    : QWidget(parent), controller_(controller) {
     auto* root = new QVBoxLayout(this);
     auto* intro = new QLabel(
         tr("Ajustes de la propia cámara, no del procesado. Lo que tu cámara no "
@@ -72,7 +69,7 @@ CameraControlsDialog::CameraControlsDialog(
     root->addLayout(resolutionRow);
 
     connect(&controller, &camera::CameraController::resolutionsProbed, this,
-            &CameraControlsDialog::onResolutionsProbed);
+            &CameraImagePage::onResolutionsProbed);
     connect(probeButton_, &QPushButton::clicked, this, [this] {
         probeButton_->setEnabled(false);
         probeButton_->setText(tr("Buscando…"));
@@ -147,15 +144,12 @@ CameraControlsDialog::CameraControlsDialog(
         rows_.push_back(row);
     }
     root->addLayout(form);
+    root->addStretch(1);
 
     syncAutoDependencies();
-
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
-    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::close);
-    root->addWidget(buttons);
 }
 
-void CameraControlsDialog::onResolutionsProbed(
+void CameraImagePage::onResolutionsProbed(
     const std::vector<camera::CameraResolution>& available,
     const camera::CameraResolution& current) {
     if (probeButton_ != nullptr) {
@@ -198,7 +192,7 @@ void CameraControlsDialog::onResolutionsProbed(
     });
 }
 
-bool CameraControlsDialog::autoActive(camera::CameraProperty autoProperty) const {
+bool CameraImagePage::autoActive(camera::CameraProperty autoProperty) const {
     for (const auto& row : rows_) {
         if (row.property == autoProperty && row.toggle != nullptr) {
             return row.toggle->isEnabled() && row.toggle->isChecked();
@@ -207,7 +201,7 @@ bool CameraControlsDialog::autoActive(camera::CameraProperty autoProperty) const
     return false;
 }
 
-void CameraControlsDialog::syncAutoDependencies() {
+void CameraImagePage::syncAutoDependencies() {
     const bool autoExposure = autoActive(camera::CameraProperty::AutoExposure);
     const bool autoFocus = autoActive(camera::CameraProperty::AutoFocus);
     for (const auto& row : rows_) {
@@ -222,7 +216,7 @@ void CameraControlsDialog::syncAutoDependencies() {
     }
 }
 
-void CameraControlsDialog::apply(camera::CameraProperty property, double value) {
+void CameraImagePage::apply(camera::CameraProperty property, double value) {
     const camera::CameraControlValue control{property, value};
     controller_.requestControls({control});
     emit controlChanged(control);

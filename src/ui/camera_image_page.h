@@ -1,6 +1,6 @@
 #pragma once
 
-#include <QDialog>
+#include <QWidget>
 
 #include <vector>
 
@@ -17,22 +17,23 @@ class CameraController;
 
 namespace pci::ui {
 
-// Controles de la fuente (O2): brillo, contraste, ganancia, exposición y
-// enfoque de la cámara en marcha. Cada cambio se aplica en vivo a través del
-// controlador (que lo ejecuta en el hilo de captura) y se puede ver al momento
-// sobre el vídeo, así que el diálogo es **no modal**.
+// Pagina «Camara e imagen» del panel Configurar (O2): brillo, contraste,
+// ganancia, exposicion y enfoque de la camara en marcha. A diferencia del resto
+// de paginas, esta **aplica al instante**: un deslizador de enfoque que solo
+// tuviera efecto al pulsar Aceptar seria inservible, porque enfocar consiste en
+// mover y mirar. Por eso el panel que la aloja es **no modal**.
 //
 // Lo que la cámara no soporta aparece deshabilitado en vez de fingir que
 // funciona: OpenCV no expone la lista de propiedades y cada backend miente de
 // forma distinta, así que solo se confía en lo que la cámara devolvió al abrir.
-class CameraControlsDialog : public QDialog {
+class CameraImagePage : public QWidget {
     Q_OBJECT
 
 public:
     // `knownResolutions` evita el sondeo cuando ya se hizo para esta cámara:
     // preguntar resolución por resolución cuesta segundos y **detiene el vídeo**
     // mientras dura, así que solo se paga la primera vez (o si se pide).
-    CameraControlsDialog(camera::CameraController& controller,
+    CameraImagePage(camera::CameraController& controller,
                          const std::vector<camera::CameraControlState>& probed,
                          const std::vector<camera::CameraResolution>& knownResolutions,
                          const camera::CameraResolution& currentResolution,

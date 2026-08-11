@@ -1,13 +1,14 @@
 add_library(pci_ui STATIC
   calibration_dialog.cpp
-  camera_controls_dialog.cpp
-  detection_dialog.cpp
+  camera_image_page.cpp
+  configure_dialog.cpp
+  detection_page.cpp
   history_dialog.cpp
   inspection_result_dialog.cpp
   main_window.cpp
   measurement_mode_dialog.cpp
   piece_manager_dialog.cpp
-  preferences_dialog.cpp
+  preferences_page.cpp
   registration_wizard.cpp
   shortcuts_dialog.cpp
   stats_bar_chart.cpp

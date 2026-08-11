@@ -101,6 +101,38 @@ fallos silenciosos:
   no al pedir el cambio: la cámara puede dar una resolución distinta de la
   solicitada, y así también se cubre que la cambie ella sola.
 
+### El panel «Configurar»: un solo sitio
+
+`ui/configure_dialog.*` es un `QTabWidget` que aloja las páginas de ajuste.
+Nació de un problema medido: los ajustes vivían en **siete diálogos colgados de
+cuatro menús**, y para cambiar el enfoque y el umbral había que saber que uno
+estaba en *Cámara* y el otro en *Inspección*.
+
+Tres decisiones lo definen:
+
+- **No es modal.** Ajustar un umbral o un enfoque consiste en mover y mirar: con
+  un diálogo modal encima del vídeo no se ve el efecto de lo que se toca. Por
+  eso se abre sin bloquear y trae *Aplicar* además de *Aceptar*. Solo puede
+  haber uno abierto; volver a pulsar lo trae al frente en vez de apilar paneles.
+- **El panel no aplica nada; avisa.** Emite `applied()` y la ventana lee las
+  páginas. La excepción es la de cámara, que **aplica al instante** porque un
+  deslizador de enfoque con efecto diferido sería inservible. Esa asimetría es
+  deliberada y está escrita en la propia página.
+- **Dos pestañas abren un asistente en vez de fingir ser un formulario.** La
+  escala se calibra haciendo clic en dos puntos de una foto y los atajos son una
+  tabla que se edita: meterlos a la fuerza aquí los haría peores, no mejores.
+
+Los diálogos que eran formularios puros (`DetectionDialog`, `PreferencesDialog`,
+`CameraControlsDialog`) pasaron a ser páginas (`DetectionPage`,
+`PreferencesPage`, `CameraImagePage`): mismo cuerpo, sin barra de botones ni
+título de ventana. No se dejaron cáscaras `QDialog` porque `MainWindow` era el
+único que las abría y habrían quedado como código muerto.
+
+Al parar la cámara el panel **se cierra**: sus deslizadores de cámara no harían
+nada y quedarse abierto sería mentir. La pestaña que estaba visible se guarda
+(`config_last_tab`) porque quien pelea con la iluminación vuelve diez veces a la
+misma.
+
 ---
 
 ## 3. Detección de la pieza (visión clásica)

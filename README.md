@@ -50,9 +50,19 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    guardada. *Sin cámara, todos los pasos siguientes aceptan imágenes desde
    archivo* (`sample_images/pieza_demo.png` sirve para probar).
 
-   **Controles de la cámara** (Cámara ▸ *Controles de la cámara…*, con la
+   **Configurar** (menú *Cámara ▸ Configurar…*) es **el único sitio** donde se
+   ajusta cómo se ve y cómo se detecta la pieza: cámara e imagen, detección,
+   escala, preferencias y atajos, en pestañas. **No bloquea la ventana**, y eso
+   es a propósito: ajustar un umbral o un enfoque consiste en mover y mirar, y
+   con un diálogo encima del vídeo no se ve el efecto de lo que tocas. Trae
+   *Aplicar* además de *Aceptar*, y recuerda en qué pestaña te quedaste.
+   Escala y Atajos abren su asistente desde su pestaña, porque calibrar es
+   hacer clic en dos puntos de una foto y los atajos son una tabla: meterlos a
+   la fuerza en un formulario los haría peores.
+
+   **Cámara e imagen** (pestaña de *Configurar*, con la
    transmisión en marcha): brillo, contraste, ganancia, exposición y enfoque de
-   la **propia cámara**, no del procesado. El diálogo no bloquea la ventana, así
+   la **propia cámara**, no del procesado. La página aplica al instante, así
    que mueves un deslizador y ves el efecto en el vídeo al instante. Al abrir la
    cámara se **sondea de verdad qué admite**: se intenta escribir cada control y
    se mide su rango real, así que solo quedan activos los que la cámara deja
@@ -341,7 +351,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    medir sobre algo conocido: no existe escala automática pura desde una sola
    cámara.)
 
-   **Preferencias** (menú *Cámara ▸ Preferencias…*): centraliza ajustes antes
+   **Preferencias** (pestaña de *Configurar*): centraliza ajustes antes
    fijos en código — el **intervalo de auto-inspección** (ms) y la
    **sensibilidad de anomalía (kσ)** de apariencia. Se aplican al aceptar y
    quedan guardados.
