@@ -55,6 +55,8 @@ public:
     struct Inputs {
         vision::SegmentationOptions segmentation;
         std::int64_t detectionProfileId = 0;
+        double minAreaFraction = 0.005;
+        double maxAreaFraction = 0.9;
         repositories::DetectionProfileRepository* profiles = nullptr;
         camera::CameraController* controller = nullptr;
         std::vector<camera::CameraControlState> probedControls;

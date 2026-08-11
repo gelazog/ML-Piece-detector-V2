@@ -200,3 +200,25 @@ TEST(ConfigureDialog, ApplyingAsksTheWindowToReadThePages) {
     EXPECT_EQ(applied, 2);
     EXPECT_FALSE(dialog.isVisible());
 }
+
+TEST(ConfigureDialog, TheAreaFractionsAreEditableAndRoundTrip) {
+    // Decidían la frontera entre "no hay pieza" y "hay pieza" y estaban fijas
+    // en el código: con piezas pequeñas, el 0,5 % por defecto es justo esa
+    // frontera y no se podía mover sin recompilar.
+    auto inputs = sampleInputs();
+    inputs.minAreaFraction = 0.02;
+    inputs.maxAreaFraction = 0.75;
+    ConfigureDialog dialog(inputs);
+    auto* page = dialog.detectionPage();
+    ASSERT_NE(page, nullptr);
+
+    EXPECT_NEAR(page->minAreaFraction(), 0.02, 1e-9);
+    EXPECT_NEAR(page->maxAreaFraction(), 0.75, 1e-9);
+
+    // Y lo que el operador cambie se lee de vuelta: se muestran en porcentaje
+    // pero se entregan en fracción, que es lo que espera el pipeline.
+    const auto spins = page->findChildren<QDoubleSpinBox*>();
+    ASSERT_GE(spins.size(), 2);
+    spins.at(0)->setValue(0.10);
+    EXPECT_NEAR(page->minAreaFraction(), 0.001, 1e-9);
+}

@@ -614,6 +614,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         // ignora un índice que no exista, que es lo que pasará si una versión
         // futura tiene menos pestañas que la que guardó el número.
         configureTab_ = std::max(0, repos_.settings->getInt("config_last_tab", 0).value());
+        pipelineConfig_.minAreaFraction = std::clamp(
+            repos_.settings->getDouble("det_min_area", 0.005).value(), 0.0001, 0.5);
+        pipelineConfig_.maxAreaFraction = std::clamp(
+            repos_.settings->getDouble("det_max_area", 0.9).value(), 0.1, 1.0);
         zoneMode_ = vision::workingZoneModeFromKey(
             repos_.settings->getString("work_zone_mode", "off").value().c_str());
     }
@@ -954,6 +958,8 @@ void MainWindow::persistPipelineConfig() {
     repos_.settings->setInt("det_roi_y", pipelineConfig_.roi.y);
     repos_.settings->setInt("det_roi_w", pipelineConfig_.roi.width);
     repos_.settings->setInt("det_roi_h", pipelineConfig_.roi.height);
+    repos_.settings->setDouble("det_min_area", pipelineConfig_.minAreaFraction);
+    repos_.settings->setDouble("det_max_area", pipelineConfig_.maxAreaFraction);
     repos_.settings->setInt("track_rotation", pipelineConfig_.autoOrient ? 1 : 0);
 }
 
@@ -1031,6 +1037,8 @@ void MainWindow::applyDetectionPage(DetectionPage* page) {
         return;
     }
     pipelineConfig_.segmentation = page->options();
+    pipelineConfig_.minAreaFraction = page->minAreaFraction();
+    pipelineConfig_.maxAreaFraction = page->maxAreaFraction();
     persistPipelineConfig();
 
     // El perfil elegido se guarda CON LA PIEZA: cada pieza puede necesitar una
@@ -2061,20 +2069,35 @@ void MainWindow::persistBoardConfig() {
     if (repos_.engine != nullptr) {
         repos_.engine->setBoardConfig(boardConfig_);
     }
-    // El modo y el tablero son POR PIEZA (decisión del usuario): si hay uno
-    // seleccionado mandan sus columnas; el ajuste global solo sirve de valor
-    // por defecto mientras no hay pieza.
+    // La regla, una sola y escrita: **el ajuste global es solo la plantilla
+    // para piezas nuevas**. Con una pieza seleccionada mandan sus columnas y
+    // ahí va todo cambio; sin pieza, se guarda en `Settings` como valor por
+    // defecto de la próxima.
     if (const std::int64_t pieceId = selectedPieceId();
         pieceId >= 0 && repos_.pieces != nullptr) {
-        repositories::PieceMeasurement measurement;
-        measurement.mode = measurementMode_;
-        measurement.board = boardConfig_;
-        measurement.maxOffsetPx = maxOffsetPx_;
-        measurement.maxAngleDeg = maxAngleDeg_;
-        if (auto saved = repos_.pieces->saveMeasurement(pieceId, measurement); !saved.isOk()) {
+        // Leer, modificar, escribir. `saveMeasurement` escribe la FILA ENTERA:
+        // construir un `PieceMeasurement` nuevo aquí ponía a su valor por
+        // defecto todo lo que esta función no toca — y así, cambiar el origen
+        // del tablero borraba en silencio las piezas esperadas de la pieza.
+        auto measurement = repos_.pieces->loadMeasurement(pieceId);
+        if (!measurement.isOk()) {
+            core::logWarning("No se pudo leer la medición de la pieza: " +
+                             measurement.error().message);
+            return;
+        }
+        measurement.value().mode = measurementMode_;
+        measurement.value().board = boardConfig_;
+        measurement.value().maxOffsetPx = maxOffsetPx_;
+        measurement.value().maxAngleDeg = maxAngleDeg_;
+        if (auto saved = repos_.pieces->saveMeasurement(pieceId, measurement.value());
+            !saved.isOk()) {
             core::logWarning("No se pudo guardar el modo de medición: " +
                              saved.error().message);
         }
+        // Con pieza seleccionada NO se toca el global: es la plantilla de las
+        // piezas nuevas, y pisarla con los ajustes de esta haría que la
+        // siguiente naciera con el tablero de la anterior.
+        return;
     }
     if (repos_.settings == nullptr) {
         return;
@@ -2567,6 +2590,8 @@ void MainWindow::onConfigureClicked() {
     ConfigureDialog::Inputs inputs;
     inputs.segmentation = pipelineConfig_.segmentation;
     inputs.detectionProfileId = currentProfileId_;
+    inputs.minAreaFraction = pipelineConfig_.minAreaFraction;
+    inputs.maxAreaFraction = pipelineConfig_.maxAreaFraction;
     inputs.profiles = repos_.detectionProfiles;
     // Las resoluciones ya sondeadas de ESTA cámara se pasan hechas: volver a
     // preguntarlas cuesta segundos y detiene el vídeo.

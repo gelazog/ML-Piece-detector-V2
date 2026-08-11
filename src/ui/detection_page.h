@@ -5,12 +5,14 @@
 #include <cstdint>
 
 #include "repositories/detection_profile_repository.h"
+#include "vision/pipeline.h"
 #include "vision/segmentation.h"
 
 class QCheckBox;
 class QComboBox;
 class QLabel;
 class QSlider;
+class QDoubleSpinBox;
 class QSpinBox;
 
 namespace pci::ui {
@@ -27,9 +29,16 @@ public:
     // solo sin la parte de perfiles con nombre (O3).
     DetectionPage(vision::SegmentationOptions current, QWidget* parent = nullptr,
                     repositories::DetectionProfileRepository* profiles = nullptr,
-                    std::int64_t selectedProfileId = 0);
+                    std::int64_t selectedProfileId = 0,
+                    double minAreaFraction = 0.005, double maxAreaFraction = 0.9);
 
     [[nodiscard]] vision::SegmentationOptions options() const;
+    // Qué se acepta como pieza, en fracción del área de la imagen. Estaban
+    // fijas en el código y decidían la frontera entre "no hay pieza" y "hay
+    // pieza": con piezas pequeñas, el 0,5 % por defecto es justo esa frontera y
+    // no se podía mover sin recompilar.
+    [[nodiscard]] double minAreaFraction() const;
+    [[nodiscard]] double maxAreaFraction() const;
     // Perfil elegido al aceptar: 0 = ninguno (ajustes sueltos, como antes).
     [[nodiscard]] std::int64_t selectedProfileId() const;
 
@@ -52,6 +61,8 @@ private:
     QComboBox* polarity_ = nullptr;
     QSpinBox* blur_ = nullptr;
     QSpinBox* morph_ = nullptr;
+    QDoubleSpinBox* minArea_ = nullptr;
+    QDoubleSpinBox* maxArea_ = nullptr;
 };
 
 }  // namespace pci::ui

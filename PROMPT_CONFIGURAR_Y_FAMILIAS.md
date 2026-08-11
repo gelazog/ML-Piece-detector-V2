@@ -380,8 +380,10 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
   invertida, el editor encuentra la pieza al recibir esa configuración y no la
   encuentra con la de por defecto.
 
-- [ ] **C8 — Los ajustes que existen y no se pueden tocar, y el tablero
-  duplicado.** Dos deudas de coherencia que se cierran juntas:
+- [x] **C8 — Los ajustes que existen y no se pueden tocar, y el tablero
+  duplicado.** *(Encontró un fallo real introducido en C5: `saveMeasurement`
+  escribe la fila entera, así que cambiar el tablero borraba en silencio las
+  piezas esperadas. Regla escrita: cargar antes de guardar.)* Dos deudas de coherencia que se cierran juntas:
   - `minAreaFraction` (0,005), `maxAreaFraction` (0,9) y `canonicalSize` (256)
     deciden qué es una pieza y **no tienen UI ni clave**. Con piezas pequeñas,
     el 0,5 % del área es la frontera entre "no hay pieza" y "hay pieza", y hoy

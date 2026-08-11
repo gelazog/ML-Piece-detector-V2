@@ -2,6 +2,7 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QInputDialog>
@@ -18,7 +19,8 @@ namespace pci::ui {
 
 DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* parent,
                                  repositories::DetectionProfileRepository* profiles,
-                                 std::int64_t selectedProfileId)
+                                 std::int64_t selectedProfileId, double minAreaFraction,
+                                 double maxAreaFraction)
     : QWidget(parent), profiles_(profiles) {
     auto* rootLayout = new QVBoxLayout(this);
     auto* help = new QLabel(
@@ -88,6 +90,33 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     morph_->setToolTip(
         tr("Limpieza morfológica: elimina motas y rellena huecos de ese tamaño"));
     form->addRow(tr("Limpieza (px):"), morph_);
+
+    // Qué cuenta como pieza. Estaba fijo en el código; con piezas pequeñas el
+    // 0,5 % por defecto es justo la frontera entre "no hay pieza" y "hay
+    // pieza", y no se podía mover sin recompilar.
+    minArea_ = new QDoubleSpinBox(this);
+    minArea_->setRange(0.01, 50.0);
+    minArea_->setDecimals(2);
+    minArea_->setSingleStep(0.1);
+    minArea_->setSuffix(tr(" %"));
+    minArea_->setValue(minAreaFraction * 100.0);
+    minArea_->setToolTip(
+        tr("Por debajo de esta fracción de la imagen, una mancha no es una pieza.\n"
+           "Por defecto 0,50 %. Bájalo si tus piezas son pequeñas y no se detectan;\n"
+           "súbelo si se cuela ruido."));
+    form->addRow(tr("Área mínima de pieza:"), minArea_);
+
+    maxArea_ = new QDoubleSpinBox(this);
+    maxArea_->setRange(10.0, 100.0);
+    maxArea_->setDecimals(1);
+    maxArea_->setSingleStep(1.0);
+    maxArea_->setSuffix(tr(" %"));
+    maxArea_->setValue(maxAreaFraction * 100.0);
+    maxArea_->setToolTip(
+        tr("Por encima de esta fracción se considera que la segmentación falló\n"
+           "(la luz marcó toda la imagen) en vez de que la pieza sea enorme.\n"
+           "Por defecto 90 %."));
+    form->addRow(tr("Área máxima de pieza:"), maxArea_);
 
     rootLayout->addLayout(form);
     rootLayout->addStretch(1);
@@ -198,6 +227,14 @@ void DetectionPage::onAutoThresholdToggled(bool automatic) {
 
 void DetectionPage::onThresholdMoved(int value) {
     thresholdValue_->setText(QString::number(value));
+}
+
+double DetectionPage::minAreaFraction() const {
+    return minArea_ != nullptr ? minArea_->value() / 100.0 : 0.005;
+}
+
+double DetectionPage::maxAreaFraction() const {
+    return maxArea_ != nullptr ? maxArea_->value() / 100.0 : 0.9;
 }
 
 vision::SegmentationOptions DetectionPage::options() const {

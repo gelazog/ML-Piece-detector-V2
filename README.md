@@ -111,6 +111,12 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    equivoca es peor que no tenerlo: mediría con confianza dentro de un
    rectángulo donde ya no hay nada.
 
+   En la pestaña *Detección* están además el **área mínima y máxima de pieza**
+   (en % de la imagen): deciden qué se acepta como pieza y antes estaban fijas
+   en el código. Con piezas pequeñas, el 0,5 % por defecto es justo la frontera
+   entre "no hay pieza" y "hay pieza" — bájalo si no se detectan, súbelo si se
+   cuela ruido.
+
    **Piezas esperadas** (pestaña *Piezas* de *Configurar*): cuántas piezas
    debería haber en la imagen. Hasta ahora la aplicación se quedaba con la
    **mayor** y borraba el resto en silencio, así que una bandeja con cinco

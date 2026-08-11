@@ -285,6 +285,23 @@ alguna vez hiciera falta más, ahí sí volvería a tener sentido mirar la escal
 trabajo: sobre el total de hoy valdría ~1,33× en vez del 1,10× que se midió
 antes. Sigue sin justificar un modo nuevo en la interfaz.
 
+### Una sola regla para el tablero, y una trampa de la fila entera
+
+El tablero de referencia estaba **duplicado**: claves globales `board_*` en
+`Settings` y columnas en `Pieces`. Al seleccionar pieza ganaba la pieza, pero
+tocarlo desde el menú *Ver* escribía el global. La regla, ahora escrita y
+cumplida: **el ajuste global es solo la plantilla para piezas nuevas**. Con una
+pieza seleccionada, todo cambio va a sus columnas y **no se toca el global** —
+pisarlo haría que la siguiente pieza naciera con el tablero de la anterior.
+
+Y una trampa que costó un fallo real: **`saveMeasurement` escribe la fila
+entera**. `persistBoardConfig` construía un `PieceMeasurement` nuevo para
+cambiar solo el tablero, así que ponía a su valor por defecto todo lo que esa
+función no tocaba — y cambiar el origen del tablero **borraba en silencio las
+piezas esperadas** de la pieza, añadidas en C5. Ahora se lee, se modifica y se
+escribe, y hay un test que lo fija. La regla general para esa fila: **cargar
+antes de guardar, siempre**.
+
 ### El editor mide con lo que el operador puso
 
 Fallo real encontrado en el inventario: `EditorWindow` llamaba a

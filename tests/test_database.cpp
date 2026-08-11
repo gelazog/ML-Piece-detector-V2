@@ -930,3 +930,34 @@ TEST_F(DatabaseTest, EachPieceKeepsItsOwnExpectedCount) {
     EXPECT_EQ(pieces.loadMeasurement(tray.value()).value().expectedPieces, 6);
     EXPECT_EQ(pieces.loadMeasurement(single.value()).value().expectedPieces, 1);
 }
+
+TEST_F(DatabaseTest, SavingTheBoardMustNotWipeTheOtherPieceSettings) {
+    // Fallo real: `saveMeasurement` escribe la FILA ENTERA, así que quien
+    // construyera un `PieceMeasurement` nuevo para cambiar solo el tablero
+    // ponía a su valor por defecto todo lo demás — y cambiar el origen del
+    // tablero borraba en silencio las piezas esperadas.
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+
+    auto id = pieces.createPiece("bandeja");
+    ASSERT_TRUE(id.isOk());
+
+    auto measurement = pieces.loadMeasurement(id.value());
+    ASSERT_TRUE(measurement.isOk());
+    measurement.value().expectedPieces = 6;
+    measurement.value().maxOffsetPx = 12.5;
+    ASSERT_TRUE(pieces.saveMeasurement(id.value(), measurement.value()).isOk());
+
+    // Ahora se cambia SOLO el tablero, leyendo antes como hace la ventana.
+    auto again = pieces.loadMeasurement(id.value());
+    ASSERT_TRUE(again.isOk());
+    again.value().board.origin = pci::vision::BoardOrigin::ImageCenter;
+    ASSERT_TRUE(pieces.saveMeasurement(id.value(), again.value()).isOk());
+
+    const auto reloaded = pieces.loadMeasurement(id.value());
+    ASSERT_TRUE(reloaded.isOk());
+    EXPECT_EQ(reloaded.value().board.origin, pci::vision::BoardOrigin::ImageCenter);
+    EXPECT_EQ(reloaded.value().expectedPieces, 6)
+        << "cambiar el tablero no puede llevarse por delante el recuento";
+    EXPECT_DOUBLE_EQ(reloaded.value().maxOffsetPx, 12.5);
+}
