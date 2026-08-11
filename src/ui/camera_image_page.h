@@ -8,6 +8,8 @@
 
 class QCheckBox;
 class QComboBox;
+class QLabel;
+class QProgressBar;
 class QPushButton;
 class QSlider;
 
@@ -51,6 +53,18 @@ public slots:
     void onResolutionsProbed(const std::vector<pci::camera::CameraResolution>& available,
                              const pci::camera::CameraResolution& current);
 
+    // Asistente de enfoque (C2): nitidez del frame recien analizado.
+    //
+    // `onPiece` distingue "esto es la nitidez de la pieza" de "esto es la del
+    // encuadre, porque no se detecta pieza". La diferencia importa: con un fondo
+    // texturizado, la nitidez del frame entero puede subir mientras la de la
+    // pieza baja, y el operador estaria enfocando la mesa.
+    void setSharpness(double value, bool onPiece);
+    // Olvida el maximo alcanzado. Hace falta al cambiar de pieza o de
+    // iluminacion: un pico viejo e inalcanzable convierte la barra en un
+    // adorno que nunca se llena.
+    void resetSharpnessPeak();
+
 private:
     struct Row {
         camera::CameraProperty property = camera::CameraProperty::Brightness;
@@ -69,6 +83,11 @@ private:
     std::vector<Row> rows_;
     QComboBox* resolutionCombo_ = nullptr;
     QPushButton* probeButton_ = nullptr;
+    // Asistente de enfoque: barra relativa al maximo visto, porque la varianza
+    // del Laplaciano no tiene tope y un valor absoluto no dice nada.
+    QProgressBar* sharpnessBar_ = nullptr;
+    QLabel* sharpnessLabel_ = nullptr;
+    double sharpnessPeak_ = 0.0;
     bool comboWired_ = false;  // la señal del combo se conecta una sola vez
 };
 

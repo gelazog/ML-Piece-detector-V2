@@ -80,6 +80,16 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    reajustan solos** a la nueva escala, para que sigan señalando el mismo sitio.
    La resolución elegida se guarda y se reaplica al iniciar la cámara.
 
+   **Asistente de enfoque** (mismo panel): una barra que sube con la nitidez de
+   la imagen, con marca del **mejor valor alcanzado** y un botón para
+   reiniciarlo. Mueve el enfoque hasta que la barra llegue lo más arriba
+   posible — antes había que adivinar si la imagen había mejorado. La barra es
+   **relativa al máximo visto** porque la nitidez no tiene tope absoluto: lo
+   único que significa algo es comparar. Y se mide **sobre la pieza**, no sobre
+   el frame entero: con un fondo texturizado, la nitidez del encuadre puede
+   subir mientras la de la pieza baja, y estarías enfocando la mesa. Sin pieza
+   detectada mide el centro del encuadre y lo dice.
+
    Para una
    línea estable conviene **desactivar la exposición y el enfoque automáticos**
    y fijarlos: si no, la cámara cambia el brillo o "bombea" el foco entre

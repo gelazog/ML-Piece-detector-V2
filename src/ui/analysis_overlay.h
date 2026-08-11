@@ -35,6 +35,12 @@ struct AnalysisOverlay {
     // Calidad de esa escala (0..1): 1.0 = cámara perpendicular al plano; baja
     // con perspectiva/inclinación (D5). Solo válida si liveMmPerPixel > 0.
     double liveScaleQuality = 0.0;
+    // Nitidez para el asistente de enfoque (C2), medida SOBRE LA PIEZA cuando
+    // se detecta. `sharpnessOnPiece` distingue eso de la medida de reserva
+    // sobre el centro del encuadre: con fondo texturizado, la del frame entero
+    // puede subir mientras la de la pieza baja.
+    double sharpness = 0.0;
+    bool sharpnessOnPiece = false;
 };
 
 }  // namespace pci::ui

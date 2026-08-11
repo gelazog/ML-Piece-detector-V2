@@ -53,7 +53,10 @@
 #include "vision/frame_geometry.h"
 #include "vision/pipeline.h"
 #include "vision/plane_scale.h"
+#include <opencv2/imgproc.hpp>
+
 #include "vision/position_fixture.h"
+#include "vision/quality_metrics.h"
 
 namespace pci::ui {
 
@@ -126,6 +129,12 @@ AnalysisOverlay buildOverlay(const QImage& frame,
         auto analysis = vision::analyzeFrame(image, pipeline);
         if (!analysis.isOk()) {
             overlay.error = QString::fromStdString(analysis.error().message);
+            // Sin pieza todavía se puede enfocar: se mide el centro del
+            // encuadre —no el frame entero, donde el fondo manda— y se marca
+            // como tal para que el asistente no lo llame "nitidez de la pieza".
+            const cv::Rect centre(image.cols / 4, image.rows / 4, image.cols / 2,
+                                  image.rows / 2);
+            overlay.sharpness = vision::sharpnessOf(image, centre);
             return overlay;
         }
         // El rasgo distintivo solo tiene sentido si se sigue la rotación.
@@ -173,6 +182,12 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                                        analysis.value().contour.rotatedRect.center.y);
         overlay.angleDeg = analysis.value().fixture.angleDeg;
         overlay.normalized = camera::matToQImage(analysis.value().normalized);
+        // Asistente de enfoque (C2): la nitidez se mide SOBRE LA PIEZA. Sobre el
+        // frame entero, un fondo texturizado o la regla graduada dominan el
+        // Laplaciano y el número deja de hablar de lo que se va a medir.
+        overlay.sharpness =
+            vision::sharpnessOf(image, cv::boundingRect(analysis.value().contour.points));
+        overlay.sharpnessOnPiece = true;
         if (!tools.empty()) {
             const cv::Point2f bounds = analysis.value().contour.rotatedRect.center;
             const vision::BoardFrame board =
@@ -1372,6 +1387,13 @@ void MainWindow::onFrame(const QImage& frame) {
 
 void MainWindow::onAnalysisFinished() {
     const AnalysisOverlay overlay = analysisWatcher_.result();
+    // Asistente de enfoque (C2): solo se alimenta si el panel está abierto por
+    // esa pestaña; medir para nadie sería trabajo tirado.
+    if (configureDialog_ != nullptr) {
+        if (auto* page = configureDialog_->cameraPage(); page != nullptr) {
+            page->setSharpness(overlay.sharpness, overlay.sharpnessOnPiece);
+        }
+    }
     if (streaming_) {
         const QString status = overlay.valid
                                    ? tr("Pieza: %1°").arg(overlay.angleDeg, 0, 'f', 1)

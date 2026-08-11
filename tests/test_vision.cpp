@@ -18,6 +18,7 @@
 #include "vision/orientation_anchor.h"
 #include "vision/pipeline.h"
 #include "vision/position_fixture.h"
+#include "vision/quality_metrics.h"
 #include "vision/segmentation.h"
 
 #include "test_helpers.h"
@@ -1118,4 +1119,103 @@ TEST(FrameGeometry, PointFollowsTheSameSpotOfTheScene) {
     EXPECT_FLOAT_EQ(scaled.x, 320.0F);
     EXPECT_FLOAT_EQ(scaled.y, 480.0F);
     EXPECT_NEAR(scaled.x / 1280.0, fixed.x / 640.0, 1e-6);
+}
+
+// ---------------------------------------------------------------------------
+// Nitidez para el asistente de enfoque (C2)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Pieza nítida (cuadrado con damero fino dentro, que es lo que da textura al
+// Laplaciano) sobre el fondo que se pida.
+cv::Mat sharpPieceOn(const cv::Mat& background, cv::Rect box) {
+    cv::Mat scene = background.clone();
+    cv::rectangle(scene, box, cv::Scalar(230), cv::FILLED);
+    for (int y = box.y; y < box.y + box.height; y += 6) {
+        cv::line(scene, {box.x, y}, {box.x + box.width - 1, y}, cv::Scalar(20), 2);
+    }
+    return scene;
+}
+
+}  // namespace
+
+TEST(Sharpness, GetsWorseAsTheImageGoesOutOfFocus) {
+    // El asistente de enfoque vale exactamente lo que valga esta propiedad: si
+    // la nitidez no bajara de forma monótona al desenfocar, buscar el máximo no
+    // llevaría a ningún sitio.
+    const cv::Mat sharp =
+        sharpPieceOn(cv::Mat(400, 400, CV_8UC1, cv::Scalar(40)), cv::Rect(100, 100, 200, 200));
+
+    const double peak = sharpnessOf(sharp);
+    std::printf("  nitidez sin desenfoque: %.0f\n", peak);
+    ASSERT_GT(peak, 0.0);
+
+    // Se exige la caida monotona MIENTRAS la medida signifique algo. Medido:
+    // 7444 sin desenfoque -> 1372 (18 %) -> 765 -> 98 (1,3 %) -> 2,5 (0,03 %)
+    // -> 6,5 (0,09 %). Ese ultimo repunte es real y NO es un defecto: por
+    // debajo del 0,1 % del pico ya no
+    // queda detalle que perder y lo que se mide es residuo numerico del rizado
+    // que sobrevive al filtro. Al asistente le da igual —a esas alturas la
+    // barra lleva rato clavada abajo— pero afirmar monotonia ahi seria afirmar
+    // sobre ruido, y el test fallaria de vez en cuando sin que nada este mal.
+    double previous = peak;
+    for (const int kernel : {3, 5, 9, 15, 25}) {
+        cv::Mat blurred;
+        cv::GaussianBlur(sharp, blurred, cv::Size(kernel, kernel), 0);
+        const double value = sharpnessOf(blurred);
+        std::printf("  desenfoque %2d px -> %8.1f  (%.3f %% del pico)\n", kernel, value,
+                    100.0 * value / peak);
+        if (previous > peak * 0.001) {
+            EXPECT_LT(value, previous) << "desenfocar mas tiene que dar menos nitidez";
+        }
+        previous = value;
+    }
+    // Y lo que de verdad tiene que cumplirse para que enfocar sirva de algo: el
+    // desenfoque fuerte deja la medida cien veces por debajo. El margen es 1 %
+    // y no 0,1 % a proposito: lo medido es 0,09 %, y apretar el umbral hasta
+    // rozar el valor real convierte el test en un generador de fallos.
+    cv::Mat veryBlurred;
+    cv::GaussianBlur(sharp, veryBlurred, cv::Size(25, 25), 0);
+    EXPECT_LT(sharpnessOf(veryBlurred), peak * 0.01);
+}
+
+TEST(Sharpness, MeasuredOnThePieceItIgnoresATexturedBackground) {
+    // Este es el test que justifica medir sobre la pieza y no sobre el frame
+    // entero. Con un fondo texturizado y la pieza DESENFOCADA, la nitidez del
+    // encuadre completo sigue alta por culpa del fondo: quien mirase ese numero
+    // creeria estar enfocado.
+    cv::Mat noisyBackground(400, 400, CV_8UC1);
+    cv::randu(noisyBackground, 0, 255);  // fondo con muchisimo detalle
+
+    const cv::Rect box(120, 120, 160, 160);
+    cv::Mat scene = sharpPieceOn(noisyBackground, box);
+    // Se desenfoca SOLO la pieza: la camara enfocada a otra distancia.
+    cv::Mat blurredPiece;
+    cv::GaussianBlur(scene(box), blurredPiece, cv::Size(21, 21), 0);
+    blurredPiece.copyTo(scene(box));
+
+    const double whole = sharpnessOf(scene);
+    const double onPiece = sharpnessOf(scene, box);
+    std::printf("  encuadre completo: %.0f   solo la pieza: %.0f\n", whole, onPiece);
+    EXPECT_GT(whole, onPiece * 3.0)
+        << "el fondo texturizado tiene que dominar el numero del frame entero";
+
+    // Y con la pieza nitida sobre el mismo fondo, la medida sobre la pieza sube
+    // de verdad: no es que el recorte de siempre un numero bajo.
+    const cv::Mat focused = sharpPieceOn(noisyBackground, box);
+    const double onSharpPiece = sharpnessOf(focused, box);
+    std::printf("  pieza enfocada: %.0f (desenfocada: %.0f)\n", onSharpPiece, onPiece);
+    EXPECT_GT(onSharpPiece, onPiece * 2.0);
+}
+
+TEST(Sharpness, DegenerateInputsGiveZeroInsteadOfGarbage) {
+    EXPECT_DOUBLE_EQ(sharpnessOf(cv::Mat()), 0.0);
+    const cv::Mat image(100, 100, CV_8UC1, cv::Scalar(128));
+    // Un recorte diminuto no tiene varianza que signifique nada.
+    EXPECT_DOUBLE_EQ(sharpnessOf(image, cv::Rect(10, 10, 3, 3)), 0.0);
+    // Un recorte que se sale se acota contra la imagen en vez de reventar.
+    EXPECT_GE(sharpnessOf(image, cv::Rect(50, 50, 500, 500)), 0.0);
+    // Y una imagen plana no tiene nada que enfocar.
+    EXPECT_NEAR(sharpnessOf(image), 0.0, 1e-9);
 }

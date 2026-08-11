@@ -232,7 +232,10 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
   valor cambiado y aceptado llega a `Settings`.
   Skills: `qt-ui-design`, `qt-cpp-review`.
 
-- [ ] **C2 — Asistente de enfoque.** El deslizador de enfoque se mueve hoy a
+- [x] **C2 — Asistente de enfoque.** *(La monotonía solo se cumple mientras la
+  medida significa algo: por debajo del 0,1 % del pico repunta, y es residuo
+  numérico, no un defecto. `computeQualityMetrics` se dejó intacta para no
+  mover en silencio el umbral de aceptación del registro.)* El deslizador de enfoque se mueve hoy a
   ciegas. La métrica **ya existe** (`QualityMetrics::sharpness`), solo que se
   usa únicamente al validar capturas de registro.
   Enseñarla en vivo junto al control: barra de nitidez, **marca del máximo

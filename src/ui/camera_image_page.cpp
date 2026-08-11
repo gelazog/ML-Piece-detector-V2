@@ -2,14 +2,17 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QGroupBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <cmath>
 
 #include "camera/camera_controller.h"
@@ -144,9 +147,73 @@ CameraImagePage::CameraImagePage(
         rows_.push_back(row);
     }
     root->addLayout(form);
+
+    // --- Asistente de enfoque (C2) ---
+    //
+    // El deslizador de enfoque se movia a ciegas: nada decia si la imagen habia
+    // mejorado. La metrica ya existia (varianza del Laplaciano) pero solo se
+    // usaba al validar capturas de registro. Ensenarla aqui convierte "mover un
+    // deslizador" en "buscar el maximo", que es como se enfoca de verdad.
+    auto* focusBox = new QGroupBox(tr("Enfoque"), this);
+    auto* focusLayout = new QVBoxLayout(focusBox);
+    auto* focusHelp = new QLabel(
+        tr("Mueve el enfoque hasta que la barra llegue lo más arriba posible. La "
+           "barra es relativa al mejor valor visto: la nitidez no tiene un máximo "
+           "absoluto, así que lo único que significa algo es comparar."),
+        focusBox);
+    focusHelp->setWordWrap(true);
+    focusLayout->addWidget(focusHelp);
+
+    sharpnessBar_ = new QProgressBar(focusBox);
+    sharpnessBar_->setRange(0, 100);
+    sharpnessBar_->setValue(0);
+    sharpnessBar_->setTextVisible(false);
+    focusLayout->addWidget(sharpnessBar_);
+
+    auto* readoutRow = new QHBoxLayout();
+    sharpnessLabel_ = new QLabel(tr("Sin medida todavía"), focusBox);
+    readoutRow->addWidget(sharpnessLabel_, 1);
+    auto* resetPeak = new QPushButton(tr("Reiniciar máximo"), focusBox);
+    resetPeak->setToolTip(
+        tr("Olvida el mejor valor visto. Hazlo al cambiar de pieza o de luz: un\n"
+           "máximo viejo e inalcanzable deja la barra siempre a media altura."));
+    readoutRow->addWidget(resetPeak);
+    focusLayout->addLayout(readoutRow);
+    connect(resetPeak, &QPushButton::clicked, this, &CameraImagePage::resetSharpnessPeak);
+
+    root->addWidget(focusBox);
     root->addStretch(1);
 
     syncAutoDependencies();
+}
+
+void CameraImagePage::setSharpness(double value, bool onPiece) {
+    if (sharpnessBar_ == nullptr || !(value > 0.0)) {
+        return;
+    }
+    sharpnessPeak_ = std::max(sharpnessPeak_, value);
+    const int percent = sharpnessPeak_ > 0.0
+                            ? static_cast<int>(std::lround(100.0 * value / sharpnessPeak_))
+                            : 0;
+    sharpnessBar_->setValue(std::clamp(percent, 0, 100));
+    // Decir SOBRE QUE se mide, no solo cuanto: con un fondo texturizado la
+    // nitidez del encuadre puede subir mientras la de la pieza baja, y quien
+    // vea solo el numero estaria enfocando la mesa.
+    sharpnessLabel_->setText(
+        onPiece ? tr("Nitidez de la pieza: %1  ·  mejor: %2")
+                      .arg(value, 0, 'f', 0)
+                      .arg(sharpnessPeak_, 0, 'f', 0)
+                : tr("Nitidez del encuadre (sin pieza detectada): %1  ·  mejor: %2")
+                      .arg(value, 0, 'f', 0)
+                      .arg(sharpnessPeak_, 0, 'f', 0));
+}
+
+void CameraImagePage::resetSharpnessPeak() {
+    sharpnessPeak_ = 0.0;
+    if (sharpnessBar_ != nullptr) {
+        sharpnessBar_->setValue(0);
+        sharpnessLabel_->setText(tr("Sin medida todavía"));
+    }
 }
 
 void CameraImagePage::onResolutionsProbed(

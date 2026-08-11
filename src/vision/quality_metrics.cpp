@@ -4,6 +4,32 @@
 
 namespace pci::vision {
 
+double sharpnessOf(const cv::Mat& image, const cv::Rect& roi) {
+    if (image.empty()) {
+        return 0.0;
+    }
+    // El recorte se acota contra la imagen: un ROI que se sale (la pieza pegada
+    // al borde) recortaría fuera de memoria.
+    const cv::Rect full(0, 0, image.cols, image.rows);
+    const cv::Rect box = roi.area() > 0 ? (roi & full) : full;
+    if (box.width < 8 || box.height < 8) {
+        return 0.0;  // demasiado pequeño para que la varianza signifique nada
+    }
+
+    cv::Mat gray;
+    if (image.channels() == 3) {
+        cv::cvtColor(image(box), gray, cv::COLOR_BGR2GRAY);
+    } else {
+        gray = image(box);
+    }
+    cv::Mat laplacian;
+    cv::Laplacian(gray, laplacian, CV_64F);
+    cv::Scalar mean;
+    cv::Scalar stddev;
+    cv::meanStdDev(laplacian, mean, stddev);
+    return stddev[0] * stddev[0];
+}
+
 domain::QualityMetrics computeQualityMetrics(const cv::Mat& image,
                                              const PieceAnalysis* analysis) {
     domain::QualityMetrics metrics;

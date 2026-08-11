@@ -101,6 +101,33 @@ fallos silenciosos:
   no al pedir el cambio: la cámara puede dar una resolución distinta de la
   solicitada, y así también se cubre que la cambie ella sola.
 
+### Asistente de enfoque
+
+`vision::sharpnessOf(imagen, roi)` es la varianza del Laplaciano de una región.
+La métrica ya existía en `computeQualityMetrics`, pero solo se usaba para
+validar capturas al registrar, y el deslizador de enfoque se movía a ciegas.
+
+Tres decisiones:
+
+- **Se mide sobre la pieza, no sobre el frame.** Medido en el test: con un fondo
+  ruidoso y la pieza desenfocada, el encuadre completo da **90 970** y la pieza
+  **155**. Quien mirase el número del frame estaría enfocando el fondo.
+- **La barra es relativa al máximo visto.** La varianza del Laplaciano no tiene
+  tope: un valor absoluto no dice nada, y lo único accionable es "¿sube o baja?"
+  — que es exactamente cómo se enfoca.
+- **No se tocó `computeQualityMetrics`.** Su umbral de aceptación
+  (`QualityCriteria::minSharpness = 40`) está ajustado contra el número del
+  frame completo; moverle la medida debajo habría cambiado en silencio qué
+  capturas se aceptan al registrar.
+
+Un hallazgo del test que conviene no olvidar: la nitidez **no es monótona hasta
+el final**. Medido sobre la misma imagen desenfocada progresivamente: 7444 →
+1372 → 765 → 98 → 2,5 → **6,5**. Por debajo del 0,1 % del pico ya no queda
+detalle que perder y lo que se mide es residuo numérico. Por eso la prueba exige
+monotonía solo mientras la medida signifique algo, y por separado que el
+desenfoque fuerte deje el valor cien veces por debajo. Afirmar monotonía en la
+cola sería afirmar sobre ruido.
+
 ### El panel «Configurar»: un solo sitio
 
 `ui/configure_dialog.*` es un `QTabWidget` que aloja las páginas de ajuste.
