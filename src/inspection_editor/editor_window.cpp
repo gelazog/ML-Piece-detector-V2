@@ -30,6 +30,7 @@
 #include "inspection_editor/auto_measure.h"
 #include "inspection_editor/auto_measure_dialog.h"
 #include "inspection_editor/canvas/tool_icons.h"
+#include "inspection_editor/canvas/tool_palette.h"
 #include "inspection_editor/execution/tool_executor.h"
 #include "repositories/tool_repository.h"
 #include "vision/geometry_features.h"
@@ -61,38 +62,12 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
 
     auto* rootLayout = new QHBoxLayout(this);
 
-    // Barra de modos (izquierda).
-    auto* modesLayout = new QVBoxLayout();
-    modeGroup_ = new QButtonGroup(this);
-    modeGroup_->setExclusive(true);
-
-    auto addMode = [this, modesLayout](const QString& text, int id) {
-        auto* button = new QToolButton(this);
-        button->setText(text);
-        button->setCheckable(true);
-        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        button->setIconSize(QSize(22, 22));
-        button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-        if (id >= 0) {
-            button->setIcon(toolIcon(static_cast<ToolType>(id)));
-            button->setToolTip(
-                QString::fromUtf8(toolTypeDescription(static_cast<ToolType>(id))));
-        } else {
-            button->setIcon(moveModeIcon());
-            button->setToolTip(tr("Clic para seleccionar; arrastra para mover."));
-        }
-        modeGroup_->addButton(button, id);
-        modesLayout->addWidget(button);
-        return button;
-    };
-    addMode(tr("Seleccionar"), -1)->setChecked(true);
-    // Por la lista canónica: una herramienta nueva aparece aquí sola, con su
-    // icono y su descripción, sin tener que acordarse de añadir la línea.
-    for (const ToolType type : allToolTypes()) {
-        addMode(typeLabel(type), static_cast<int>(type));
-    }
-    modesLayout->addStretch(1);
-    rootLayout->addLayout(modesLayout);
+    // Paleta agrupada por familias (izquierda). Antes eran quince botones en
+    // columna, ~440 px de alto; con las herramientas que quedan por añadir no
+    // cabrían. El acordeón enseña una familia a la vez.
+    palette_ = new ToolPalette(ToolPalette::Shape::Accordion, this);
+    palette_->setMinimumWidth(190);
+    rootLayout->addWidget(palette_);
 
     // Canvas (centro).
     canvas_ = new EditorCanvas(this);
@@ -253,10 +228,8 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
 
     rootLayout->addLayout(sideLayout);
 
-    connect(modeGroup_, &QButtonGroup::idClicked, this, [this](int id) {
-        canvas_->setCreateType(id < 0 ? std::nullopt
-                                      : std::optional<ToolType>(static_cast<ToolType>(id)));
-    });
+    connect(palette_, &ToolPalette::toolChosen, this,
+            [this](std::optional<ToolType> type) { canvas_->setCreateType(type); });
     connect(canvas_, &EditorCanvas::toolCreated, this, &EditorWindow::onToolCreated);
     connect(canvas_, &EditorCanvas::selectionChanged, this, &EditorWindow::onCanvasSelection);
     connect(canvas_, &EditorCanvas::toolModified, this, [this] {

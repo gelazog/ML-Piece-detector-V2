@@ -37,6 +37,7 @@
 #include "repositories/piece_repository.h"
 #include "repositories/settings_repository.h"
 #include "inspection_editor/canvas/tool_icons.h"
+#include "inspection_editor/canvas/tool_palette.h"
 #include "repositories/tool_repository.h"
 #include "ui/calibration_dialog.h"
 #include "ui/camera_image_page.h"
@@ -329,36 +330,12 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // --- Fila 3: herramientas para dibujar sobre el video en vivo ---
     auto* toolsLayout = new QHBoxLayout();
     toolsLayout->addWidget(new QLabel(tr("Dibujar:"), central));
-    toolModeGroup_ = new QButtonGroup(this);
-    toolModeGroup_->setExclusive(true);
-    auto addMode = [this, central, toolsLayout](const QString& text, int id) {
-        auto* button = new QToolButton(central);
-        button->setText(text);
-        button->setCheckable(true);
-        toolModeGroup_->addButton(button, id);
-        toolsLayout->addWidget(button);
-        return button;
-    };
-    auto* selectMode = addMode(tr("Mover/Elegir"), -1);
-    selectMode->setChecked(true);
-    selectMode->setIcon(inspection::moveModeIcon());
-    selectMode->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    selectMode->setIconSize(QSize(24, 24));
-    selectMode->setToolTip(
-        tr("Mover/Elegir — clic para seleccionar; arrastra para mover; arrastra en\n"
-           "vacío para un marco de selección múltiple."));
-    // La lista canónica, no una copia a mano: las cuatro herramientas de pieza
-    // torneada estuvieron disponibles en el editor y ausentes de esta fila.
-    for (const auto type : inspection::allToolTypes()) {
-        auto* button = addMode(typeLabel(type), static_cast<int>(type));
-        button->setIcon(inspection::toolIcon(type));
-        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
-        button->setIconSize(QSize(24, 24));
-        button->setToolTip(
-            QString::fromUtf8(inspection::toolTypeDescription(type)) +
-            tr("\n\nAl dibujarla se mide la pieza actual y las tolerancias se "
-               "sugieren solas."));
-    }
+    // Paleta agrupada por familias: quince iconos sueltos pedían ~1400 px de
+    // ancho mínimo en una ventana que arranca a 1100, y con las herramientas
+    // que quedan por añadir no cabrían de ninguna manera.
+    toolPalette_ = new inspection::ToolPalette(inspection::ToolPalette::Shape::Compact,
+                                               central);
+    toolsLayout->addWidget(toolPalette_);
     deleteToolButton_ = new QPushButton(tr("Borrar herramienta"), central);
     deleteToolButton_->setToolTip(tr("Elimina la herramienta seleccionada (Mover/Elegir)"));
     toolsLayout->addWidget(deleteToolButton_);
@@ -544,7 +521,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(&controller_, &camera::CameraController::resolutionsProbed, this,
             &MainWindow::onResolutionsProbed);
 
-    connect(toolModeGroup_, &QButtonGroup::idClicked, this, &MainWindow::onToolModeChanged);
+    connect(toolPalette_, &inspection::ToolPalette::toolChosen, this,
+            &MainWindow::onToolModeChanged);
     connect(video_, &inspection::EditorCanvas::toolCreated, this,
             &MainWindow::onLiveToolCreated);
     connect(video_, &inspection::EditorCanvas::toolModified, this,
@@ -1142,36 +1120,30 @@ void MainWindow::buildShortcuts() {
     addShortcut("select_mode", tr("Modo Mover/Elegir (cancela dibujo y rasgo)"),
                 QKeySequence(Qt::Key_Escape), [this] {
                     anchorButton_->setChecked(false);
-                    if (auto* button = toolModeGroup_->button(-1)) {
-                        button->click();
-                    }
+                    toolPalette_->activate(std::nullopt);
                 });
 
-    const struct {
-        const char* id;
-        inspection::ToolType type;
-        Qt::Key key;
-    } toolKeys[] = {
-        {"tool_caliper", inspection::ToolType::Caliper, Qt::Key_1},
-        {"tool_circle", inspection::ToolType::Circle, Qt::Key_2},
-        {"tool_point_line", inspection::ToolType::PointToLine, Qt::Key_3},
-        {"tool_edge", inspection::ToolType::EdgeFlaw, Qt::Key_4},
-        {"tool_blob", inspection::ToolType::Blob, Qt::Key_5},
-        {"tool_ruler", inspection::ToolType::Ruler, Qt::Key_6},
-        {"tool_line_to_line", inspection::ToolType::LineToLine, Qt::Key_7},
-        {"tool_angle", inspection::ToolType::Angle, Qt::Key_8},
-        {"tool_poly_blob", inspection::ToolType::PolyBlob, Qt::Key_9},
-        {"tool_position", inspection::ToolType::Position, Qt::Key_0},
-    };
-    for (const auto& entry : toolKeys) {
-        const int id = static_cast<int>(entry.type);
-        addShortcut(QString::fromLatin1(entry.id),
-                    tr("Dibujar %1").arg(typeLabel(entry.type)), QKeySequence(entry.key),
-                    [this, id] {
-                        if (auto* button = toolModeGroup_->button(id)) {
-                            button->click();
-                        }
-                    });
+    // Atajos por FAMILIA + dígito, generados de las propias familias. Antes
+    // había una tabla escrita a mano con un dígito por herramienta, y se quedó
+    // corta: con catorce herramientas y diez dígitos, Arco, Eje, Rosca y
+    // Engranaje no tenían tecla.
+    int familyNumber = 0;
+    for (const inspection::ToolCategory category : inspection::allToolCategories()) {
+        if (inspection::toolsInCategory(category).empty()) {
+            continue;
+        }
+        ++familyNumber;
+        addShortcut(QStringLiteral("tool_family_%1").arg(familyNumber),
+                    tr("Familia: %1").arg(QString::fromUtf8(
+                        inspection::categoryLabel(category))),
+                    QKeySequence(Qt::CTRL | static_cast<Qt::Key>(Qt::Key_0 + familyNumber)),
+                    [this, category] { toolPalette_->activateCategory(category); });
+    }
+    for (int slot = 1; slot <= 9; ++slot) {
+        addShortcut(QStringLiteral("tool_slot_%1").arg(slot),
+                    tr("Herramienta %1 de la familia activa").arg(slot),
+                    QKeySequence(static_cast<Qt::Key>(Qt::Key_0 + slot)),
+                    [this, slot] { toolPalette_->activateInCurrentCategory(slot - 1); });
     }
 
     addShortcut("camera_toggle", tr("Iniciar/Detener cámara"), QKeySequence(Qt::Key_V),
@@ -1569,7 +1541,7 @@ void MainWindow::onAnalysisFinished() {
 bool MainWindow::analysisNeeded() const {
     return streaming_ &&
            (showContourAction_->isChecked() || !liveTools_.empty() || autoInspecting_ ||
-            toolModeGroup_->checkedId() >= 0);
+            toolPalette_->currentTool().has_value());
 }
 
 // Como máximo un análisis en vuelo; si la visión va más lenta que la cámara,
@@ -1655,13 +1627,13 @@ void MainWindow::setControlsEnabled(bool enabled) {
 
 // --- Herramientas dibujadas sobre el video ---------------------------------
 
-void MainWindow::onToolModeChanged(int id) {
-    if (id < 0) {
+void MainWindow::onToolModeChanged(std::optional<inspection::ToolType> chosen) {
+    if (!chosen.has_value()) {
         video_->setCreateType(std::nullopt);
         statusBar()->showMessage(tr("Modo mover: clic para seleccionar, arrastra para mover."));
         return;
     }
-    const auto type = static_cast<inspection::ToolType>(id);
+    const auto type = *chosen;
     video_->setCreateType(type);
     // Elegir herramienta exige el fixture: reactiva el análisis si estaba
     // pausado por tener el contorno oculto y la escena vacía.
@@ -3301,12 +3273,8 @@ void MainWindow::onAutoToggled(bool enabled) {
         // se desactivan las herramientas de dibujo.
         video_->setEditingLocked(true);
         video_->setCreateType(std::nullopt);
-        if (auto* selectBtn = toolModeGroup_->button(-1)) {
-            selectBtn->setChecked(true);
-        }
-        for (auto* button : toolModeGroup_->buttons()) {
-            button->setEnabled(false);
-        }
+        toolPalette_->showSelection(std::nullopt);
+        toolPalette_->setEnabled(false);
         deleteToolButton_->setEnabled(false);
         calibrateFromToolButton_->setEnabled(false);
         verdictBanner_->setStyleSheet(
@@ -3318,9 +3286,7 @@ void MainWindow::onAutoToggled(bool enabled) {
         autoInspecting_ = false;
         autoTimer_.stop();
         video_->setEditingLocked(false);
-        for (auto* button : toolModeGroup_->buttons()) {
-            button->setEnabled(true);
-        }
+        toolPalette_->setEnabled(true);
         deleteToolButton_->setEnabled(true);
         onLiveSelectionChanged(video_->selectedIndex());  // reactiva calibrar/puntos
         verdictBanner_->setVisible(false);

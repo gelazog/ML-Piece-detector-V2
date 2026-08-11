@@ -439,6 +439,23 @@ resultado con la medida, el veredicto y los puntos para dibujarla.
 | Rosca | Paso, Ø exterior, Ø de fondo y ángulo de flanco | Perfil axial a los dos lados + periodo por autocorrelación (el paso) + plegado síncrono por ese periodo y ajuste de recta a los flancos |
 | Engranaje | Dientes, Ø de cabeza y raíz, módulo, Ø primitivo, excentricidad | Perfil radial + periodo circular (los dientes) + ajuste de círculo a las puntas (la excentricidad) |
 
+**La paleta** (`canvas/tool_palette.*`) construye los botones desde
+`toolsInCategory()` y la comparten las dos superficies, así que el orden, los
+iconos y las descripciones son los mismos en las dos. Tiene dos formas porque
+los dos sitios tienen huecos distintos: **compacta** (un botón por familia con
+menú desplegable) para la barra de la vista en vivo, donde falta ancho, y
+**acordeón** para la columna del editor, donde falta alto.
+
+La medida que lo justifica: la fila plana pedía **~1400 px** de ancho mínimo en
+una ventana que arranca a 1100. La paleta compacta pide **312 px**. Hay un test
+que lo fija y otro que exige que **toda** herramienta siga siendo alcanzable a
+clics — agrupar no puede esconder nada.
+
+Los **atajos** pasan a ser *familia + dígito* (`Ctrl+1..5` elige familia, `1..9`
+la herramienta dentro) y se generan de las propias familias. La tabla escrita a
+mano que había se quedó corta: con catorce herramientas y diez dígitos, Arco,
+Eje, Rosca y Engranaje **no tenían tecla**.
+
 **Familias de herramientas** (`ToolCategory`). Cinco: *Figuras básicas* (3),
 *Medición en línea* (7), *Construcciones* (0 por ahora), *GD&T* (1) y *Máximos,
 mínimos y torneadas* (3). Son un **dato**, no el orden en que se pintan los

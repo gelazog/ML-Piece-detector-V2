@@ -19,6 +19,7 @@ add_library(pci_editor STATIC
   auto_measure_dialog.cpp
   canvas/editor_canvas.cpp
   canvas/tool_icons.cpp
+  canvas/tool_palette.cpp
   editor_window.cpp
 )
 target_include_directories(pci_editor PUBLIC ${CMAKE_SOURCE_DIR}/src)

@@ -13,7 +13,10 @@
 #include <QMouseEvent>
 #include <QPointF>
 #include <QString>
+#include <QMenu>
 #include <QStringList>
+#include <QToolBox>
+#include <QToolButton>
 
 #include <cmath>
 #include <cstdio>
@@ -30,6 +33,7 @@
 #include "inspection_editor/auto_measure_dialog.h"
 #include "inspection_editor/canvas/editor_canvas.h"
 #include "inspection_editor/canvas/tool_icons.h"
+#include "inspection_editor/canvas/tool_palette.h"
 
 using namespace pci::inspection;
 
@@ -575,4 +579,101 @@ int main(int argc, char** argv) {
     QApplication app(argc, argv);
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+// ---------------------------------------------------------------------------
+// Paleta agrupada por familias (R2)
+// ---------------------------------------------------------------------------
+
+TEST(ToolPaletteTest, EveryToolIsReachableInBothShapes) {
+    // Agrupar no puede esconder nada: si una herramienta no aparece en ninguna
+    // familia, deja de existir para el operador aunque el código la tenga.
+    for (const auto shape : {ToolPalette::Shape::Compact, ToolPalette::Shape::Accordion}) {
+        ToolPalette palette(shape);
+        std::vector<ToolType> reachable;
+
+        for (auto* button : palette.findChildren<QToolButton*>()) {
+            if (auto* menu = button->menu(); menu != nullptr) {
+                for (auto* action : menu->actions()) {
+                    for (const ToolType type : allToolTypes()) {
+                        if (action->text() == QString::fromUtf8(toolTypeLabel(type))) {
+                            reachable.push_back(type);
+                        }
+                    }
+                }
+            } else {
+                for (const ToolType type : allToolTypes()) {
+                    if (button->text() == QString::fromUtf8(toolTypeLabel(type))) {
+                        reachable.push_back(type);
+                    }
+                }
+            }
+        }
+        std::sort(reachable.begin(), reachable.end());
+        reachable.erase(std::unique(reachable.begin(), reachable.end()), reachable.end());
+        auto expected = std::vector<ToolType>(allToolTypes().begin(), allToolTypes().end());
+        std::sort(expected.begin(), expected.end());
+        EXPECT_EQ(reachable, expected)
+            << "forma " << static_cast<int>(shape) << ": alguna herramienta quedó escondida";
+    }
+}
+
+TEST(ToolPaletteTest, TheCompactRowFitsInTheWindow) {
+    // La razón de ser del ítem: la fila plana pedía ~1400 px de ancho mínimo en
+    // una ventana que arranca a 1100.
+    ToolPalette palette(ToolPalette::Shape::Compact);
+    const int width = palette.sizeHint().width();
+    std::printf("  paleta compacta: %d px de ancho (la fila plana pedía ~1400)\n", width);
+    EXPECT_LT(width, 700) << "la paleta tiene que dejar sitio al resto de la barra";
+}
+
+TEST(ToolPaletteTest, FamilyPlusDigitPicksTheRightTool) {
+    // El atajo que sustituye a la tabla escrita a mano de un dígito por
+    // herramienta, que se quedó corta con catorce.
+    ToolPalette palette(ToolPalette::Shape::Compact);
+    std::vector<std::optional<ToolType>> chosen;
+    QObject::connect(&palette, &ToolPalette::toolChosen,
+                     [&chosen](std::optional<ToolType> type) { chosen.push_back(type); });
+
+    palette.activateCategory(ToolCategory::TurnedAndExtremes);
+    const auto turned = toolsInCategory(ToolCategory::TurnedAndExtremes);
+    ASSERT_FALSE(turned.empty());
+    ASSERT_TRUE(palette.currentTool().has_value());
+    EXPECT_EQ(*palette.currentTool(), turned.front())
+        << "elegir familia elige su primera herramienta: se viene a dibujar";
+
+    // Y el dígito escoge dentro de la familia activa.
+    ASSERT_TRUE(palette.activateInCurrentCategory(2));
+    EXPECT_EQ(*palette.currentTool(), turned.at(2));
+    // Un dígito que esa familia no tiene no hace nada, en vez de saltar a otra.
+    EXPECT_FALSE(palette.activateInCurrentCategory(8));
+    EXPECT_EQ(*palette.currentTool(), turned.at(2));
+
+    // Arco, Eje, Rosca y Engranaje NO tenían tecla antes: los dígitos 1-9 y 0
+    // estaban agotados con las diez primeras herramientas.
+    palette.activateCategory(ToolCategory::InLine);
+    ASSERT_TRUE(palette.activateInCurrentCategory(
+        static_cast<int>(toolsInCategory(ToolCategory::InLine).size()) - 1));
+    EXPECT_EQ(*palette.currentTool(), toolsInCategory(ToolCategory::InLine).back());
+}
+
+TEST(ToolPaletteTest, ChoosingATooolAnnouncesItAndShowingDoesNot) {
+    // `activate` es "el operador pulsó" y avisa; `showSelection` es sincronizar
+    // desde fuera y no debe disparar nada, o se realimentaría en bucle.
+    ToolPalette palette(ToolPalette::Shape::Accordion);
+    int announced = 0;
+    QObject::connect(&palette, &ToolPalette::toolChosen,
+                     [&announced](std::optional<ToolType>) { ++announced; });
+
+    palette.activate(ToolType::Caliper);
+    EXPECT_EQ(announced, 1);
+    EXPECT_EQ(palette.currentTool(), std::optional<ToolType>(ToolType::Caliper));
+
+    palette.showSelection(ToolType::Gear);
+    EXPECT_EQ(announced, 1) << "sincronizar desde fuera no puede avisar";
+    EXPECT_EQ(palette.currentTool(), std::optional<ToolType>(ToolType::Gear));
+
+    palette.activate(std::nullopt);
+    EXPECT_EQ(announced, 2);
+    EXPECT_FALSE(palette.currentTool().has_value());
 }

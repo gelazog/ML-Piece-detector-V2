@@ -9,6 +9,7 @@
 
 #include "domain/calibration.h"
 #include "inspection_editor/canvas/editor_canvas.h"
+#include "inspection_editor/canvas/tool_palette.h"
 #include "inspection_editor/tools/undo_stack.h"
 #include "vision/pipeline.h"
 #include "vision/types.h"
@@ -100,7 +101,7 @@ private:
     [[nodiscard]] std::vector<ToolConfig> activeConfigs() const;
 
     EditorCanvas* canvas_ = nullptr;
-    QButtonGroup* modeGroup_ = nullptr;
+    ToolPalette* palette_ = nullptr;
     QListWidget* list_ = nullptr;
     QLineEdit* nameEdit_ = nullptr;
     QDoubleSpinBox* tolMin_ = nullptr;

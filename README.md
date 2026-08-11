@@ -166,8 +166,11 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    no haya dudas tres días después.
 
 4. **Dibujar sobre el video en vivo**: con la pieza detectada, elige una
-   herramienta en la fila **Dibujar** (cada botón explica en su tooltip qué
-   mide y cómo trazarla) y dibuja directamente sobre el video arrastrando el
+   herramienta en la fila **Dibujar**, agrupada por **familias** (Figuras
+   básicas · Medición en línea · GD&T · Máx./mín. y torneadas): cada botón abre
+   su familia y cada herramienta explica en su tooltip qué mide y cómo trazarla.
+   Con el teclado, **Ctrl+1…5** elige familia y **1…9** la herramienta dentro.
+   En el editor de plantilla la misma paleta se muestra como acordeón y dibuja directamente sobre el video arrastrando el
    mouse — en tiempo real y anclado a la pieza: si la mueves o la giras, las
    herramientas la siguen. Al soltar, **la herramienta mide la pieza actual y
    se auto-sugiere sus tolerancias** (±10 % para distancias, conteo exacto

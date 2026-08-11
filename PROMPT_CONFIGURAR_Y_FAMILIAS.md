@@ -424,7 +424,10 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
   familia vacía se permite mientras esté declarada: Construcciones se llena en
   `X`.)
 
-- [ ] **R2 — Paleta agrupada, en las dos superficies.** La fila plana pide
+- [x] **R2 — Paleta agrupada, en las dos superficies.** *(Medido: la paleta
+  compacta pide 312 px frente a los ~1400 de la fila plana. Los atajos pasan a
+  familia + dígito y se generan de las familias, con lo que Arco, Eje, Rosca y
+  Engranaje tienen tecla por primera vez.)* La fila plana pide
   ~1400 px en una ventana de 1100 y el editor gasta 440 px de alto; con veinte
   herramientas más, las dos revientan.
   Nuevo widget **compartido** `inspection_editor/canvas/tool_palette.{h,cpp}`

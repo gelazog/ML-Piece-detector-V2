@@ -17,6 +17,7 @@
 #include "ui/shortcuts_dialog.h"
 #include "engine/registration_session.h"
 #include "inspection_editor/canvas/editor_canvas.h"
+#include "inspection_editor/canvas/tool_palette.h"
 #include "ui/analysis_overlay.h"
 #include "vision/auto_roi.h"
 #include "ui/app_repositories.h"
@@ -68,7 +69,7 @@ private slots:
     void onStreamStopped();
     void onAnalysisFinished();
     // Herramientas dibujadas sobre el video.
-    void onToolModeChanged(int id);
+    void onToolModeChanged(std::optional<pci::inspection::ToolType> type);
     void onLiveToolCreated(const pci::inspection::ToolGeometry& geometry);
     void onLiveToolModified();
     void onDeleteToolClicked();
@@ -246,7 +247,7 @@ private:
     QPushButton* autoInspectButton_ = nullptr;
     QPushButton* inspectButton_ = nullptr;
     // Fila 3: herramientas para dibujar sobre el video.
-    QButtonGroup* toolModeGroup_ = nullptr;
+    inspection::ToolPalette* toolPalette_ = nullptr;
     QPushButton* deleteToolButton_ = nullptr;
     QPushButton* anchorButton_ = nullptr;  // marcar el rasgo distintivo
     QLabel* liveParamLabel_ = nullptr;     // "Puntos" de la herramienta elegida
