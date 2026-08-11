@@ -7,6 +7,7 @@
 #include <cmath>
 #include <numeric>
 #include <cstdio>
+#include <optional>
 #include <utility>
 
 #include "inspection_editor/execution/edge_detection.h"
@@ -1308,6 +1309,253 @@ ToolRunResult runPolyBlob(const cv::Mat& gray, const Fixture& fixture, const Too
     return result;
 }
 
+// --- Construcciones geométricas (X1) ----------------------------------------
+//
+// Trigonometría sobre elementos que otras herramientas ya ajustan: cero
+// algoritmo nuevo. Lo único delicado son los casos degenerados, y ahí la regla
+// es siempre la misma — se falla con motivo y NUNCA se devuelve un NaN, que es
+// un número con toda la pinta de ser una medida.
+
+// Dos rectas cuentan como paralelas cuando el seno del ángulo que forman baja
+// de esto. Con direcciones unitarias |cross| ES ese seno, así que 1e-3 son
+// 0,057°: por debajo el corte existe en matemáticas pero cae a más de cien mil
+// píxeles, y eso no dice nada de la pieza.
+constexpr double kParallelSin = 1e-3;
+// Dos puntos "distintos" tienen que estarlo de verdad: por debajo de una
+// milésima de píxel no hay ninguna dirección que sacar de ellos.
+constexpr double kCoincidentPx = 1e-3;
+// Medio largo del tramo que se dibuja de una recta construida. Es una longitud
+// de DIBUJO: la recta es infinita y esto solo decide cuánto se ve.
+constexpr float kDrawHalfLengthPx = 150.0F;
+
+std::optional<cv::Point2f> intersectLines(const DerivedElement& a, const DerivedElement& b) {
+    const double cross = static_cast<double>(a.direction.x) * b.direction.y -
+                         static_cast<double>(a.direction.y) * b.direction.x;
+    if (std::abs(cross) < kParallelSin) {
+        return std::nullopt;
+    }
+    const cv::Point2f w = b.point - a.point;
+    const double t = (static_cast<double>(w.x) * b.direction.y -
+                      static_cast<double>(w.y) * b.direction.x) /
+                     cross;
+    return a.point + static_cast<float>(t) * a.direction;
+}
+
+cv::Point2f projectOnLine(const cv::Point2f& p, const DerivedElement& line) {
+    return line.point + (p - line.point).dot(line.direction) * line.direction;
+}
+
+// Una recta no tiene sentido, solo dirección, pero su vector SÍ lo tiene, y
+// depende de hacia dónde la trazara el operador. Esto lo lleva siempre al
+// semiplano superior para que dos trazos opuestos de la misma recta den el
+// mismo vector. Sin esto la bisectriz de dos rectas perpendiculares salía a 45°
+// o a 135° según el sentido del trazo: las dos son igual de válidas —con 90°
+// entre las rectas no hay ángulo agudo que partir— pero que cambie sola no lo
+// es, porque el datum giraría 90° sin que nadie tocara nada.
+cv::Point2f canonicalDirection(const cv::Point2f& d) {
+    if (d.y < 0.0F || (d.y == 0.0F && d.x < 0.0F)) {
+        return -d;
+    }
+    return d;
+}
+
+// Resuelve un operando comprobando que sea de la clase que la construcción
+// necesita. El motivo se escribe para el operador: qué falta y de qué clase
+// tendría que ser, no un "referencia inválida" que no dice dónde mirar.
+const DerivedElement* operand(const DerivedElements& refs, const std::string& name,
+                              OperandKind kind, const char* which, std::string& why) {
+    if (kind == OperandKind::Unused) {
+        return nullptr;
+    }
+    if (name.empty()) {
+        why = std::string("falta la ") + which + " referencia: hace falta " +
+              operandKindLabel(kind);
+        return nullptr;
+    }
+    const auto found = refs.find(name);
+    if (found == refs.end()) {
+        why = "no se pudo usar la referencia '" + name +
+              "': no existe, está desactivada o falló al medir";
+        return nullptr;
+    }
+    const DerivedElement& element = found->second;
+    const bool fits = (kind == OperandKind::Point)  ? element.hasPoint()
+                      : (kind == OperandKind::Line) ? element.hasLine()
+                                                    : element.kind == DerivedKind::Circle;
+    if (!fits) {
+        why = "'" + name + "' no sirve como " + which + " referencia: hace falta " +
+              operandKindLabel(kind);
+        return nullptr;
+    }
+    // Una recta con dirección degenerada haría aparecer NaN más abajo. Se corta
+    // aquí, en el único sitio por el que pasan todos los operandos, en vez de
+    // repetir la comprobación en cada construcción.
+    if (kind == OperandKind::Line && cv::norm(element.direction) < 0.5) {
+        why = "la recta de '" + name + "' no tiene dirección utilizable";
+        return nullptr;
+    }
+    return &element;
+}
+
+// Comprueba los dos operandos de una construcción. Devuelve false y deja el
+// motivo en el resultado cuando alguno no sirve.
+bool resolveOperands(const DerivedElements& refs, const ToolConfig& config,
+                     const std::array<OperandKind, 2>& kinds, const DerivedElement*& a,
+                     const DerivedElement*& b, ToolRunResult& result) {
+    std::string why;
+    a = operand(refs, config.reference, kinds[0], "primera", why);
+    if (kinds[0] != OperandKind::Unused && a == nullptr) {
+        result.detail = why;
+        return false;
+    }
+    b = operand(refs, config.reference2, kinds[1], "segunda", why);
+    if (kinds[1] != OperandKind::Unused && b == nullptr) {
+        result.detail = why;
+        return false;
+    }
+    return true;
+}
+
+std::string fmtPieceCoords(const cv::Point2f& p) {
+    // En coordenadas de PIEZA, que son las que no cambian cuando la pieza se
+    // mueve. Se dice, porque un par de números sin sistema no significa nada.
+    return "(" + fmt2(p.x) + "; " + fmt2(p.y) + ") px en la pieza";
+}
+
+ToolRunResult runConstructedPoint(const Fixture& fixture, const ToolConfig& config,
+                                  const ConstructedPointGeometry& g,
+                                  const DerivedElements& refs) {
+    ToolRunResult result = baseResult(config);
+    result.informative = true;
+
+    const DerivedElement* a = nullptr;
+    const DerivedElement* b = nullptr;
+    if (!resolveOperands(refs, config, operandsOf(g.mode), a, b, result)) {
+        return result;
+    }
+
+    cv::Point2f point;
+    switch (g.mode) {
+        case PointConstruction::Midpoint:
+            // Dos puntos coincidentes NO son un error aquí: su punto medio es
+            // ese mismo punto y está perfectamente definido. Solo la recta por
+            // dos puntos necesita que sean distintos.
+            point = (a->point + b->point) * 0.5F;
+            break;
+        case PointConstruction::Intersection: {
+            const auto hit = intersectLines(*a, *b);
+            if (!hit.has_value()) {
+                result.detail =
+                    "las dos rectas son paralelas (menos de 0,06° entre ellas): no se cortan";
+                return result;
+            }
+            point = *hit;
+            break;
+        }
+        case PointConstruction::Projection:
+            point = projectOnLine(a->point, *b);
+            break;
+        case PointConstruction::CircleCenter:
+            point = a->point;
+            break;
+    }
+
+    result.derived.kind = DerivedKind::Point;
+    result.derived.point = point;
+    result.ok = true;
+    result.detail = std::string(constructionLabel(g.mode)) + ": " + fmtPieceCoords(point);
+
+    const cv::Point2f img = toImg(fixture, point);
+    const cv::Point2f anchor = toImg(fixture, g.anchor);
+    result.overlayPoints.push_back(img);
+    // Un rabito de la etiqueta al punto: el punto calculado casi nunca cae
+    // donde el operador dejó el texto, y sin la línea no se sabe cuál es cuál.
+    result.overlaySegments.push_back({anchor, img});
+    return result;
+}
+
+ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& config,
+                                 const ConstructedLineGeometry& g,
+                                 const DerivedElements& refs) {
+    ToolRunResult result = baseResult(config);
+    result.informative = true;
+
+    const DerivedElement* a = nullptr;
+    const DerivedElement* b = nullptr;
+    if (!resolveOperands(refs, config, operandsOf(g.mode), a, b, result)) {
+        return result;
+    }
+
+    cv::Point2f point;
+    cv::Point2f direction;
+    switch (g.mode) {
+        case LineConstruction::ThroughTwoPoints: {
+            const cv::Point2f delta = b->point - a->point;
+            const double length = cv::norm(delta);
+            if (length < kCoincidentPx) {
+                result.detail = "los dos puntos coinciden: no definen ninguna recta";
+                return result;
+            }
+            point = a->point;
+            direction = delta / static_cast<float>(length);
+            break;
+        }
+        case LineConstruction::Bisector: {
+            // Primero se lleva cada dirección a su forma canónica, para que el
+            // resultado no dependa de hacia dónde trazó el operador cada recta.
+            // Después se orienta la segunda con la primera, que es lo que deja
+            // siempre la bisectriz del ángulo agudo y no la perpendicular.
+            const cv::Point2f first = canonicalDirection(a->direction);
+            cv::Point2f second = canonicalDirection(b->direction);
+            if (first.dot(second) < 0.0F) {
+                second = -second;
+            }
+            // Tras orientarlas el ángulo entre ellas es <= 90°, así que la suma
+            // mide entre 1,41 y 2: no puede anularse. Por eso aquí no hay
+            // guarda; la que hace falta —dirección degenerada— ya la hizo
+            // `operand`.
+            const cv::Point2f sum = first + second;
+            direction = sum / static_cast<float>(cv::norm(sum));
+            const auto hit = intersectLines(*a, *b);
+            // Si no se cortan, la bisectriz ES la recta media entre las dos. No
+            // es un caso especial que se esquiva: es el mismo resultado por
+            // continuidad, y por eso «bisectriz» y «recta media» son una sola
+            // construcción y no dos.
+            point = hit.has_value() ? *hit
+                                    : (a->point + projectOnLine(a->point, *b)) * 0.5F;
+            break;
+        }
+        case LineConstruction::ParallelThrough:
+            point = b->point;
+            direction = a->direction;
+            break;
+        case LineConstruction::PerpendicularThrough:
+            point = b->point;
+            direction = {-a->direction.y, a->direction.x};
+            break;
+    }
+
+    result.derived.kind = DerivedKind::Line;
+    result.derived.point = point;
+    result.derived.direction = direction;
+    result.ok = true;
+
+    // Una recta no tiene sentido, solo dirección: su ángulo vive en [0°,180°).
+    double angle = std::atan2(direction.y, direction.x) * 180.0 / CV_PI;
+    if (angle < 0.0) {
+        angle += 180.0;
+    }
+    result.measured = angle;
+    result.measuredIsAngle = true;
+    result.detail = std::string(constructionLabel(g.mode)) + ": " + fmt2(angle) + "° por " +
+                    fmtPieceCoords(point);
+
+    const cv::Point2f base = projectOnLine(g.anchor, result.derived);
+    result.overlaySegments.push_back({toImg(fixture, base - kDrawHalfLengthPx * direction),
+                                      toImg(fixture, base + kDrawHalfLengthPx * direction)});
+    return result;
+}
+
 }  // namespace
 
 core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture& fixture,
@@ -1322,14 +1570,17 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
     // Nunca cae a una referencia implícita: un GD&T medido contra otro datum
     // del que cree el operador es exactamente el fallo que este programa
     // existe para evitar, porque el número sale creíble y es falso.
-    if (!config.reference.empty()) {
-        if (references == nullptr || references->find(config.reference) == references->end()) {
+    for (const std::string* declared : {&config.reference, &config.reference2}) {
+        if (declared->empty()) {
+            continue;
+        }
+        if (references == nullptr || references->find(*declared) == references->end()) {
             ToolRunResult missing;
             missing.toolId = config.id;
             missing.name = config.name;
             missing.type = config.type;
             missing.ok = false;
-            missing.detail = "no se pudo usar la referencia '" + config.reference +
+            missing.detail = "no se pudo usar la referencia '" + *declared +
                              "': no existe, está desactivada o falló al medir";
             return ResultT::ok(std::move(missing));
         }
@@ -1407,6 +1658,18 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
                                                std::get<PositionGeometry>(geometry.value()),
                                                fmt, board != nullptr ? *board : fallback));
             }
+            case ToolType::ConstructedPoint: {
+                static const DerivedElements kNone;
+                return ResultT::ok(runConstructedPoint(
+                    fixture, config, std::get<ConstructedPointGeometry>(geometry.value()),
+                    references != nullptr ? *references : kNone));
+            }
+            case ToolType::ConstructedLine: {
+                static const DerivedElements kNone;
+                return ResultT::ok(runConstructedLine(
+                    fixture, config, std::get<ConstructedLineGeometry>(geometry.value()),
+                    references != nullptr ? *references : kNone));
+            }
         }
         return ResultT::err("Tipo de herramienta no soportado");
     } catch (const cv::Exception& e) {
@@ -1467,9 +1730,18 @@ std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture&
         progressed = false;
         std::vector<const ToolConfig*> stillPending;
         for (const auto* config : pending) {
-            const bool ready = config->reference.empty() ||
-                               attempted.find(config->reference) != attempted.end() ||
-                               known.find(config->reference) == known.end();
+            // Lista para ejecutarse cuando TODAS las referencias que declara ya
+            // se intentaron. Una referencia a un nombre que no existe no espera
+            // a nadie: se resuelve —fallando— dentro de `runTool`.
+            bool ready = true;
+            for (const std::string* ref : {&config->reference, &config->reference2}) {
+                if (ref->empty() || known.find(*ref) == known.end()) {
+                    continue;
+                }
+                if (attempted.find(*ref) == attempted.end()) {
+                    ready = false;
+                }
+            }
             if (!ready) {
                 stillPending.push_back(config);
                 continue;
@@ -1487,17 +1759,26 @@ std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture&
         pending = std::move(stillPending);
     }
 
-    // Lo que queda no pudo ordenarse: solo hay una forma de que eso pase con
-    // una referencia por herramienta, y es que se referencien en círculo. Las
-    // dos (o las que sean) fallan diciéndolo, en vez de colgarse.
+    // Lo que queda no pudo ordenarse, y con referencias entre herramientas solo
+    // hay una manera de que eso pase: un ciclo. Con dos referencias por
+    // herramienta el ciclo puede ser largo (A→B→C→A), así que no se nombra al
+    // culpable —no lo hay— sino a quién está esperando cada una. Fallan
+    // diciéndolo, en vez de colgarse.
     for (const auto* config : pending) {
+        std::string waiting;
+        for (const std::string* ref : {&config->reference, &config->reference2}) {
+            if (ref->empty() || attempted.find(*ref) != attempted.end()) {
+                continue;
+            }
+            waiting += (waiting.empty() ? "" : " y ") + ("'" + *ref + "'");
+        }
         ToolRunResult cyclic;
         cyclic.toolId = config->id;
         cyclic.name = config->name;
         cyclic.type = config->type;
         cyclic.ok = false;
-        cyclic.detail = "referencia circular: '" + config->name + "' y '" +
-                        config->reference + "' se referencian entre sí";
+        cyclic.detail = "referencia circular: '" + config->name + "' espera a " + waiting +
+                        ", que a su vez acaban esperándola a ella";
         results.push_back(std::move(cyclic));
     }
 

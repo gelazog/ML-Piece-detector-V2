@@ -21,7 +21,9 @@ enum class ToolType {
     Arc,
     Shaft,
     Thread,
-    Gear
+    Gear,
+    ConstructedPoint,
+    ConstructedLine
 };
 
 const char* toolTypeName(ToolType type);
@@ -45,6 +47,11 @@ struct ToolConfig {
     // justo el sitio previsto para parámetros por herramienta: así no hace
     // falta migrar el esquema.
     std::string reference;
+    // Segunda referencia (X1). La mitad de las construcciones necesitan dos
+    // elementos —punto medio de dos, intersección de dos rectas, recta por dos
+    // puntos—, y el GD&T con marco de dos datums la necesitará igual. Vacía en
+    // todas las herramientas que se bastan con una o con ninguna.
+    std::string reference2;
 };
 
 }  // namespace pci::inspection

@@ -38,9 +38,10 @@ core::Result<std::int64_t> ToolRepository::save(std::int64_t pieceId,
     if (auto b = s.bindText(3, config.geometryJson); !b.isOk()) {
         return ResultT::err(b.error().message);
     }
-    // La referencia viaja dentro de `params` (X0): esa columna existía sin
-    // usarse y es el sitio previsto para parámetros por herramienta.
-    if (auto b = s.bindText(4, inspection::paramsWithReference(config.reference));
+    // Las referencias viajan dentro de `params` (X0, X1): esa columna existía
+    // sin usarse y es el sitio previsto para parámetros por herramienta.
+    if (auto b = s.bindText(
+            4, inspection::paramsWithReferences({config.reference, config.reference2}));
         !b.isOk()) {
         return ResultT::err(b.error().message);
     }
@@ -116,7 +117,9 @@ core::Result<std::vector<inspection::ToolConfig>> ToolRepository::listForPiece(
         config.name = s.columnText(2);
         config.geometryJson = s.columnText(3);
         config.paramsJson = s.columnText(4);
-        config.reference = inspection::referenceFromParams(config.paramsJson);
+        const auto references = inspection::referencesFromParams(config.paramsJson);
+        config.reference = references.first;
+        config.reference2 = references.second;
         config.toleranceMin = s.columnDouble(5);
         config.toleranceMax = s.columnDouble(6);
         config.enabled = s.columnInt(7) != 0;

@@ -341,6 +341,42 @@ TEST_F(DatabaseTest, ToolCrudRoundTrip) {
     EXPECT_TRUE(listed.value().empty());
 }
 
+TEST_F(DatabaseTest, AConstructionKeepsItsTwoReferencesThroughTheDatabase) {
+    // Las dos referencias viajan dentro de `params`, que es una columna de
+    // texto: si el formato se rompiera, la herramienta volvería del disco sin
+    // datum y mediría contra nada. Por eso se comprueba contra SQLite de verdad
+    // y no solo contra el serializador.
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    repositories::ToolRepository tools(db);
+
+    const auto pieceId = pieces.createPiece("Pieza con datum");
+    ASSERT_TRUE(pieceId.isOk());
+
+    inspection::ToolConfig line;
+    line.type = inspection::ToolType::ConstructedLine;
+    line.name = "eje medio";
+    line.reference = "cara A";
+    line.reference2 = "cara B";
+    line.geometryJson =
+        inspection::toJson(inspection::ToolGeometry(inspection::ConstructedLineGeometry{
+            inspection::LineConstruction::Bisector, {12.0F, 34.0F}}));
+    ASSERT_TRUE(tools.save(pieceId.value(), line).isOk());
+
+    const auto listed = tools.listForPiece(pieceId.value());
+    ASSERT_TRUE(listed.isOk());
+    ASSERT_EQ(listed.value().size(), 1U);
+    EXPECT_EQ(listed.value()[0].reference, "cara A");
+    EXPECT_EQ(listed.value()[0].reference2, "cara B");
+    EXPECT_EQ(listed.value()[0].type, inspection::ToolType::ConstructedLine);
+
+    const auto geometry = inspection::geometryFromJson(inspection::ToolType::ConstructedLine,
+                                                       listed.value()[0].geometryJson);
+    ASSERT_TRUE(geometry.isOk()) << geometry.error().message;
+    EXPECT_EQ(std::get<inspection::ConstructedLineGeometry>(geometry.value()).mode,
+              inspection::LineConstruction::Bisector);
+}
+
 TEST_F(DatabaseTest, ToolSaveReinsertsWhenRowIsGone) {
     auto& db = openAndMigrate();
     repositories::PieceRepository pieces(db);

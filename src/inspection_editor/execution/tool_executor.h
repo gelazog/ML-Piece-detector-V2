@@ -35,6 +35,14 @@ struct ToolRunResult {
     // Elemento geométrico que esta herramienta ofrece como referencia (X0), en
     // coordenadas de pieza. Vacío si no produce ninguno.
     DerivedElement derived;
+    // La herramienta NO juzga (X1): las construcciones geométricas no miden
+    // nada que pueda estar dentro o fuera de tolerancia, solo calculan un
+    // elemento. Con esto la tabla de resultados escribe «—» en vez de un OK
+    // verde que no significaría nada. Ojo: informativa **no** quiere decir que
+    // no pueda dar NG — si la construcción no se puede hacer, `ok` es false y
+    // eso sí es un problema, porque todo lo que la referencia se queda sin
+    // datum.
+    bool informative = false;
     // Para pintar sobre la imagen inspeccionada (coordenadas de imagen).
     std::vector<cv::Point2f> overlayPoints;
     std::vector<std::array<cv::Point2f, 2>> overlaySegments;

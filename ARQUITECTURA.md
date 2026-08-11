@@ -511,7 +511,7 @@ mano que había se quedó corta: con catorce herramientas y diez dígitos, Arco,
 Eje, Rosca y Engranaje **no tenían tecla**.
 
 **Familias de herramientas** (`ToolCategory`). Cinco: *Figuras básicas* (3),
-*Medición en línea* (7), *Construcciones* (0 por ahora), *GD&T* (1) y *Máximos,
+*Medición en línea* (7), *Construcciones* (2), *GD&T* (1) y *Máximos,
 mínimos y torneadas* (3). Son un **dato**, no el orden en que se pintan los
 botones, y viven junto a `allToolTypes()` por la misma razón: con la agrupación
 escrita en cada superficie de interfaz, la fila de la vista en vivo y la columna
@@ -522,10 +522,60 @@ una y solo una, y las cinco juntas reconstruyen exactamente `allToolTypes()`.
 Una herramienta que faltara quedaría escondida en la paleta; una repetida
 aparecería dos veces.
 
-*Construcciones* nace vacía **a propósito** y se llena en `X`. No es un hueco
-por simetría con Cognex: sin construcciones no se puede declarar un datum, y sin
-datum no hay GD&T. Hay un test que lo afirma y que avisará cuando deje de ser
-cierto.
+*Construcciones* nació vacía **a propósito**, con un test que exigía que lo
+estuviera para que el hueco no se olvidara. `X1` la llenó, ese test saltó —que es
+para lo que estaba— y la regla es ahora la contraria: **ninguna familia puede
+estar vacía**, porque un cajón que se abre para nada es peor que no tenerlo.
+
+### Construcciones geométricas (`X1`)
+
+**Punto construido** y **Recta construida**. No miden: calculan un elemento a
+partir de los que ofrecen otras herramientas, para que exista un **datum** que
+declarar. Sin eso, paralelismo, perpendicularidad, angularidad y posición
+verdadera no se pueden dar: no son medidas absolutas, son medidas *respecto a
+algo*, y una herramienta que dijera "paralelismo = 0,08" sin decir *paralelo a
+qué* estaría inventándose un número con nombre de norma.
+
+Ocho construcciones, todas trigonometría sobre primitivas que ya se ajustan
+—cero algoritmo nuevo—: punto medio, intersección de dos rectas, proyección de
+un punto sobre una recta y centro de un círculo; recta por dos puntos,
+bisectriz, paralela y perpendicular por un punto.
+
+Decisiones que se tomaron ahí:
+
+- **«Bisectriz» y «recta media» son UNA construcción, no dos.** Cuando las dos
+  rectas se cortan, la bisectriz pasa por el corte; cuando son paralelas, pasa
+  por el punto medio entre ellas — que es exactamente la recta media. No es un
+  caso especial esquivado: es el mismo resultado por continuidad.
+- **Las direcciones se llevan a una forma canónica antes de bisecar.** Un vector
+  de dirección tiene sentido y depende de hacia dónde arrastró el operador; la
+  recta que representa, no. Sin canonizar, la bisectriz de dos rectas
+  **perpendiculares** salía a 45° o a 135° según el sentido del trazo. Las dos
+  son igual de válidas —con 90° entre las rectas no hay ángulo agudo que
+  partir— pero que cambie sola no lo es, porque el datum giraría 90° sin que
+  nadie tocara nada. Lo destapó un test que afirmaba invariancia y falló.
+- **Un círculo vale donde se pide un punto**: aporta su centro, que es el datum
+  natural de un agujero. Exigir un "punto" literal sería una limitación
+  inventada.
+- **Un resultado informativo** (`ToolRunResult::informative`). Una construcción
+  que sale bien **no es un OK**: no ha juzgado nada, así que la tabla escribe
+  «—» y no un verde que no significaría nada. Que **falle** sí es NG, porque
+  deja sin referencia a todo lo que la usaba.
+- **Nada de NaN.** Rectas paralelas que no se cortan y dos puntos coincidentes
+  que no definen recta fallan **con motivo escrito**. Un NaN es un número con
+  toda la pinta de ser una medida.
+- **El ancla no entra en ningún cálculo.** Es solo dónde se escribe el resultado
+  y por dónde se agarra la herramienta con el ratón: el elemento construido lo
+  dictan las referencias y puede caer fuera de la imagen.
+
+`ToolConfig` gana **`reference2`**, que viaja junto a `reference` dentro de
+`paramsJson` — sin migración de esquema, porque esa columna existía sin usarse.
+Los params escritos por `X0` (con `ref` y sin `ref2`) se siguen leyendo: una
+plantilla guardada antes no puede perder su datum al abrirse.
+
+`runTools` ordena por dependencia con **las dos** referencias y detecta ciclos
+que ahora pueden ser largos (A→B→C→A); como no hay un culpable único, el motivo
+nombra **a quién espera cada una**.
 
 **Una sola lista de herramientas** (`allToolTypes()`). El repaso de coherencia
 encontró que las cuatro herramientas de pieza torneada estaban en el editor de

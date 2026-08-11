@@ -53,6 +53,10 @@ QColor toolColor(ToolType type) {
         case ToolType::Shaft: return {255, 210, 120};
         case ToolType::Thread: return {200, 255, 120};
         case ToolType::Gear: return {160, 190, 255};
+        // Las dos construcciones comparten color a propósito: son la misma
+        // familia y lo que las distingue —punto o recta— ya se ve en el dibujo.
+        case ToolType::ConstructedPoint:
+        case ToolType::ConstructedLine: return {150, 255, 255};
     }
     return Qt::white;
 }
@@ -982,6 +986,15 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
             // sirve para confirmar; el extremo no aporta nada aquí).
             geometry = PositionGeometry{a, PositionAxis::Radial};
             break;
+        case ToolType::ConstructedPoint:
+            // El clic solo elige DÓNDE se escribe el resultado; lo que se
+            // calcula lo deciden las referencias, que se eligen después en el
+            // panel. Nace con la construcción más simple de entender.
+            geometry = ConstructedPointGeometry{PointConstruction::Midpoint, a};
+            break;
+        case ToolType::ConstructedLine:
+            geometry = ConstructedLineGeometry{LineConstruction::ThroughTwoPoints, a};
+            break;
         case ToolType::Blob: {
             BlobGeometry g;
             g.center = (a + b) / 2.0F;
@@ -1197,6 +1210,27 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 painter.drawLine(c + QPointF(-4, 0), c + QPointF(4, 0));
                 painter.drawLine(c + QPointF(0, -4), c + QPointF(0, 4));
                 labelPos = c + QPointF(0, -g.outerRadius * scale);
+            } else if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
+                                 std::is_same_v<T, ConstructedLineGeometry>) {
+                // Aquí solo se puede dibujar el ANCLA. El elemento construido
+                // depende de las referencias y no existe hasta que se mide: lo
+                // pinta paintResults con el resultado. Se marca con trazo
+                // discontinuo justamente para que no se confunda con una
+                // herramienta trazada, que sí está donde se ve.
+                const QPointF p = imageToWidget(toImg(g.anchor));
+                QPen ghost = painter.pen();
+                ghost.setStyle(Qt::DashLine);
+                painter.setPen(ghost);
+                painter.drawEllipse(p, 8.0, 8.0);
+                painter.setPen(QPen(color, painter.pen().widthF()));
+                if constexpr (std::is_same_v<T, ConstructedPointGeometry>) {
+                    painter.setBrush(color);
+                    painter.drawEllipse(p, 2.5, 2.5);
+                    painter.setBrush(Qt::NoBrush);
+                } else {
+                    painter.drawLine(p + QPointF(-8, 5), p + QPointF(8, -5));
+                }
+                labelPos = p + QPointF(0, -10);
             } else {
                 // TRAMPA SILENCIOSA cerrada: esta cadena tampoco tenía `else`.
                 // Eje, Rosca y Engranaje llevaban desde su entrega SIN rama de

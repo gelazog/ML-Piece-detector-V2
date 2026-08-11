@@ -147,6 +147,12 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
                         g.center + cv::Point2f(0.0F, g.outerRadius)};
             } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
                 return {g.lineA, g.lineB, g.scanA, g.scanB};
+            } else if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
+                                 std::is_same_v<T, ConstructedLineGeometry>) {
+                // Lo único que tiene sitio propio es su etiqueta: el elemento
+                // construido lo dictan las referencias y puede caer donde sea,
+                // incluso fuera de la imagen.
+                return {g.anchor};
             } else {
                 static_assert(alwaysFalse<T>,
                               "Falta el caso de esta geometría en referencePoints: sin "
@@ -194,6 +200,9 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
                         g.center + cv::Point2f(g.outerRadius, 0.0F)};
             } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
                 return g.vertices;
+            } else if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
+                                 std::is_same_v<T, ConstructedLineGeometry>) {
+                return {g.anchor};  // una manija: mover la etiqueta de sitio
             } else {
                 static_assert(alwaysFalse<T>,
                               "Falta el caso de esta geometría en handlePoints: sin "
@@ -288,6 +297,9 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
                 if (handle >= 0 && handle < static_cast<int>(g.vertices.size())) {
                     g.vertices[static_cast<std::size_t>(handle)] = q;
                 }
+            } else if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
+                                 std::is_same_v<T, ConstructedLineGeometry>) {
+                g.anchor = q;
             } else {
                 static_assert(alwaysFalse<T>,
                               "Falta el caso de esta geometría en setHandlePoint: sus "
@@ -370,6 +382,12 @@ double distanceToGeometry(const ToolGeometry& geometry, const vision::Fixture& f
                             d = std::min(cv::norm(p - s), cv::norm(p - e));
                         }
                     }
+                } else if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
+                                     std::is_same_v<T, ConstructedLineGeometry>) {
+                    // Se agarra por la etiqueta. Lo construido no se puede
+                    // agarrar: moverlo no significaría nada, porque lo deciden
+                    // las referencias.
+                    d = cv::norm(p - vision::toImageCoords(fixture, g.anchor));
                 } else {
                     // TRAMPA SILENCIOSA cerrada: esta cadena no tenía `else`.
                     // Un tipo nuevo compilaba, dejaba `d` en 1e9 y la

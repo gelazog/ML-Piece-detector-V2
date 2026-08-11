@@ -44,7 +44,7 @@ std::string exportTemplateJson(const std::vector<ToolConfig>& tools) {
         fs.write(p + "type", std::string(toolTypeName(tool.type)));
         fs.write(p + "name", tool.name);
         fs.write(p + "geometry", tool.geometryJson);
-        fs.write(p + "params", paramsWithReference(tool.reference));
+        fs.write(p + "params", paramsWithReferences({tool.reference, tool.reference2}));
         fs << (p + "tol_min") << tool.toleranceMin;
         fs << (p + "tol_max") << tool.toleranceMax;
         fs << (p + "enabled") << (tool.enabled ? 1 : 0);
@@ -88,7 +88,9 @@ core::Result<std::vector<ToolConfig>> importTemplateJson(const std::string& json
             }
             const std::string params = readString(root, p + "params");
             config.paramsJson = params.empty() ? "{}" : params;
-            config.reference = referenceFromParams(config.paramsJson);
+            const auto references = referencesFromParams(config.paramsJson);
+            config.reference = references.first;
+            config.reference2 = references.second;
             config.toleranceMin = readNumber(root, p + "tol_min", 0.0);
             config.toleranceMax = readNumber(root, p + "tol_max", 1e9);
             config.enabled = readNumber(root, p + "enabled", 1.0) != 0.0;

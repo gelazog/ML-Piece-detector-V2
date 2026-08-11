@@ -32,6 +32,15 @@ struct DerivedElement {
     double radius = 0.0;
 
     [[nodiscard]] bool valid() const { return kind != DerivedKind::None; }
+
+    // Un Círculo vale donde se pide un punto: aporta su centro, que es
+    // exactamente lo que se usa como datum de un agujero. Que un agujero no
+    // pudiera ser el operando de un "punto medio" sería una limitación
+    // inventada, no una honesta.
+    [[nodiscard]] bool hasPoint() const {
+        return kind == DerivedKind::Point || kind == DerivedKind::Circle;
+    }
+    [[nodiscard]] bool hasLine() const { return kind == DerivedKind::Line; }
 };
 
 // Elementos disponibles como referencia, indexados por el NOMBRE de la

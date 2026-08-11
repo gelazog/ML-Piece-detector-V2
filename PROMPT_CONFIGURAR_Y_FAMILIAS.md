@@ -494,7 +494,20 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
   probarlo, no dejarlo al azar); ida y vuelta de las referencias por la
   plantilla JSON.
 
-- [ ] **X1 — Punto y recta construidos.** La categoría `Geometry Tools` de
+- [x] **X1 — Punto y recta construidos.** *(Ocho construcciones, no nueve:
+  «bisectriz» y «recta media» resultaron ser la MISMA —cuando las rectas se
+  cortan la bisectriz pasa por el corte, cuando son paralelas pasa por el punto
+  medio entre ellas, que es la recta media—, así que son una sola y no un caso
+  especial esquivado. Un test que exigía que la bisectriz no dependiera del
+  sentido del trazo **falló y destapó algo real**: con dos rectas
+  perpendiculares salía 45° o 135° según cómo se hubieran arrastrado. Las dos
+  son válidas —a 90° no hay ángulo agudo que partir— pero elegir sola no lo es,
+  así que las direcciones se llevan a forma canónica antes de bisecar. También
+  entra aquí el desplegable de referencia que `X0` dejó pendiente, ahora por
+  duplicado porque `ToolConfig` gana `reference2`; la flecha de dependencia en
+  el lienzo sigue sin hacerse y va con `X2`. Y `ToolRunResult::informative`: una
+  construcción que sale bien escribe «—» y no un OK verde, porque no ha juzgado
+  nada.)* La categoría `Geometry Tools` de
   Cognex en dos herramientas, que es lo que hace falta para tener datums:
   - **Punto construido**: punto medio de dos referencias, intersección de dos
     rectas, proyección de un punto sobre una recta, o centro de un círculo.

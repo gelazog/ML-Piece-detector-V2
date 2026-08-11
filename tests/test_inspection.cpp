@@ -703,6 +703,10 @@ ToolConfig makeToolAt(int index, float x, float y) {
                               ToolType::LineToLine, ToolType::Angle,  ToolType::PolyBlob,
                               ToolType::Position,   ToolType::Arc,      ToolType::Shaft,
                               ToolType::Thread,     ToolType::Gear};
+    // Las dos construcciones quedan fuera de la rotación a propósito: sin
+    // referencias no calculan nada, y estas escenas son para poblar el lienzo de
+    // herramientas que miden. Aun así tienen su caso en el `switch` de abajo,
+    // que es exhaustivo por `-Werror`.
     const ToolType type = types[index % 14];
     ToolGeometry geometry;
     switch (type) {
@@ -753,6 +757,12 @@ ToolConfig makeToolAt(int index, float x, float y) {
         }
         case ToolType::Position:
             geometry = PositionGeometry{{x, y}, PositionAxis::Radial};
+            break;
+        case ToolType::ConstructedPoint:
+            geometry = ConstructedPointGeometry{PointConstruction::Midpoint, {x, y}};
+            break;
+        case ToolType::ConstructedLine:
+            geometry = ConstructedLineGeometry{LineConstruction::ThroughTwoPoints, {x, y}};
             break;
     }
     ToolConfig config = makeConfig(type, geometry, 0.0, 1.0e9);
@@ -2495,18 +2505,19 @@ TEST(ToolCoherence, EveryFamilyHasANameAndAnExplanation) {
         << "dos familias con el mismo nombre serían indistinguibles";
 }
 
-TEST(ToolCoherence, ConstructionsAreEmptyOnPurposeAndTheRestAreNot) {
-    // «Construcciones» nace vacía y se llena en X. No es un hueco por simetría:
-    // sin construcciones no se puede declarar un datum, y sin datum no hay
-    // GD&T. Cuando X entre, este test lo dirá y habrá que actualizarlo.
-    EXPECT_TRUE(toolsInCategory(ToolCategory::Construction).empty())
-        << "si ya hay construcciones, actualiza este test y el plan";
+TEST(ToolCoherence, NoFamilyIsEmptyAnyMore) {
+    // «Construcciones» nació vacía en R1 con un test que exigía que lo
+    // estuviera, para que el hueco no se olvidara. X1 la llenó y ese test saltó,
+    // que es exactamente para lo que estaba. Ahora la regla es la contraria: una
+    // familia vacía es un cajón que el operador abre para nada.
     for (const ToolCategory category : allToolCategories()) {
-        if (category == ToolCategory::Construction) {
-            continue;
-        }
         EXPECT_FALSE(toolsInCategory(category).empty()) << categoryLabel(category);
     }
+    // Y las dos construcciones están donde dicen estar.
+    const auto constructions = toolsInCategory(ToolCategory::Construction);
+    EXPECT_EQ(constructions.size(), 2U);
+    EXPECT_EQ(categoryOf(ToolType::ConstructedPoint), ToolCategory::Construction);
+    EXPECT_EQ(categoryOf(ToolType::ConstructedLine), ToolCategory::Construction);
 }
 
 // ---------------------------------------------------------------------------
@@ -2653,18 +2664,401 @@ TEST(ToolReferences, ToolsWithoutReferencesBehaveExactlyAsBefore) {
     EXPECT_NEAR(results[2].measured, 90.0, 1e-6);
 }
 
-TEST(ToolReferences, TheReferenceSurvivesTheParamsRoundTrip) {
-    // Viaja dentro de `paramsJson`, así que pasa por la base de datos y por la
+TEST(ToolReferences, TheReferencesSurviveTheParamsRoundTrip) {
+    // Viajan dentro de `paramsJson`, así que pasan por la base de datos y por la
     // exportación de plantillas sin tocar el esquema.
-    EXPECT_EQ(referenceFromParams(paramsWithReference("cara A")), "cara A");
-    EXPECT_EQ(referenceFromParams(paramsWithReference("")), "");
-    EXPECT_EQ(paramsWithReference(""), "{}") << "sin referencia, params se queda como estaba";
+    const auto roundTrip = [](const std::string& a, const std::string& b) {
+        return referencesFromParams(paramsWithReferences({a, b}));
+    };
+    EXPECT_EQ(roundTrip("cara A", "").first, "cara A");
+    EXPECT_EQ(roundTrip("cara A", "").second, "");
+    EXPECT_EQ(roundTrip("cara A", "agujero 3").first, "cara A");
+    EXPECT_EQ(roundTrip("cara A", "agujero 3").second, "agujero 3");
+    // Solo la segunda: no es una combinación que la interfaz vaya a producir,
+    // pero el formato no puede perderla si aparece.
+    EXPECT_EQ(roundTrip("", "agujero 3").second, "agujero 3");
+    EXPECT_EQ(paramsWithReferences({}), "{}") << "sin referencias, params queda como estaba";
     // Nombres con acentos y comillas, que son los que rompen un formato mal
     // hecho.
     for (const auto* name : {"Ángulo 1", "cara \"A\"", "eje / diámetro"}) {
-        EXPECT_EQ(referenceFromParams(paramsWithReference(name)), name);
+        EXPECT_EQ(roundTrip(name, name).first, name);
+        EXPECT_EQ(roundTrip(name, name).second, name);
     }
     // Y unos parámetros corruptos no tumban nada: se ignoran.
-    EXPECT_EQ(referenceFromParams("{no es json"), "");
-    EXPECT_EQ(referenceFromParams(""), "");
+    EXPECT_EQ(referencesFromParams("{no es json").first, "");
+    EXPECT_EQ(referencesFromParams("").first, "");
+    // Params escritos por la versión de X0, con `ref` y sin `ref2`: la primera
+    // referencia se sigue leyendo. Una plantilla guardada antes de X1 no puede
+    // perder su datum al abrirse.
+    EXPECT_EQ(referencesFromParams("{\"ref\":\"cara A\"}").first, "cara A");
+    EXPECT_EQ(referencesFromParams("{\"ref\":\"cara A\"}").second, "");
+}
+
+// ---------------------------------------------------------------------------
+// Construcciones geométricas (X1)
+// ---------------------------------------------------------------------------
+//
+// Cada construcción se comprueba contra su valor ANALÍTICO sobre entradas
+// conocidas: no hay tolerancia de proceso que valga aquí porque no se mide
+// nada, se calcula. Y todos los casos degenerados se comprueban por lo mismo —
+// que fallan con motivo y no devuelven un NaN, que es un número con toda la
+// pinta de ser una medida.
+
+namespace {
+
+// Una Regla es la forma más directa de meter una recta conocida en la escena:
+// su elemento derivado es la recta por sus dos puntos.
+ToolConfig lineNamed(const std::string& name, cv::Point2f a, cv::Point2f b) {
+    return makeRuler(name, a, b);
+}
+
+// Un Punto construido en modo «centro de círculo» no sirve para inyectar un
+// punto arbitrario, así que para las pruebas se usa una Regla degenerada... que
+// no vale (dos puntos iguales no dan recta). Se usa Posición, cuyo derivado ES
+// un punto y se coloca donde se quiera.
+ToolConfig pointNamed(const std::string& name, cv::Point2f p) {
+    ToolConfig config;
+    config.type = ToolType::Position;
+    config.name = name;
+    config.geometryJson = toJson(ToolGeometry(PositionGeometry{p, PositionAxis::Radial}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+ToolConfig builtPoint(const std::string& name, PointConstruction mode,
+                      const std::string& ref, const std::string& ref2 = {}) {
+    ToolConfig config;
+    config.type = ToolType::ConstructedPoint;
+    config.name = name;
+    config.reference = ref;
+    config.reference2 = ref2;
+    config.geometryJson =
+        toJson(ToolGeometry(ConstructedPointGeometry{mode, {0.0F, 0.0F}}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+ToolConfig builtLine(const std::string& name, LineConstruction mode,
+                     const std::string& ref, const std::string& ref2 = {}) {
+    ToolConfig config;
+    config.type = ToolType::ConstructedLine;
+    config.name = name;
+    config.reference = ref;
+    config.reference2 = ref2;
+    config.geometryJson =
+        toJson(ToolGeometry(ConstructedLineGeometry{mode, {0.0F, 0.0F}}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+// Ejecuta una escena y devuelve el resultado de la herramienta pedida.
+ToolRunResult runScene(const std::vector<ToolConfig>& tools, const std::string& wanted) {
+    const cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(128));
+    const auto results = runTools(gray, kIdentity, tools);
+    for (const auto& result : results) {
+        if (result.name == wanted) {
+            return result;
+        }
+    }
+    return {};
+}
+
+// Un número que no es NaN ni infinito. Es la comprobación que se repite en
+// todos los casos degenerados, porque el fallo que se teme no es "da error",
+// es "da un número inventado".
+void expectNoNaN(const ToolRunResult& result) {
+    EXPECT_FALSE(std::isnan(result.measured)) << result.name << ": " << result.detail;
+    EXPECT_FALSE(std::isinf(result.measured)) << result.name << ": " << result.detail;
+    EXPECT_FALSE(std::isnan(result.derived.point.x));
+    EXPECT_FALSE(std::isnan(result.derived.point.y));
+    EXPECT_FALSE(std::isnan(result.derived.direction.x));
+    EXPECT_FALSE(std::isnan(result.derived.direction.y));
+}
+
+}  // namespace
+
+TEST(Constructions, MidpointIsTheAnalyticMidpoint) {
+    const auto result = runScene({pointNamed("A", {10.0F, 20.0F}),
+                                  pointNamed("B", {50.0F, 80.0F}),
+                                  builtPoint("medio", PointConstruction::Midpoint, "A", "B")},
+                                 "medio");
+    ASSERT_TRUE(result.ok) << result.detail;
+    EXPECT_NEAR(result.derived.point.x, 30.0, 1e-4);
+    EXPECT_NEAR(result.derived.point.y, 50.0, 1e-4);
+    EXPECT_EQ(result.derived.kind, DerivedKind::Point);
+}
+
+TEST(Constructions, TwoCoincidentPointsStillHaveAMidpoint) {
+    // A diferencia de la recta por dos puntos, aquí coincidir NO es degenerado:
+    // el punto medio de un punto consigo mismo es ese punto. Inventar un error
+    // sería una limitación falsa.
+    const auto result = runScene({pointNamed("A", {33.0F, 44.0F}),
+                                  pointNamed("B", {33.0F, 44.0F}),
+                                  builtPoint("medio", PointConstruction::Midpoint, "A", "B")},
+                                 "medio");
+    ASSERT_TRUE(result.ok) << result.detail;
+    EXPECT_NEAR(result.derived.point.x, 33.0, 1e-4);
+    EXPECT_NEAR(result.derived.point.y, 44.0, 1e-4);
+}
+
+TEST(Constructions, IntersectionOfTwoLinesIsTheAnalyticCrossing) {
+    // Una horizontal por y=10 y una vertical por x=70: se cortan en (70;10).
+    const auto result =
+        runScene({lineNamed("H", {0.0F, 10.0F}, {100.0F, 10.0F}),
+                  lineNamed("V", {70.0F, -50.0F}, {70.0F, 50.0F}),
+                  builtPoint("corte", PointConstruction::Intersection, "H", "V")},
+                 "corte");
+    ASSERT_TRUE(result.ok) << result.detail;
+    EXPECT_NEAR(result.derived.point.x, 70.0, 1e-3);
+    EXPECT_NEAR(result.derived.point.y, 10.0, 1e-3);
+}
+
+TEST(Constructions, ParallelLinesDoNotCrossAndSaySo) {
+    const auto result =
+        runScene({lineNamed("A", {0.0F, 0.0F}, {100.0F, 0.0F}),
+                  lineNamed("B", {0.0F, 40.0F}, {100.0F, 40.0F}),
+                  builtPoint("corte", PointConstruction::Intersection, "A", "B")},
+                 "corte");
+    EXPECT_FALSE(result.ok);
+    EXPECT_NE(result.detail.find("paralelas"), std::string::npos) << result.detail;
+    expectNoNaN(result);
+    EXPECT_FALSE(result.derived.valid()) << "una construcción fallida no ofrece referencia";
+}
+
+TEST(Constructions, ProjectionDropsThePerpendicularFoot) {
+    // El punto (30;25) sobre la recta y=0 cae en (30;0).
+    const auto result =
+        runScene({pointNamed("P", {30.0F, 25.0F}),
+                  lineNamed("L", {-50.0F, 0.0F}, {50.0F, 0.0F}),
+                  builtPoint("pie", PointConstruction::Projection, "P", "L")},
+                 "pie");
+    ASSERT_TRUE(result.ok) << result.detail;
+    EXPECT_NEAR(result.derived.point.x, 30.0, 1e-3);
+    EXPECT_NEAR(result.derived.point.y, 0.0, 1e-3);
+}
+
+TEST(Constructions, ALineThroughTwoPointsHasTheAnalyticAngle) {
+    // De (0;0) a (100;100) son 45°.
+    const auto result =
+        runScene({pointNamed("A", {0.0F, 0.0F}), pointNamed("B", {100.0F, 100.0F}),
+                  builtLine("recta", LineConstruction::ThroughTwoPoints, "A", "B")},
+                 "recta");
+    ASSERT_TRUE(result.ok) << result.detail;
+    EXPECT_EQ(result.derived.kind, DerivedKind::Line);
+    EXPECT_NEAR(result.measured, 45.0, 1e-3);
+    EXPECT_TRUE(result.measuredIsAngle);
+    EXPECT_NEAR(cv::norm(result.derived.direction), 1.0, 1e-5) << "la dirección va unitaria";
+}
+
+TEST(Constructions, ALineNeedsTwoDistinctPoints) {
+    const auto result =
+        runScene({pointNamed("A", {12.0F, 12.0F}), pointNamed("B", {12.0F, 12.0F}),
+                  builtLine("recta", LineConstruction::ThroughTwoPoints, "A", "B")},
+                 "recta");
+    EXPECT_FALSE(result.ok);
+    EXPECT_NE(result.detail.find("coinciden"), std::string::npos) << result.detail;
+    expectNoNaN(result);
+}
+
+TEST(Constructions, TheBisectorSplitsTheAngleInHalf) {
+    // Una a 0° y otra a 90°: su bisectriz va a 45° y pasa por donde se cortan.
+    const auto result =
+        runScene({lineNamed("H", {0.0F, 0.0F}, {100.0F, 0.0F}),
+                  lineNamed("V", {0.0F, -50.0F}, {0.0F, 50.0F}),
+                  builtLine("bis", LineConstruction::Bisector, "H", "V")},
+                 "bis");
+    ASSERT_TRUE(result.ok) << result.detail;
+    EXPECT_NEAR(result.measured, 45.0, 1e-3);
+    EXPECT_NEAR(result.derived.point.x, 0.0, 1e-3);
+    EXPECT_NEAR(result.derived.point.y, 0.0, 1e-3);
+}
+
+TEST(Constructions, TheBisectorDoesNotDependOnHowTheLinesWereDrawn) {
+    // El mismo par de rectas con los trazos en los cuatro sentidos posibles. Un
+    // vector de dirección SÍ tiene sentido y depende de hacia dónde arrastró el
+    // operador; la recta que representa, no. Si eso se colara al resultado, el
+    // datum cambiaría al volver a trazar la misma recta al revés.
+    //
+    // El caso perpendicular es el que lo destapó: con 90° entre las rectas las
+    // DOS bisectrices son igual de válidas —no hay ángulo agudo que partir— así
+    // que la elección es un desempate, no una verdad. Lo que sí es exigible es
+    // que el desempate salga siempre igual.
+    const auto bisectorOf = [](cv::Point2f h0, cv::Point2f h1, cv::Point2f v0,
+                               cv::Point2f v1) {
+        return runScene({lineNamed("H", h0, h1), lineNamed("V", v0, v1),
+                         builtLine("bis", LineConstruction::Bisector, "H", "V")},
+                        "bis");
+    };
+    const cv::Point2f h0{0.0F, 0.0F}, h1{100.0F, 0.0F};
+    const cv::Point2f v0{0.0F, -50.0F}, v1{0.0F, 50.0F};
+    const auto reference = bisectorOf(h0, h1, v0, v1);
+    ASSERT_TRUE(reference.ok) << reference.detail;
+    for (const auto& variant : {bisectorOf(h1, h0, v0, v1), bisectorOf(h0, h1, v1, v0),
+                                bisectorOf(h1, h0, v1, v0)}) {
+        ASSERT_TRUE(variant.ok) << variant.detail;
+        EXPECT_NEAR(variant.measured, reference.measured, 1e-3);
+    }
+
+    // Y con un ángulo que NO es de 90°, donde sí hay una respuesta correcta:
+    // entre 0° y 60° la bisectriz del ángulo agudo va a 30°, se trace como se
+    // trace.
+    const cv::Point2f d{std::cos(60.0 * CV_PI / 180.0) * 100.0F,
+                        std::sin(60.0 * CV_PI / 180.0) * 100.0F};
+    for (const auto& variant : {bisectorOf(h0, h1, {0.0F, 0.0F}, d),
+                                bisectorOf(h1, h0, d, {0.0F, 0.0F})}) {
+        ASSERT_TRUE(variant.ok) << variant.detail;
+        EXPECT_NEAR(variant.measured, 30.0, 1e-3);
+    }
+}
+
+TEST(Constructions, TheBisectorOfParallelLinesIsTheMidLine) {
+    // Dos horizontales en y=0 e y=40: la bisectriz es la recta media, y=20.
+    // No es un caso especial esquivado: es el mismo resultado por continuidad,
+    // y por eso «bisectriz» y «recta media» son UNA construcción, no dos.
+    const auto result =
+        runScene({lineNamed("A", {0.0F, 0.0F}, {100.0F, 0.0F}),
+                  lineNamed("B", {0.0F, 40.0F}, {100.0F, 40.0F}),
+                  builtLine("media", LineConstruction::Bisector, "A", "B")},
+                 "media");
+    ASSERT_TRUE(result.ok) << result.detail;
+    EXPECT_NEAR(result.measured, 0.0, 1e-3) << "sigue siendo horizontal";
+    // El punto de paso tiene que estar a media altura entre las dos.
+    EXPECT_NEAR(result.derived.point.y, 20.0, 1e-3);
+    expectNoNaN(result);
+}
+
+TEST(Constructions, ParallelAndPerpendicularThroughAPoint) {
+    const std::vector<ToolConfig> scene{
+        lineNamed("L", {0.0F, 0.0F}, {100.0F, 0.0F}), pointNamed("P", {25.0F, 60.0F}),
+        builtLine("par", LineConstruction::ParallelThrough, "L", "P"),
+        builtLine("perp", LineConstruction::PerpendicularThrough, "L", "P")};
+
+    const auto parallel = runScene(scene, "par");
+    ASSERT_TRUE(parallel.ok) << parallel.detail;
+    EXPECT_NEAR(parallel.measured, 0.0, 1e-3);
+    EXPECT_NEAR(parallel.derived.point.y, 60.0, 1e-3) << "pasa por el punto, no por la recta";
+
+    const auto perpendicular = runScene(scene, "perp");
+    ASSERT_TRUE(perpendicular.ok) << perpendicular.detail;
+    EXPECT_NEAR(perpendicular.measured, 90.0, 1e-3);
+    EXPECT_NEAR(perpendicular.derived.point.x, 25.0, 1e-3);
+    EXPECT_NEAR(perpendicular.derived.point.y, 60.0, 1e-3);
+}
+
+TEST(Constructions, ACircleServesAsThePointOfItsCentre) {
+    // Un agujero es el datum de punto más corriente que hay. Que no valiera
+    // donde se pide "un punto" sería una limitación inventada.
+    cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(200));
+    cv::circle(gray, cv::Point(150, 150), 40, cv::Scalar(20), -1);
+
+    ToolConfig circle;
+    circle.type = ToolType::Circle;
+    circle.name = "agujero";
+    circle.geometryJson =
+        toJson(ToolGeometry(CircleGeometry{{150.0F, 150.0F}, 40.0F, 14.0F, 48}));
+    circle.toleranceMin = 0.0;
+    circle.toleranceMax = 1e9;
+
+    const std::vector<ToolConfig> tools{
+        circle, builtPoint("centro", PointConstruction::CircleCenter, "agujero")};
+    const auto results = runTools(gray, kIdentity, tools);
+    ASSERT_EQ(results.size(), 2U);
+    ASSERT_TRUE(results[0].ok) << results[0].detail;
+    ASSERT_TRUE(results[1].ok) << results[1].detail;
+    // El centro sale del borde AJUSTADO, así que se compara con holgura de
+    // píxel, no exacta: aquí sí hay medición de por medio.
+    EXPECT_NEAR(results[1].derived.point.x, 150.0, 1.5);
+    EXPECT_NEAR(results[1].derived.point.y, 150.0, 1.5);
+}
+
+TEST(Constructions, TheWrongKindOfReferenceIsRefusedWithAReason) {
+    // Un punto donde hace falta una recta. El motivo tiene que decir QUÉ hace
+    // falta, o el operador se queda mirando la pantalla.
+    const auto result =
+        runScene({pointNamed("P", {10.0F, 10.0F}), pointNamed("Q", {40.0F, 10.0F}),
+                  builtPoint("corte", PointConstruction::Intersection, "P", "Q")},
+                 "corte");
+    EXPECT_FALSE(result.ok);
+    EXPECT_NE(result.detail.find("recta"), std::string::npos) << result.detail;
+    expectNoNaN(result);
+}
+
+TEST(Constructions, AConstructionWithoutItsSecondReferenceSaysWhichOneIsMissing) {
+    const auto result = runScene({pointNamed("A", {10.0F, 20.0F}),
+                                  builtPoint("medio", PointConstruction::Midpoint, "A")},
+                                 "medio");
+    EXPECT_FALSE(result.ok);
+    EXPECT_NE(result.detail.find("segunda"), std::string::npos) << result.detail;
+}
+
+TEST(Constructions, AConstructionIsInformativeAndDoesNotPassOrFailOnTolerance) {
+    // No mide nada que pueda estar fuera de tolerancia. La tabla lo tiene que
+    // saber para escribir «—» y no un OK verde que no significaría nada.
+    auto tool = builtPoint("medio", PointConstruction::Midpoint, "A", "B");
+    tool.toleranceMin = 1000.0;  // imposible de cumplir a propósito
+    tool.toleranceMax = 1001.0;
+    const auto result = runScene(
+        {pointNamed("A", {10.0F, 20.0F}), pointNamed("B", {50.0F, 80.0F}), tool}, "medio");
+    EXPECT_TRUE(result.informative);
+    EXPECT_TRUE(result.ok) << "la tolerancia no la juzga: " << result.detail;
+}
+
+TEST(Constructions, AConstructionCanBeTheDatumOfAnotherConstruction) {
+    // La cadena que hace falta para un datum de verdad: dos círculos, el punto
+    // medio de sus centros, y una recta desde ese punto medio. Tres niveles de
+    // dependencia resueltos en el orden correcto sin que el operador ordene
+    // nada.
+    const std::vector<ToolConfig> tools{
+        builtLine("eje", LineConstruction::ThroughTwoPoints, "medio", "C"),
+        builtPoint("medio", PointConstruction::Midpoint, "A", "B"),
+        pointNamed("A", {0.0F, 0.0F}),
+        pointNamed("B", {40.0F, 0.0F}),
+        pointNamed("C", {20.0F, 60.0F}),
+    };
+    const cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(128));
+    const auto results = runTools(gray, kIdentity, tools);
+    ASSERT_EQ(results.size(), 5U);
+    // Orden de la LISTA, no de ejecución.
+    EXPECT_EQ(results[0].name, "eje");
+    EXPECT_EQ(results[1].name, "medio");
+    for (const auto& result : results) {
+        EXPECT_TRUE(result.ok) << result.name << ": " << result.detail;
+    }
+    // El punto medio de (0;0) y (40;0) es (20;0); la recta hasta (20;60) es
+    // vertical, o sea 90°.
+    EXPECT_NEAR(results[1].derived.point.x, 20.0, 1e-3);
+    EXPECT_NEAR(results[0].measured, 90.0, 1e-3);
+}
+
+TEST(Constructions, ThePersistedConstructionComesBackTheSame) {
+    for (const auto mode : allPointConstructions()) {
+        const ToolGeometry geometry =
+            ConstructedPointGeometry{mode, {12.5F, -7.25F}};
+        const auto back = geometryFromJson(ToolType::ConstructedPoint, toJson(geometry));
+        ASSERT_TRUE(back.isOk()) << back.error().message;
+        const auto& g = std::get<ConstructedPointGeometry>(back.value());
+        EXPECT_EQ(static_cast<int>(g.mode), static_cast<int>(mode));
+        EXPECT_NEAR(g.anchor.x, 12.5, 1e-4);
+        EXPECT_NEAR(g.anchor.y, -7.25, 1e-4);
+    }
+    for (const auto mode : allLineConstructions()) {
+        const ToolGeometry geometry = ConstructedLineGeometry{mode, {3.0F, 4.0F}};
+        const auto back = geometryFromJson(ToolType::ConstructedLine, toJson(geometry));
+        ASSERT_TRUE(back.isOk()) << back.error().message;
+        EXPECT_EQ(static_cast<int>(std::get<ConstructedLineGeometry>(back.value()).mode),
+                  static_cast<int>(mode));
+    }
+}
+
+TEST(Constructions, AnUnknownConstructionIsRefusedInsteadOfSilentlyBecomingTheFirst) {
+    // Una plantilla de una versión posterior, o unos params tocados a mano. Caer
+    // al primer modo daría una medida creíble que no es la configurada.
+    const std::string json = "{\"mode\": 99, \"ax\": 1.0, \"ay\": 2.0}";
+    const auto back = geometryFromJson(ToolType::ConstructedPoint, json);
+    EXPECT_FALSE(back.isOk());
+    EXPECT_NE(back.error().message.find("desconocida"), std::string::npos)
+        << back.error().message;
 }

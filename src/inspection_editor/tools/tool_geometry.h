@@ -140,11 +140,64 @@ struct GearGeometry {
     int rayCount = 1440;        // muchos rayos: hacen falta varios por diente
 };
 
+// --- Construcciones geométricas (X1) ----------------------------------------
+//
+// Un punto y una recta que no se miden: se CALCULAN a partir de los elementos
+// derivados de otras herramientas. Existen para poder declarar un datum, que es
+// lo que le falta al GD&T para poder medir contra algo que no sea un supuesto.
+//
+// Su geometría no lleva los operandos —esos son `reference` y `reference2`—
+// sino solo qué construcción es y dónde se ancla su etiqueta en el lienzo. El
+// ancla no entra en ningún cálculo: es únicamente el sitio donde el operador
+// puede pinchar para seleccionar la herramienta y donde se escribe el
+// resultado, porque un punto calculado puede caer fuera de la imagen y
+// entonces no habría dónde hacer clic.
+
+enum class PointConstruction {
+    Midpoint,      // punto medio entre dos elementos con punto
+    Intersection,  // corte de dos rectas
+    Projection,    // pie de la perpendicular de un punto sobre una recta
+    CircleCenter,  // centro del círculo ajustado por otra herramienta
+};
+
+enum class LineConstruction {
+    ThroughTwoPoints,     // recta por dos elementos con punto
+    Bisector,             // bisectriz de dos rectas; si son paralelas, la recta media
+    ParallelThrough,      // paralela a una recta por un punto
+    PerpendicularThrough, // perpendicular a una recta por un punto
+};
+
+struct ConstructedPointGeometry {
+    PointConstruction mode = PointConstruction::Midpoint;
+    cv::Point2f anchor;  // solo etiqueta y selección; no entra en el cálculo
+};
+
+struct ConstructedLineGeometry {
+    LineConstruction mode = LineConstruction::ThroughTwoPoints;
+    cv::Point2f anchor;
+};
+
 using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGeometry,
                                   EdgeFlawGeometry, BlobGeometry, RulerGeometry,
                                   LineToLineGeometry, AngleGeometry, PolyBlobGeometry,
                                   PositionGeometry, ArcGeometry, ShaftGeometry,
-                                  ThreadGeometry, GearGeometry>;
+                                  ThreadGeometry, GearGeometry, ConstructedPointGeometry,
+                                  ConstructedLineGeometry>;
+
+// Nombres de las construcciones para la interfaz y para el JSON. Igual que con
+// las herramientas, una sola lista: el desplegable del panel y el fichero de
+// plantilla tienen que decir lo mismo.
+[[nodiscard]] const std::array<PointConstruction, 4>& allPointConstructions();
+[[nodiscard]] const std::array<LineConstruction, 4>& allLineConstructions();
+[[nodiscard]] const char* constructionLabel(PointConstruction mode);
+[[nodiscard]] const char* constructionLabel(LineConstruction mode);
+// Qué hace falta en `reference` y `reference2` para cada construcción. Lo
+// consulta el ejecutor para dar un motivo concreto cuando falta algo, y lo
+// consultará el panel para etiquetar los dos desplegables.
+enum class OperandKind { Point, Line, Circle, Unused };
+[[nodiscard]] std::array<OperandKind, 2> operandsOf(PointConstruction mode);
+[[nodiscard]] std::array<OperandKind, 2> operandsOf(LineConstruction mode);
+[[nodiscard]] const char* operandKindLabel(OperandKind kind);
 
 // (De)serialización JSON (cv::FileStorage en memoria). El tipo del JSON debe
 // coincidir con config.type al parsear.
@@ -160,7 +213,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 14>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 16>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que
@@ -196,12 +249,16 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta);
 // la misma herramienta acabaría llamándose distinto en cada pantalla.
 const char* toolTypeLabel(ToolType type);
 
-// La referencia de una herramienta viaja dentro de `paramsJson` (columna
+// Las referencias de una herramienta viajan dentro de `paramsJson` (columna
 // `params`, que existía sin usarse). Estas dos funciones son el único sitio que
 // conoce ese formato, para que la base de datos y la exportación de plantillas
 // no lo escriban cada una a su manera.
-[[nodiscard]] std::string paramsWithReference(const std::string& reference);
-[[nodiscard]] std::string referenceFromParams(const std::string& paramsJson);
+struct ToolReferences {
+    std::string first;
+    std::string second;
+};
+[[nodiscard]] std::string paramsWithReferences(const ToolReferences& references);
+[[nodiscard]] ToolReferences referencesFromParams(const std::string& paramsJson);
 
 // Descripción de uso para tooltips/ayuda (UTF-8, en español): qué mide la
 // herramienta y cómo dibujarla.

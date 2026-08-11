@@ -25,16 +25,19 @@ const char* toolTypeName(ToolType type) {
         case ToolType::Shaft: return "shaft";
         case ToolType::Thread: return "thread";
         case ToolType::Gear: return "gear";
+        case ToolType::ConstructedPoint: return "constructed_point";
+        case ToolType::ConstructedLine: return "constructed_line";
     }
     return "unknown";
 }
 
-const std::array<ToolType, 14>& allToolTypes() {
-    static const std::array<ToolType, 14> kTypes{
+const std::array<ToolType, 16>& allToolTypes() {
+    static const std::array<ToolType, 16> kTypes{
         ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine, ToolType::EdgeFlaw,
         ToolType::Blob,     ToolType::Ruler,    ToolType::LineToLine,  ToolType::Angle,
         ToolType::PolyBlob, ToolType::Position, ToolType::Arc,         ToolType::Shaft,
-        ToolType::Thread,   ToolType::Gear};
+        ToolType::Thread,   ToolType::Gear,     ToolType::ConstructedPoint,
+        ToolType::ConstructedLine};
     return kTypes;
 }
 
@@ -73,6 +76,11 @@ ToolCategory categoryOf(ToolType type) {
         // Posición es una tolerancia geométrica: mide contra una referencia.
         case ToolType::Position:
             return ToolCategory::Gdt;
+        // No miden: se calculan a partir de otras y existen para ser el datum
+        // contra el que miden las de GD&T.
+        case ToolType::ConstructedPoint:
+        case ToolType::ConstructedLine:
+            return ToolCategory::Construction;
         case ToolType::Shaft:
         case ToolType::Thread:
         case ToolType::Gear:
@@ -126,16 +134,20 @@ std::vector<ToolType> toolsInCategory(ToolCategory category) {
     return tools;
 }
 
-std::string paramsWithReference(const std::string& reference) {
-    if (reference.empty()) {
+std::string paramsWithReferences(const ToolReferences& references) {
+    if (references.first.empty() && references.second.empty()) {
         return "{}";
     }
     cv::FileStorage fs(".json", cv::FileStorage::WRITE | cv::FileStorage::MEMORY);
-    fs << "ref" << reference;
+    // Se escriben siempre las dos claves cuando hay alguna: leer una clave
+    // ausente ya se trata como vacía, pero un fichero con la mitad de las
+    // claves invita a suponer que la otra "no aplica" en vez de "está vacía".
+    fs << "ref" << references.first;
+    fs << "ref2" << references.second;
     return fs.releaseAndGetString();
 }
 
-std::string referenceFromParams(const std::string& paramsJson) {
+ToolReferences referencesFromParams(const std::string& paramsJson) {
     if (paramsJson.empty() || paramsJson == "{}") {
         return {};
     }
@@ -144,17 +156,93 @@ std::string referenceFromParams(const std::string& paramsJson) {
         if (!fs.isOpened()) {
             return {};
         }
-        const cv::FileNode node = fs["ref"];
-        if (node.empty() || !node.isString()) {
-            return {};
-        }
-        return static_cast<std::string>(node);
+        const auto read = [&fs](const char* key) -> std::string {
+            const cv::FileNode node = fs[key];
+            if (node.empty() || !node.isString()) {
+                return {};
+            }
+            return static_cast<std::string>(node);
+        };
+        return ToolReferences{read("ref"), read("ref2")};
     } catch (const cv::Exception&) {
         // Parámetros corruptos: se ignoran. Una referencia ilegible hace que la
         // herramienta se comporte como si no la tuviera, y eso se nota al
         // medir; reventar aquí tumbaría la carga de la plantilla entera.
         return {};
     }
+}
+
+const std::array<PointConstruction, 4>& allPointConstructions() {
+    static const std::array<PointConstruction, 4> kModes{
+        PointConstruction::Midpoint, PointConstruction::Intersection,
+        PointConstruction::Projection, PointConstruction::CircleCenter};
+    return kModes;
+}
+
+const std::array<LineConstruction, 4>& allLineConstructions() {
+    static const std::array<LineConstruction, 4> kModes{
+        LineConstruction::ThroughTwoPoints, LineConstruction::Bisector,
+        LineConstruction::ParallelThrough, LineConstruction::PerpendicularThrough};
+    return kModes;
+}
+
+const char* constructionLabel(PointConstruction mode) {
+    switch (mode) {
+        case PointConstruction::Midpoint: return "Punto medio de dos";
+        case PointConstruction::Intersection: return "Intersección de dos rectas";
+        case PointConstruction::Projection: return "Proyección de un punto sobre una recta";
+        case PointConstruction::CircleCenter: return "Centro de un círculo";
+    }
+    return "?";
+}
+
+const char* constructionLabel(LineConstruction mode) {
+    switch (mode) {
+        case LineConstruction::ThroughTwoPoints: return "Recta por dos puntos";
+        case LineConstruction::Bisector: return "Bisectriz de dos rectas";
+        case LineConstruction::ParallelThrough: return "Paralela por un punto";
+        case LineConstruction::PerpendicularThrough: return "Perpendicular por un punto";
+    }
+    return "?";
+}
+
+std::array<OperandKind, 2> operandsOf(PointConstruction mode) {
+    switch (mode) {
+        case PointConstruction::Midpoint:
+            return {OperandKind::Point, OperandKind::Point};
+        case PointConstruction::Intersection:
+            return {OperandKind::Line, OperandKind::Line};
+        case PointConstruction::Projection:
+            return {OperandKind::Point, OperandKind::Line};
+        case PointConstruction::CircleCenter:
+            return {OperandKind::Circle, OperandKind::Unused};
+    }
+    return {OperandKind::Unused, OperandKind::Unused};
+}
+
+std::array<OperandKind, 2> operandsOf(LineConstruction mode) {
+    switch (mode) {
+        case LineConstruction::ThroughTwoPoints:
+            return {OperandKind::Point, OperandKind::Point};
+        case LineConstruction::Bisector:
+            return {OperandKind::Line, OperandKind::Line};
+        case LineConstruction::ParallelThrough:
+        case LineConstruction::PerpendicularThrough:
+            return {OperandKind::Line, OperandKind::Point};
+    }
+    return {OperandKind::Unused, OperandKind::Unused};
+}
+
+const char* operandKindLabel(OperandKind kind) {
+    switch (kind) {
+        // "con punto" y no "punto" porque un Círculo vale donde se pide un
+        // punto: aporta su centro. Decir "punto" a secas haría pensar que no.
+        case OperandKind::Point: return "una herramienta con punto (o un círculo)";
+        case OperandKind::Line: return "una herramienta con recta";
+        case OperandKind::Circle: return "un círculo";
+        case OperandKind::Unused: return "nada";
+    }
+    return "?";
 }
 
 const char* toolTypeLabel(ToolType type) {
@@ -173,6 +261,8 @@ const char* toolTypeLabel(ToolType type) {
         case ToolType::Shaft: return "Eje / Diámetro";
         case ToolType::Thread: return "Rosca";
         case ToolType::Gear: return "Engranaje";
+        case ToolType::ConstructedPoint: return "Punto construido";
+        case ToolType::ConstructedLine: return "Recta construida";
     }
     return "?";
 }
@@ -253,6 +343,18 @@ const char* toolTypeDescription(ToolType type) {
                    "Arrastra del centro del engranaje hacia fuera, pasando la punta\n"
                    "de los dientes; el perfil radial se repite una vez por diente.\n"
                    "El módulo exige calibración px→mm: sin escala real no existe.";
+        case ToolType::ConstructedPoint:
+            return "Punto construido — NO mide: calcula un punto a partir de otras\n"
+                   "herramientas para que sirva de referencia. Punto medio de dos,\n"
+                   "corte de dos rectas, proyección de un punto sobre una recta o\n"
+                   "centro de un círculo. Colócalo con un clic (solo fija dónde se\n"
+                   "escribe) y elige la construcción y sus dos referencias.";
+        case ToolType::ConstructedLine:
+            return "Recta construida — NO mide: calcula una recta a partir de otras\n"
+                   "herramientas para usarla como DATUM. Por dos puntos, bisectriz de\n"
+                   "dos rectas (si son paralelas, la recta media), o paralela y\n"
+                   "perpendicular a una recta por un punto. Es lo que le falta al\n"
+                   "GD&T para medir contra algo declarado y no contra un supuesto.";
     }
     return "";
 }
@@ -279,6 +381,15 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
             // alrededor de donde cayó la pieza buena.
             toleranceMin = 0.0;
             toleranceMax = std::max(measured * 1.25, 5.0);
+            return;
+        case ToolType::ConstructedPoint:
+        case ToolType::ConstructedLine:
+            // Una construcción no se juzga: no hay medida que pueda estar fuera
+            // de tolerancia, solo un elemento que se pudo calcular o no. Se deja
+            // la banda abierta para que nunca sea la causa de un NG; lo que sí
+            // es NG es que no se pueda construir, y eso lo dice `ok=false`.
+            toleranceMin = 0.0;
+            toleranceMax = 1e9;
             return;
         case ToolType::LineToLine:
         case ToolType::Angle: {
@@ -336,6 +447,10 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::Thread;
             } else if constexpr (std::is_same_v<T, GearGeometry>) {
                 return ToolType::Gear;
+            } else if constexpr (std::is_same_v<T, ConstructedPointGeometry>) {
+                return ToolType::ConstructedPoint;
+            } else if constexpr (std::is_same_v<T, ConstructedLineGeometry>) {
+                return ToolType::ConstructedLine;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -390,6 +505,12 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 g.axisTo += delta;
             } else if constexpr (std::is_same_v<T, GearGeometry>) {
                 g.center += delta;
+            } else if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
+                                 std::is_same_v<T, ConstructedLineGeometry>) {
+                // Solo se mueve la etiqueta: el elemento lo dictan las
+                // referencias, y arrastrarlo no puede cambiar dónde cae. Que se
+                // deje mover es a propósito — la etiqueta estorba a menudo.
+                g.anchor += delta;
             } else {
                 // Igual que en typeOf: esta cadena no puede acabar sin rama. Al
                 // no tener `else`, un tipo nuevo simplemente NO se trasladaba —
@@ -472,6 +593,27 @@ private:
     cv::FileStorage fs_;
 };
 
+// Lee el modo de una construcción comprobando que el número guardado sea uno de
+// los que existen. `numberOr` con un valor por defecto no sirve aquí: un modo
+// desconocido —una plantilla escrita por una versión posterior, unos params
+// tocados a mano— se degradaría en silencio al primero de la lista, y la
+// herramienta calcularía una cosa distinta de la que el operador configuró sin
+// que nada lo dijera.
+template <typename Mode, std::size_t N>
+core::Result<Mode> readConstruction(JsonReader& reader, const std::array<Mode, N>& modes) {
+    const auto raw = reader.number("mode");
+    if (!raw.isOk()) {
+        return core::Result<Mode>::err(raw.error().message);
+    }
+    const int value = static_cast<int>(raw.value());
+    for (const Mode mode : modes) {
+        if (static_cast<int>(mode) == value) {
+            return core::Result<Mode>::ok(mode);
+        }
+    }
+    return core::Result<Mode>::err("Construcción desconocida: " + std::to_string(value));
+}
+
 }  // namespace
 
 std::string toJson(const ToolGeometry& geometry) {
@@ -551,6 +693,12 @@ std::string toJson(const ToolGeometry& geometry) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "cx" << g.center.x << "cy" << g.center.y << "rin"
                        << g.innerRadius << "rout" << g.outerRadius << "rays" << g.rayCount;
+                });
+            } else if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
+                                 std::is_same_v<T, ConstructedLineGeometry>) {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "mode" << static_cast<int>(g.mode) << "ax" << g.anchor.x << "ay"
+                       << g.anchor.y;
                 });
             } else {
                 static_assert(alwaysFalse<T>, "geometría que no sabe serializarse");
@@ -741,6 +889,33 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.innerRadius = static_cast<float>(rin.value());
                 g.outerRadius = static_cast<float>(rout.value());
                 g.rayCount = static_cast<int>(reader.numberOr("rays", 1440.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::ConstructedPoint: {
+                ConstructedPointGeometry g;
+                auto ax = f("ax"), ay = f("ay");
+                for (const auto* v : {&ax, &ay}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.anchor = {static_cast<float>(ax.value()), static_cast<float>(ay.value())};
+                // Una construcción desconocida NO se degrada a la primera: eso
+                // convertiría un fichero de otra versión en una medida creíble
+                // que no es la que el operador configuró.
+                const auto mode = readConstruction(reader, allPointConstructions());
+                if (!mode.isOk()) return ResultT::err(mode.error().message);
+                g.mode = mode.value();
+                return ResultT::ok(g);
+            }
+            case ToolType::ConstructedLine: {
+                ConstructedLineGeometry g;
+                auto ax = f("ax"), ay = f("ay");
+                for (const auto* v : {&ax, &ay}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.anchor = {static_cast<float>(ax.value()), static_cast<float>(ay.value())};
+                const auto mode = readConstruction(reader, allLineConstructions());
+                if (!mode.isOk()) return ResultT::err(mode.error().message);
+                g.mode = mode.value();
                 return ResultT::ok(g);
             }
         }

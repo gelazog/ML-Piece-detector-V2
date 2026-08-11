@@ -15,6 +15,7 @@
 #include "vision/types.h"
 
 class QButtonGroup;
+class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
 class QLineEdit;
@@ -95,6 +96,9 @@ private:
     void invalidateContourReport();
     void refreshList();
     void syncPanelFromSelection();
+    // Rellena (o vacía y deshabilita) los tres desplegables de construcción.
+    void syncConstructionPanel(const EditedTool* tool);
+    void applyConstructionPanel(EditedTool& tool);
     void commitUndoState();
     void applyUndoRedo(bool redo);
     [[nodiscard]] int listRowToToolIndex(int row) const;
@@ -109,6 +113,14 @@ private:
     QLabel* paramLabel_ = nullptr;   // parámetro de muestreo según el tipo
     QSpinBox* paramSpin_ = nullptr;  // (banda, rayos, escaneos, área mínima)
     QLabel* tolMmLabel_ = nullptr;   // equivalente en mm de las tolerancias
+    // Construcciones geométricas (X1): qué se construye y con qué dos
+    // referencias. Solo se habilitan para las herramientas que las usan — un
+    // desplegable activo en un Caliper prometería algo que el Caliper ignora.
+    QComboBox* constructionCombo_ = nullptr;
+    QLabel* ref1Label_ = nullptr;
+    QComboBox* ref1Combo_ = nullptr;
+    QLabel* ref2Label_ = nullptr;
+    QComboBox* ref2Combo_ = nullptr;
     QPushButton* deleteButton_ = nullptr;
     QLabel* statusLabel_ = nullptr;
     QPushButton* refreshButton_ = nullptr;  // "Actualizar desde cámara" (E1)

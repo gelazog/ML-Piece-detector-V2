@@ -232,6 +232,27 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      que el tablero pasa a ser criterio OK/NG y no solo ayuda visual. Con el
      cero *en la propia pieza* la desviación es constante: usa el centro de la
      imagen o un punto fijado para que mida algo útil.
+   - *Punto construido* y *Recta construida*: **no miden nada**. Calculan un
+     punto o una recta a partir de otras herramientas para que puedas
+     **declarar una referencia** (un *datum*). Colócalas con un clic —el clic
+     solo elige dónde se escribe el resultado— y en el panel eliges la
+     **construcción** y sus **dos referencias**:
+     - Punto: punto medio de dos, corte de dos rectas, proyección de un punto
+       sobre una recta, o centro de un círculo.
+     - Recta: por dos puntos, bisectriz de dos rectas (si son paralelas, sale
+       la recta media), o paralela y perpendicular a una recta por un punto.
+
+     Donde se pide "un punto" vale también un **círculo**: aporta su centro,
+     que es el datum natural de un agujero. Y una construcción puede
+     referenciar a otra, así que se pueden encadenar (dos agujeros → su punto
+     medio → la recta desde ahí) sin tener que ordenarlas: el programa las
+     resuelve en el orden que haga falta y avisa si se referencian en círculo.
+
+     En la tabla de resultados aparecen con **«—»** en vez de OK: no juzgan
+     nada. Lo que sí es un NG es que **no se puedan construir** —dos rectas
+     paralelas no se cortan, dos puntos que coinciden no dan recta—, y entonces
+     lo dicen con el motivo escrito, porque todo lo que las usaba de referencia
+     se queda sin ella.
 
    > **Antes de medir un diámetro, una rosca o un engranaje: cuatro
    > condiciones.** Todo esto se saca de una **silueta**, y una silueta mala da

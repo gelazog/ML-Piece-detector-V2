@@ -177,6 +177,39 @@ QIcon toolIcon(ToolType type) {
                 p.drawEllipse(QPointF(12, 13), 2.0, 2.0);
                 p.drawEllipse(QPointF(18, 15), 1.6, 1.6);
             });
+        case ToolType::ConstructedPoint:
+            return makeIcon([](QPainter& p, const QColor& c) {
+                // Dos rectas de origen finas y punteadas, y el punto que sale de
+                // ellas bien sólido: lo construido se ve, lo que lo construye se
+                // insinúa.
+                QPen faint = p.pen();
+                faint.setStyle(Qt::DashLine);
+                faint.setWidthF(1.2);
+                p.setPen(faint);
+                p.drawLine(3, 8, 25, 20);
+                p.drawLine(3, 20, 25, 8);
+                p.setPen(Qt::NoPen);
+                p.setBrush(c);
+                p.drawEllipse(QPointF(14, 14), 3.2, 3.2);
+            });
+        case ToolType::ConstructedLine:
+            return makeIcon([](QPainter& p, const QColor& c) {
+                // Dos puntos de origen y la recta que pasa por ellos.
+                QPen solid = p.pen();
+                p.drawLine(4, 21, 24, 7);
+                QPen faint = p.pen();
+                faint.setStyle(Qt::DashLine);
+                faint.setWidthF(1.2);
+                p.setPen(faint);
+                p.setBrush(Qt::NoBrush);
+                p.drawEllipse(QPointF(8, 18), 3.6, 3.6);
+                p.drawEllipse(QPointF(20, 10), 3.6, 3.6);
+                p.setPen(Qt::NoPen);
+                p.setBrush(c);
+                p.drawEllipse(QPointF(8, 18), 1.8, 1.8);
+                p.drawEllipse(QPointF(20, 10), 1.8, 1.8);
+                p.setPen(solid);
+            });
         case ToolType::Position:
             return makeIcon([](QPainter& p, const QColor& c) {
                 // Diana con ejes: "dónde debe caer este rasgo".

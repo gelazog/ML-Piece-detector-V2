@@ -2,6 +2,7 @@
 
 #include <QAction>
 #include <QButtonGroup>
+#include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QFileDialog>
@@ -171,6 +172,21 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
            "Borde liso: escaneos perpendiculares\n"
            "Blob: área mínima de cada mancha (px²)"));
     form->addRow(paramLabel_, paramSpin_);
+
+    // Construcciones geométricas (X1). Los tres desplegables solo se habilitan
+    // con un Punto o una Recta construidos seleccionados: en cualquier otra
+    // herramienta prometerían algo que esa herramienta ignora.
+    constructionCombo_ = new QComboBox(this);
+    constructionCombo_->setToolTip(
+        tr("Qué se construye a partir de las referencias. No se mide nada:\n"
+           "el resultado existe para que otras herramientas lo usen de datum."));
+    form->addRow(tr("Construcción:"), constructionCombo_);
+    ref1Label_ = new QLabel(tr("1ª referencia:"), this);
+    ref1Combo_ = new QComboBox(this);
+    form->addRow(ref1Label_, ref1Combo_);
+    ref2Label_ = new QLabel(tr("2ª referencia:"), this);
+    ref2Combo_ = new QComboBox(this);
+    form->addRow(ref2Label_, ref2Combo_);
     if (calibration_.valid()) {
         auto* scaleHint = new QLabel(
             tr("Escala calibrada: 1 px ≈ %1 mm (tolerancias en px)")
@@ -243,6 +259,10 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     connect(tolMin_, &QDoubleSpinBox::valueChanged, this, &EditorWindow::onPanelEdited);
     connect(tolMax_, &QDoubleSpinBox::valueChanged, this, &EditorWindow::onPanelEdited);
     connect(paramSpin_, &QSpinBox::valueChanged, this, &EditorWindow::onPanelEdited);
+    connect(constructionCombo_, &QComboBox::currentIndexChanged, this,
+            &EditorWindow::onPanelEdited);
+    connect(ref1Combo_, &QComboBox::currentIndexChanged, this, &EditorWindow::onPanelEdited);
+    connect(ref2Combo_, &QComboBox::currentIndexChanged, this, &EditorWindow::onPanelEdited);
     connect(deleteButton_, &QPushButton::clicked, this, &EditorWindow::onDeleteClicked);
     connect(autoButton, &QPushButton::clicked, this, &EditorWindow::onAutoMeasureClicked);
     connect(contourButton_, &QPushButton::toggled, this,
@@ -435,10 +455,102 @@ void EditorWindow::syncPanelFromSelection() {
                 // PointToLine no tiene parámetro de muestreo editable.
             },
             tool.geometry);
+        syncConstructionPanel(&tool);
     } else {
         nameEdit_->clear();
+        syncConstructionPanel(nullptr);
     }
     syncing_ = false;
+}
+
+void EditorWindow::syncConstructionPanel(const EditedTool* tool) {
+    constructionCombo_->clear();
+    ref1Combo_->clear();
+    ref2Combo_->clear();
+    const bool isConstruction =
+        tool != nullptr && (tool->config.type == ToolType::ConstructedPoint ||
+                            tool->config.type == ToolType::ConstructedLine);
+    constructionCombo_->setEnabled(isConstruction);
+    ref1Combo_->setEnabled(isConstruction);
+    ref2Combo_->setEnabled(isConstruction);
+    if (!isConstruction) {
+        ref1Label_->setText(tr("1ª referencia:"));
+        ref2Label_->setText(tr("2ª referencia:"));
+        return;
+    }
+
+    // Los modos que ofrece este tipo, con su valor guardado como dato para no
+    // depender del orden del desplegable.
+    std::array<OperandKind, 2> kinds{OperandKind::Unused, OperandKind::Unused};
+    if (tool->config.type == ToolType::ConstructedPoint) {
+        const auto& g = std::get<ConstructedPointGeometry>(tool->geometry);
+        for (const auto mode : allPointConstructions()) {
+            constructionCombo_->addItem(QString::fromUtf8(constructionLabel(mode)),
+                                        static_cast<int>(mode));
+        }
+        constructionCombo_->setCurrentIndex(
+            constructionCombo_->findData(static_cast<int>(g.mode)));
+        kinds = operandsOf(g.mode);
+    } else {
+        const auto& g = std::get<ConstructedLineGeometry>(tool->geometry);
+        for (const auto mode : allLineConstructions()) {
+            constructionCombo_->addItem(QString::fromUtf8(constructionLabel(mode)),
+                                        static_cast<int>(mode));
+        }
+        constructionCombo_->setCurrentIndex(
+            constructionCombo_->findData(static_cast<int>(g.mode)));
+        kinds = operandsOf(g.mode);
+    }
+
+    // Las candidatas son TODAS las demás herramientas, no solo las que hoy
+    // ofrecen un elemento. Filtrar aquí exigiría una segunda tabla de "qué
+    // produce cada tipo" que acabaría discrepando de la que usa el ejecutor; en
+    // vez de eso, la etiqueta dice qué hace falta y el resultado lo dice claro
+    // si no encaja.
+    const auto fill = [this, tool](QComboBox* combo, OperandKind kind,
+                                   const std::string& current) {
+        combo->addItem(tr("— ninguna —"), QString());
+        for (const auto& other : tools_) {
+            if (other.deleted || &other == tool || other.config.name.empty()) {
+                continue;
+            }
+            const QString name = QString::fromStdString(other.config.name);
+            combo->addItem(name, name);
+        }
+        const int index = combo->findData(QString::fromStdString(current));
+        combo->setCurrentIndex(index >= 0 ? index : 0);
+        combo->setEnabled(kind != OperandKind::Unused);
+    };
+    fill(ref1Combo_, kinds[0], tool->config.reference);
+    fill(ref2Combo_, kinds[1], tool->config.reference2);
+
+    const auto label = [](OperandKind kind, const QString& prefix) {
+        if (kind == OperandKind::Unused) {
+            return prefix + QObject::tr(" (no se usa):");
+        }
+        return prefix + " (" + QString::fromUtf8(operandKindLabel(kind)) + "):";
+    };
+    ref1Label_->setText(label(kinds[0], tr("1ª referencia")));
+    ref2Label_->setText(label(kinds[1], tr("2ª referencia")));
+}
+
+void EditorWindow::applyConstructionPanel(EditedTool& tool) {
+    if (!constructionCombo_->isEnabled() || constructionCombo_->currentIndex() < 0) {
+        return;
+    }
+    const int mode = constructionCombo_->currentData().toInt();
+    std::visit(
+        [mode](auto& g) {
+            using T = std::decay_t<decltype(g)>;
+            if constexpr (std::is_same_v<T, ConstructedPointGeometry>) {
+                g.mode = static_cast<PointConstruction>(mode);
+            } else if constexpr (std::is_same_v<T, ConstructedLineGeometry>) {
+                g.mode = static_cast<LineConstruction>(mode);
+            }
+        },
+        tool.geometry);
+    tool.config.reference = ref1Combo_->currentData().toString().toStdString();
+    tool.config.reference2 = ref2Combo_->currentData().toString().toStdString();
 }
 
 void EditorWindow::onAutoMeasureClicked() {
@@ -644,6 +756,14 @@ void EditorWindow::onPanelEdited() {
             tool.geometry);
         canvas_->update();
     }
+    applyConstructionPanel(tool);
+    // Cambiar de construcción cambia QUÉ referencias hacen falta, así que los
+    // desplegables se vuelven a montar. Sin esto, elegir "centro de un círculo"
+    // dejaría a la vista una segunda referencia que ya no se usa.
+    syncing_ = true;
+    syncConstructionPanel(&tool);
+    syncing_ = false;
+    canvas_->update();
     commitUndoState();
     refreshList();
 }
@@ -789,14 +909,22 @@ void EditorWindow::onTestClicked() {
         QString measure;
         if (result.measuredIsAngle) {
             measure = QStringLiteral("%1°").arg(result.measured, 0, 'f', 1);
+        } else if (result.informative) {
+            // Un punto construido no tiene medida: sus coordenadas van en el
+            // detalle. Escribir "0,0 px" sería un número inventado.
+            measure = QStringLiteral("—");
         } else if (result.type == ToolType::Blob) {
             measure = QString::number(result.measured, 'f', 0);
         } else {
             measure = QString::fromStdString(calibration_.formatLength(result.measured));
         }
+        // Una construcción que salió bien no es un OK: no ha juzgado nada. Que
+        // sí falle es otra cosa, y eso se dice.
+        const QString state = (result.informative && result.ok) ? QStringLiteral("—")
+                              : result.ok                       ? QStringLiteral("OK")
+                                                                : QStringLiteral("NG");
         lines << QStringLiteral("%1 [%2] %3 — %4")
-                     .arg(QString::fromStdString(result.name),
-                          result.ok ? QStringLiteral("OK") : QStringLiteral("NG"), measure,
+                     .arg(QString::fromStdString(result.name), state, measure,
                           QString::fromStdString(result.detail));
     }
     statusLabel_->setText(lines.isEmpty() ? tr("No hay herramientas que probar")
