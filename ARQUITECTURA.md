@@ -168,6 +168,37 @@ sigue guardando la que él dibujó y el modo (`Off` / `Automatic` / `Fixed`)
 decide cuál se usa. Y la zona activa se dibuja sobre el vídeo, porque un recorte
 invisible convierte cualquier fallo en un misterio.
 
+### Dónde se va el tiempo de un análisis (y por qué no hay escala adaptativa)
+
+Se planificó una «escala de trabajo adaptativa»: segmentar una copia reducida
+de la imagen cuando la pieza es grande. Se implementó, se midió y **se retiró**,
+porque la premisa era falsa. Conviene dejar escrito el reparto real del coste
+para no volver a intentarlo.
+
+Medido sobre 2560×1440 con una pieza que ocupa casi todo el frame:
+
+| Etapa | Tiempo | % |
+|---|---|---|
+| `analyzeFrame` completo | 35,4 ms | — |
+| `segmentPiece` (suavizado + Otsu + morfología) | 8,3 ms | 23 % |
+| `findLargestContour` | 2,0 ms | 6 % |
+| `computeFixture` (momentos sobre la máscara) | **14,1 ms** | **40 %** |
+| `normalizePiece` (recorte canónico) | **12,1 ms** | **34 %** |
+
+Segmentar a 1/4 baja esos 8,3 ms a 2,1 ms contando el remuestreo de ida y
+vuelta: **1,10× medido** sobre el total. Un 10 % no justifica un modo nuevo en
+la interfaz ni una forma más de equivocarse.
+
+Lo que sí quedó demostrado, y sirve si algún día hace falta: reducir **no mueve
+las medidas** si el contorno se recupera a resolución completa. Segmentando a
+1/4, subiendo la máscara con interpolación bilineal y volviendo a umbralizar, el
+fixture salía a **±0,000 px** del de referencia y las cotas idénticas. Lo que no
+vale es escalar los puntos del contorno, que son enteros: eso los cuantizaría al
+factor.
+
+El coste real está en **los momentos sobre la máscara completa** y en **el
+recorte canónico**. Ahí es donde hay que mirar, no en la segmentación.
+
 ### El panel «Configurar»: un solo sitio
 
 `ui/configure_dialog.*` es un `QTabWidget` que aloja las páginas de ajuste.

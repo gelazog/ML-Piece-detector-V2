@@ -279,7 +279,31 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
   tercio del ancho. Relativo y no en milisegundos absolutos: lo segundo depende
   de la máquina y convertiría el test en un generador de fallos intermitentes.
 
-- [ ] **C4 — Escala de trabajo adaptativa (pieza grande, pieza pequeña).** La
+- [~] **C4 — Escala de trabajo adaptativa. NO SE ENTREGA: la premisa era
+  falsa.** Se implementó y se midió. La precisión salió perfecta (fixture a
+  ±0,000 px y cotas idénticas a 1/4, recuperando el contorno a resolución
+  completa), pero la ganancia es **1,10×**, porque `segmentPiece` es solo el
+  **23 %** del coste de un análisis. El reparto medido sobre 2560×1440:
+  `computeFixture` **40 %**, `normalizePiece` **34 %**, segmentación 23 %,
+  contorno 6 %. Un 10 % no paga un modo nuevo en la interfaz. Sustituido por
+  `C4b`; el reparto queda documentado en ARQUITECTURA para no reintentarlo.
+
+- [ ] **C4b — Acelerar lo que de verdad cuesta: los momentos y el recorte.**
+  Sale de medir `C4`. Dos objetivos, cada uno con el mismo criterio de entrega
+  que tenía `C4` —**si mueve las medidas, no se entrega**—:
+  - **`computeFixture` (40 %)** calcula los momentos sobre una máscara de 3,7
+    millones de píxeles. Los mismos momentos salen del **polígono del contorno**
+    (`cv::moments` sobre los puntos) en tiempo proporcional al número de puntos,
+    que son unos miles. Ojo: los momentos de polígono y los de máscara no son
+    idénticos en el borde (medio píxel), así que hay que medir la diferencia
+    antes de cambiar nada, no suponerla.
+  - **`normalizePiece` (34 %)** deforma la imagen entera para sacar un recorte
+    de 256×256. Recortar primero por la envolvente de la pieza y deformar solo
+    eso tiene que dar el mismo resultado por mucho menos.
+  Verificación: sobre las mismas piezas sintéticas, el fixture y **todas** las
+  cotas de una plantilla completa coinciden con las de hoy dentro de 0,05 px, y
+  el recorte canónico es idéntico píxel a píxel. Más la ganancia relativa,
+  medida como en `C3`. La
   otra mitad de "que trabaje menos". Con el ROI ya ajustado, si la pieza es
   **grande** el recorte sigue siendo enorme y el contorno de una pieza de
   1500 px se localiza igual de bien a media escala. Si es **pequeña**, no se
