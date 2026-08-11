@@ -4,6 +4,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
+#include <locale>
+#include <sstream>
 
 #include "vision/fitting.h"
 
@@ -349,6 +352,89 @@ std::vector<std::vector<cv::Point>> findHoles(const cv::Mat& mask, double minAre
         holes.push_back(contours[i]);
     }
     return holes;
+}
+
+ContourReport describeContour(const cv::Mat& mask, const DecomposeOptions& options) {
+    ContourReport report;
+    if (mask.empty() || mask.type() != CV_8UC1) {
+        return report;
+    }
+
+    std::vector<std::vector<cv::Point>> contours;
+    std::vector<cv::Vec4i> hierarchy;
+    cv::findContours(mask, contours, hierarchy, cv::RETR_CCOMP, cv::CHAIN_APPROX_NONE);
+
+    // Una sola llamada a findContours para el exterior Y los agujeros: los
+    // agujeros que se devuelven son los HIJOS del contorno elegido, no todos los
+    // huecos de la máscara. Con dos llamadas (o reutilizando findHoles) una
+    // pieza pequeña con un agujero al lado de la principal aportaría su hueco al
+    // área de la grande.
+    int best = -1;
+    double bestArea = 0.0;
+    for (std::size_t i = 0; i < contours.size(); ++i) {
+        if (hierarchy[i][3] >= 0) {
+            continue;  // tiene padre: es un agujero, no una pieza
+        }
+        const double area = std::abs(cv::contourArea(contours[i]));
+        if (area > bestArea) {
+            bestArea = area;
+            best = static_cast<int>(i);
+        }
+    }
+    if (best < 0 || contours[static_cast<std::size_t>(best)].size() < 3) {
+        return report;
+    }
+
+    report.outer = contours[static_cast<std::size_t>(best)];
+    report.perimeter = cv::arcLength(report.outer, true);
+    report.area = bestArea;
+    report.bounds = cv::boundingRect(report.outer);
+    report.minRect = cv::minAreaRect(report.outer);
+
+    for (std::size_t i = 0; i < contours.size(); ++i) {
+        if (hierarchy[i][3] != best) {
+            continue;
+        }
+        const double area = std::abs(cv::contourArea(contours[i]));
+        if (area < 40.0 || contours[i].size() < 3) {
+            continue;  // ruido de la segmentación, no un agujero
+        }
+        report.holes.push_back(contours[i]);
+        report.area -= area;
+    }
+
+    report.primitives = decomposeContour(report.outer, options);
+    report.valid = true;
+    return report;
+}
+
+std::string contourToCsv(const ContourReport& report, double mmPerPixel) {
+    std::ostringstream out;
+    // Locale clásico a la fuerza: en un Windows en español el separador decimal
+    // por defecto es la coma, y un CSV con "12,50" en una columna separada por
+    // comas no lo abre nadie.
+    out.imbue(std::locale::classic());
+
+    const bool inMm = mmPerPixel > 0.0;
+    const double scale = inMm ? mmPerPixel : 1.0;
+    const int decimals = inMm ? 4 : 2;
+    out << "contorno,punto,x_" << (inMm ? "mm" : "px") << ",y_" << (inMm ? "mm" : "px") << '\n';
+    if (!report.valid) {
+        return out.str();
+    }
+    out << std::fixed << std::setprecision(decimals);
+
+    const auto emit = [&](const std::string& name, const std::vector<cv::Point>& points) {
+        for (std::size_t i = 0; i < points.size(); ++i) {
+            out << name << ',' << i << ',' << points[i].x * scale << ','
+                << points[i].y * scale << '\n';
+        }
+    };
+    emit("exterior", report.outer);
+    for (std::size_t h = 0; h < report.holes.size(); ++h) {
+        emit("agujero_" + std::to_string(h + 1), report.holes[h]);
+    }
+    return out.str();
 }
 
 }  // namespace pci::vision

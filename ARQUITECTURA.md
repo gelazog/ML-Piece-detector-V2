@@ -455,6 +455,58 @@ Verificado sobre piezas de medidas conocidas: agujeros de Ø70 y Ø100 se propon
 como Ø70,1 y Ø100,0; las cuatro esquinas de radio 45 salen como cuatro Arcos; un
 pinchazo de 6 px no genera propuesta.
 
+### Ver y exportar el contorno
+
+La otra mitad de "medir la pieza y los contornos". `vision::describeContour(mask)`
+devuelve **un solo informe** —contorno exterior, agujeros, descomposición,
+perímetro, área y envolvente— y no cuatro funciones sueltas, porque las partes
+tienen que ser coherentes entre sí: el área descuenta **estos** agujeros, que son
+los hijos jerárquicos de **este** contorno. Calculadas por separado, una pieza
+pequeña con su propio agujero al lado de la principal le restaría área a la
+grande; hay un test que lo comprueba.
+
+La superposición (`EditorCanvas::paintContourReport`) pinta cuatro cosas y cada
+una tiene su motivo:
+
+- El **contorno crudo en blanco tenue, por debajo**. Es la referencia contra la
+  que se lee todo lo demás: sin él, un arco mal ajustado se ve como un arco
+  perfecto y nadie nota que no sigue al borde.
+- Los **tramos rectos en azul y los arcos en naranja**, dibujados **a partir de
+  la primitiva ajustada**, no de los puntos del contorno — que es justo lo que
+  hace visible dónde se despega.
+- Un **punto blanco en cada corte** entre tramos, para que la descomposición se
+  vea aunque dos tramos vecinos sean del mismo tipo.
+- El **radio junto a cada arco**, que es el dato que se viene a buscar en un
+  redondeo. Solo en los tramos largos: etiquetar los cortos tapa la pieza de
+  números.
+
+Va **por debajo de las herramientas** y no se puede seleccionar ni arrastrar: es
+una capa de consulta y no debe competir con lo que sí se mide. Y se invalida al
+recapturar desde la cámara, porque describe la foto anterior.
+
+El **resumen** (perímetro, área, agujeros, envolvente, cuántos tramos) lo genera
+el propio lienzo, en la unidad activa, y lo reutiliza la ventana para el panel de
+estado: un solo sitio donde se decide el formato, o los dos acabarían diciendo
+cosas distintas. El área se convierte con el **cuadrado** de la escala; hacerlo
+linealmente daría un número plausible y cuatro veces mayor, y hay un test que
+falla si alguien lo cambia.
+
+La **exportación a CSV** (`vision::contourToCsv`) existe para llevarse la pieza a
+un CAD. Dos decisiones que parecen menores y no lo son:
+
+- La **unidad va en el nombre de la columna** (`x_mm` / `x_px`), no en una línea
+  de comentario: los importadores de CAD y las hojas de cálculo tragan cabeceras
+  y no comentarios, y un archivo de coordenadas sin unidad no sirve para nada.
+- El formato se escribe con el **locale clásico a la fuerza**. En un Windows en
+  español el separador decimal es la coma, y un CSV con `12,50` en un archivo
+  separado por comas no lo abre nadie. El test vuelve a leer el archivo partiendo
+  por comas —igual que hará el CAD— y falla si aparece un campo de más.
+
+Verificado con números: el CSV de una placa de 340×340 px releído encierra
+114 921 px² (339², el contorno de una máscara pasa por el centro de los píxeles
+del borde) y con calibración de 0,25 mm/px da 7 182 mm² frente a los 7 225
+teóricos.
+
 ### Avisos de condiciones: el fallo que no se ve en el número
 
 Estas herramientas dan resultados **creíbles** con datos malos, que es la peor

@@ -3,6 +3,8 @@
 #include <QAction>
 #include <QButtonGroup>
 #include <QDoubleSpinBox>
+#include <QFile>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -10,6 +12,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -29,6 +32,7 @@
 #include "inspection_editor/canvas/tool_icons.h"
 #include "inspection_editor/execution/tool_executor.h"
 #include "repositories/tool_repository.h"
+#include "vision/geometry_features.h"
 #include "vision/pipeline.h"
 
 namespace pci::inspection {
@@ -243,6 +247,20 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
            "ángulos de esquina. Se revisan antes de añadirlas."));
     sideLayout->addWidget(autoButton);
 
+    contourButton_ = new QPushButton(tr("Ver contorno"), this);
+    contourButton_->setCheckable(true);
+    contourButton_->setToolTip(
+        tr("Dibuja el contorno detectado sobre la imagen, separando en colores\n"
+           "los tramos rectos de los arcos (con su radio), marcando los agujeros\n"
+           "y resumiendo perímetro, área y envolvente."));
+    sideLayout->addWidget(contourButton_);
+
+    auto* exportButton = new QPushButton(tr("Exportar contorno a CSV…"), this);
+    exportButton->setToolTip(
+        tr("Guarda los puntos del contorno y de sus agujeros en un CSV para\n"
+           "abrirlo en un CAD. En mm si hay calibración; si no, en píxeles."));
+    sideLayout->addWidget(exportButton);
+
     auto* testButton = new QPushButton(tr("Probar sobre esta imagen"), this);
     sideLayout->addWidget(testButton);
 
@@ -278,6 +296,10 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     connect(paramSpin_, &QSpinBox::valueChanged, this, &EditorWindow::onPanelEdited);
     connect(deleteButton_, &QPushButton::clicked, this, &EditorWindow::onDeleteClicked);
     connect(autoButton, &QPushButton::clicked, this, &EditorWindow::onAutoMeasureClicked);
+    connect(contourButton_, &QPushButton::toggled, this,
+            &EditorWindow::onShowContourToggled);
+    connect(exportButton, &QPushButton::clicked, this,
+            &EditorWindow::onExportContourClicked);
     connect(testButton, &QPushButton::clicked, this, &EditorWindow::onTestClicked);
     connect(saveButton, &QPushButton::clicked, this, &EditorWindow::onSaveClicked);
     connect(refreshButton_, &QPushButton::clicked, this,
@@ -724,8 +746,86 @@ void EditorWindow::onRefreshFromCamera() {
     reference_ = frame;
     fixture_ = analysis.value().fixture;
     canvas_->setScene(reference_, fixture_);
+    // El contorno que hubiera dibujado describe la foto anterior: dejarlo
+    // encima sería enseñar el borde de una imagen sobre otra.
+    invalidateContourReport();
     onTestClicked();
     statusLabel_->setText(tr("Imagen actualizada desde la cámara."));
+}
+
+bool EditorWindow::ensureContourReport() {
+    if (contour_.valid) {
+        return true;
+    }
+    const auto analysis = vision::analyzeFrame(camera::qImageToMat(reference_));
+    if (!analysis.isOk()) {
+        statusLabel_->setText(tr("No se ve el contorno: no se detecta la pieza (%1)")
+                                  .arg(QString::fromStdString(analysis.error().message)));
+        return false;
+    }
+    contour_ = vision::describeContour(analysis.value().mask);
+    if (!contour_.valid) {
+        statusLabel_->setText(tr("La pieza detectada no tiene un contorno utilizable."));
+        return false;
+    }
+    return true;
+}
+
+void EditorWindow::invalidateContourReport() {
+    contour_ = {};
+    canvas_->setContourReport(false);
+    if (contourButton_ != nullptr) {
+        const QSignalBlocker blocker(contourButton_);
+        contourButton_->setChecked(false);
+    }
+}
+
+void EditorWindow::onShowContourToggled(bool on) {
+    if (!on) {
+        canvas_->setContourReport(false);
+        return;
+    }
+    if (!ensureContourReport()) {
+        const QSignalBlocker blocker(contourButton_);
+        contourButton_->setChecked(false);
+        return;
+    }
+    canvas_->setContourReport(true, contour_);
+    statusLabel_->setText(canvas_->contourSummaryLines().join(QStringLiteral("\n")));
+}
+
+void EditorWindow::onExportContourClicked() {
+    if (!ensureContourReport()) {
+        return;
+    }
+    const QString path = QFileDialog::getSaveFileName(
+        this, tr("Exportar contorno"), QStringLiteral("contorno.csv"),
+        tr("CSV (*.csv)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    const std::string csv = vision::contourToCsv(contour_, calibration_.mmPerPixel);
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        QMessageBox::warning(this, tr("Exportar contorno"),
+                             tr("No se pudo escribir «%1».").arg(path));
+        return;
+    }
+    file.write(csv.data(), static_cast<qint64>(csv.size()));
+    file.close();
+
+    // Se dice en qué unidad ha salido: el mismo archivo en px y en mm se
+    // distingue solo por la cabecera, y quien lo abra en el CAD tres días
+    // después ya no se acuerda de si la pieza estaba calibrada.
+    const bool inMm = calibration_.mmPerPixel > 0.0;
+    std::size_t points = contour_.outer.size();
+    for (const auto& hole : contour_.holes) {
+        points += hole.size();
+    }
+    statusLabel_->setText(tr("Contorno exportado a %1 (%2 puntos, en %3).")
+                              .arg(path)
+                              .arg(points)
+                              .arg(inMm ? tr("mm") : tr("píxeles")));
 }
 
 void EditorWindow::onTestClicked() {

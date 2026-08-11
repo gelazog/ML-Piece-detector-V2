@@ -8,12 +8,20 @@
 #include <gtest/gtest.h>
 
 #include <QApplication>
+#include <QColor>
 #include <QImage>
 #include <QMouseEvent>
 #include <QPointF>
 #include <QString>
+#include <QStringList>
 
+#include <cmath>
+#include <cstdio>
 #include <vector>
+
+#include <opencv2/imgproc.hpp>
+
+#include "vision/geometry_features.h"
 
 #include <QDialogButtonBox>
 #include <QPushButton>
@@ -388,6 +396,147 @@ TEST(AutoMeasureDialogTest, TheFullReadingIsKeptInTheTooltip) {
     ASSERT_NE(table, nullptr);
     EXPECT_TRUE(table->item(0, 2)->toolTip().contains("inclinada"))
         << table->item(0, 2)->toolTip().toStdString();
+}
+
+// ---------------------------------------------------------------------------
+// Superposición del contorno detectado (A4)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+constexpr int kPlateImageSide = 400;
+
+// Placa cuadrada con las cuatro esquinas redondeadas y un agujero: tiene rectas,
+// arcos y hueco, que son las tres cosas que la superposición pinta distinto.
+cv::Mat plateMask() {
+    cv::Mat mask(kPlateImageSide, kPlateImageSide, CV_8UC1, cv::Scalar(0));
+    const cv::Rect box(60, 60, 280, 280);
+    const int radius = 40;
+    cv::rectangle(mask, cv::Rect(box.x + radius, box.y, box.width - 2 * radius, box.height),
+                  cv::Scalar(255), cv::FILLED);
+    cv::rectangle(mask, cv::Rect(box.x, box.y + radius, box.width, box.height - 2 * radius),
+                  cv::Scalar(255), cv::FILLED);
+    for (const auto& c : {cv::Point(box.x + radius, box.y + radius),
+                          cv::Point(box.x + box.width - radius, box.y + radius),
+                          cv::Point(box.x + radius, box.y + box.height - radius),
+                          cv::Point(box.x + box.width - radius, box.y + box.height - radius)}) {
+        cv::circle(mask, c, radius, cv::Scalar(255), cv::FILLED);
+    }
+    cv::circle(mask, {200, 200}, 45, cv::Scalar(0), cv::FILLED);
+    return mask;
+}
+
+QImage sceneFromMask(const cv::Mat& mask) {
+    QImage image(mask.cols, mask.rows, QImage::Format_RGB888);
+    for (int y = 0; y < mask.rows; ++y) {
+        for (int x = 0; x < mask.cols; ++x) {
+            const int v = mask.at<uchar>(y, x) != 0 ? 200 : 25;
+            image.setPixelColor(x, y, QColor(v, v, v));
+        }
+    }
+    return image;
+}
+
+// Píxeles parecidos a un color, con holgura para el suavizado de bordes.
+int countNear(const QImage& image, QColor target, int tolerance = 45) {
+    int count = 0;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const QColor c = image.pixelColor(x, y);
+            if (std::abs(c.red() - target.red()) <= tolerance &&
+                std::abs(c.green() - target.green()) <= tolerance &&
+                std::abs(c.blue() - target.blue()) <= tolerance) {
+                ++count;
+            }
+        }
+    }
+    return count;
+}
+
+QImage renderOf(EditorCanvas& canvas) {
+    QImage out(canvas.size(), QImage::Format_RGB888);
+    out.fill(Qt::black);
+    canvas.render(&out);
+    return out;
+}
+
+const QColor kLineColor(90, 180, 255);
+const QColor kArcColor(255, 165, 40);
+const QColor kHoleColor(230, 110, 230);
+
+}  // namespace
+
+TEST(ContourOverlay, DrawsStraightsArcsAndHolesInDifferentColours) {
+    EditorCanvas canvas;
+    canvas.resize(kWidgetWidth, kWidgetHeight);
+    const cv::Mat mask = plateMask();
+    canvas.setScene(sceneFromMask(mask), pci::vision::Fixture{});
+
+    // Sin la capa encendida, la imagen no lleva ninguno de esos colores: la
+    // escena es gris. Si ya los llevara, el resto del test no probaría nada.
+    const QImage before = renderOf(canvas);
+    EXPECT_EQ(countNear(before, kArcColor), 0);
+    EXPECT_EQ(countNear(before, kLineColor), 0);
+    EXPECT_EQ(countNear(before, kHoleColor), 0);
+
+    const auto report = pci::vision::describeContour(mask);
+    ASSERT_TRUE(report.valid);
+    canvas.setContourReport(true, report);
+    EXPECT_TRUE(canvas.contourReportVisible());
+
+    const QImage after = renderOf(canvas);
+    const int lines = countNear(after, kLineColor);
+    const int arcs = countNear(after, kArcColor);
+    const int holes = countNear(after, kHoleColor);
+    std::printf("  píxeles pintados: %d rectas, %d arcos, %d agujero\n", lines, arcs, holes);
+    EXPECT_GT(lines, 200) << "los cuatro lados rectos tienen que verse";
+    EXPECT_GT(arcs, 100) << "los cuatro redondeos tienen que verse, y en otro color";
+    EXPECT_GT(holes, 100) << "el agujero tiene que verse";
+
+    // Y se apaga entera: es una capa de consulta, no una marca permanente.
+    canvas.setContourReport(false);
+    EXPECT_FALSE(canvas.contourReportVisible());
+    const QImage off = renderOf(canvas);
+    EXPECT_EQ(countNear(off, kArcColor), 0);
+    EXPECT_EQ(countNear(off, kLineColor), 0);
+}
+
+TEST(ContourOverlay, TheSummarySaysWhatWasMeasuredAndInWhichUnit) {
+    EditorCanvas canvas;
+    canvas.resize(kWidgetWidth, kWidgetHeight);
+    const cv::Mat mask = plateMask();
+    canvas.setScene(sceneFromMask(mask), pci::vision::Fixture{});
+    canvas.setContourReport(true, pci::vision::describeContour(mask));
+
+    const QStringList px = canvas.contourSummaryLines();
+    ASSERT_EQ(px.size(), 5);
+    EXPECT_TRUE(px.join(QChar('\n')).contains(QStringLiteral("px²")))
+        << px.join(QChar('\n')).toStdString();
+    EXPECT_TRUE(px.at(2).contains(QStringLiteral("1"))) << px.at(2).toStdString();
+
+    // Con calibración pasa a mm, y el ÁREA con el cuadrado de la escala: a 0,5
+    // mm/px el área en mm² es la cuarta parte del número en px².
+    canvas.setMmPerPixel(0.5);
+    const QStringList mm = canvas.contourSummaryLines();
+    ASSERT_EQ(mm.size(), 5);
+    const QString areaPx = px.at(1);
+    const QString areaMm = mm.at(1);
+    EXPECT_TRUE(areaMm.contains(QStringLiteral("mm²"))) << areaMm.toStdString();
+    const double valuePx = areaPx.split(QChar(' ')).at(1).toDouble();
+    const double valueMm = areaMm.split(QChar(' ')).at(1).toDouble();
+    std::printf("  área: %.0f px² -> %.1f mm²\n", valuePx, valueMm);
+    EXPECT_NEAR(valueMm, valuePx * 0.25, valuePx * 0.25 * 0.01);
+}
+
+TEST(ContourOverlay, AnInvalidReportDoesNotTurnTheLayerOn) {
+    // Pedir ver el contorno de una imagen sin pieza no puede dejar el
+    // conmutador encendido enseñando nada.
+    EditorCanvas canvas;
+    canvas.resize(kWidgetWidth, kWidgetHeight);
+    canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+    canvas.setContourReport(true, pci::vision::ContourReport{});
+    EXPECT_FALSE(canvas.contourReportVisible());
+    EXPECT_TRUE(canvas.contourSummaryLines().isEmpty());
 }
 
 int main(int argc, char** argv) {

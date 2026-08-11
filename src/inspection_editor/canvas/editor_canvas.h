@@ -2,6 +2,7 @@
 
 #include <QImage>
 #include <QPointF>
+#include <QStringList>
 #include <QWidget>
 
 #include <array>
@@ -11,6 +12,7 @@
 #include "inspection_editor/canvas/canvas_geometry.h"
 #include "inspection_editor/execution/tool_executor.h"
 #include "vision/board_frame.h"
+#include "vision/geometry_features.h"
 #include "inspection_editor/tools/tool_geometry.h"
 #include "inspection_editor/tools/tool_types.h"
 #include "vision/types.h"
@@ -112,6 +114,20 @@ public:
     // Tablero resuelto para el frame actual (lo reutilizan las lecturas de T3/T4).
     [[nodiscard]] vision::BoardFrame boardFrame() const;
 
+    // --- contorno detectado (A4) ---
+    // Superpone el contorno de la pieza con su descomposición (rectas y arcos
+    // en colores distintos), los agujeros y un resumen numérico. Es una capa de
+    // consulta: no se puede seleccionar ni arrastrar, para que no compita con
+    // las herramientas.
+    void setContourReport(bool visible, const vision::ContourReport& report = {});
+    [[nodiscard]] bool contourReportVisible() const { return contourVisible_; }
+    [[nodiscard]] const vision::ContourReport& contourReport() const { return contourReport_; }
+    // Resumen del contorno (perímetro, área, agujeros, envolvente, tramos) en la
+    // unidad activa, una línea por dato. Lo pinta el propio lienzo y además lo
+    // lee la ventana para el panel de estado: un solo sitio donde se decide el
+    // formato, o los dos acabarían diciendo cosas distintas.
+    [[nodiscard]] QStringList contourSummaryLines() const;
+
     // --- regla graduada ---
     // Reglas en los bordes superior e izquierdo, con marcas y números en la
     // unidad activa, más una barra de escala. Sirven para leer una medida de un
@@ -183,6 +199,7 @@ private:
     void paintCreationPreview(QPainter& painter) const;
     void paintLiveOverlay(QPainter& painter) const;
     void paintBoard(QPainter& painter) const;
+    void paintContourReport(QPainter& painter) const;
     void paintRuler(QPainter& painter) const;
     // Valor del tablero (px de imagen) en la unidad activa, compacto.
     [[nodiscard]] QString boardValueText(double px, bool signPrefix) const;
@@ -214,6 +231,10 @@ private:
     // Tablero de referencia (T2): visibilidad y elección de origen/ejes.
     bool boardVisible_ = false;
     bool rulerVisible_ = false;
+    // Contorno detectado (A4). Se guarda entero -no solo dibujado- porque el
+    // botón de exportar necesita los mismos puntos que se están viendo.
+    bool contourVisible_ = false;
+    vision::ContourReport contourReport_;
     vision::BoardConfig boardConfig_;
     bool hasBoundsCenter_ = false;
     cv::Point2f boundsCenter_{0.0F, 0.0F};

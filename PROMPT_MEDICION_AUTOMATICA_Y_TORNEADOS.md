@@ -200,7 +200,9 @@ Formato: casilla, ID, tarea, por qué, algoritmo, archivos, cómo se verifica.
   y aceptar inserta exactamente las marcadas, deshacer las quita todas juntas).
   Skills: `qt-ui-design`, `qt-cpp-review`.
 
-- [ ] **A4 — Ver y exportar el contorno.** La otra mitad de la petición ("y los
+- [x] **A4 — Ver y exportar el contorno.** *(El informe del contorno se calcula
+  de una vez —`vision::describeContour`— en lugar de por partes: el área tiene
+  que descontar los agujeros DE ESE contorno y no todos los de la máscara.)* La otra mitad de la petición ("y los
   contornos"). Superponer el contorno detectado con su descomposición en
   colores (recta / arco) y un resumen: perímetro, área, número de agujeros,
   envolvente. Botón para **exportar el contorno a CSV** (x, y en mm si hay

@@ -2,6 +2,7 @@
 
 #include <opencv2/core.hpp>
 
+#include <string>
 #include <vector>
 
 namespace pci::vision {
@@ -65,5 +66,39 @@ struct DecomposeOptions {
 // separado (dibujar, exportar) y porque así se puede probar aparte.
 [[nodiscard]] std::vector<cv::Point2f> resampleClosedContour(
     const std::vector<cv::Point>& contour, double step);
+
+// Todo lo que se puede decir del contorno de una pieza de un vistazo: la forma
+// en sí, en qué se descompone, y los cuatro números que el operador mira antes
+// de medir nada (perímetro, área, agujeros, envolvente).
+//
+// Es una sola estructura y no cuatro funciones sueltas porque las partes tienen
+// que ser COHERENTES entre sí: el área descuenta estos agujeros y no otros, y la
+// descomposición describe este contorno exterior. Calculadas por separado se
+// podrían mezclar resultados de dos segmentaciones distintas.
+struct ContourReport {
+    // Coordenadas de IMAGEN (px). Es lo que devuelve la segmentación; pasarlo a
+    // coordenadas de pieza es cosa de quien lo dibuje.
+    std::vector<cv::Point> outer;
+    std::vector<std::vector<cv::Point>> holes;
+    std::vector<ContourPrimitive> primitives;  // descomposición del exterior
+
+    double perimeter = 0.0;  // px, contorno exterior cerrado
+    double area = 0.0;       // px², con los agujeros ya descontados
+    cv::Rect bounds;         // envolvente recta, en px de imagen
+    cv::RotatedRect minRect;  // envolvente girada (largo × ancho reales)
+    bool valid = false;
+};
+
+// Describe la pieza más grande de la máscara. Sin pieza -> `valid == false`.
+[[nodiscard]] ContourReport describeContour(const cv::Mat& mask,
+                                            const DecomposeOptions& options = {});
+
+// El contorno en CSV, para llevárselo a un CAD.
+//
+// `mmPerPixel > 0` exporta en mm; si no, en px. La unidad va en el NOMBRE de la
+// columna (`x_mm` / `x_px`) en vez de en una línea de comentario porque los
+// importadores de CAD y las hojas de cálculo tragan cabeceras pero no
+// comentarios, y un archivo de coordenadas sin unidad es papel mojado.
+[[nodiscard]] std::string contourToCsv(const ContourReport& report, double mmPerPixel = 0.0);
 
 }  // namespace pci::vision

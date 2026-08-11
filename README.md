@@ -91,6 +91,18 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    propuesta se ha medido de verdad antes de ofrecerse, así que lo que aparece
    en la lista ya funciona sobre esa pieza.
 
+   **Ver contorno** (mismo panel) dibuja encima el contorno detectado con su
+   descomposición: los tramos **rectos en azul**, los **arcos en naranja** con su
+   radio escrito al lado y los **agujeros en magenta**, sobre el contorno crudo
+   en blanco tenue para que se vea dónde el ajuste se despega del borde. Abajo a
+   la izquierda, el resumen: perímetro, área, agujeros y envolvente. Es una capa
+   de consulta: no estorba ni se puede arrastrar, y se apaga con el mismo botón.
+
+   **Exportar contorno a CSV…** guarda los puntos del contorno y de cada agujero
+   en un archivo para abrirlo en un CAD — en **mm si hay calibración**, en
+   píxeles si no, y con la unidad escrita en la cabecera de cada columna para que
+   no haya dudas tres días después.
+
 4. **Dibujar sobre el video en vivo**: con la pieza detectada, elige una
    herramienta en la fila **Dibujar** (cada botón explica en su tooltip qué
    mide y cómo trazarla) y dibuja directamente sobre el video arrastrando el

@@ -233,6 +233,52 @@ QString EditorCanvas::boardValueText(double px, bool signPrefix) const {
     return (signPrefix && px > 0.0) ? QStringLiteral("+") + text : text;
 }
 
+void EditorCanvas::setContourReport(bool visible, const vision::ContourReport& report) {
+    contourVisible_ = visible && report.valid;
+    contourReport_ = report;
+    update();
+}
+
+QStringList EditorCanvas::contourSummaryLines() const {
+    QStringList lines;
+    if (!contourReport_.valid) {
+        return lines;
+    }
+    const auto& report = contourReport_;
+    lines << tr("Perímetro: %1").arg(boardValueText(report.perimeter, false));
+
+    // El área se convierte con el CUADRADO de la escala; hacerlo con
+    // boardValueText (que es lineal) daría un número plausible y falso.
+    if (mmPerPixel_ > 0.0 && unit_ != LengthUnit::Pixels) {
+        const double mm2 = report.area * mmPerPixel_ * mmPerPixel_;
+        lines << (unit_ == LengthUnit::Centimeters
+                      ? tr("Área: %1 cm²").arg(mm2 / 100.0, 0, 'f', 2)
+                      : tr("Área: %1 mm²").arg(mm2, 0, 'f', 1));
+    } else {
+        lines << tr("Área: %1 px²").arg(report.area, 0, 'f', 0);
+    }
+
+    lines << tr("Agujeros: %1").arg(report.holes.size());
+    lines << tr("Envolvente: %1 × %2")
+                 .arg(boardValueText(std::max(report.minRect.size.width,
+                                              report.minRect.size.height),
+                                     false),
+                      boardValueText(std::min(report.minRect.size.width,
+                                              report.minRect.size.height),
+                                     false));
+
+    int arcs = 0;
+    for (const auto& primitive : report.primitives) {
+        if (primitive.kind == vision::PrimitiveKind::Arc) {
+            ++arcs;
+        }
+    }
+    lines << tr("Tramos: %1 rectas, %2 arcos")
+                 .arg(report.primitives.size() - static_cast<std::size_t>(arcs))
+                 .arg(arcs);
+    return lines;
+}
+
 void EditorCanvas::setRulerVisible(bool visible) {
     rulerVisible_ = visible;
     setMouseTracking(visible || boardVisible_);
@@ -1463,6 +1509,134 @@ void EditorCanvas::paintBoard(QPainter& painter) const {
 }
 
 
+void EditorCanvas::paintContourReport(QPainter& painter) const {
+    if (!contourVisible_ || !contourReport_.valid || image_.isNull()) {
+        return;
+    }
+    constexpr double kPi = 3.14159265358979323846;
+    const QColor lineColor(90, 180, 255);
+    const QColor arcColor(255, 165, 40);
+    const QColor holeColor(230, 110, 230);
+
+    painter.save();
+    const auto toWidget = [this](const cv::Point& p) {
+        return imageToWidget(cv::Point2f(static_cast<float>(p.x), static_cast<float>(p.y)));
+    };
+    const auto polygonOf = [&toWidget](const std::vector<cv::Point>& points) {
+        QPolygonF poly;
+        poly.reserve(static_cast<int>(points.size()));
+        for (const auto& p : points) {
+            poly << toWidget(p);
+        }
+        return poly;
+    };
+
+    // El contorno crudo va DEBAJO y en blanco tenue: es la referencia contra la
+    // que se lee la descomposición. Sin él, un arco mal ajustado se ve como un
+    // arco perfecto y nadie nota que no sigue a la pieza.
+    QPen rawPen(QColor(255, 255, 255, 110));
+    rawPen.setWidthF(1.0);
+    rawPen.setCosmetic(true);
+    painter.setPen(rawPen);
+    painter.setBrush(Qt::NoBrush);
+    painter.drawPolygon(polygonOf(contourReport_.outer));
+
+    QPen holePen(holeColor);
+    holePen.setWidthF(1.8);
+    holePen.setCosmetic(true);
+    painter.setPen(holePen);
+    for (const auto& hole : contourReport_.holes) {
+        painter.drawPolygon(polygonOf(hole));
+    }
+
+    QFont labelFont = painter.font();
+    labelFont.setBold(true);
+    painter.setFont(labelFont);
+
+    for (const auto& primitive : contourReport_.primitives) {
+        QPen pen(primitive.kind == vision::PrimitiveKind::Arc ? arcColor : lineColor);
+        pen.setWidthF(2.5);
+        pen.setCosmetic(true);
+        painter.setPen(pen);
+
+        if (primitive.kind == vision::PrimitiveKind::Line) {
+            painter.drawLine(imageToWidget(primitive.start), imageToWidget(primitive.end));
+        } else {
+            // El arco se dibuja a partir del círculo AJUSTADO, no de los puntos
+            // del contorno: así se ve de un vistazo dónde se despega del borde.
+            // El sentido lo decide el punto intermedio, que es lo único que
+            // distingue el arco corto del largo entre los mismos extremos.
+            const cv::Point2f c = primitive.center;
+            const auto angleAt = [&c](const cv::Point2f& p) {
+                return std::atan2(static_cast<double>(p.y - c.y),
+                                  static_cast<double>(p.x - c.x));
+            };
+            const auto wrap = [](double a) {
+                while (a < 0.0) {
+                    a += 2.0 * kPi;
+                }
+                while (a >= 2.0 * kPi) {
+                    a -= 2.0 * kPi;
+                }
+                return a;
+            };
+            const double a0 = angleAt(primitive.start);
+            const double ccwSweep = wrap(angleAt(primitive.end) - a0);
+            const bool ccw = wrap(angleAt(primitive.mid) - a0) <= ccwSweep;
+            const double sweep = ccw ? ccwSweep : ccwSweep - 2.0 * kPi;
+            const int steps =
+                std::max(8, static_cast<int>(std::abs(sweep) * 180.0 / kPi / 3.0));
+            QPolygonF arc;
+            arc.reserve(steps + 1);
+            for (int i = 0; i <= steps; ++i) {
+                const double a = a0 + sweep * i / steps;
+                arc << imageToWidget(cv::Point2f(
+                    c.x + static_cast<float>(std::cos(a) * primitive.radius),
+                    c.y + static_cast<float>(std::sin(a) * primitive.radius)));
+            }
+            painter.drawPolyline(arc);
+
+            // El radio es el dato que se viene a buscar en un redondeo; los
+            // tramos cortos no se etiquetan para no tapar la pieza de números.
+            if (primitive.length > 20.0) {
+                painter.drawText(imageToWidget(primitive.mid) + QPointF(6.0, -6.0),
+                                 QStringLiteral("R %1").arg(
+                                     boardValueText(primitive.radius, false)));
+            }
+        }
+
+        // Punto de corte entre tramos: hace visible la descomposición aunque dos
+        // tramos vecinos sean del mismo tipo.
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(255, 255, 255));
+        painter.drawEllipse(imageToWidget(primitive.start), 2.5, 2.5);
+        painter.setBrush(Qt::NoBrush);
+    }
+
+    // Resumen abajo a la izquierda: arriba están la regla y el estado en vivo.
+    const QStringList lines = contourSummaryLines();
+    if (!lines.isEmpty()) {
+        const QFontMetrics metrics(painter.font());
+        int textWidth = 0;
+        for (const auto& line : lines) {
+            textWidth = std::max(textWidth, metrics.horizontalAdvance(line));
+        }
+        const double lineHeight = metrics.height();
+        const QRectF box(8.0, height() - 8.0 - lineHeight * lines.size() - 8.0,
+                         textWidth + 16.0, lineHeight * lines.size() + 8.0);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(0, 0, 0, 170));
+        painter.drawRect(box);
+        painter.setPen(QColor(235, 235, 235));
+        for (int i = 0; i < lines.size(); ++i) {
+            painter.drawText(QRectF(box.left() + 8.0, box.top() + 4.0 + lineHeight * i,
+                                    box.width() - 16.0, lineHeight),
+                             Qt::AlignVCenter | Qt::AlignLeft, lines[i]);
+        }
+    }
+    painter.restore();
+}
+
 void EditorCanvas::paintRuler(QPainter& painter) const {
     if (!rulerVisible_ || image_.isNull()) {
         return;
@@ -1678,6 +1852,7 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
 
     paintBoard(painter);  // por debajo de la pieza y de las herramientas
     paintLiveOverlay(painter);
+    paintContourReport(painter);  // capa de consulta, siempre bajo las herramientas
 
     // Marcador del rasgo distintivo (rombo magenta anclado a la pieza).
     if (anchorVisible_ && hasFixture_) {

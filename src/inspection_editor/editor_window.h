@@ -65,9 +65,13 @@ private slots:
     void onDeleteClicked();
     void onTestClicked();
     void onSaveClicked();
-    void onRefreshFromCamera();
+    void onRefreshFromCamera();  // recaptura una imagen fresca de la cámara (E1)
     // Mide la pieza sola y ofrece las cotas encontradas para revisarlas.
-    void onAutoMeasureClicked();  // recaptura una imagen fresca de la cámara (E1)
+    void onAutoMeasureClicked();
+    // Superpone el contorno detectado con su descomposición (A4).
+    void onShowContourToggled(bool on);
+    // Guarda el contorno en CSV para llevárselo a un CAD (A4).
+    void onExportContourClicked();
 
 private:
     void loadExistingTools();
@@ -79,6 +83,13 @@ private:
     void duplicateSelected();  // Ctrl+D
     void copySelected();       // Ctrl+C
     void pasteClipboard();     // Ctrl+V
+    // Analiza la imagen de referencia y deja `contour_` al día. Devuelve false
+    // (y lo dice en el estado) si no hay pieza que describir. Se calcula una vez
+    // y se reutiliza: ver y exportar tienen que enseñar el MISMO contorno.
+    bool ensureContourReport();
+    // Deja el contorno por recalcular: la imagen de referencia ha cambiado y el
+    // que había describe una foto que ya no está en pantalla.
+    void invalidateContourReport();
     void refreshList();
     void syncPanelFromSelection();
     void commitUndoState();
@@ -98,6 +109,7 @@ private:
     QPushButton* deleteButton_ = nullptr;
     QLabel* statusLabel_ = nullptr;
     QPushButton* refreshButton_ = nullptr;  // "Actualizar desde cámara" (E1)
+    QPushButton* contourButton_ = nullptr;  // "Ver contorno" (A4), conmutador
 
     QImage reference_;
     vision::Fixture fixture_;
@@ -108,6 +120,7 @@ private:
     camera::CameraController* liveController_ = nullptr;
     QImage latestLiveFrame_;  // último frame recibido de la cámara en marcha
 
+    vision::ContourReport contour_;  // contorno descrito de la imagen actual (A4)
     std::vector<EditedTool> tools_;
     std::vector<EditedTool> stableTools_;
     UndoStack<std::vector<EditedTool>> undoStack_;
