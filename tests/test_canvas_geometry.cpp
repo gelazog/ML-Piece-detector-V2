@@ -10,9 +10,11 @@
 #include <vector>
 
 #include "inspection_editor/canvas/canvas_geometry.h"
+#include "sample_geometries.h"
 #include "vision/position_fixture.h"
 
 using namespace pci::inspection;
+using pci::inspection::testing_support::sampleGeometry;
 
 namespace {
 
@@ -877,5 +879,111 @@ TEST(CanvasStress, DraggingAHandleManyTimesConvergesWhereItIsDropped) {
         const cv::Point2f read = handlePoints(g)[1];
         ASSERT_NEAR(read.x, cursor.x, 1e-3F) << "paso " << i;
         ASSERT_NEAR(read.y, cursor.y, 1e-3F) << "paso " << i;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Repaso de coherencia: lo que TODA herramienta tiene que cumplir
+// ---------------------------------------------------------------------------
+//
+// Estas pruebas recorren `allToolTypes()`, no una lista escrita a mano. Las
+// cuatro herramientas de pieza torneada llegaron después que las diez primeras
+// y se quedaron fuera de varios repasos por escribirse la lista aparte; con el
+// barrido, una herramienta nueva entra sola en todos ellos.
+
+TEST(ToolCoherence, EveryToolCanBeGrabbedByItsHandles) {
+    for (const ToolType type : allToolTypes()) {
+        const ToolGeometry base = sampleGeometry(type);
+        const auto handles = handlePoints(base);
+        ASSERT_FALSE(handles.empty()) << toolTypeLabel(type) << " no se puede editar";
+        for (int h = 0; h < static_cast<int>(handles.size()); ++h) {
+            ToolGeometry moved = base;
+            const cv::Point2f target(211.5F + h, -77.25F - h);
+            setHandlePoint(moved, h, target);
+            const auto after = handlePoints(moved);
+            ASSERT_EQ(after.size(), handles.size()) << toolTypeLabel(type);
+            ASSERT_EQ(typeOf(moved), type) << "arrastrar una manija cambió el tipo";
+            for (const auto& p : after) {
+                ASSERT_TRUE(std::isfinite(p.x) && std::isfinite(p.y)) << toolTypeLabel(type);
+            }
+
+            // Dos exigencias universales. No se pide que la manija caiga
+            // EXACTAMENTE en el cursor porque el Círculo, el Blob y el Engranaje
+            // tienen manijas derivadas —un radio, media anchura— que se apoyan
+            // sobre el rasgo que definen; esas tienen su prueba exacta aparte.
+            //
+            // 1. El arrastre no se ignora.
+            EXPECT_NE(toJson(moved), toJson(base))
+                << toolTypeLabel(type) << ", manija " << h << ": el arrastre no hizo nada";
+
+            // 2. Volver a soltar la manija donde ya está no la mueve. Sin este
+            // punto fijo, cada vez que el operador la re-agarra la herramienta
+            // se desplaza un poco sola.
+            ToolGeometry again = moved;
+            setHandlePoint(again, h, after[static_cast<std::size_t>(h)]);
+            const auto settled = handlePoints(again);
+            ASSERT_EQ(settled.size(), after.size()) << toolTypeLabel(type);
+            for (std::size_t k = 0; k < after.size(); ++k) {
+                // Milésima de píxel: el redondeo de float en un radio de 220 px
+                // deja 1e-5, y eso no es deriva.
+                EXPECT_NEAR(cv::norm(settled[k] - after[k]), 0.0, 1e-3)
+                    << toolTypeLabel(type) << ", manija " << h << ": deriva al re-agarrarla";
+            }
+        }
+    }
+}
+
+TEST(ToolCoherence, EveryToolHasReferencePointsInsideItsOwnFootprint) {
+    // El marco de selección múltiple encuadra por estos puntos: si alguno
+    // cayera lejos de la herramienta, el marco cogería cosas que el operador no
+    // está encuadrando (o dejaría fuera la que sí).
+    for (const ToolType type : allToolTypes()) {
+        const ToolGeometry g = sampleGeometry(type);
+        const auto points = referencePoints(g);
+        ASSERT_FALSE(points.empty()) << toolTypeLabel(type);
+
+        double maxHandleReach = 0.0;
+        cv::Point2f anchor = handlePoints(g).front();
+        for (const auto& h : handlePoints(g)) {
+            maxHandleReach = std::max(maxHandleReach, cv::norm(h - anchor));
+        }
+        for (const auto& p : points) {
+            EXPECT_TRUE(std::isfinite(p.x) && std::isfinite(p.y)) << toolTypeLabel(type);
+            // El listón: los puntos de referencia caen dentro del alcance de las
+            // manijas (con holgura, porque al Círculo y al Engranaje les caen a
+            // un radio del ancla). Un punto perdido a mil píxeles sería una
+            // coordenada sin traducir del sistema de la imagen.
+            EXPECT_LE(cv::norm(p - anchor), 3.0 * maxHandleReach + 50.0)
+                << toolTypeLabel(type) << ": punto de referencia fuera de la herramienta";
+        }
+    }
+}
+
+TEST(ToolCoherence, EveryToolIsReachableByAClickAndGetsFartherAsYouMoveAway) {
+    for (const ToolType type : allToolTypes()) {
+        const ToolGeometry g = sampleGeometry(type);
+        const cv::Point2f onIt = referencePoints(g).front();
+        const double near = distanceToGeometry(g, identity(), onIt);
+        const double far =
+            distanceToGeometry(g, identity(), onIt + cv::Point2f(5000.0F, 5000.0F));
+        EXPECT_TRUE(std::isfinite(near) && near >= 0.0) << toolTypeLabel(type);
+        EXPECT_GT(far, near + 100.0)
+            << toolTypeLabel(type) << ": la distancia de clic no crece al alejarse";
+    }
+}
+
+TEST(ToolCoherence, EveryToolTravelsWithThePieceWhenItRotates) {
+    // La geometría está en coordenadas de PIEZA. Girar la pieza tiene que girar
+    // la herramienta con ella: el clic que la agarraba antes del giro, llevado
+    // por el mismo fixture, la sigue agarrando después.
+    const auto turned = fixtureAt({640.0F, 360.0F}, 37.0);
+    for (const ToolType type : allToolTypes()) {
+        const ToolGeometry g = sampleGeometry(type);
+        for (const auto& piecePoint : referencePoints(g)) {
+            const cv::Point2f imagePoint = pci::vision::toImageCoords(turned, piecePoint);
+            EXPECT_NEAR(distanceToGeometry(g, turned, imagePoint),
+                        distanceToGeometry(g, identity(), piecePoint), 1e-3)
+                << toolTypeLabel(type) << ": la herramienta no siguió a la pieza";
+        }
     }
 }

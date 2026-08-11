@@ -2,6 +2,7 @@
 
 #include <opencv2/core.hpp>
 
+#include <array>
 #include <string>
 #include <variant>
 #include <vector>
@@ -145,9 +146,24 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
 
 ToolType typeOf(const ToolGeometry& geometry);
 
+// Todos los tipos de herramienta, en el orden en que se ofrecen al operador.
+//
+// Hay UNA sola lista porque el precio de tenerla repetida ya se pagó: las cuatro
+// herramientas de pieza torneada se añadieron al editor y se quedaron fuera de
+// la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
+// repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
+// todas partes; las pruebas de coherencia recorren esta misma lista.
+[[nodiscard]] const std::array<ToolType, 14>& allToolTypes();
+
 // Traslada in situ todos los puntos de la geometría (coords de pieza). Útil
 // para mover o duplicar una herramienta con un pequeño desplazamiento.
 void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta);
+
+// Nombre corto de la herramienta para botones y nombres por defecto (UTF-8, en
+// español). Vive aquí y no en cada ventana porque el editor y la vista en vivo
+// tenían su propia copia idéntica, y dos copias es una divergencia esperando:
+// la misma herramienta acabaría llamándose distinto en cada pantalla.
+const char* toolTypeLabel(ToolType type);
 
 // Descripción de uso para tooltips/ayuda (UTF-8, en español): qué mide la
 // herramienta y cómo dibujarla.

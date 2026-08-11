@@ -193,24 +193,10 @@ AnalysisOverlay buildOverlay(const QImage& frame,
     return overlay;
 }
 
-QString toolTypeLabel(inspection::ToolType type) {
-    switch (type) {
-        case inspection::ToolType::Caliper: return QStringLiteral("Caliper");
-        case inspection::ToolType::Circle: return QStringLiteral("Círculo");
-        case inspection::ToolType::PointToLine: return QStringLiteral("Punto-Línea");
-        case inspection::ToolType::EdgeFlaw: return QStringLiteral("Borde liso");
-        case inspection::ToolType::Blob: return QStringLiteral("Blob");
-        case inspection::ToolType::Ruler: return QStringLiteral("Regla");
-        case inspection::ToolType::LineToLine: return QStringLiteral("Línea-Línea");
-        case inspection::ToolType::Angle: return QStringLiteral("Ángulo");
-        case inspection::ToolType::PolyBlob: return QStringLiteral("Blob poligonal");
-        case inspection::ToolType::Position: return QStringLiteral("Posición");
-        case inspection::ToolType::Arc: return QStringLiteral("Arco");
-        case inspection::ToolType::Shaft: return QStringLiteral("Eje / Diámetro");
-        case inspection::ToolType::Thread: return QStringLiteral("Rosca");
-        case inspection::ToolType::Gear: return QStringLiteral("Engranaje");
-    }
-    return QStringLiteral("?");
+// El nombre corto sale de `inspection::toolTypeLabel` (lista única compartida
+// con el editor); aquí solo se envuelve en QString.
+QString typeLabel(inspection::ToolType type) {
+    return QString::fromUtf8(inspection::toolTypeLabel(type));
 }
 
 double wrapAngleDeg(double angle) {
@@ -325,13 +311,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     selectMode->setToolTip(
         tr("Mover/Elegir — clic para seleccionar; arrastra para mover; arrastra en\n"
            "vacío para un marco de selección múltiple."));
-    for (const auto type :
-         {inspection::ToolType::Caliper, inspection::ToolType::Circle,
-          inspection::ToolType::PointToLine, inspection::ToolType::EdgeFlaw,
-          inspection::ToolType::Blob, inspection::ToolType::Ruler,
-          inspection::ToolType::LineToLine, inspection::ToolType::Angle,
-          inspection::ToolType::PolyBlob, inspection::ToolType::Position}) {
-        auto* button = addMode(toolTypeLabel(type), static_cast<int>(type));
+    // La lista canónica, no una copia a mano: las cuatro herramientas de pieza
+    // torneada estuvieron disponibles en el editor y ausentes de esta fila.
+    for (const auto type : inspection::allToolTypes()) {
+        auto* button = addMode(typeLabel(type), static_cast<int>(type));
         button->setIcon(inspection::toolIcon(type));
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
         button->setIconSize(QSize(24, 24));
@@ -1075,7 +1058,7 @@ void MainWindow::buildShortcuts() {
     for (const auto& entry : toolKeys) {
         const int id = static_cast<int>(entry.type);
         addShortcut(QString::fromLatin1(entry.id),
-                    tr("Dibujar %1").arg(toolTypeLabel(entry.type)), QKeySequence(entry.key),
+                    tr("Dibujar %1").arg(typeLabel(entry.type)), QKeySequence(entry.key),
                     [this, id] {
                         if (auto* button = toolModeGroup_->button(id)) {
                             button->click();
@@ -1547,7 +1530,7 @@ void MainWindow::onLiveToolCreated(const inspection::ToolGeometry& geometry) {
     tool.geometry = geometry;
     tool.config.type = inspection::typeOf(geometry);
     ++toolNameCounter_;
-    tool.config.name = (toolTypeLabel(tool.config.type) +
+    tool.config.name = (typeLabel(tool.config.type) +
                         QStringLiteral(" %1").arg(toolNameCounter_))
                            .toStdString();
     tool.config.geometryJson = inspection::toJson(geometry);
@@ -2517,7 +2500,7 @@ void MainWindow::onDuplicateToolClicked() {
     tool.config.id = -1;
     inspection::translateGeometry(tool.geometry, {15.0F, 15.0F});
     ++toolNameCounter_;
-    tool.config.name = (toolTypeLabel(tool.config.type) +
+    tool.config.name = (typeLabel(tool.config.type) +
                         QStringLiteral(" %1").arg(toolNameCounter_))
                            .toStdString();
     tool.config.geometryJson = inspection::toJson(tool.geometry);

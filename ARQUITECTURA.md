@@ -188,6 +188,25 @@ resultado con la medida, el veredicto y los puntos para dibujarla.
 | Rosca | Paso, Ø exterior, Ø de fondo y ángulo de flanco | Perfil axial a los dos lados + periodo por autocorrelación (el paso) + plegado síncrono por ese periodo y ajuste de recta a los flancos |
 | Engranaje | Dientes, Ø de cabeza y raíz, módulo, Ø primitivo, excentricidad | Perfil radial + periodo circular (los dientes) + ajuste de círculo a las puntas (la excentricidad) |
 
+**Una sola lista de herramientas** (`allToolTypes()`). El repaso de coherencia
+encontró que las cuatro herramientas de pieza torneada estaban en el editor de
+plantilla y **no** en la fila "Dibujar" de la vista en vivo: existían, se
+guardaban, se ejecutaban… y no había forma de dibujarlas sobre el vídeo. El
+motivo era prosaico —la fila se construía con una lista escrita a mano que nadie
+actualizó—, y la cura es que exista **una** lista: la usan el parseo por nombre,
+las dos filas de botones y los propios barridos de coherencia. Lo mismo con
+`toolTypeLabel`, que estaba duplicado en las dos ventanas.
+
+Diez pruebas recorren esa lista y exigen a **toda** herramienta lo mismo:
+manijas que responden al arrastre y no derivan al re-agarrarlas, puntos de
+referencia dentro de su propia huella, distancia de clic que crece al alejarse,
+geometría que sigue a la pieza al girar, traslación que la mueve entera, ida y
+vuelta por el JSON de la plantilla, nombre corto y nombre interno únicos,
+descripción que empieza nombrando la herramienta y explica cómo trazarla,
+tolerancias sugeridas que aceptan la pieza con la que se midieron, e icono
+propio y no en blanco. Los barridos son `switch` exhaustivos sin `default`: con
+`-Werror`, una herramienta decimoquinta **no compila** hasta pasar por todos.
+
 **Ajustes geométricos** (`vision/fitting.*`). El Círculo —y las herramientas de
 pieza torneada que vienen detrás— acaban preguntando lo mismo: qué
 circunferencia explica esta nube de puntos de borde. Dos decisiones ahí:

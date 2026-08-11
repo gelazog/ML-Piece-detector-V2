@@ -29,6 +29,7 @@
 
 #include "inspection_editor/auto_measure_dialog.h"
 #include "inspection_editor/canvas/editor_canvas.h"
+#include "inspection_editor/canvas/tool_icons.h"
 
 using namespace pci::inspection;
 
@@ -537,6 +538,36 @@ TEST(ContourOverlay, AnInvalidReportDoesNotTurnTheLayerOn) {
     canvas.setContourReport(true, pci::vision::ContourReport{});
     EXPECT_FALSE(canvas.contourReportVisible());
     EXPECT_TRUE(canvas.contourSummaryLines().isEmpty());
+}
+
+TEST(ToolCoherence, EveryToolIsDrawnWithItsOwnIcon) {
+    // Los iconos se dibujan en código. Uno vacío deja un botón en blanco y dos
+    // iguales hacen indistinguibles dos herramientas en una fila de catorce.
+    std::vector<QImage> seen;
+    for (const ToolType type : allToolTypes()) {
+        const QIcon icon = toolIcon(type);
+        ASSERT_FALSE(icon.isNull()) << toolTypeLabel(type) << " no tiene icono";
+        const QImage image = icon.pixmap(24, 24).toImage().convertToFormat(
+            QImage::Format_RGBA8888);
+        ASSERT_FALSE(image.isNull()) << toolTypeLabel(type);
+
+        int painted = 0;
+        for (int y = 0; y < image.height(); ++y) {
+            for (int x = 0; x < image.width(); ++x) {
+                if (image.pixelColor(x, y).alpha() > 0) {
+                    ++painted;
+                }
+            }
+        }
+        EXPECT_GT(painted, 8) << toolTypeLabel(type) << ": el icono está en blanco";
+
+        for (std::size_t i = 0; i < seen.size(); ++i) {
+            EXPECT_NE(image, seen[i])
+                << toolTypeLabel(type) << " comparte icono con otra herramienta";
+        }
+        seen.push_back(image);
+    }
+    EXPECT_EQ(seen.size(), allToolTypes().size());
 }
 
 int main(int argc, char** argv) {

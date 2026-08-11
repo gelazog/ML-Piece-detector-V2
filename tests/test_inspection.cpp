@@ -2,12 +2,16 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstring>
 #include <string>
+#include <vector>
 
+#include "inspection_editor/canvas/canvas_geometry.h"
 #include "inspection_editor/execution/edge_detection.h"
+#include "sample_geometries.h"
 #include "inspection_editor/execution/tool_executor.h"
 #include "inspection_editor/tools/template_io.h"
 #include "inspection_editor/tools/tool_geometry.h"
@@ -2337,4 +2341,112 @@ TEST(MeasuringConditions, TheWarningsReachTheTurnedPartTools) {
     ASSERT_TRUE(gear.isOk());
     EXPECT_NE(gear.value().detail.find("inclinada"), std::string::npos)
         << gear.value().detail;
+}
+
+// ---------------------------------------------------------------------------
+// Repaso de coherencia: lo que TODA herramienta tiene que cumplir
+// ---------------------------------------------------------------------------
+//
+// Recorren `allToolTypes()` en vez de una lista escrita a mano, para que una
+// herramienta nueva entre sola en el repaso.
+
+TEST(ToolCoherence, EveryToolHasItsOwnNameAndExplainsHowToDrawIt) {
+    std::vector<std::string> labels;
+    std::vector<std::string> names;
+    for (const ToolType type : allToolTypes()) {
+        const std::string label = toolTypeLabel(type);
+        const std::string name = toolTypeName(type);
+        const std::string description = toolTypeDescription(type);
+
+        EXPECT_FALSE(label.empty());
+        EXPECT_NE(label, "?") << "tipo sin nombre corto";
+        EXPECT_FALSE(name.empty());
+        EXPECT_NE(name, "unknown") << label << " no tiene nombre para la base de datos";
+
+        // El tooltip es lo único que le dice al operador QUÉ mide y CÓMO se
+        // traza: uno de una línea no sirve de nada. Y tiene que empezar por el
+        // nombre de la herramienta, que es como está escrito el resto.
+        EXPECT_GT(description.size(), 80U) << label << ": descripción demasiado corta";
+        EXPECT_EQ(description.rfind(label, 0), 0U)
+            << label << ": la descripción no empieza nombrando la herramienta — «"
+            << description.substr(0, 40) << "»";
+        EXPECT_NE(description.find('\n'), std::string::npos)
+            << label << ": la descripción no explica cómo dibujarla";
+
+        labels.push_back(label);
+        names.push_back(name);
+    }
+    // Dos herramientas con el mismo nombre corto serían indistinguibles en los
+    // botones; con el mismo nombre interno, una pisaría a la otra al guardar.
+    std::sort(labels.begin(), labels.end());
+    std::sort(names.begin(), names.end());
+    EXPECT_EQ(std::adjacent_find(labels.begin(), labels.end()), labels.end());
+    EXPECT_EQ(std::adjacent_find(names.begin(), names.end()), names.end());
+    EXPECT_EQ(labels.size(), allToolTypes().size());
+}
+
+TEST(ToolCoherence, EveryToolNameSurvivesTheRoundTripThroughTheDatabase) {
+    for (const ToolType type : allToolTypes()) {
+        const auto back = toolTypeFromName(toolTypeName(type));
+        ASSERT_TRUE(back.isOk()) << toolTypeName(type);
+        EXPECT_EQ(back.value(), type);
+    }
+}
+
+TEST(ToolCoherence, EveryToolGeometrySurvivesTheTemplateRoundTrip) {
+    for (const ToolType type : allToolTypes()) {
+        const ToolGeometry original = testing_support::sampleGeometry(type);
+        ASSERT_EQ(typeOf(original), type) << toolTypeLabel(type) << ": typeOf no lo reconoce";
+
+        const std::string json = toJson(original);
+        EXPECT_FALSE(json.empty()) << toolTypeLabel(type);
+        const auto back = geometryFromJson(type, json);
+        ASSERT_TRUE(back.isOk()) << toolTypeLabel(type) << ": " << back.error().message;
+        EXPECT_EQ(typeOf(back.value()), type);
+
+        // Y lo que vuelve es lo mismo que se guardó: se compara por el JSON, que
+        // es exactamente lo que se persiste.
+        EXPECT_EQ(toJson(back.value()), json) << toolTypeLabel(type);
+    }
+}
+
+TEST(ToolCoherence, EveryToolMovesWholeWhenTheToolIsDragged) {
+    // Mover una herramienta la desplaza ENTERA: si un punto se quedara atrás, se
+    // deformaría al arrastrarla o al duplicarla.
+    const cv::Point2f delta(37.5F, -21.25F);
+    for (const ToolType type : allToolTypes()) {
+        const ToolGeometry original = testing_support::sampleGeometry(type);
+        ToolGeometry moved = original;
+        translateGeometry(moved, delta);
+        ASSERT_EQ(typeOf(moved), type);
+
+        const auto before = handlePoints(original);
+        const auto after = handlePoints(moved);
+        ASSERT_EQ(before.size(), after.size()) << toolTypeLabel(type);
+        for (std::size_t i = 0; i < before.size(); ++i) {
+            EXPECT_NEAR(after[i].x, before[i].x + delta.x, 1e-3)
+                << toolTypeLabel(type) << ", punto " << i;
+            EXPECT_NEAR(after[i].y, before[i].y + delta.y, 1e-3)
+                << toolTypeLabel(type) << ", punto " << i;
+        }
+    }
+}
+
+TEST(ToolCoherence, EveryToolSuggestsABandThatAcceptsTheGoodPiece) {
+    // La tolerancia sugerida sale de medir una pieza buena: si la banda no
+    // contuviera esa misma medida, la primera pieza daría NG nada más dibujar la
+    // herramienta.
+    for (const ToolType type : allToolTypes()) {
+        for (const double measured : {0.5, 3.0, 40.0, 137.25}) {
+            double lo = -1.0;
+            double hi = -1.0;
+            suggestTolerances(type, measured, lo, hi);
+            EXPECT_LE(lo, measured + 1e-9)
+                << toolTypeLabel(type) << " con medida " << measured;
+            EXPECT_GE(hi, measured - 1e-9)
+                << toolTypeLabel(type) << " con medida " << measured;
+            EXPECT_LE(lo, hi) << toolTypeLabel(type);
+            EXPECT_TRUE(std::isfinite(lo) && std::isfinite(hi)) << toolTypeLabel(type);
+        }
+    }
 }

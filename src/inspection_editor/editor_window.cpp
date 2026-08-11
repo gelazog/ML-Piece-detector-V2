@@ -39,25 +39,9 @@ namespace pci::inspection {
 
 namespace {
 
-QString typeLabel(ToolType type) {
-    switch (type) {
-        case ToolType::Caliper: return QStringLiteral("Caliper");
-        case ToolType::Circle: return QStringLiteral("Círculo");
-        case ToolType::PointToLine: return QStringLiteral("Punto-Línea");
-        case ToolType::EdgeFlaw: return QStringLiteral("Borde liso");
-        case ToolType::Blob: return QStringLiteral("Blob");
-        case ToolType::Ruler: return QStringLiteral("Regla");
-        case ToolType::LineToLine: return QStringLiteral("Línea-Línea");
-        case ToolType::Angle: return QStringLiteral("Ángulo");
-        case ToolType::Position: return QStringLiteral("Posición");
-        case ToolType::PolyBlob: return QStringLiteral("Blob poligonal");
-        case ToolType::Arc: return QStringLiteral("Arco");
-        case ToolType::Shaft: return QStringLiteral("Eje / Diámetro");
-        case ToolType::Thread: return QStringLiteral("Rosca");
-        case ToolType::Gear: return QStringLiteral("Engranaje");
-    }
-    return QStringLiteral("?");
-}
+// Nombre corto de la lista única compartida con la vista en vivo, envuelto en
+// QString.
+QString typeLabel(ToolType type) { return QString::fromUtf8(toolTypeLabel(type)); }
 
 }  // namespace
 
@@ -101,20 +85,11 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
         return button;
     };
     addMode(tr("Seleccionar"), -1)->setChecked(true);
-    addMode(tr("Caliper"), static_cast<int>(ToolType::Caliper));
-    addMode(tr("Círculo"), static_cast<int>(ToolType::Circle));
-    addMode(tr("Punto-Línea"), static_cast<int>(ToolType::PointToLine));
-    addMode(tr("Borde liso"), static_cast<int>(ToolType::EdgeFlaw));
-    addMode(tr("Blob"), static_cast<int>(ToolType::Blob));
-    addMode(tr("Regla"), static_cast<int>(ToolType::Ruler));
-    addMode(tr("Línea-Línea"), static_cast<int>(ToolType::LineToLine));
-    addMode(tr("Ángulo"), static_cast<int>(ToolType::Angle));
-    addMode(tr("Blob poligonal"), static_cast<int>(ToolType::PolyBlob));
-    addMode(tr("Posición"), static_cast<int>(ToolType::Position));
-    addMode(tr("Arco"), static_cast<int>(ToolType::Arc));
-    addMode(tr("Eje / Diámetro"), static_cast<int>(ToolType::Shaft));
-    addMode(tr("Rosca"), static_cast<int>(ToolType::Thread));
-    addMode(tr("Engranaje"), static_cast<int>(ToolType::Gear));
+    // Por la lista canónica: una herramienta nueva aparece aquí sola, con su
+    // icono y su descripción, sin tener que acordarse de añadir la línea.
+    for (const ToolType type : allToolTypes()) {
+        addMode(typeLabel(type), static_cast<int>(type));
+    }
     modesLayout->addStretch(1);
     rootLayout->addLayout(modesLayout);
 

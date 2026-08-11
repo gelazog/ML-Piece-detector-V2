@@ -36,17 +36,42 @@ const char* toolTypeName(ToolType type) {
     return "unknown";
 }
 
+const std::array<ToolType, 14>& allToolTypes() {
+    static const std::array<ToolType, 14> kTypes{
+        ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine, ToolType::EdgeFlaw,
+        ToolType::Blob,     ToolType::Ruler,    ToolType::LineToLine,  ToolType::Angle,
+        ToolType::PolyBlob, ToolType::Position, ToolType::Arc,         ToolType::Shaft,
+        ToolType::Thread,   ToolType::Gear};
+    return kTypes;
+}
+
 core::Result<ToolType> toolTypeFromName(const std::string& name) {
-    for (const ToolType type : {ToolType::Caliper, ToolType::Circle, ToolType::PointToLine,
-                                ToolType::EdgeFlaw, ToolType::Blob, ToolType::Ruler,
-                                ToolType::LineToLine, ToolType::Angle, ToolType::PolyBlob,
-                                ToolType::Position, ToolType::Arc, ToolType::Shaft,
-                                ToolType::Thread, ToolType::Gear}) {
+    for (const ToolType type : allToolTypes()) {
         if (name == toolTypeName(type)) {
             return core::Result<ToolType>::ok(type);
         }
     }
     return core::Result<ToolType>::err("Tipo de herramienta desconocido: '" + name + "'");
+}
+
+const char* toolTypeLabel(ToolType type) {
+    switch (type) {
+        case ToolType::Caliper: return "Caliper";
+        case ToolType::Circle: return "Círculo";
+        case ToolType::PointToLine: return "Punto-Línea";
+        case ToolType::EdgeFlaw: return "Borde liso";
+        case ToolType::Blob: return "Blob";
+        case ToolType::Ruler: return "Regla";
+        case ToolType::LineToLine: return "Línea-Línea";
+        case ToolType::Angle: return "Ángulo";
+        case ToolType::PolyBlob: return "Blob poligonal";
+        case ToolType::Position: return "Posición";
+        case ToolType::Arc: return "Arco";
+        case ToolType::Shaft: return "Eje / Diámetro";
+        case ToolType::Thread: return "Rosca";
+        case ToolType::Gear: return "Engranaje";
+    }
+    return "?";
 }
 
 const char* toolTypeDescription(ToolType type) {

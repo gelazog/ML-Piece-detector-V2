@@ -303,7 +303,10 @@ Formato: casilla, ID, tarea, por qué, algoritmo, archivos, cómo se verifica.
   justificación de cada elección — Taubin frente a Kasa, autocorrelación frente
   a contar picos). Tabla de herramientas ampliada a catorce.
 
-- [ ] **D2 — Repaso de coherencia.** Que las herramientas nuevas cumplan lo que
+- [x] **D2 — Repaso de coherencia.** *(Encontró un fallo real: las cuatro
+  herramientas nuevas estaban en el editor y **no** en la fila "Dibujar" de la
+  vista en vivo. Arreglado con una lista canónica `allToolTypes()` que usan las
+  dos ventanas y los propios barridos.)* Que las herramientas nuevas cumplan lo que
   ya cumplen las diez viejas: geometría en coordenadas de pieza (siguen a la
   pieza al girar), manijas y distancia de clic en `canvas_geometry`, invariancia
   al giro probada, redondeo y unidades con el mismo formato, icono, tooltip
