@@ -239,6 +239,17 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      que el tablero pasa a ser criterio OK/NG y no solo ayuda visual. Con el
      cero *en la propia pieza* la desviación es constante: usa el centro de la
      imagen o un punto fijado para que mida algo útil.
+   - *Región*: describe la **forma** de lo que hay dentro del recuadro. Arrastra
+     un rectángulo sobre la pieza y elige en *Medida* qué vigilar: **área**,
+     **perímetro**, **solidez** (cuánto se aparta de su casco convexo: 1 = sin
+     entrantes), **circularidad**, **relación de aspecto** (lado largo/corto del
+     rectángulo mínimo) o **número de agujeros**. Cada Región vigila **una** cosa
+     con su tolerancia, así que pon una por cada medida que te importe; el
+     detalle enseña las seis de todas formas, para que veas cuál merece la pena.
+     Referencias medidas de la circularidad: un círculo da **0,99** y un cuadrado
+     **0,82** (el valor exacto de un cuadrado es 0,785 — la diferencia es el
+     sesgo conocido de medir un borde recto sobre una rejilla de píxeles). Una
+     mota de ruido **no** cuenta como agujero.
    - *Punto construido* y *Recta construida*: **no miden nada**. Calculan un
      punto o una recta a partir de otras herramientas para que puedas
      **declarar una referencia** (un *datum*). Colócalas con un clic —el clic

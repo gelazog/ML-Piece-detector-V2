@@ -28,17 +28,18 @@ const char* toolTypeName(ToolType type) {
         case ToolType::ConstructedPoint: return "constructed_point";
         case ToolType::ConstructedLine: return "constructed_line";
         case ToolType::MedianAxis: return "median_axis";
+        case ToolType::Region: return "region";
     }
     return "unknown";
 }
 
-const std::array<ToolType, 17>& allToolTypes() {
-    static const std::array<ToolType, 17> kTypes{
+const std::array<ToolType, 18>& allToolTypes() {
+    static const std::array<ToolType, 18> kTypes{
         ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine, ToolType::EdgeFlaw,
         ToolType::Blob,     ToolType::Ruler,    ToolType::LineToLine,  ToolType::Angle,
         ToolType::PolyBlob, ToolType::Position, ToolType::Arc,         ToolType::Shaft,
         ToolType::Thread,   ToolType::Gear,     ToolType::ConstructedPoint,
-        ToolType::ConstructedLine, ToolType::MedianAxis};
+        ToolType::ConstructedLine, ToolType::MedianAxis, ToolType::Region};
     return kTypes;
 }
 
@@ -64,6 +65,7 @@ ToolCategory categoryOf(ToolType type) {
         case ToolType::Blob:
         case ToolType::PolyBlob:
         case ToolType::EdgeFlaw:
+        case ToolType::Region:
             return ToolCategory::BasicShape;
         // La cota directa, que es lo que se pide en un plano.
         case ToolType::Caliper:
@@ -176,6 +178,25 @@ ToolReferences referencesFromParams(const std::string& paramsJson) {
     }
 }
 
+const std::array<RegionMeasure, 6>& allRegionMeasures() {
+    static const std::array<RegionMeasure, 6> kMeasures{
+        RegionMeasure::Area,        RegionMeasure::Perimeter,   RegionMeasure::Solidity,
+        RegionMeasure::Circularity, RegionMeasure::AspectRatio, RegionMeasure::HoleCount};
+    return kMeasures;
+}
+
+const char* regionMeasureLabel(RegionMeasure measure) {
+    switch (measure) {
+        case RegionMeasure::Area: return "Área";
+        case RegionMeasure::Perimeter: return "Perímetro";
+        case RegionMeasure::Solidity: return "Solidez";
+        case RegionMeasure::Circularity: return "Circularidad";
+        case RegionMeasure::AspectRatio: return "Relación de aspecto";
+        case RegionMeasure::HoleCount: return "Número de agujeros";
+    }
+    return "?";
+}
+
 const std::array<PointConstruction, 4>& allPointConstructions() {
     static const std::array<PointConstruction, 4> kModes{
         PointConstruction::Midpoint, PointConstruction::Intersection,
@@ -268,6 +289,7 @@ const char* toolTypeLabel(ToolType type) {
         case ToolType::ConstructedPoint: return "Punto construido";
         case ToolType::ConstructedLine: return "Recta construida";
         case ToolType::MedianAxis: return "Eje medio";
+        case ToolType::Region: return "Región";
     }
     return "?";
 }
@@ -368,6 +390,16 @@ const char* toolTypeDescription(ToolType type) {
                    "medio entre los bordes reales, no la línea que dibujaste. Mide su\n"
                    "RECTITUD y avisa de la desalineación entre la mitad de un tramo y la\n"
                    "otra, que es lo que delata dos diámetros que no son coaxiales.";
+        case ToolType::Region:
+            return "Región — describe la FORMA de lo que hay dentro del recuadro.\n"
+                   "Arrastra un rectángulo sobre la pieza y elige qué medir: área,\n"
+                   "perímetro, solidez, circularidad, relación de aspecto o número de\n"
+                   "agujeros. Cada Región vigila UNA cosa con su tolerancia, así que\n"
+                   "pon una por cada medida que te importe y deja fuera las demás.\n"
+                   "Referencias medidas de la circularidad: un círculo da 0,99 y un\n"
+                   "cuadrado 0,82 (el valor exacto de un cuadrado es 0,785; la\n"
+                   "diferencia es el sesgo conocido de medir un borde recto sobre una\n"
+                   "rejilla de píxeles). Lo que separa una forma de otra es de sobra.";
     }
     return "";
 }
@@ -413,6 +445,12 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
             toleranceMax = measured + band;
             return;
         }
+        // La Región mide seis cosas con escalas distintas, así que el tipo por
+        // sí solo no basta: quien tenga la geometría a mano debe llamar a la
+        // sobrecarga que la mira. Sin ella, la banda relativa es lo menos malo
+        // que se puede decir — nunca el conteo exacto, que dejaría un área
+        // fuera de tolerancia por un píxel.
+        case ToolType::Region:
         case ToolType::Caliper:
         case ToolType::Circle:
         case ToolType::PointToLine:
@@ -427,6 +465,41 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
             return;
         }
     }
+}
+
+void suggestTolerances(const ToolGeometry& geometry, double measured, double& toleranceMin,
+                       double& toleranceMax) {
+    if (const auto* region = std::get_if<RegionGeometry>(&geometry)) {
+        switch (region->measure) {
+            case RegionMeasure::HoleCount:
+                // Un recuento es exacto: la pieza buena tiene los agujeros que
+                // tiene, y uno de más o de menos es otra pieza.
+                toleranceMin = measured;
+                toleranceMax = measured;
+                return;
+            case RegionMeasure::Solidity:
+            case RegionMeasure::Circularity: {
+                // Viven entre 0 y 1, así que una banda de ±10 % del valor sería
+                // ridícula cerca de 1 y enorme cerca de 0. Se usa una banda
+                // ABSOLUTA de ±0,05, y el techo se corta en 1: una circularidad
+                // mayor que 1 no existe, y dejar el margen abierto por arriba
+                // haría que un valor imposible pasara como bueno.
+                toleranceMin = std::max(0.0, measured - 0.05);
+                toleranceMax = std::min(1.0, measured + 0.05);
+                return;
+            }
+            case RegionMeasure::AspectRatio: {
+                const double band = std::max(measured * 0.05, 0.05);
+                toleranceMin = std::max(1.0, measured - band);
+                toleranceMax = measured + band;
+                return;
+            }
+            case RegionMeasure::Area:
+            case RegionMeasure::Perimeter:
+                break;  // banda relativa, como cualquier otra medida de tamaño
+        }
+    }
+    suggestTolerances(typeOf(geometry), measured, toleranceMin, toleranceMax);
 }
 
 ToolType typeOf(const ToolGeometry& geometry) {
@@ -467,6 +540,8 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::ConstructedLine;
             } else if constexpr (std::is_same_v<T, MedianAxisGeometry>) {
                 return ToolType::MedianAxis;
+            } else if constexpr (std::is_same_v<T, RegionGeometry>) {
+                return ToolType::Region;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -489,7 +564,8 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 g.p0 += delta;
                 g.p1 += delta;
             } else if constexpr (std::is_same_v<T, CircleGeometry> ||
-                                 std::is_same_v<T, BlobGeometry>) {
+                                 std::is_same_v<T, BlobGeometry> ||
+                                 std::is_same_v<T, RegionGeometry>) {
                 g.center += delta;
             } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
                 g.lineA += delta;
@@ -662,6 +738,17 @@ std::string toJson(const ToolGeometry& geometry) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "cx" << g.center.x << "cy" << g.center.y << "w" << g.width << "h"
                        << g.height << "minArea" << g.minArea << "dark" << (g.darkBlobs ? 1 : 0);
+                });
+            } else if constexpr (std::is_same_v<T, RegionGeometry>) {
+                return writeJson([&](cv::FileStorage& fs) {
+                    // La clave del selector se llama "mode" en TODAS las
+                    // geometrías que tienen uno, no "measure" aquí y "mode"
+                    // allí: escribir con un nombre y leer con otro ya costó un
+                    // test en rojo, y con una sola clave no puede volver a
+                    // pasar.
+                    fs << "cx" << g.center.x << "cy" << g.center.y << "w" << g.width << "h"
+                       << g.height << "mode" << static_cast<int>(g.measure) << "dark"
+                       << (g.darkPiece ? 1 : 0);
                 });
             } else if constexpr (std::is_same_v<T, RulerGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
@@ -883,6 +970,24 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.axisTo = {static_cast<float>(bx.value()), static_cast<float>(by.value())};
                 g.searchBand = static_cast<float>(band.value());
                 g.stations = static_cast<int>(reader.numberOr("stations", 32.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::Region: {
+                RegionGeometry g;
+                auto cx = f("cx"), cy = f("cy"), w = f("w"), h = f("h");
+                for (const auto* v : {&cx, &cy, &w, &h}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
+                g.width = static_cast<float>(w.value());
+                g.height = static_cast<float>(h.value());
+                g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
+                // Igual que en las construcciones: una medida desconocida no se
+                // degrada a la primera, porque daría un número creíble que no es
+                // el que el operador configuró.
+                const auto measure = readConstruction(reader, allRegionMeasures());
+                if (!measure.isOk()) return ResultT::err(measure.error().message);
+                g.measure = measure.value();
                 return ResultT::ok(g);
             }
             case ToolType::MedianAxis: {

@@ -2204,6 +2204,22 @@ void MainWindow::onLiveSelectionChanged(int index) {
                        "3 = solo Y"));
                 liveParamSpin_->setValue(static_cast<int>(g.axis) + 1);
                 liveParamSpin_->setEnabled(true);
+            } else if constexpr (std::is_same_v<T, inspection::RegionGeometry>) {
+                // El editor tiene un desplegable con los nombres; aquí, donde
+                // solo hay este spin, se numeran. Los números salen de la misma
+                // lista, así que no pueden desordenarse respecto al editor.
+                QString tip = tr("Qué mide esta Región:");
+                const auto& measures = inspection::allRegionMeasures();
+                for (std::size_t i = 0; i < measures.size(); ++i) {
+                    tip += QStringLiteral("\n%1 = %2")
+                               .arg(i + 1)
+                               .arg(QString::fromUtf8(
+                                   inspection::regionMeasureLabel(measures[i])));
+                }
+                liveParamLabel_->setText(tr("Medida:"));
+                liveParamSpin_->setToolTip(tip);
+                liveParamSpin_->setValue(static_cast<int>(g.measure) + 1);
+                liveParamSpin_->setEnabled(true);
             }
             // Punto-Línea no tiene parámetro de muestreo editable.
         },
@@ -2231,6 +2247,11 @@ void MainWindow::onLiveParamChanged(int value) {
                 g.axis = (value == 2)   ? inspection::PositionAxis::X
                          : (value == 3) ? inspection::PositionAxis::Y
                                         : inspection::PositionAxis::Radial;
+            } else if constexpr (std::is_same_v<T, inspection::RegionGeometry>) {
+                const auto& measures = inspection::allRegionMeasures();
+                const int index = std::clamp(value, 1,
+                                             static_cast<int>(measures.size())) - 1;
+                g.measure = measures[static_cast<std::size_t>(index)];
             }
         },
         liveTools_[static_cast<std::size_t>(index)].geometry);

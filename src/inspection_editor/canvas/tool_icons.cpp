@@ -177,6 +177,21 @@ QIcon toolIcon(ToolType type) {
                 p.drawEllipse(QPointF(12, 13), 2.0, 2.0);
                 p.drawEllipse(QPointF(18, 15), 1.6, 1.6);
             });
+        case ToolType::Region:
+            return makeIcon([](QPainter& p, const QColor& c) {
+                // Una silueta con su area tramada: lo que se mide es la region,
+                // no su borde.
+                QPolygonF blob;
+                blob << QPointF(6, 9) << QPointF(15, 4) << QPointF(23, 11)
+                     << QPointF(21, 21) << QPointF(10, 23);
+                p.drawPolygon(blob);
+                QPen hatch(c);
+                hatch.setWidthF(0.9);
+                p.setPen(hatch);
+                for (int k = -8; k < 24; k += 5) {
+                    p.drawLine(QPointF(k + 2, 24), QPointF(k + 14, 4));
+                }
+            });
         case ToolType::MedianAxis:
             return makeIcon([](QPainter& p, const QColor&) {
                 // Dos flancos tenues y, entre ellos, el eje de trazo y punto —

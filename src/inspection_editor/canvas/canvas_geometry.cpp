@@ -118,7 +118,8 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
                         g.center + cv::Point2f(g.radius, 0.0F),
                         g.center + cv::Point2f(0.0F, -g.radius),
                         g.center + cv::Point2f(0.0F, g.radius)};
-            } else if constexpr (std::is_same_v<T, BlobGeometry>) {
+            } else if constexpr (std::is_same_v<T, BlobGeometry> ||
+                                 std::is_same_v<T, RegionGeometry>) {
                 const float hw = g.width / 2.0F;
                 const float hh = g.height / 2.0F;
                 return {g.center,
@@ -184,7 +185,8 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
                 return {g.a0, g.a1, g.b0, g.b1};
             } else if constexpr (std::is_same_v<T, AngleGeometry>) {
                 return {g.vertex, g.end0, g.end1};
-            } else if constexpr (std::is_same_v<T, BlobGeometry>) {
+            } else if constexpr (std::is_same_v<T, BlobGeometry> ||
+                                 std::is_same_v<T, RegionGeometry>) {
                 return {g.center,
                         g.center + cv::Point2f(g.width / 2.0F, g.height / 2.0F)};
             } else if constexpr (std::is_same_v<T, PositionGeometry>) {
@@ -262,7 +264,8 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
                     case 1: g.end0 = q; break;
                     default: g.end1 = q; break;
                 }
-            } else if constexpr (std::is_same_v<T, BlobGeometry>) {
+            } else if constexpr (std::is_same_v<T, BlobGeometry> ||
+                                 std::is_same_v<T, RegionGeometry>) {
                 if (handle == 0) {
                     g.center = q;
                 } else {
@@ -333,7 +336,8 @@ double distanceToGeometry(const ToolGeometry& geometry, const vision::Fixture& f
                 } else if constexpr (std::is_same_v<T, AngleGeometry>) {
                     d = std::min(distanceToSegment(p, vision::toImageCoords(fixture, g.vertex), vision::toImageCoords(fixture, g.end0)),
                                  distanceToSegment(p, vision::toImageCoords(fixture, g.vertex), vision::toImageCoords(fixture, g.end1)));
-                } else if constexpr (std::is_same_v<T, BlobGeometry>) {
+                } else if constexpr (std::is_same_v<T, BlobGeometry> ||
+                                     std::is_same_v<T, RegionGeometry>) {
                     const float hw = g.width / 2.0F;
                     const float hh = g.height / 2.0F;
                     const cv::Point2f c[4] = {

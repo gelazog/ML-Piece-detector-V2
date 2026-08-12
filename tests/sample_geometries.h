@@ -45,6 +45,8 @@ inline ToolGeometry sampleGeometry(ToolType type) {
             return ThreadGeometry{{-90.0F, 5.0F}, {90.0F, 5.0F}, 60.0F, 240};
         case ToolType::Gear:
             return GearGeometry{{0.0F, 0.0F}, 40.0F, 90.0F, 1440};
+        case ToolType::Region:
+            return RegionGeometry{{0.0F, 0.0F}, 160.0F, 120.0F, RegionMeasure::Area, true};
         case ToolType::MedianAxis:
             return MedianAxisGeometry{{-80.0F, 0.0F}, {80.0F, 0.0F}, 60.0F, 32};
         case ToolType::ConstructedPoint:

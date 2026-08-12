@@ -196,12 +196,40 @@ struct MedianAxisGeometry {
     int stations = 32;         // cortes repartidos a lo largo del eje
 };
 
+// --- Región: los descriptores de forma de una silueta (F1) ------------------
+//
+// Una sola herramienta con un SELECTOR DE MEDIDA, como Posición tiene su
+// selector de eje, y no seis herramientas. El motivo es práctico: cada
+// instancia lleva su propia tolerancia, así que el operador pone dos Regiones
+// —una que vigila el área y otra los agujeros— y deja fuera las cuatro que no
+// le importan. Con seis herramientas tendría que borrarlas.
+enum class RegionMeasure {
+    Area,         // px² (o mm² con escala), con los agujeros descontados
+    Perimeter,    // px del contorno exterior
+    Solidity,     // área / área del casco convexo: 1 = sin entrantes
+    Circularity,  // 4πA/P²: 1 = círculo, 0,785 = cuadrado
+    AspectRatio,  // largo/ancho del rectángulo mínimo, siempre >= 1
+    HoleCount,    // cuántos agujeros cerrados tiene dentro
+};
+
+struct RegionGeometry {
+    cv::Point2f center;  // rectángulo alineado a los ejes de la PIEZA
+    float width = 160.0F;
+    float height = 120.0F;
+    RegionMeasure measure = RegionMeasure::Area;
+    bool darkPiece = true;  // la pieza es lo oscuro (o lo claro si false)
+};
+
+[[nodiscard]] const std::array<RegionMeasure, 6>& allRegionMeasures();
+[[nodiscard]] const char* regionMeasureLabel(RegionMeasure measure);
+
 using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGeometry,
                                   EdgeFlawGeometry, BlobGeometry, RulerGeometry,
                                   LineToLineGeometry, AngleGeometry, PolyBlobGeometry,
                                   PositionGeometry, ArcGeometry, ShaftGeometry,
                                   ThreadGeometry, GearGeometry, ConstructedPointGeometry,
-                                  ConstructedLineGeometry, MedianAxisGeometry>;
+                                  ConstructedLineGeometry, MedianAxisGeometry,
+                                  RegionGeometry>;
 
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
@@ -232,7 +260,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 17>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 18>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que
@@ -287,6 +315,14 @@ const char* toolTypeDescription(ToolType type);
 // buena: banda de ±10% para distancias/diámetros, conteo exacto para blobs y
 // techo holgado para la desviación de borde.
 void suggestTolerances(ToolType type, double measured, double& toleranceMin,
+                       double& toleranceMax);
+
+// La misma sugerencia, pero mirando la geometría. Hace falta porque la Región
+// mide seis cosas distintas con el mismo tipo: una banda de ±10 % vale para un
+// área y no vale para una circularidad (que vive entre 0 y 1) ni para un
+// recuento de agujeros (que es exacto). Para todo lo demás **delega** en la
+// versión por tipo, así que sigue habiendo una sola regla por herramienta.
+void suggestTolerances(const ToolGeometry& geometry, double measured, double& toleranceMin,
                        double& toleranceMax);
 
 }  // namespace pci::inspection

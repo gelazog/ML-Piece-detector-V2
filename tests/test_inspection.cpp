@@ -761,6 +761,9 @@ ToolConfig makeToolAt(int index, float x, float y) {
         case ToolType::MedianAxis:
             geometry = MedianAxisGeometry{{x - 25.0F, y}, {x + 25.0F, y}, 20.0F, 12};
             break;
+        case ToolType::Region:
+            geometry = RegionGeometry{{x, y}, 40.0F, 30.0F, RegionMeasure::Area, true};
+            break;
         case ToolType::ConstructedPoint:
             geometry = ConstructedPointGeometry{PointConstruction::Midpoint, {x, y}};
             break;
@@ -3222,4 +3225,200 @@ TEST(MedianAxis, TheAxisCanBeTheDatumOfAConstruction) {
     // perpendicular es vertical: 90°.
     EXPECT_EQ(results[0].name, "perp");
     EXPECT_NEAR(results[0].measured, 90.0, 0.2) << results[0].detail;
+}
+
+// ---------------------------------------------------------------------------
+// Región: descriptores de forma (F1)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+ToolConfig regionOver(cv::Point2f centre, float w, float h, RegionMeasure measure) {
+    ToolConfig config;
+    config.type = ToolType::Region;
+    config.name = "region";
+    config.geometryJson =
+        toJson(ToolGeometry(RegionGeometry{centre, w, h, measure, true}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+// Lienzo claro con una figura oscura dentro, que es lo que espera `darkPiece`.
+cv::Mat lightCanvas(int size = 400) {
+    return cv::Mat(size, size, CV_8UC1, cv::Scalar(230));
+}
+
+double measureRegion(const cv::Mat& gray, RegionMeasure measure, cv::Point2f centre,
+                     float w, float h, std::string* detailOut = nullptr) {
+    const auto result = runTool(gray, kIdentity, regionOver(centre, w, h, measure));
+    if (!result.isOk()) {
+        return -1.0;
+    }
+    if (detailOut != nullptr) {
+        *detailOut = result.value().detail;
+    }
+    return result.value().ok || result.value().measured != 0.0 ? result.value().measured
+                                                               : result.value().measured;
+}
+
+}  // namespace
+
+TEST(Region, AreaAndPerimeterOfAKnownSquare) {
+    cv::Mat gray = lightCanvas();
+    // Cuadrado de 120x120 centrado en (200;200).
+    cv::rectangle(gray, cv::Rect(140, 140, 120, 120), cv::Scalar(30), cv::FILLED);
+
+    std::string detail;
+    const double area = measureRegion(gray, RegionMeasure::Area, {200, 200}, 300, 300, &detail);
+    std::printf("  %s\n", detail.c_str());
+    // El contorno pasa por el centro de los píxeles del borde, así que encierra
+    // algo menos que los 121x121 píxeles pintados.
+    EXPECT_NEAR(area, 120.0 * 120.0, 120.0 * 120.0 * 0.03);
+
+    const double perimeter = measureRegion(gray, RegionMeasure::Perimeter, {200, 200}, 300, 300);
+    // Un cuadrado alineado es el peor caso del estimador (−2 %): ver
+    // `digitalPerimeter`.
+    EXPECT_NEAR(perimeter, 4.0 * 120.0, 4.0 * 120.0 * 0.03);
+}
+
+TEST(Region, CircularityIsOneForACircleAndPiOverFourForASquare) {
+    // El valor de referencia que el plan pedía declarar. Con el perímetro
+    // estimado —y no con la longitud de cadena, que da ~0,89— un círculo digital
+    // llega de verdad a ~1,0, así que la escala significa lo que dice.
+    cv::Mat circleImage = lightCanvas();
+    cv::circle(circleImage, {200, 200}, 90, cv::Scalar(30), cv::FILLED);
+    const double circle =
+        measureRegion(circleImage, RegionMeasure::Circularity, {200, 200}, 300, 300);
+    std::printf("  circularidad del círculo: %.4f\n", circle);
+    EXPECT_NEAR(circle, 1.0, 0.03);
+
+    cv::Mat squareImage = lightCanvas();
+    cv::rectangle(squareImage, cv::Rect(140, 140, 120, 120), cv::Scalar(30), cv::FILLED);
+    const double square =
+        measureRegion(squareImage, RegionMeasure::Circularity, {200, 200}, 300, 300);
+    std::printf("  circularidad del cuadrado: %.4f (teórica π/4 = 0,7854)\n", square);
+    EXPECT_NEAR(square, 3.14159265358979323846 / 4.0, 0.06);
+
+    // Y lo que importa de verdad: un círculo puntúa MÁS que un cuadrado, con
+    // margen de sobra para poner una tolerancia entre los dos.
+    EXPECT_GT(circle - square, 0.15);
+}
+
+TEST(Region, SolidityDropsWhenTheShapeHasABiteTakenOut) {
+    // Solidez = área / área del casco convexo. Un cuadrado entero vale 1; con un
+    // mordisco, menos, y cuanto mayor el mordisco, menos todavía.
+    double previous = 2.0;
+    for (const int bite : {0, 30, 60}) {
+        cv::Mat gray = lightCanvas();
+        cv::rectangle(gray, cv::Rect(140, 140, 120, 120), cv::Scalar(30), cv::FILLED);
+        if (bite > 0) {
+            cv::rectangle(gray, cv::Rect(260 - bite, 260 - bite, bite, bite),
+                          cv::Scalar(230), cv::FILLED);
+        }
+        const double solidity =
+            measureRegion(gray, RegionMeasure::Solidity, {200, 200}, 300, 300);
+        std::printf("  mordisco %2d px -> solidez %.4f\n", bite, solidity);
+        if (bite == 0) {
+            EXPECT_NEAR(solidity, 1.0, 0.02) << "un convexo tiene solidez 1";
+        }
+        EXPECT_LT(solidity, previous) << "un mordisco mayor tiene que bajar la solidez";
+        previous = solidity;
+    }
+}
+
+TEST(Region, AspectRatioOfARectangleIsItsSideRatioAndNeverLessThanOne) {
+    cv::Mat gray = lightCanvas();
+    cv::rectangle(gray, cv::Rect(120, 170, 200, 60), cv::Scalar(30), cv::FILLED);
+    const double aspect =
+        measureRegion(gray, RegionMeasure::AspectRatio, {200, 200}, 340, 340);
+    EXPECT_NEAR(aspect, 200.0 / 60.0, 0.15);
+
+    // El mismo rectángulo de pie da lo MISMO: es una relación entre el lado
+    // largo y el corto, no entre ancho y alto.
+    cv::Mat upright = lightCanvas();
+    cv::rectangle(upright, cv::Rect(170, 120, 60, 200), cv::Scalar(30), cv::FILLED);
+    const double rotated =
+        measureRegion(upright, RegionMeasure::AspectRatio, {200, 200}, 340, 340);
+    EXPECT_NEAR(rotated, aspect, 0.1);
+    EXPECT_GE(rotated, 1.0);
+}
+
+TEST(Region, ItCountsTheHolesAndIgnoresSpecks) {
+    cv::Mat gray = lightCanvas();
+    cv::rectangle(gray, cv::Rect(120, 120, 160, 160), cv::Scalar(30), cv::FILLED);
+    EXPECT_NEAR(measureRegion(gray, RegionMeasure::HoleCount, {200, 200}, 340, 340), 0.0, 1e-9);
+
+    cv::circle(gray, {170, 170}, 18, cv::Scalar(230), cv::FILLED);
+    cv::circle(gray, {230, 230}, 12, cv::Scalar(230), cv::FILLED);
+    EXPECT_NEAR(measureRegion(gray, RegionMeasure::HoleCount, {200, 200}, 340, 340), 2.0, 1e-9);
+
+    // Una mota de un píxel no es un agujero: contarla haría la medida inútil
+    // sobre cualquier imagen real.
+    gray.at<unsigned char>(200, 150) = 230;
+    EXPECT_NEAR(measureRegion(gray, RegionMeasure::HoleCount, {200, 200}, 340, 340), 2.0, 1e-9)
+        << "una mota de ruido no puede contar como agujero";
+
+    // Y el área descuenta los agujeros de verdad.
+    const double area = measureRegion(gray, RegionMeasure::Area, {200, 200}, 340, 340);
+    const double solid = 160.0 * 160.0;
+    const double holes = 3.14159265358979323846 * (18.0 * 18.0 + 12.0 * 12.0);
+    EXPECT_NEAR(area, solid - holes, solid * 0.03);
+}
+
+TEST(Region, EveryMeasureIsReportedInTheDetailWhicheverIsSelected) {
+    // Calcular las seis ya está hecho, y quien está decidiendo qué vigilar las
+    // necesita juntas. Lo que cambia con el selector es cuál lleva tolerancia.
+    cv::Mat gray = lightCanvas();
+    cv::rectangle(gray, cv::Rect(140, 140, 120, 120), cv::Scalar(30), cv::FILLED);
+    std::string detail;
+    measureRegion(gray, RegionMeasure::HoleCount, {200, 200}, 300, 300, &detail);
+    for (const auto* word :
+         {"área", "perímetro", "solidez", "circularidad", "aspecto", "agujeros"}) {
+        EXPECT_NE(detail.find(word), std::string::npos) << word << " falta en: " << detail;
+    }
+    // Y el detalle empieza nombrando la medida seleccionada.
+    EXPECT_EQ(detail.rfind("Número de agujeros", 0), 0U) << detail;
+}
+
+TEST(Region, AnEmptyRegionSaysSoInsteadOfMeasuringNothing) {
+    const cv::Mat gray = lightCanvas();  // sin figura
+    const auto result =
+        runTool(gray, kIdentity, regionOver({200, 200}, 100, 100, RegionMeasure::Area));
+    ASSERT_TRUE(result.isOk());
+    EXPECT_FALSE(result.value().ok);
+    EXPECT_NE(result.value().detail.find("figura"), std::string::npos)
+        << result.value().detail;
+}
+
+TEST(Region, TheSuggestedToleranceFitsTheMeasureAndNotJustTheType) {
+    // Una banda de ±10 % vale para un área y no vale para una circularidad, que
+    // vive entre 0 y 1, ni para un recuento, que es exacto.
+    double lo = 0.0;
+    double hi = 0.0;
+
+    suggestTolerances(ToolGeometry(RegionGeometry{{0, 0}, 100, 100, RegionMeasure::HoleCount,
+                                                  true}),
+                      3.0, lo, hi);
+    EXPECT_DOUBLE_EQ(lo, 3.0);
+    EXPECT_DOUBLE_EQ(hi, 3.0) << "un agujero de más es otra pieza";
+
+    suggestTolerances(ToolGeometry(RegionGeometry{{0, 0}, 100, 100, RegionMeasure::Circularity,
+                                                  true}),
+                      0.97, lo, hi);
+    EXPECT_NEAR(lo, 0.92, 1e-9);
+    EXPECT_DOUBLE_EQ(hi, 1.0) << "una circularidad mayor que 1 no existe";
+
+    suggestTolerances(ToolGeometry(RegionGeometry{{0, 0}, 100, 100, RegionMeasure::Area, true}),
+                      10000.0, lo, hi);
+    EXPECT_NEAR(lo, 9000.0, 1e-6);
+    EXPECT_NEAR(hi, 11000.0, 1e-6);
+
+    // Y para cualquier otra herramienta delega en la regla de siempre.
+    double byType = 0.0;
+    double byTypeHi = 0.0;
+    suggestTolerances(ToolType::Ruler, 60.0, byType, byTypeHi);
+    suggestTolerances(ToolGeometry(RulerGeometry{{0, 0}, {60, 0}}), 60.0, lo, hi);
+    EXPECT_DOUBLE_EQ(lo, byType);
+    EXPECT_DOUBLE_EQ(hi, byTypeHi);
 }

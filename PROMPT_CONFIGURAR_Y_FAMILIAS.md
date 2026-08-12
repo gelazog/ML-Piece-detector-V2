@@ -547,7 +547,21 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
 
 *(Ya dentro: Blob, Blob poligonal, Borde liso.)*
 
-- [ ] **F1 — Región: área, perímetro y compañía.** Una sola herramienta con un
+- [x] **F1 — Región: área, perímetro y compañía.** *(La trampa de la
+  circularidad se resolvió por una vía que el plan no contemplaba y que resultó
+  mejor que las dos que proponía. Medí las dos: suavizar el contorno sigue
+  dependiendo del tamaño (0,98 a r=15 frente a 0,9998 a r=240) y deforma las
+  esquinas de verdad; normalizar la escala es imposible porque el sesgo depende
+  de la ORIENTACIÓN de cada tramo —un cuadrado alineado ya sale exacto y un
+  círculo se va un 5 %—. Al medirlo apareció algo peor de lo avisado: el mismo
+  cuadrado leído un 7,7 % más largo solo por estar girado 30°. Se arregló en la
+  raíz cambiando el estimador de perímetro (`vision::digitalPerimeter`,
+  Vossepoel–Smeulders, commit aparte), y con él la circularidad de un círculo
+  digital sale **0,993** y la de un cuadrado **0,819**: la escala ya significa
+  lo que dice y no hace falta ninguna corrección cosmética. Se añadió una
+  sobrecarga de `suggestTolerances` que mira la geometría, porque una banda de
+  ±10 % vale para un área y no para una circularidad (0..1) ni para un recuento
+  de agujeros (exacto). Y una mota de ruido no cuenta como agujero.)* Una sola herramienta con un
   **selector de medida** —igual que Posición tiene su selector de eje— sobre la
   pieza entera o sobre una región dibujada: **área**, **perímetro**,
   **solidez** (área / área del casco convexo), **circularidad de forma**

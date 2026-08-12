@@ -13,6 +13,7 @@
 #include "inspection_editor/execution/edge_detection.h"
 #include "inspection_editor/execution/profiles.h"
 #include "vision/fitting.h"
+#include "vision/geometry_features.h"
 #include "vision/periodicity.h"
 #include "vision/plane_scale.h"
 #include "vision/position_fixture.h"
@@ -1556,6 +1557,132 @@ ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& confi
     return result;
 }
 
+// Región (F1): los descriptores de forma de la silueta que hay dentro del
+// recuadro. Una sola herramienta con selector de medida, porque cada instancia
+// lleva su tolerancia y así el operador pone solo las que le importan.
+ToolRunResult runRegion(const cv::Mat& gray, const Fixture& fixture, const ToolConfig& config,
+                        const RegionGeometry& g, const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+
+    const float hw = g.width / 2.0F;
+    const float hh = g.height / 2.0F;
+    const std::vector<cv::Point2f> quad{
+        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, hh)),
+        toImg(fixture, g.center + cv::Point2f(-hw, hh))};
+    for (std::size_t i = 0; i < quad.size(); ++i) {
+        result.overlaySegments.push_back({quad[i], quad[(i + 1) % quad.size()]});
+    }
+
+    std::vector<cv::Point> quadInt;
+    quadInt.reserve(quad.size());
+    for (const auto& p : quad) {
+        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
+    }
+    const cv::Rect bounds = cv::boundingRect(quadInt) & cv::Rect(0, 0, gray.cols, gray.rows);
+    if (bounds.area() < 25) {
+        result.detail = "La región cae fuera de la imagen";
+        return result;
+    }
+
+    cv::Mat regionMask = cv::Mat::zeros(bounds.size(), CV_8UC1);
+    std::vector<cv::Point> quadLocal;
+    quadLocal.reserve(quadInt.size());
+    for (const auto& p : quadInt) {
+        quadLocal.emplace_back(p.x - bounds.x, p.y - bounds.y);
+    }
+    cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
+
+    cv::Mat binary;
+    cv::threshold(gray(bounds), binary, 0.0, 255.0,
+                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
+    cv::bitwise_and(binary, regionMask, binary);
+
+    // CCOMP da exterior e hijos en dos niveles, que es justo lo que hace falta
+    // para contar agujeros. Y NONE —no SIMPLE— porque `digitalPerimeter`
+    // necesita la cadena de píxeles completa: con el contorno aproximado el
+    // conteo de pasos no significa nada.
+    std::vector<std::vector<cv::Point>> contours;
+    std::vector<cv::Vec4i> hierarchy;
+    cv::findContours(binary, contours, hierarchy, cv::RETR_CCOMP, cv::CHAIN_APPROX_NONE);
+    if (contours.empty()) {
+        result.detail = "No se ve ninguna figura dentro del recuadro";
+        return result;
+    }
+
+    // La figura es la mayor de las EXTERIORES (las que no tienen padre).
+    int best = -1;
+    double bestArea = 0.0;
+    for (int i = 0; i < static_cast<int>(contours.size()); ++i) {
+        if (hierarchy[static_cast<std::size_t>(i)][3] >= 0) {
+            continue;  // es un agujero de otra
+        }
+        const double area = cv::contourArea(contours[static_cast<std::size_t>(i)]);
+        if (area > bestArea) {
+            bestArea = area;
+            best = i;
+        }
+    }
+    if (best < 0 || bestArea < 9.0) {
+        result.detail = "No se ve ninguna figura dentro del recuadro";
+        return result;
+    }
+    const auto& outer = contours[static_cast<std::size_t>(best)];
+
+    // Los agujeros son los hijos directos. Se descartan los de pocos píxeles:
+    // el ruido de la binarización deja motas de dos o tres, y contarlas como
+    // agujeros haría inútil la medida.
+    constexpr double kMinHoleArea = 12.0;
+    double holeArea = 0.0;
+    int holes = 0;
+    for (int i = hierarchy[static_cast<std::size_t>(best)][2]; i >= 0;
+         i = hierarchy[static_cast<std::size_t>(i)][0]) {
+        const double area = cv::contourArea(contours[static_cast<std::size_t>(i)]);
+        if (area >= kMinHoleArea) {
+            ++holes;
+            holeArea += area;
+        }
+    }
+
+    const double outerArea = bestArea;
+    const double netArea = std::max(0.0, outerArea - holeArea);
+    const double perimeter = vision::digitalPerimeter(outer);
+    std::vector<cv::Point> hull;
+    cv::convexHull(outer, hull);
+    const double hullArea = cv::contourArea(hull);
+    const double solidity = hullArea > 0.0 ? outerArea / hullArea : 0.0;
+    const double circularity =
+        perimeter > 0.0 ? 4.0 * kPi * outerArea / (perimeter * perimeter) : 0.0;
+    const cv::RotatedRect box = cv::minAreaRect(outer);
+    const double longSide = std::max(box.size.width, box.size.height);
+    const double shortSide = std::min(box.size.width, box.size.height);
+    const double aspect = shortSide > 1e-6 ? longSide / shortSide : 0.0;
+
+    switch (g.measure) {
+        case RegionMeasure::Area: result.measured = netArea; break;
+        case RegionMeasure::Perimeter: result.measured = perimeter; break;
+        case RegionMeasure::Solidity: result.measured = solidity; break;
+        case RegionMeasure::Circularity: result.measured = circularity; break;
+        case RegionMeasure::AspectRatio: result.measured = aspect; break;
+        case RegionMeasure::HoleCount: result.measured = holes; break;
+    }
+    result.ok = withinTolerance(config, result.measured);
+
+    // Se enseñan TODAS aunque solo una lleve tolerancia: calcularlas ya está
+    // hecho, y quien está decidiendo qué vigilar necesita verlas juntas.
+    result.detail = std::string(regionMeasureLabel(g.measure)) + " · área=" +
+                    fmtArea(netArea, fmt) + ", perímetro=" + fmtLen(perimeter, fmt) +
+                    ", solidez=" + fmt2(solidity) + ", circularidad=" + fmt2(circularity) +
+                    ", aspecto=" + fmt2(aspect) + ", agujeros=" + std::to_string(holes);
+
+    for (const auto& p : outer) {
+        result.overlayPoints.emplace_back(static_cast<float>(p.x + bounds.x),
+                                          static_cast<float>(p.y + bounds.y));
+    }
+    return result;
+}
+
 // Eje medio de la silueta (X2). Misma exploración que el Eje torneado —dos
 // perfiles axiales, uno por lado— y lo que cambia es qué se hace con ellos: en
 // vez de sumar los dos offsets para dar el diámetro, se toma el PUNTO MEDIO de
@@ -1779,6 +1906,9 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
                                                std::get<PositionGeometry>(geometry.value()),
                                                fmt, board != nullptr ? *board : fallback));
             }
+            case ToolType::Region:
+                return ResultT::ok(runRegion(gray, fixture, config,
+                                             std::get<RegionGeometry>(geometry.value()), fmt));
             case ToolType::MedianAxis:
                 return ResultT::ok(runMedianAxis(
                     gray, fixture, config, std::get<MedianAxisGeometry>(geometry.value()),

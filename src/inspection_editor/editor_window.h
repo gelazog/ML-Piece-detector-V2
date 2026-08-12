@@ -116,6 +116,7 @@ private:
     // Construcciones geométricas (X1): qué se construye y con qué dos
     // referencias. Solo se habilitan para las herramientas que las usan — un
     // desplegable activo en un Caliper prometería algo que el Caliper ignora.
+    QLabel* choiceLabel_ = nullptr;  // «Construcción:» o «Medida:»
     QComboBox* constructionCombo_ = nullptr;
     QLabel* ref1Label_ = nullptr;
     QComboBox* ref1Combo_ = nullptr;

@@ -180,7 +180,8 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     constructionCombo_->setToolTip(
         tr("Qué se construye a partir de las referencias. No se mide nada:\n"
            "el resultado existe para que otras herramientas lo usen de datum."));
-    form->addRow(tr("Construcción:"), constructionCombo_);
+    choiceLabel_ = new QLabel(tr("Construcción:"), this);
+    form->addRow(choiceLabel_, constructionCombo_);
     ref1Label_ = new QLabel(tr("1ª referencia:"), this);
     ref1Combo_ = new QComboBox(this);
     form->addRow(ref1Label_, ref1Combo_);
@@ -470,9 +471,32 @@ void EditorWindow::syncConstructionPanel(const EditedTool* tool) {
     const bool isConstruction =
         tool != nullptr && (tool->config.type == ToolType::ConstructedPoint ||
                             tool->config.type == ToolType::ConstructedLine);
-    constructionCombo_->setEnabled(isConstruction);
+    const bool isRegion = tool != nullptr && tool->config.type == ToolType::Region;
+    constructionCombo_->setEnabled(isConstruction || isRegion);
     ref1Combo_->setEnabled(isConstruction);
     ref2Combo_->setEnabled(isConstruction);
+    ref1Label_->setEnabled(isConstruction);
+    ref2Label_->setEnabled(isConstruction);
+    choiceLabel_->setEnabled(isConstruction || isRegion);
+
+    // La Región usa el mismo desplegable para elegir QUÉ mide. Es el mismo
+    // gesto —una opción discreta de la herramienta— y darle un control propio
+    // habría dejado dos filas que nunca se ven a la vez.
+    if (isRegion) {
+        choiceLabel_->setText(tr("Medida:"));
+        const auto& g = std::get<RegionGeometry>(tool->geometry);
+        for (const auto measure : allRegionMeasures()) {
+            constructionCombo_->addItem(QString::fromUtf8(regionMeasureLabel(measure)),
+                                        static_cast<int>(measure));
+        }
+        constructionCombo_->setCurrentIndex(
+            constructionCombo_->findData(static_cast<int>(g.measure)));
+        ref1Label_->setText(tr("1ª referencia (no se usa):"));
+        ref2Label_->setText(tr("2ª referencia (no se usa):"));
+        return;
+    }
+
+    choiceLabel_->setText(tr("Construcción:"));
     if (!isConstruction) {
         ref1Label_->setText(tr("1ª referencia:"));
         ref2Label_->setText(tr("2ª referencia:"));
@@ -546,11 +570,18 @@ void EditorWindow::applyConstructionPanel(EditedTool& tool) {
                 g.mode = static_cast<PointConstruction>(mode);
             } else if constexpr (std::is_same_v<T, ConstructedLineGeometry>) {
                 g.mode = static_cast<LineConstruction>(mode);
+            } else if constexpr (std::is_same_v<T, RegionGeometry>) {
+                g.measure = static_cast<RegionMeasure>(mode);
             }
         },
         tool.geometry);
-    tool.config.reference = ref1Combo_->currentData().toString().toStdString();
-    tool.config.reference2 = ref2Combo_->currentData().toString().toStdString();
+    // Solo se tocan las referencias si esta herramienta las usa: la Región
+    // comparte el desplegable de arriba pero no tiene referencias, y
+    // escribirlas a ciegas las borraría.
+    if (ref1Combo_->isEnabled()) {
+        tool.config.reference = ref1Combo_->currentData().toString().toStdString();
+        tool.config.reference2 = ref2Combo_->currentData().toString().toStdString();
+    }
 }
 
 void EditorWindow::onAutoMeasureClicked() {
