@@ -175,7 +175,19 @@ y el aviso solo en uno.
 
 ## Bloque R — Rendimiento: medir antes, y solo lo que sobreviva a la medida
 
-### - [ ] R1 — Enseñar los fps que importan, que no son los que se enseñan
+### - [x] R1 — Enseñar los fps que importan, que no son los que se enseñan
+
+*(La contabilidad se sacó a `FrameAccounting` en vez de dejarla suelta en la
+ventana, y ahí apareció lo que había que probar: la invariante de que **cada
+frame o se mide o se descarta**. Simulado con reloj inyectado —cámara a 30 fps,
+análisis de 125 ms— da 7 medidos y 22 descartados, que es exactamente el
+escenario que el ítem existía para hacer visible.
+Dos umbrales que no son cosméticos: el descarte se enseña a partir de 2/s
+porque dos contadores por ventana deslizante nunca cuadran al frame aunque el
+análisis vaya sobrado, y congelar el contorno NO cuenta como descartar —sería
+llamar avería a lo que el operador acaba de pedir.
+Escribí una aserción que era una tautología (`X == X`) intentando expresar la
+invariante; pasaba en verde sin probar nada. Sustituida por la suma de verdad.)*
 
 Hoy la barra de estado dice `640x480 — 8.0 fps`, y esos son los fps de
 **captura**, contados en el hilo de la cámara. El análisis descarta frames

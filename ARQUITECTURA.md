@@ -323,6 +323,41 @@ reportara que «la zona de detección no funciona»:
   y solo lo primero alimenta al seguimiento. Dar algo por perdido sin haberlo
   mirado es afirmar lo que no se ha medido.
 
+### Los fps que se enseñan, y los que importan
+
+La barra de estado decía `640x480 — 8.0 fps` y esos eran los fps de **captura**,
+contados en el hilo de la cámara. El análisis descarta frames cuando no llega
+—`maybeStartAnalysis` se salta el frame nuevo si el anterior sigue corriendo, y
+el pendiente se pisa— y **eso no aparecía en ninguna parte**. Una cámara a 30
+fps con el análisis a 8 se ve perfectamente fluida, porque el vídeo no depende
+del análisis, y está midiendo uno de cada cuatro.
+
+Ahora se cuentan tres cosas y se enseñan **solo cuando hacen falta**: forma
+corta (`1280x720 — 30.0 fps`) mientras el análisis sigue el ritmo, y larga
+(`30.0 fps · analiza 8.0 · descarta 22`) cuando no. Un indicador que enseña tres
+números a todas horas se deja de leer, y entonces tampoco avisa el día que hay
+algo que ver.
+
+Dos detalles que no son cosméticos:
+
+- **El umbral de descarte no es cero** (son 2/s). Dos contadores por ventana
+  deslizante no dan lo mismo aunque el análisis vaya sobrado: basta con que un
+  frame caiga al otro lado del borde. Un descarte suelto es aliasing de la
+  medida, no un problema.
+- **Congelar el contorno no es descartar.** Con el contorno oculto no se analiza
+  a propósito; contar esos frames como descartados sería llamar avería a lo que
+  el operador acaba de pedir. Se pasa un −1 para pedir la forma corta en vez de
+  enseñar un cero que parecería una caída.
+
+La contabilidad vive en `ui/rate_readout.h` (`FrameAccounting`) y no dentro de
+la ventana, por la razón de siempre: `MainWindow` no tiene banco de pruebas y
+aquí está lo único que puede estar mal. Con el reloj inyectado se simula una
+cámara a 30 fps y un análisis de 125 ms sin cámara ni análisis, y sale **7
+medidos y 22 descartados**. La invariante que se exige es que **cada frame que
+llega o se mide o se descarta**: si esa suma no cuadra, el número que ve el
+operador miente, y un indicador de rendimiento que miente es peor que no
+tenerlo.
+
 ### Dónde se va el tiempo de un análisis (y por qué no hay escala adaptativa)
 
 Se planificó una «escala de trabajo adaptativa»: segmentar una copia reducida

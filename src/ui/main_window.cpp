@@ -57,6 +57,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include "ui/performance_page.h"
+#include "ui/rate_readout.h"
 #include "ui/pieces_page.h"
 
 #include "vision/auto_roi.h"
@@ -1490,14 +1491,24 @@ void MainWindow::onFrame(const QImage& frame) {
         updateCalibrationLabel();
     }
     if (streaming_) {
+        // Un frame que llega mientras el anterior sigue esperando es un frame
+        // que NADIE va a analizar: se pisa aquí mismo. Contarlo es toda la
+        // diferencia entre «va fluido» y «va fluido y mide uno de cada cuatro».
+        //
+        // Solo cuenta si el análisis hacía falta: con el contorno oculto no se
+        // analiza a propósito, y llamar «descartados» a esos frames sería
+        // contar como avería lo que el operador ha pedido.
+        frames_.frameArrived(analysisNeeded(), !pendingAnalysisFrame_.isNull());
         // El análisis corre siempre: da el fixture que ancla el dibujo en vivo.
         pendingAnalysisFrame_ = frame;
         maybeStartAnalysis();
+        updateRateReadout();
     }
 }
 
 void MainWindow::onAnalysisFinished() {
     const AnalysisOverlay overlay = analysisWatcher_.result();
+    frames_.analysisFinished();
     // Zona de trabajo automática (C3): el seguimiento se alimenta SIEMPRE, esté
     // o no abierto el panel, porque es lo que decide el recorte del próximo
     // frame. Si el modo no es automático, el tracker se mantiene en reposo.
@@ -1643,10 +1654,21 @@ void MainWindow::maybeStartAnalysis() {
 
 void MainWindow::onStats(double fps, int width, int height) {
     currentResolution_ = {width, height};
-    statsLabel_->setText(QStringLiteral("%1x%2 — %3 fps")
-                             .arg(width)
-                             .arg(height)
-                             .arg(fps, 0, 'f', 1));
+    lastCaptureFps_ = fps;
+    updateRateReadout();
+}
+
+void MainWindow::updateRateReadout() {
+    if (statsLabel_ == nullptr) {
+        return;
+    }
+    // Con el contorno oculto no hay análisis que medir, así que se pide la
+    // forma corta con un −1 en vez de enseñar un cero que parecería una avería.
+    const bool analysing = streaming_ && analysisNeeded();
+    statsLabel_->setText(formatRates(currentResolution_.width, currentResolution_.height,
+                                     lastCaptureFps_,
+                                     analysing ? frames_.analysisFps() : 0.0,
+                                     analysing ? frames_.droppedFps() : -1.0));
 }
 
 void MainWindow::onCameraError(const QString& message) {

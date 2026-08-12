@@ -19,6 +19,7 @@
 #include "ui/detection_page.h"
 #include "ui/performance_page.h"
 #include "ui/preferences_page.h"
+#include "ui/rate_readout.h"
 
 using namespace pci::ui;
 using pci::vision::WorkingZoneMode;
@@ -253,4 +254,130 @@ TEST(PerformancePage, TheFixedModeIsNotOfferedWithoutAZoneDrawn) {
     // Y en cuanto se dibuja una, pasa a estar disponible.
     page.showMode(WorkingZoneMode::Fixed, true);
     EXPECT_EQ(page.mode(), WorkingZoneMode::Fixed);
+}
+
+// ---------------------------------------------------------------------------
+// Los fps que importan (R1)
+// ---------------------------------------------------------------------------
+
+TEST(RateReadout, StaysShortWhileTheAnalysisKeepsUp) {
+    // La forma corta es la de siempre, y tiene que seguir siendo la habitual:
+    // un indicador que enseña tres numeros a todas horas se deja de leer, y
+    // entonces tampoco avisa el dia que hay algo que ver.
+    const QString text = formatRates(1280, 720, 30.0, 30.0, 0.0);
+    EXPECT_EQ(text, QStringLiteral("1280x720 — 30.0 fps"));
+    EXPECT_FALSE(text.contains(QStringLiteral("analiza")));
+}
+
+TEST(RateReadout, SaysWhatIsHappeningWhenTheAnalysisFallsBehind) {
+    // El escenario que justifica el item entero: la camara va a 30 y el
+    // analisis a 8. En pantalla se ve fluido —el video no depende del
+    // analisis— y se esta midiendo uno de cada cuatro frames. Hasta ahora eso
+    // no aparecia en ningun sitio.
+    const QString text = formatRates(1280, 720, 30.0, 8.0, 22.0);
+    EXPECT_TRUE(text.contains(QStringLiteral("30.0 fps"))) << text.toStdString();
+    EXPECT_TRUE(text.contains(QStringLiteral("analiza 8.0"))) << text.toStdString();
+    EXPECT_TRUE(text.contains(QStringLiteral("descarta 22"))) << text.toStdString();
+}
+
+TEST(RateReadout, AStrayDroppedFrameIsNotWorthAlarming) {
+    // Dos contadores por ventana deslizante no dan lo mismo aunque el analisis
+    // siga el ritmo: basta con que un frame caiga al otro lado del borde de la
+    // ventana. Un descarte suelto es aliasing de la medida, no un problema, y
+    // enseñarlo entrenaria al operador a ignorar el aviso de verdad.
+    EXPECT_FALSE(formatRates(640, 480, 30.0, 29.0, 1.0)
+                     .contains(QStringLiteral("descarta")));
+    // Pero dos por segundo ya son 120 frames a la hora sin medir: eso se dice.
+    EXPECT_TRUE(formatRates(640, 480, 30.0, 28.0, 2.0)
+                    .contains(QStringLiteral("descarta")));
+}
+
+TEST(RateReadout, WithNothingToAnalyseItDoesNotInventADisaster) {
+    // Con el contorno oculto el analisis esta parado A PROPOSITO. Enseñar
+    // "analiza 0 · descarta 30" ahi seria llamar averia a lo que el operador
+    // acaba de pedir, que es la forma mas rapida de que deje de creerse la
+    // barra de estado.
+    const QString text = formatRates(640, 480, 30.0, 0.0, -1.0);
+    EXPECT_EQ(text, QStringLiteral("640x480 — 30.0 fps"));
+}
+
+TEST(FrameAccounting, EveryFrameIsEitherMeasuredOrDropped) {
+    // El escenario que pedia el plan, simulado con reloj inyectado: camara a 30
+    // fps, analisis a 8. Se comprueba la cuenta EXACTA, no que "suene bien".
+    //
+    // La invariante es la que sostiene todo el indicador: cada frame que llega
+    // o se mide o se descarta. Si esa suma no cuadra, el numero que ve el
+    // operador esta mintiendo.
+    using Clock = pci::ui::FrameAccounting::Clock;
+    pci::ui::FrameAccounting frames;
+    const Clock::time_point start = Clock::time_point{} + std::chrono::seconds(100);
+
+    // Un segundo justo: 30 frames cada 33,3 ms. El analisis tarda 125 ms, o sea
+    // que solo acaba uno de cada cuatro y el resto llegan con el anterior aun
+    // pendiente.
+    int arrived = 0;
+    int analysed = 0;
+    bool pending = false;
+    Clock::time_point busyUntil = start;
+    for (int i = 0; i < 30; ++i) {
+        const Clock::time_point now = start + std::chrono::microseconds(33333 * i);
+        // Si el analisis anterior ya termino, deja de estar pendiente.
+        if (pending && now >= busyUntil) {
+            frames.analysisFinished(busyUntil);
+            ++analysed;
+            pending = false;
+        }
+        ++arrived;
+        frames.frameArrived(/*analysing=*/true, pending, now);
+        if (!pending) {
+            pending = true;
+            busyUntil = now + std::chrono::milliseconds(125);
+        }
+    }
+    const Clock::time_point end = start + std::chrono::milliseconds(999);
+
+    const double measured = frames.analysisFps(end);
+    const double dropped = frames.droppedFps(end);
+    EXPECT_EQ(arrived, 30);
+    EXPECT_NEAR(measured, static_cast<double>(analysed), 0.001);
+    // La invariante: lo medido mas lo descartado es todo lo que entro. El
+    // margen de 1 es el frame que se quedo analizandose al cerrar la ventana,
+    // que no esta ni en un lado ni en el otro todavia.
+    EXPECT_NEAR(measured + dropped, static_cast<double>(arrived), 1.001)
+        << "medidos " << measured << " + descartados " << dropped
+        << " no suman los " << arrived << " que llegaron";
+    // Y el reparto es el esperado de un analisis 4x mas lento que la camara.
+    EXPECT_LE(measured, 9.0) << measured;
+    EXPECT_GE(dropped, 20.0) << dropped;
+    std::printf("  camara 30 fps, analisis 125 ms -> mide %.0f, descarta %.0f\n", measured,
+                dropped);
+}
+
+TEST(FrameAccounting, NothingIsDroppedWhenTheAnalysisKeepsUp) {
+    // El caso bueno tiene que dar cero descartes, o el indicador saltaria en
+    // una estacion que va perfectamente.
+    using Clock = pci::ui::FrameAccounting::Clock;
+    pci::ui::FrameAccounting frames;
+    const Clock::time_point start = Clock::time_point{} + std::chrono::seconds(100);
+    for (int i = 0; i < 30; ++i) {
+        const Clock::time_point now = start + std::chrono::microseconds(33333 * i);
+        frames.frameArrived(/*analysing=*/true, /*previousStillPending=*/false, now);
+        frames.analysisFinished(now + std::chrono::milliseconds(5));
+    }
+    const Clock::time_point end = start + std::chrono::milliseconds(999);
+    EXPECT_DOUBLE_EQ(frames.droppedFps(end), 0.0);
+    EXPECT_NEAR(frames.analysisFps(end), 30.0, 1.001);
+}
+
+TEST(FrameAccounting, FreezingTheContourIsNotDropping) {
+    // Con el contorno oculto no se analiza A PROPOSITO. Contar esos frames como
+    // descartados llamaria averia a lo que el operador acaba de pedir.
+    using Clock = pci::ui::FrameAccounting::Clock;
+    pci::ui::FrameAccounting frames;
+    const Clock::time_point start = Clock::time_point{} + std::chrono::seconds(100);
+    for (int i = 0; i < 30; ++i) {
+        frames.frameArrived(/*analysing=*/false, /*previousStillPending=*/true,
+                            start + std::chrono::microseconds(33333 * i));
+    }
+    EXPECT_DOUBLE_EQ(frames.droppedFps(start + std::chrono::milliseconds(999)), 0.0);
 }

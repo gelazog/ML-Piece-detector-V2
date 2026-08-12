@@ -9,6 +9,7 @@
 #include <optional>
 #include <vector>
 
+#include "ui/rate_readout.h"
 #include "camera/camera_controller.h"
 #include "camera/camera_info.h"
 #include "domain/calibration.h"
@@ -65,6 +66,7 @@ private slots:
     void onStartStopClicked();
     void onFrame(const QImage& frame);
     void onStats(double fps, int width, int height);
+    void updateRateReadout();
     void onCameraError(const QString& message);
     void onStreamStopped();
     void onAnalysisFinished();
@@ -266,6 +268,12 @@ private:
     // sobre esa mentira ya se perdieron dos diseños en C1.
     bool autoExposureOn_ = false;
     bool autoFocusOn_ = false;
+
+    // Ritmo del ANÁLISIS, que es el que decide si se mide o no se mide, y los
+    // frames que se quedan por el camino. Los de captura los cuenta el hilo de
+    // la cámara; estos solo se pueden contar aquí, que es donde se descartan.
+    FrameAccounting frames_;
+    double lastCaptureFps_ = 0.0;
 
     QLabel* statsLabel_ = nullptr;
     // Indicadores de estado (S4): cámara / base de datos / modelo ONNX.
