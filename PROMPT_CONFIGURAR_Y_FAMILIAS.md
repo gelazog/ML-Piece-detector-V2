@@ -805,7 +805,18 @@ tiene que estar accesible desde la familia.
   marco de dos bordes — el diámetro de posición es `2·√(dx²+dy²)`; girar la
   pieza entera **no** cambia el valor (todo se mide en el marco).
 
-- [ ] **G5 — Desviación de centros (lo que NO es concentricidad).** La
+- [x] **G5 — Desviación de centros (lo que NO es concentricidad).** *(No mira la
+  imagen: los dos centros los aportan otras herramientas por referencia, así que
+  admite círculos y también puntos construidos —el punto medio de dos agujeros
+  contra un tercero sale gratis—. El test sobre el TEXTO que pedía el plan está,
+  y comprueba tres cosas: que la descripción dice NO ES CONCENTRICIDAD, que
+  manda a Posición verdadera para la cota formal y que explica el porqué (2018);
+  además, ni la etiqueta ni el resultado usan esa palabra.
+  Mi primer fixture de test estaba mal y lo dice el código: dos discos de radio
+  40 con los centros a 10 px se funden en UNA mancha, y los dos ajustes
+  encontraban el mismo borde (0,2 px en vez de 10). El caso real de esta
+  pregunta es un casquillo —agujero descentrado respecto al exterior—, y ahí
+  sale dx=6,00, dy=8,00 → 10,0 exacto.)* La
   concentricidad y la simetría normativas están **retiradas de ASME Y14.5-2018**
   por inverificables de forma repetible. Pero la pregunta del operador
   —"¿están estos dos círculos centrados uno con otro?"— es legítima.

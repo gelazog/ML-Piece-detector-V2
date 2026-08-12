@@ -790,6 +790,9 @@ ToolConfig makeToolAt(int index, float x, float y) {
         case ToolType::ConstructedPoint:
             geometry = ConstructedPointGeometry{PointConstruction::Midpoint, {x, y}};
             break;
+        case ToolType::CentreOffset:
+            geometry = CentreOffsetGeometry{{x, y}};
+            break;
         case ToolType::ConstructedLine:
             geometry = ConstructedLineGeometry{LineConstruction::ThroughTwoPoints, {x, y}};
             break;
@@ -4605,4 +4608,149 @@ TEST(TruePosition, TheDescriptionSaysWhenItCannotBeHonest) {
     const std::string description = toolTypeDescription(ToolType::Position);
     EXPECT_NE(description.find("plano de la imagen"), std::string::npos);
     EXPECT_NE(description.find("DIÁMETRO"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// Desviación de centros (G5)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Dos discos oscuros SEPARADOS. Ojo: si se solapan, la binarización los une en
+// una sola mancha y los dos ajustes encuentran el mismo borde — para probar un
+// descentrado pequeño hay que usar un anillo, no dos discos pegados.
+cv::Mat twoDiscs(cv::Point2f centreA, cv::Point2f centreB, int radius = 40) {
+    cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(230));
+    cv::circle(gray, cv::Point(cvRound(centreA.x), cvRound(centreA.y)), radius,
+               cv::Scalar(30), cv::FILLED);
+    cv::circle(gray, cv::Point(cvRound(centreB.x), cvRound(centreB.y)), radius,
+               cv::Scalar(30), cv::FILLED);
+    return gray;
+}
+
+ToolConfig circleAt(const std::string& name, cv::Point2f centre, float radius = 40.0F) {
+    ToolConfig config;
+    config.type = ToolType::Circle;
+    config.name = name;
+    config.geometryJson =
+        toJson(ToolGeometry(CircleGeometry{centre, radius, 14.0F, 48}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+ToolConfig centreOffsetOf(const std::string& a, const std::string& b) {
+    ToolConfig config;
+    config.type = ToolType::CentreOffset;
+    config.name = "descentrado";
+    config.reference = a;
+    config.reference2 = b;
+    config.geometryJson = toJson(ToolGeometry(CentreOffsetGeometry{{200.0F, 60.0F}}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+ToolRunResult offsetIn(const std::vector<ToolConfig>& tools, const cv::Mat& gray) {
+    for (const auto& r : runTools(gray, kIdentity, tools)) {
+        if (r.name == "descentrado") {
+            return r;
+        }
+    }
+    return {};
+}
+
+}  // namespace
+
+TEST(CentreOffset, ARingWithAnOffCentreHoleMeasuresTheOffset) {
+    // El caso real de esta pregunta es un casquillo: el agujero descentrado
+    // respecto al exterior. (Dos discos sueltos con los centros a 10 px y radio
+    // 40 no sirven de prueba: se funden en una sola mancha y los dos ajustes
+    // encuentran el mismo borde. Lo aprendí escribiendo el test.)
+    cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(230));
+    cv::circle(gray, {200, 200}, 90, cv::Scalar(30), cv::FILLED);
+    cv::circle(gray, {206, 208}, 40, cv::Scalar(230), cv::FILLED);  // (6; 8) -> 10
+
+    const auto result = offsetIn({circleAt("exterior", {200.0F, 200.0F}, 90.0F),
+                                  circleAt("agujero", {206.0F, 208.0F}, 40.0F),
+                                  centreOffsetOf("exterior", "agujero")},
+                                 gray);
+    std::printf("  %s\n", result.detail.c_str());
+    // Los centros salen de ajustar el borde real, así que hay holgura de píxel.
+    EXPECT_NEAR(result.measured, 10.0, 2.0) << result.detail;
+}
+
+TEST(CentreOffset, TwoConcentricCirclesMeasureNearlyZero) {
+    cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(230));
+    cv::circle(gray, {200, 200}, 90, cv::Scalar(30), cv::FILLED);
+    cv::circle(gray, {200, 200}, 40, cv::Scalar(230), cv::FILLED);
+
+    ToolConfig outer = circleAt("exterior", {200.0F, 200.0F}, 90.0F);
+    ToolConfig inner = circleAt("agujero", {200.0F, 200.0F}, 40.0F);
+    const auto result =
+        offsetIn({outer, inner, centreOffsetOf("exterior", "agujero")}, gray);
+    std::printf("  concéntricos -> %s\n", result.detail.c_str());
+    EXPECT_LT(result.measured, 2.0) << result.detail;
+}
+
+TEST(CentreOffset, ItRefusesToCallItselfConcentricity) {
+    // El test sobre el TEXTO que pedía el plan. El número es correcto; lo que
+    // no puede es viajar con el nombre de una cota retirada, porque acabaría
+    // copiado en un informe como si fuera esa cota.
+    const std::string description = toolTypeDescription(ToolType::CentreOffset);
+    EXPECT_NE(description.find("NO ES CONCENTRICIDAD"), std::string::npos) << description;
+    EXPECT_NE(description.find("Posición verdadera"), std::string::npos)
+        << "tiene que decir a dónde ir para la cota formal";
+    EXPECT_NE(description.find("2018"), std::string::npos)
+        << "y por qué: se retiró de la norma";
+
+    // Y el nombre de la herramienta tampoco la llama así.
+    const std::string label = toolTypeLabel(ToolType::CentreOffset);
+    EXPECT_EQ(label.find("oncentricidad"), std::string::npos) << label;
+
+    // Ni el resultado.
+    const cv::Point2f a(140.0F, 200.0F);
+    const cv::Point2f b(146.0F, 208.0F);
+    const auto result = offsetIn({circleAt("c1", a), circleAt("c2", b),
+                                  centreOffsetOf("c1", "c2")},
+                                 twoDiscs(a, b));
+    EXPECT_NE(result.detail.find("no es concentricidad"), std::string::npos)
+        << result.detail;
+}
+
+TEST(CentreOffset, WithoutTwoCirclesItDoesNotMeasure) {
+    const cv::Point2f a(140.0F, 200.0F);
+    const cv::Mat gray = twoDiscs(a, {260.0F, 200.0F});
+    const auto missing =
+        offsetIn({circleAt("agujero 1", a), centreOffsetOf("agujero 1", "no existe")}, gray);
+    EXPECT_FALSE(missing.ok);
+    EXPECT_NE(missing.detail.find("no existe"), std::string::npos) << missing.detail;
+}
+
+TEST(CentreOffset, AConstructedPointAlsoWorksAsOneOfTheTwo) {
+    // No hace falta que los dos sean círculos: el punto medio de dos agujeros
+    // contra un tercero es una pregunta igual de razonable.
+    const cv::Point2f a(120.0F, 200.0F);
+    const cv::Point2f b(280.0F, 200.0F);
+    const cv::Point2f c(200.0F, 300.0F);
+    cv::Mat gray = twoDiscs(a, b, 30);
+    cv::circle(gray, cv::Point(cvRound(c.x), cvRound(c.y)), 30, cv::Scalar(30), cv::FILLED);
+
+    ToolConfig middle;
+    middle.type = ToolType::ConstructedPoint;
+    middle.name = "medio";
+    middle.reference = "izq";
+    middle.reference2 = "der";
+    middle.geometryJson = toJson(
+        ToolGeometry(ConstructedPointGeometry{PointConstruction::Midpoint, {200.0F, 200.0F}}));
+    middle.toleranceMin = 0.0;
+    middle.toleranceMax = 1e9;
+
+    const auto result = offsetIn({circleAt("izq", a, 30.0F), circleAt("der", b, 30.0F),
+                                  circleAt("abajo", c, 30.0F), middle,
+                                  centreOffsetOf("medio", "abajo")},
+                                 gray);
+    std::printf("  punto medio contra tercero -> %s\n", result.detail.c_str());
+    // El medio de (120;200) y (280;200) es (200;200); hasta (200;300) hay 100.
+    EXPECT_NEAR(result.measured, 100.0, 3.0) << result.detail;
 }

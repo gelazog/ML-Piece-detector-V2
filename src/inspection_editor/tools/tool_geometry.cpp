@@ -36,12 +36,13 @@ const char* toolTypeName(ToolType type) {
         case ToolType::Straightness: return "straightness";
         case ToolType::Roundness: return "roundness";
         case ToolType::Orientation: return "orientation";
+        case ToolType::CentreOffset: return "centre_offset";
     }
     return "unknown";
 }
 
-const std::array<ToolType, 25>& allToolTypes() {
-    static const std::array<ToolType, 25> kTypes{
+const std::array<ToolType, 26>& allToolTypes() {
+    static const std::array<ToolType, 26> kTypes{
         ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine, ToolType::EdgeFlaw,
         ToolType::Blob,     ToolType::Ruler,    ToolType::LineToLine,  ToolType::Angle,
         ToolType::PolyBlob, ToolType::Position, ToolType::Arc,         ToolType::Shaft,
@@ -49,7 +50,7 @@ const std::array<ToolType, 25>& allToolTypes() {
         ToolType::ConstructedLine, ToolType::MedianAxis, ToolType::Region,
         ToolType::Symmetry, ToolType::Polygon, ToolType::EdgeDefects,
         ToolType::Clearance, ToolType::Straightness, ToolType::Roundness,
-        ToolType::Orientation};
+        ToolType::Orientation, ToolType::CentreOffset};
     return kTypes;
 }
 
@@ -95,6 +96,7 @@ ToolCategory categoryOf(ToolType type) {
         case ToolType::Straightness:
         case ToolType::Roundness:
         case ToolType::Orientation:
+        case ToolType::CentreOffset:
             return ToolCategory::Gdt;
         // No miden: se calculan a partir de otras y existen para ser el datum
         // contra el que miden las de GD&T.
@@ -314,6 +316,7 @@ const char* toolTypeLabel(ToolType type) {
         case ToolType::Straightness: return "Rectitud (zona mínima)";
         case ToolType::Roundness: return "Redondez (zona mínima)";
         case ToolType::Orientation: return "Orientación";
+        case ToolType::CentreOffset: return "Desviación de centros";
     }
     return "?";
 }
@@ -503,6 +506,16 @@ const char* toolTypeDescription(ToolType type) {
                    "Necesita un DATUM: elige en Referencia la herramienta que da la\n"
                    "recta contra la que se mide. Sin datum no mide, porque una\n"
                    "orientación sin decir respecto a qué no significa nada.";
+        case ToolType::CentreOffset:
+            return "Desviación de centros — la distancia entre los centros de dos\n"
+                   "elementos circulares. Responde a «¿están estos dos agujeros\n"
+                   "centrados uno con otro?», que es una pregunta legítima.\n"
+                   "ESTO NO ES CONCENTRICIDAD ISO/ASME. La concentricidad se retiró de\n"
+                   "la norma en 2018 por inverificable de forma repetible; para la cota\n"
+                   "formal usa Posición verdadera con su marco de referencia.\n"
+                   "Elige los dos círculos en Referencia y 2ª referencia. Vale también\n"
+                   "un punto construido. Los dos tienen que verse DE FRENTE: el centro\n"
+                   "de un cilindro visto de perfil no está donde parece.";
     }
     return "";
 }
@@ -527,6 +540,12 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
             // es otra.
             toleranceMin = measured;
             toleranceMax = measured;
+            return;
+        case ToolType::CentreOffset:
+            // Una desviación: la pieza buena define el piso y el techo va
+            // holgado, como el resto de las desviaciones.
+            toleranceMin = 0.0;
+            toleranceMax = std::max(measured * 1.5, 2.0);
             return;
         case ToolType::Clearance: {
             // Una holgura puede salir NEGATIVA: eso es interferencia. Proponer
@@ -698,6 +717,8 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::Roundness;
             } else if constexpr (std::is_same_v<T, OrientationGeometry>) {
                 return ToolType::Orientation;
+            } else if constexpr (std::is_same_v<T, CentreOffsetGeometry>) {
+                return ToolType::CentreOffset;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -761,6 +782,8 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 g.axisTo += delta;
             } else if constexpr (std::is_same_v<T, GearGeometry>) {
                 g.center += delta;
+            } else if constexpr (std::is_same_v<T, CentreOffsetGeometry>) {
+                g.anchor += delta;
             } else if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
                                  std::is_same_v<T, ConstructedLineGeometry>) {
                 // Solo se mueve la etiqueta: el elemento lo dictan las
@@ -1000,6 +1023,10 @@ std::string toJson(const ToolGeometry& geometry) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "cx" << g.center.x << "cy" << g.center.y << "rin"
                        << g.innerRadius << "rout" << g.outerRadius << "rays" << g.rayCount;
+                });
+            } else if constexpr (std::is_same_v<T, CentreOffsetGeometry>) {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "ax" << g.anchor.x << "ay" << g.anchor.y;
                 });
             } else if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
                                  std::is_same_v<T, ConstructedLineGeometry>) {
@@ -1318,6 +1345,15 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.innerRadius = static_cast<float>(rin.value());
                 g.outerRadius = static_cast<float>(rout.value());
                 g.rayCount = static_cast<int>(reader.numberOr("rays", 1440.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::CentreOffset: {
+                CentreOffsetGeometry g;
+                auto ax = f("ax"), ay = f("ay");
+                for (const auto* v : {&ax, &ay}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.anchor = {static_cast<float>(ax.value()), static_cast<float>(ay.value())};
                 return ResultT::ok(g);
             }
             case ToolType::ConstructedPoint: {

@@ -47,6 +47,7 @@ QColor toolColor(ToolType type) {
         case ToolType::Straightness: return {255, 120, 120};
         case ToolType::Roundness: return {255, 190, 90};
         case ToolType::Orientation: return {200, 140, 255};
+        case ToolType::CentreOffset: return {255, 140, 200};
         case ToolType::Blob: return {255, 105, 180};
         case ToolType::Region: return {255, 150, 200};
         case ToolType::Symmetry: return {200, 160, 255};
@@ -1023,6 +1024,9 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
             // sirve para confirmar; el extremo no aporta nada aquí).
             geometry = PositionGeometry{a, PositionAxis::Radial};
             break;
+        case ToolType::CentreOffset:
+            geometry = CentreOffsetGeometry{a};
+            break;
         case ToolType::ConstructedPoint:
             // El clic solo elige DÓNDE se escribe el resultado; lo que se
             // calcula lo deciden las referencias, que se eligen después en el
@@ -1364,7 +1368,8 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 painter.drawLine(c + QPointF(0, -4), c + QPointF(0, 4));
                 labelPos = c + QPointF(0, -g.outerRadius * scale);
             } else if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
-                                 std::is_same_v<T, ConstructedLineGeometry>) {
+                                 std::is_same_v<T, ConstructedLineGeometry> ||
+                                 std::is_same_v<T, CentreOffsetGeometry>) {
                 // Aquí solo se puede dibujar el ANCLA. El elemento construido
                 // depende de las referencias y no existe hasta que se mide: lo
                 // pinta paintResults con el resultado. Se marca con trazo
@@ -1376,7 +1381,8 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 painter.setPen(ghost);
                 painter.drawEllipse(p, 8.0, 8.0);
                 painter.setPen(QPen(color, painter.pen().widthF()));
-                if constexpr (std::is_same_v<T, ConstructedPointGeometry>) {
+                if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
+                              std::is_same_v<T, CentreOffsetGeometry>) {
                     painter.setBrush(color);
                     painter.drawEllipse(p, 2.5, 2.5);
                     painter.setBrush(Qt::NoBrush);

@@ -112,6 +112,19 @@ QIcon toolIcon(ToolType type) {
                 p.setPen(dashed);
                 p.drawLine(14, 11, 14, 19);
             });
+        case ToolType::CentreOffset:
+            return makeIcon([](QPainter& p, const QColor& c) {
+                // Dos circulos descentrados y la cota entre sus centros.
+                QPen thin = p.pen();
+                thin.setWidthF(1.4);
+                p.setPen(thin);
+                p.drawEllipse(QPointF(12, 14), 9.0, 9.0);
+                p.drawEllipse(QPointF(16, 14), 5.0, 5.0);
+                p.setPen(Qt::NoPen);
+                p.setBrush(c);
+                p.drawEllipse(QPointF(12, 14), 1.5, 1.5);
+                p.drawEllipse(QPointF(16, 14), 1.5, 1.5);
+            });
         case ToolType::Orientation:
             return makeIcon([](QPainter& p, const QColor&) {
                 // El datum abajo, el borde tolerado arriba metido en su banda:

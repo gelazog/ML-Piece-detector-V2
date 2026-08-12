@@ -344,6 +344,22 @@ struct OrientationGeometry {
     float nominalAngleDeg = 0.0F;
 };
 
+// Desviación de centros (G5): lo que NO es concentricidad.
+//
+// La concentricidad y la simetría normativas están retiradas de ASME Y14.5-2018
+// por inverificables de forma repetible. Pero la pregunta del operador —«¿están
+// estos dos agujeros centrados uno con otro?»— es perfectamente legítima, y
+// tiene una respuesta que sí se puede medir: la distancia entre sus centros.
+//
+// Se le da ese nombre exacto y no el del símbolo retirado. Lo que se copia de
+// Cognex, que resuelve esto igual, es el cuidado de la definición.
+//
+// No mira la imagen: los dos centros los aportan otras herramientas por
+// referencia, así que su geometría es solo dónde se ancla la etiqueta.
+struct CentreOffsetGeometry {
+    cv::Point2f anchor;
+};
+
 [[nodiscard]] const std::array<RegionMeasure, 6>& allRegionMeasures();
 [[nodiscard]] const char* regionMeasureLabel(RegionMeasure measure);
 
@@ -356,7 +372,7 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
                                   RegionGeometry, SymmetryGeometry, PolygonGeometry,
                                   EdgeDefectsGeometry, ClearanceGeometry,
                                   StraightnessGeometry, RoundnessGeometry,
-                                  OrientationGeometry>;
+                                  OrientationGeometry, CentreOffsetGeometry>;
 
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
@@ -387,7 +403,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 25>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 26>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que

@@ -263,6 +263,17 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      **0,82** (el valor exacto de un cuadrado es 0,785 — la diferencia es el
      sesgo conocido de medir un borde recto sobre una rejilla de píxeles). Una
      mota de ruido **no** cuenta como agujero.
+   - *Desviación de centros*: la **distancia entre los centros** de dos
+     elementos circulares — «¿están estos dos agujeros centrados uno con otro?».
+     Elige los dos en *Referencia* y *2ª referencia*; vale también un punto
+     construido, así que se puede medir el punto medio de dos agujeros contra un
+     tercero.
+
+     **Esto no es concentricidad ISO/ASME.** La concentricidad se retiró de la
+     norma en 2018 por inverificable de forma repetible; para la cota formal usa
+     *Posición verdadera* con su marco. El número es correcto, pero no puede
+     viajar con el nombre de una cota que ya no existe: acabaría copiado en un
+     informe como si lo fuera.
    - *Orientación*: **paralelismo, perpendicularidad y angularidad**, que son la
      misma medida con distinto ángulo nominal (0, 90 o el que pongas). Traza una
      línea sobre el borde tolerado y elige en *Referencia* la herramienta que da

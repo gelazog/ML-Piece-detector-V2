@@ -156,7 +156,8 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
             } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
                 return {g.lineA, g.lineB, g.scanA, g.scanB};
             } else if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
-                                 std::is_same_v<T, ConstructedLineGeometry>) {
+                                 std::is_same_v<T, ConstructedLineGeometry> ||
+                                 std::is_same_v<T, CentreOffsetGeometry>) {
                 // Lo único que tiene sitio propio es su etiqueta: el elemento
                 // construido lo dictan las referencias y puede caer donde sea,
                 // incluso fuera de la imagen.
@@ -217,7 +218,8 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
             } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
                 return g.vertices;
             } else if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
-                                 std::is_same_v<T, ConstructedLineGeometry>) {
+                                 std::is_same_v<T, ConstructedLineGeometry> ||
+                                 std::is_same_v<T, CentreOffsetGeometry>) {
                 return {g.anchor};  // una manija: mover la etiqueta de sitio
             } else {
                 static_assert(alwaysFalse<T>,
@@ -322,7 +324,8 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
                     g.vertices[static_cast<std::size_t>(handle)] = q;
                 }
             } else if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
-                                 std::is_same_v<T, ConstructedLineGeometry>) {
+                                 std::is_same_v<T, ConstructedLineGeometry> ||
+                                 std::is_same_v<T, CentreOffsetGeometry>) {
                 g.anchor = q;
             } else {
                 static_assert(alwaysFalse<T>,
@@ -415,7 +418,8 @@ double distanceToGeometry(const ToolGeometry& geometry, const vision::Fixture& f
                         }
                     }
                 } else if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
-                                     std::is_same_v<T, ConstructedLineGeometry>) {
+                                     std::is_same_v<T, ConstructedLineGeometry> ||
+                                     std::is_same_v<T, CentreOffsetGeometry>) {
                     // Se agarra por la etiqueta. Lo construido no se puede
                     // agarrar: moverlo no significaría nada, porque lo deciden
                     // las referencias.

@@ -32,7 +32,8 @@ enum class ToolType {
     Clearance,
     Straightness,
     Roundness,
-    Orientation
+    Orientation,
+    CentreOffset
 };
 
 const char* toolTypeName(ToolType type);

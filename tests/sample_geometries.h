@@ -64,6 +64,8 @@ inline ToolGeometry sampleGeometry(ToolType type) {
             return RegionGeometry{{0.0F, 0.0F}, 160.0F, 120.0F, RegionMeasure::Area, true};
         case ToolType::MedianAxis:
             return MedianAxisGeometry{{-80.0F, 0.0F}, {80.0F, 0.0F}, 60.0F, 32};
+        case ToolType::CentreOffset:
+            return CentreOffsetGeometry{{20.0F, 30.0F}};
         case ToolType::ConstructedPoint:
             return ConstructedPointGeometry{PointConstruction::Midpoint, {15.0F, 25.0F}};
         case ToolType::ConstructedLine:

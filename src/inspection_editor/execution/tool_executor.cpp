@@ -1669,6 +1669,55 @@ ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& confi
     return result;
 }
 
+// Desviación de centros (G5): lo que NO es concentricidad.
+//
+// La concentricidad normativa se retiró de ASME Y14.5-2018 por inverificable de
+// forma repetible. La pregunta que la gente hacía con ella —«¿están estos dos
+// agujeros centrados uno con otro?»— sigue siendo legítima, y tiene una
+// respuesta que sí se puede medir y repetir: la distancia entre los centros.
+//
+// Se le da ese nombre y no el del símbolo retirado. Dar un número correcto bajo
+// el nombre de una cota que ya no existe sería peor que no darlo, porque
+// acabaría copiado en un informe como si fuera la cota.
+ToolRunResult runCentreOffset(const Fixture& fixture, const ToolConfig& config,
+                              const CentreOffsetGeometry& g, const Fmt& fmt,
+                              const DerivedElements& refs) {
+    ToolRunResult result = baseResult(config);
+
+    std::string why;
+    const DerivedElement* first =
+        operand(refs, config.reference, OperandKind::Point, "primera", why);
+    if (first == nullptr) {
+        result.detail = why;
+        return result;
+    }
+    const DerivedElement* second =
+        operand(refs, config.reference2, OperandKind::Point, "segunda", why);
+    if (second == nullptr) {
+        result.detail = why;
+        return result;
+    }
+
+    const cv::Point2f offset = second->point - first->point;
+    result.measured = cv::norm(offset);
+    result.ok = withinTolerance(config, result.measured);
+
+    const cv::Point2f a = toImg(fixture, first->point);
+    const cv::Point2f b = toImg(fixture, second->point);
+    result.detail = "desviación de centros=" + fmtLenPts(a, b, fmt) + " (dx=" +
+                    fmt2(offset.x) + ", dy=" + fmt2(offset.y) +
+                    " px) — no es concentricidad";
+    result.overlayPoints.push_back(a);
+    result.overlayPoints.push_back(b);
+    result.overlaySegments.push_back({a, b});
+    // El punto medio de los dos centros, por si alguien quiere referenciarlo:
+    // es el eje de simetría del par cuando el descentrado es el defecto.
+    result.derived.kind = DerivedKind::Point;
+    result.derived.point = (first->point + second->point) * 0.5F;
+    (void)g;  // el ancla solo sirve para agarrar la herramienta con el ratón
+    return result;
+}
+
 // Orientación respecto a un datum (G3): paralelismo, perpendicularidad y
 // angularidad, que son la misma medida con distinto ángulo nominal.
 //
@@ -2926,6 +2975,12 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Region:
                 return ResultT::ok(runRegion(gray, fixture, config,
                                              std::get<RegionGeometry>(geometry.value()), fmt));
+            case ToolType::CentreOffset: {
+                static const DerivedElements kNone;
+                return ResultT::ok(runCentreOffset(
+                    fixture, config, std::get<CentreOffsetGeometry>(geometry.value()), fmt,
+                    references != nullptr ? *references : kNone));
+            }
             case ToolType::Orientation: {
                 static const DerivedElements kNone;
                 return ResultT::ok(runOrientation(
