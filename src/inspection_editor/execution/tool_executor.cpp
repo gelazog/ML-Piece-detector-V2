@@ -1669,6 +1669,93 @@ ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& confi
     return result;
 }
 
+// Perfil de línea contra un nominal (G7).
+//
+// El nominal es el contorno de la pieza buena, capturado al crear la
+// herramienta y guardado dentro de ella. El plan pedía además cargarlo de un
+// DXF; se entrega la mitad que el propio plan preveía como alternativa, que es
+// la que aporta el valor sin un parser de por medio.
+//
+// No hay ICP. Los dos contornos están en coordenadas de PIEZA y el Position
+// Fixture ya los alineó: meter un ajuste encima sería alinear dos veces, y
+// dejaría que el ajuste se comiera una desviación real girando el nominal para
+// que encajara.
+ToolRunResult runProfile(const cv::Mat& gray, const Fixture& fixture,
+                         const ToolConfig& config, const ProfileGeometry& g,
+                         const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+    if (g.nominal.size() < 3) {
+        result.detail = "esta herramienta no tiene nominal guardado";
+        return result;
+    }
+
+    // La silueta actual, buscada donde está el nominal y con margen para que un
+    // exceso de material no se salga del recorte.
+    cv::Rect box = cv::boundingRect(g.nominal);
+    std::vector<cv::Point2f> corners{
+        toImg(fixture, cv::Point2f(box.x, box.y)),
+        toImg(fixture, cv::Point2f(box.x + box.width, box.y)),
+        toImg(fixture, cv::Point2f(box.x + box.width, box.y + box.height)),
+        toImg(fixture, cv::Point2f(box.x, box.y + box.height))};
+    std::vector<cv::Point> cornersInt;
+    for (const auto& p : corners) {
+        cornersInt.emplace_back(cvRound(p.x), cvRound(p.y));
+    }
+    constexpr int kPad = 20;
+    cv::Rect bounds = cv::boundingRect(cornersInt);
+    bounds -= cv::Point(kPad, kPad);
+    bounds += cv::Size(2 * kPad, 2 * kPad);
+    bounds &= cv::Rect(0, 0, gray.cols, gray.rows);
+    if (bounds.area() < 100) {
+        result.detail = "el nominal cae fuera de la imagen";
+        return result;
+    }
+
+    cv::Mat binary;
+    cv::threshold(gray(bounds), binary, 0.0, 255.0, cv::THRESH_BINARY_INV | cv::THRESH_OTSU);
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+    if (contours.empty()) {
+        result.detail = "no se ve ninguna silueta que comparar";
+        return result;
+    }
+    const auto& biggest = *std::max_element(
+        contours.begin(), contours.end(), [](const auto& a, const auto& b) {
+            return cv::contourArea(a) < cv::contourArea(b);
+        });
+
+    // A coordenadas de pieza, que es donde vive el nominal.
+    const cv::Point2f offset(static_cast<float>(bounds.x), static_cast<float>(bounds.y));
+    std::vector<cv::Point2f> measured;
+    measured.reserve(biggest.size());
+    for (const auto& p : biggest) {
+        measured.push_back(vision::toPieceCoords(fixture, cv::Point2f(p) + offset));
+    }
+
+    const vision::ProfileDeviation deviation = vision::profileDeviation(measured, g.nominal);
+    if (!deviation.valid) {
+        result.detail = "no se pudo comparar con el nominal";
+        return result;
+    }
+
+    result.measured = deviation.zoneWidth;
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = "perfil: zona " + fmtLen(deviation.zoneWidth, fmt) + " · sobra " +
+                    fmtLen(deviation.worstOutside, fmt) + ", falta " +
+                    fmtLen(deviation.worstInside, fmt) + " · " +
+                    std::to_string(deviation.comparedPoints) + " puntos";
+
+    // El nominal dibujado y el punto donde peor va: sin verlos, un número de
+    // perfil no dice dónde mirar.
+    for (std::size_t i = 0; i < g.nominal.size(); i += 4) {
+        const std::size_t next = (i + 4) % g.nominal.size();
+        result.overlaySegments.push_back({toImg(fixture, g.nominal[i]),
+                                          toImg(fixture, g.nominal[next])});
+    }
+    result.overlayPoints.push_back(toImg(fixture, deviation.worstAt));
+    return result;
+}
+
 // Patrón de agujeros (G6): la cota de una brida.
 //
 // Cero algoritmo nuevo: los agujeros salen de la jerarquía de contornos, el
@@ -3167,6 +3254,10 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Region:
                 return ResultT::ok(runRegion(gray, fixture, config,
                                              std::get<RegionGeometry>(geometry.value()), fmt));
+            case ToolType::Profile:
+                return ResultT::ok(runProfile(
+                    gray, fixture, config, std::get<ProfileGeometry>(geometry.value()),
+                    fmt));
             case ToolType::BoltPattern:
                 return ResultT::ok(runBoltPattern(
                     gray, fixture, config, std::get<BoltPatternGeometry>(geometry.value()),

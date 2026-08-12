@@ -140,6 +140,8 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
                 return {g.vertex, g.end0, g.end1};
             } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
                 return g.vertices;
+            } else if constexpr (std::is_same_v<T, ProfileGeometry>) {
+                return g.nominal;
             } else if constexpr (std::is_same_v<T, PositionGeometry>) {
                 return {g.point};
             } else if constexpr (std::is_same_v<T, ArcGeometry>) {
@@ -219,6 +221,31 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
                         g.center + cv::Point2f(g.outerRadius, 0.0F)};
             } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
                 return g.vertices;
+            } else if constexpr (std::is_same_v<T, ProfileGeometry>) {
+                // UNA sola manija, en el centroide, y a propósito: el nominal se
+                // capturó del contorno de la pieza buena, así que dejar
+                // arrastrar sus puntos uno a uno sería dejar inventárselo. Pero
+                // sin ninguna manija tampoco se podría ajustar, y a veces hace
+                // falta correrlo un par de píxeles. Se mueve ENTERO.
+                if (g.nominal.empty()) {
+                    return {};
+                }
+                cv::Point2f sum(0.0F, 0.0F);
+                const cv::Point2f* highest = &g.nominal.front();
+                for (const auto& v : g.nominal) {
+                    sum += v;
+                    if (v.y < highest->y) {
+                        highest = &v;
+                    }
+                }
+                // DOS agarres del mismo objeto rígido, no dos puntos editables:
+                // el centroide y el punto más alto del nominal. Los dos mueven
+                // la herramienta entera. El segundo existe porque una sola
+                // manija no dice nada del TAMAÑO de la herramienta, y hay
+                // maquinaria del lienzo —el marco de selección múltiple— que
+                // razona con el alcance de las manijas para saber hasta dónde
+                // llega cada una.
+                return {sum / static_cast<float>(g.nominal.size()), *highest};
             } else if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
                                  std::is_same_v<T, ConstructedLineGeometry> ||
                                  std::is_same_v<T, CentreOffsetGeometry>) {
@@ -326,6 +353,23 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
                 if (handle >= 0 && handle < static_cast<int>(g.vertices.size())) {
                     g.vertices[static_cast<std::size_t>(handle)] = q;
                 }
+            } else if constexpr (std::is_same_v<T, ProfileGeometry>) {
+                // Las dos manijas mueven el nominal ENTERO, pero cada una tiene
+                // que trasladar por SÍ MISMA y no por el centroide: si no,
+                // agarrar la segunda y soltarla donde ya estaba desplazaba la
+                // herramienta la distancia que las separa. Lo cazó el barrido de
+                // coherencia, que exige que re-agarrar una manija en su sitio no
+                // mueva nada.
+                if (!g.nominal.empty()) {
+                    const auto handles = handlePoints(geometry);
+                    const std::size_t index =
+                        std::min(static_cast<std::size_t>(std::max(handle, 0)),
+                                 handles.size() - 1);
+                    const cv::Point2f delta = q - handles[index];
+                    for (auto& v : g.nominal) {
+                        v += delta;
+                    }
+                }
             } else if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
                                  std::is_same_v<T, ConstructedLineGeometry> ||
                                  std::is_same_v<T, CentreOffsetGeometry>) {
@@ -389,6 +433,10 @@ double distanceToGeometry(const ToolGeometry& geometry, const vision::Fixture& f
                     const cv::Point2f c = vision::toImageCoords(fixture, g.center);
                     const double r = cv::norm(p - c);
                     d = std::min(std::abs(r - g.outerRadius), std::abs(r - g.innerRadius));
+                } else if constexpr (std::is_same_v<T, ProfileGeometry>) {
+                    for (const auto& v : g.nominal) {
+                        d = std::min(d, cv::norm(p - vision::toImageCoords(fixture, v)));
+                    }
                 } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
                     const std::size_t n = g.vertices.size();
                     for (std::size_t k = 0; k < n; ++k) {

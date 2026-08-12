@@ -49,6 +49,7 @@ QColor toolColor(ToolType type) {
         case ToolType::Orientation: return {200, 140, 255};
         case ToolType::CentreOffset: return {255, 140, 200};
         case ToolType::BoltPattern: return {160, 255, 200};
+        case ToolType::Profile: return {255, 235, 120};
         case ToolType::Blob: return {255, 105, 180};
         case ToolType::Region: return {255, 150, 200};
         case ToolType::Symmetry: return {200, 160, 255};
@@ -1085,6 +1086,10 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
             geometry = g;
             break;
         }
+        case ToolType::Profile:
+            // El nominal no se dibuja: lo captura la ventana del contorno de la
+            // pieza que hay delante. Aquí no hay nada que trazar.
+            return;
         case ToolType::LineToLine:
         case ToolType::Angle:
         case ToolType::PolyBlob:
@@ -1282,6 +1287,21 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 painter.drawLine(v, e1);
                 painter.drawEllipse(v, 3.0, 3.0);
                 labelPos = v;
+            } else if constexpr (std::is_same_v<T, ProfileGeometry>) {
+                // El nominal, a trazo fino: es lo que la pieza DEBERÍA ser, así
+                // que no puede competir visualmente con lo que se está midiendo.
+                QPolygonF poly;
+                for (const auto& v : g.nominal) {
+                    poly << imageToWidget(toImg(v));
+                }
+                if (!poly.isEmpty()) {
+                    QPen ghost = painter.pen();
+                    ghost.setStyle(Qt::DashLine);
+                    ghost.setWidthF(1.2);
+                    painter.setPen(ghost);
+                    painter.drawPolygon(poly);
+                    labelPos = poly.boundingRect().topLeft() + QPointF(2, -4);
+                }
             } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
                 QPolygonF poly;
                 for (const auto& vtx : g.vertices) {

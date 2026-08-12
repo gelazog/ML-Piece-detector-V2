@@ -112,6 +112,27 @@ QIcon toolIcon(ToolType type) {
                 p.setPen(dashed);
                 p.drawLine(14, 11, 14, 19);
             });
+        case ToolType::Profile:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // El nominal a trazos y la silueta real encima, separandose:
+                // la cota es cuanto se separan.
+                QPolygonF shape;
+                shape << QPointF(5, 20) << QPointF(9, 8) << QPointF(19, 8)
+                      << QPointF(23, 20);
+                QPen ghost = p.pen();
+                ghost.setStyle(Qt::DashLine);
+                ghost.setWidthF(1.2);
+                p.setPen(ghost);
+                p.drawPolyline(shape);
+                QPen real = p.pen();
+                real.setStyle(Qt::SolidLine);
+                real.setWidthF(2.0);
+                p.setPen(real);
+                QPolygonF actual;
+                actual << QPointF(4, 23) << QPointF(9, 11) << QPointF(19, 5)
+                       << QPointF(25, 22);
+                p.drawPolyline(actual);
+            });
         case ToolType::BoltPattern:
             return makeIcon([](QPainter& p, const QColor& c) {
                 // Una brida: el circulo primitivo a trazos y seis agujeros

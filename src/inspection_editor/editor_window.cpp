@@ -36,6 +36,7 @@
 #include "repositories/tool_repository.h"
 #include "vision/geometry_features.h"
 #include "vision/pipeline.h"
+#include "vision/position_fixture.h"
 
 namespace pci::inspection {
 
@@ -636,10 +637,37 @@ void EditorWindow::onToolCreated(const ToolGeometry& geometry) {
     EditedTool tool;
     tool.geometry = geometry;
     tool.config.type = typeOf(geometry);
+
+    // El Perfil no se traza: su nominal ES el contorno de la pieza que hay
+    // delante, capturado aquí y guardado dentro de la herramienta. Va en
+    // coordenadas de pieza como todo lo demás, y por eso al medir no hace falta
+    // alinear nada — el fixture ya lo hizo.
+    if (tool.config.type == ToolType::Profile) {
+        if (!ensureContourReport() || contour_.outer.size() < 8) {
+            statusLabel_->setText(
+                tr("No se puede crear un Perfil: hace falta ver el contorno de la pieza "
+                   "en esta imagen, y ahora mismo no se detecta."));
+            return;
+        }
+        ProfileGeometry profile;
+        // Se remuestrea: el contorno crudo trae un punto por píxel y guardar
+        // miles en la plantilla no aporta nada a la medida.
+        const auto sampled = vision::resampleClosedContour(contour_.outer, 3.0);
+        profile.nominal.reserve(sampled.size());
+        for (const auto& p : sampled) {
+            profile.nominal.push_back(vision::toPieceCoords(fixture_, p));
+        }
+        if (profile.nominal.size() < 8) {
+            statusLabel_->setText(tr("El contorno de esta pieza es demasiado corto para "
+                                     "servir de nominal."));
+            return;
+        }
+        tool.geometry = profile;
+    }
     ++nameCounter_;
     tool.config.name =
         (typeLabel(tool.config.type) + QStringLiteral(" %1").arg(nameCounter_)).toStdString();
-    tool.config.geometryJson = toJson(geometry);
+    tool.config.geometryJson = toJson(tool.geometry);
     tool.config.toleranceMin = 0.0;
     tool.config.toleranceMax = 100000.0;
 
@@ -648,7 +676,7 @@ void EditorWindow::onToolCreated(const ToolGeometry& geometry) {
     const auto measured = runTool(camera::qImageToMat(reference_), fixture_, tool.config,
                                   calibration_.mmPerPixel);
     if (measured.isOk() && (measured.value().ok || measured.value().measured > 0.0)) {
-        suggestTolerances(tool.config.type, measured.value().measured,
+        suggestTolerances(tool.geometry, measured.value().measured,
                           tool.config.toleranceMin, tool.config.toleranceMax);
         statusLabel_->setText(tr("%1 midió %2 — tolerancias sugeridas [%3, %4]; "
                                  "ajústalas si hace falta y Guardar")

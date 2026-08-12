@@ -7,6 +7,8 @@
 // enum rompe la compilación de las pruebas, así que no se puede añadir una
 // herramienta decimoquinta y dejarla fuera del repaso sin enterarse.
 
+#include <cmath>
+
 #include "inspection_editor/tools/tool_geometry.h"
 #include "inspection_editor/tools/tool_types.h"
 
@@ -64,6 +66,15 @@ inline ToolGeometry sampleGeometry(ToolType type) {
             return RegionGeometry{{0.0F, 0.0F}, 160.0F, 120.0F, RegionMeasure::Area, true};
         case ToolType::MedianAxis:
             return MedianAxisGeometry{{-80.0F, 0.0F}, {80.0F, 0.0F}, 60.0F, 32};
+        case ToolType::Profile: {
+            ProfileGeometry profile;
+            for (int k = 0; k < 24; ++k) {
+                const double a = 2.0 * 3.14159265358979323846 * k / 24.0;
+                profile.nominal.emplace_back(static_cast<float>(60.0 * std::cos(a)),
+                                             static_cast<float>(60.0 * std::sin(a)));
+            }
+            return profile;
+        }
         case ToolType::BoltPattern:
             return BoltPatternGeometry{{0.0F, 0.0F}, 300.0F, 300.0F, 0, true};
         case ToolType::CentreOffset:

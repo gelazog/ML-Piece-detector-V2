@@ -263,6 +263,21 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      **0,82** (el valor exacto de un cuadrado es 0,785 — la diferencia es el
      sesgo conocido de medir un borde recto sobre una rejilla de píxeles). Una
      mota de ruido **no** cuenta como agujero.
+   - *Perfil de línea*: cuánto se separa el contorno de la pieza del que
+     **debería** tener. Es la tolerancia GD&T más honesta para una silueta,
+     porque está definida sobre una línea y no sobre una superficie: lo que se ve
+     en la imagen es exactamente lo que la cota describe.
+
+     El nominal **se captura del contorno de la pieza buena** al crear la
+     herramienta, y se queda guardado dentro de la plantilla — no hace falta
+     ningún DXF. Colócala sobre la pieza de referencia; si la que tienes delante
+     no es la buena, el nominal que captures tampoco lo será. Da la zona
+     bilateral 2·máx|d| y, por separado, **cuánto sobra y cuánto falta**, que son
+     dos averías distintas.
+
+     No alinea nada, y no le hace falta: la pieza ya viene alineada por su
+     fixture. Comprobado con la misma pieza medida con el fixture girado 30° —
+     sigue dando perfil limpio.
    - *Patrón de agujeros*: la cota de una **brida**. Arrastra un recuadro que
      abarque la pieza entera: encuentra los agujeros, ajusta el **círculo
      primitivo** y mide cuánto se sale cada uno de su sitio. La medida es la

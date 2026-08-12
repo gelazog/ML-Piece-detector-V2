@@ -354,6 +354,43 @@ std::vector<std::vector<cv::Point>> findHoles(const cv::Mat& mask, double minAre
     return holes;
 }
 
+ProfileDeviation profileDeviation(const std::vector<cv::Point2f>& measured,
+                                  const std::vector<cv::Point2f>& nominal) {
+    ProfileDeviation result;
+    if (measured.size() < 3 || nominal.size() < 3) {
+        return result;
+    }
+
+    // El signo sale de si el punto medido cae dentro o fuera del nominal, y la
+    // magnitud de su distancia al borde. `pointPolygonTest` con measureDist da
+    // las dos cosas de una vez: positivo dentro, negativo fuera.
+    double worstOutside = 0.0;
+    double worstInside = 0.0;
+    double worstMagnitude = -1.0;
+    for (const auto& p : measured) {
+        const double signed_ = cv::pointPolygonTest(nominal, p, true);
+        // Se invierte el signo para que POSITIVO sea "sobra material", que es
+        // como lo lee un operario: fuera del nominal es material de más.
+        const double deviation = -signed_;
+        if (deviation > 0.0) {
+            worstOutside = std::max(worstOutside, deviation);
+        } else {
+            worstInside = std::max(worstInside, -deviation);
+        }
+        if (std::abs(deviation) > worstMagnitude) {
+            worstMagnitude = std::abs(deviation);
+            result.worstAt = p;
+        }
+    }
+
+    result.worstOutside = worstOutside;
+    result.worstInside = worstInside;
+    result.zoneWidth = 2.0 * std::max(worstOutside, worstInside);
+    result.comparedPoints = static_cast<int>(measured.size());
+    result.valid = true;
+    return result;
+}
+
 double digitalPerimeter(const std::vector<cv::Point>& contour) {
     if (contour.size() < 2) {
         return 0.0;

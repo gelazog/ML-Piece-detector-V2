@@ -533,3 +533,32 @@ TEST(DigitalPerimeter, AContourThatIsNotAChainFallsBackInsteadOfInventing) {
     EXPECT_DOUBLE_EQ(digitalPerimeter({}), 0.0);
     EXPECT_DOUBLE_EQ(digitalPerimeter({{5, 5}}), 0.0);
 }
+
+TEST(ProfileDeviationTest, TheSignSaysWhetherMaterialIsMissingOrLeftOver) {
+    // Cuadrado nominal de 100 y medido de 110: sobresale 5 por cada lado.
+    const std::vector<cv::Point2f> nominal{{0, 0}, {100, 0}, {100, 100}, {0, 100}};
+    const std::vector<cv::Point2f> bigger{{-5, -5}, {105, -5}, {105, 105}, {-5, 105}};
+    const auto grown = pci::vision::profileDeviation(bigger, nominal);
+    ASSERT_TRUE(grown.valid);
+    std::printf("  medido mayor: sobra %.2f, falta %.2f, zona %.2f\n", grown.worstOutside,
+                grown.worstInside, grown.zoneWidth);
+    EXPECT_GT(grown.worstOutside, 5.0);
+    EXPECT_NEAR(grown.worstInside, 0.0, 1e-6);
+
+    // Y al revés: un medido más pequeño FALTA material.
+    const std::vector<cv::Point2f> smaller{{5, 5}, {95, 5}, {95, 95}, {5, 95}};
+    const auto shrunk = pci::vision::profileDeviation(smaller, nominal);
+    ASSERT_TRUE(shrunk.valid);
+    std::printf("  medido menor: sobra %.2f, falta %.2f\n", shrunk.worstOutside,
+                shrunk.worstInside);
+    EXPECT_NEAR(shrunk.worstOutside, 0.0, 1e-6);
+    EXPECT_NEAR(shrunk.worstInside, 5.0, 1e-6);
+    EXPECT_NEAR(shrunk.zoneWidth, 10.0, 1e-6) << "la zona bilateral es 2·máx|d|";
+}
+
+TEST(ProfileDeviationTest, ItRefusesWhatIsNotAContour) {
+    const std::vector<cv::Point2f> square{{0, 0}, {10, 0}, {10, 10}, {0, 10}};
+    EXPECT_FALSE(pci::vision::profileDeviation({}, square).valid);
+    EXPECT_FALSE(pci::vision::profileDeviation(square, {}).valid);
+    EXPECT_FALSE(pci::vision::profileDeviation({{1, 1}, {2, 2}}, square).valid);
+}

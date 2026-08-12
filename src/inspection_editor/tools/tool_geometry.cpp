@@ -38,12 +38,13 @@ const char* toolTypeName(ToolType type) {
         case ToolType::Orientation: return "orientation";
         case ToolType::CentreOffset: return "centre_offset";
         case ToolType::BoltPattern: return "bolt_pattern";
+        case ToolType::Profile: return "profile";
     }
     return "unknown";
 }
 
-const std::array<ToolType, 27>& allToolTypes() {
-    static const std::array<ToolType, 27> kTypes{
+const std::array<ToolType, 28>& allToolTypes() {
+    static const std::array<ToolType, 28> kTypes{
         ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine, ToolType::EdgeFlaw,
         ToolType::Blob,     ToolType::Ruler,    ToolType::LineToLine,  ToolType::Angle,
         ToolType::PolyBlob, ToolType::Position, ToolType::Arc,         ToolType::Shaft,
@@ -51,7 +52,8 @@ const std::array<ToolType, 27>& allToolTypes() {
         ToolType::ConstructedLine, ToolType::MedianAxis, ToolType::Region,
         ToolType::Symmetry, ToolType::Polygon, ToolType::EdgeDefects,
         ToolType::Clearance, ToolType::Straightness, ToolType::Roundness,
-        ToolType::Orientation, ToolType::CentreOffset, ToolType::BoltPattern};
+        ToolType::Orientation, ToolType::CentreOffset, ToolType::BoltPattern,
+        ToolType::Profile};
     return kTypes;
 }
 
@@ -99,6 +101,7 @@ ToolCategory categoryOf(ToolType type) {
         case ToolType::Orientation:
         case ToolType::CentreOffset:
         case ToolType::BoltPattern:
+        case ToolType::Profile:
             return ToolCategory::Gdt;
         // No miden: se calculan a partir de otras y existen para ser el datum
         // contra el que miden las de GD&T.
@@ -320,6 +323,7 @@ const char* toolTypeLabel(ToolType type) {
         case ToolType::Orientation: return "Orientación";
         case ToolType::CentreOffset: return "Desviación de centros";
         case ToolType::BoltPattern: return "Patrón de agujeros";
+        case ToolType::Profile: return "Perfil de línea";
     }
     return "?";
 }
@@ -530,6 +534,17 @@ const char* toolTypeDescription(ToolType type) {
                    "su reparto angular. Girar la brida entera no cambia nada, que es lo\n"
                    "que se quiere aquí. Para medir contra un datum de fuera, usa\n"
                    "Posición verdadera en el agujero que te interese.";
+        case ToolType::Profile:
+            return "Perfil de línea — cuánto se separa el contorno de la pieza del que\n"
+                   "DEBERÍA tener. Es la tolerancia GD&T más honesta para una silueta,\n"
+                   "porque está definida sobre una línea y no sobre una superficie.\n"
+                   "El nominal se captura del contorno de la pieza BUENA al dibujar la\n"
+                   "herramienta, y se queda guardado dentro de la plantilla. Colócala\n"
+                   "con un clic sobre la pieza de referencia; si la pieza que tienes\n"
+                   "delante no es la buena, el nominal que captures tampoco lo será.\n"
+                   "Da la zona bilateral 2·máx|d| y, por separado, cuánto material\n"
+                   "sobra y cuánto falta — que son dos averías distintas.\n"
+                   "No necesita alinear nada: la pieza ya viene alineada por su fixture.";
     }
     return "";
 }
@@ -555,6 +570,7 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
             toleranceMin = measured;
             toleranceMax = measured;
             return;
+        case ToolType::Profile:
         case ToolType::BoltPattern:
         case ToolType::CentreOffset:
             // Una desviación: la pieza buena define el piso y el techo va
@@ -736,6 +752,8 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::CentreOffset;
             } else if constexpr (std::is_same_v<T, BoltPatternGeometry>) {
                 return ToolType::BoltPattern;
+            } else if constexpr (std::is_same_v<T, ProfileGeometry>) {
+                return ToolType::Profile;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -785,6 +803,10 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 g.end1 += delta;
             } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
                 for (auto& v : g.vertices) {
+                    v += delta;
+                }
+            } else if constexpr (std::is_same_v<T, ProfileGeometry>) {
+                for (auto& v : g.nominal) {
                     v += delta;
                 }
             } else if constexpr (std::is_same_v<T, PositionGeometry>) {
@@ -1041,6 +1063,15 @@ std::string toJson(const ToolGeometry& geometry) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "cx" << g.center.x << "cy" << g.center.y << "rin"
                        << g.innerRadius << "rout" << g.outerRadius << "rays" << g.rayCount;
+                });
+            } else if constexpr (std::is_same_v<T, ProfileGeometry>) {
+                return writeJson([&](cv::FileStorage& fs) {
+                    // Igual que el blob poligonal: secuencia plana [x0,y0,...].
+                    fs << "nominal" << "[:";
+                    for (const auto& v : g.nominal) {
+                        fs << v.x << v.y;
+                    }
+                    fs << "]";
                 });
             } else if constexpr (std::is_same_v<T, BoltPatternGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
@@ -1369,6 +1400,17 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.innerRadius = static_cast<float>(rin.value());
                 g.outerRadius = static_cast<float>(rout.value());
                 g.rayCount = static_cast<int>(reader.numberOr("rays", 1440.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::Profile: {
+                ProfileGeometry g;
+                // Mismo lector que el blob poligonal: la secuencia plana ya
+                // sabe leerse, y una segunda forma de leer lo mismo acabaría
+                // divergiendo.
+                g.nominal = reader.points("nominal");
+                if (g.nominal.size() < 3) {
+                    return ResultT::err("Perfil sin nominal: hacen falta al menos 3 puntos");
+                }
                 return ResultT::ok(g);
             }
             case ToolType::BoltPattern: {

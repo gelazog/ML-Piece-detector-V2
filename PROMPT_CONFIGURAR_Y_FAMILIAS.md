@@ -854,7 +854,25 @@ tiene que estar accesible desde la familia.
   primitivo y paso correctos; con un agujero desplazado, **solo ese** sale
   fuera de tolerancia.
 
-- [ ] **G7 — Perfil de línea contra un nominal DXF.** *(El más caro del
+- [x] **G7 — Perfil de línea contra un nominal DXF.** *(Se entrega la mitad que
+  el propio plan preveía como alternativa: el nominal es el CONTORNO DE LA PIEZA
+  BUENA, capturado al crear la herramienta y guardado dentro de la plantilla.
+  Sin parser de DXF, que es lo que hacía caro el ítem.
+  Y una cosa que el plan pedía y **resultó no hacer falta: el ICP**. Los dos
+  contornos están en coordenadas de PIEZA y el Position Fixture ya los alineó;
+  meter un ajuste encima sería alinear dos veces y, peor, dejaría que el ajuste
+  se comiera una desviación real girando el nominal para que encajara. Hay un
+  test con el fixture girado 30° que lo comprueba: perfil limpio.
+  Medido: bulto de 8 px → zona 16,6 y «sobra 8,3»; pieza 6 px más pequeña →
+  «falta 6,8, sobra 0,0». El signo distingue material de más de material de
+  menos, que son dos averías distintas.
+  Dos fallos propios cazados por los barridos de coherencia. Le dejé el nominal
+  sin manijas —razonando que arrastrar sus puntos sería inventárselo— y el
+  barrido recordó que sin manijas la herramienta no se puede ajustar; ahora
+  tiene DOS agarres del objeto rígido, que además le dan al lienzo una medida de
+  su tamaño. Y al ponerlas, trasladaba siempre por el centroide, así que
+  re-agarrar la segunda y soltarla en su sitio desplazaba la pieza 60 px: el
+  barrido exige que re-agarrar no mueva nada, y tenía razón.)* *(El más caro del
   backlog; va el último y puede quedarse fuera.)* Es la tolerancia GD&T **más
   honesta que existe para una silueta**, porque está definida sobre un elemento
   lineal y no sobre una superficie.

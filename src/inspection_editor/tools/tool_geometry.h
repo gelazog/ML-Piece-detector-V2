@@ -376,6 +376,21 @@ struct BoltPatternGeometry {
     bool darkPiece = true;
 };
 
+// Perfil de línea contra un nominal (G7).
+//
+// El plan pedía cargar el nominal de un DXF. Se entrega la otra mitad que el
+// propio plan preveía: el nominal es **el contorno de la pieza buena**, que ya
+// se tiene delante al crear la plantilla y no necesita parser ninguno. Se
+// captura al dibujar la herramienta y viaja DENTRO de ella, así que la
+// plantilla es autosuficiente.
+//
+// Va en coordenadas de PIEZA, igual que todo lo demás, y ahí está la
+// simplificación que se ganó: el Position Fixture ya alinea la pieza antes de
+// medir, así que medida y nominal llegan alineados y no hace falta ICP.
+struct ProfileGeometry {
+    std::vector<cv::Point2f> nominal;  // contorno de la pieza buena, cerrado
+};
+
 [[nodiscard]] const std::array<RegionMeasure, 6>& allRegionMeasures();
 [[nodiscard]] const char* regionMeasureLabel(RegionMeasure measure);
 
@@ -389,7 +404,7 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
                                   EdgeDefectsGeometry, ClearanceGeometry,
                                   StraightnessGeometry, RoundnessGeometry,
                                   OrientationGeometry, CentreOffsetGeometry,
-                                  BoltPatternGeometry>;
+                                  BoltPatternGeometry, ProfileGeometry>;
 
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
@@ -420,7 +435,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 27>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 28>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que

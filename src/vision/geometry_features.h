@@ -127,6 +127,36 @@ struct ContourReport {
 // `cv::arcLength`** en vez de devolver un número inventado.
 [[nodiscard]] double digitalPerimeter(const std::vector<cv::Point>& contour);
 
+// Perfil de línea contra un nominal (G7): cuánto se separa el contorno medido
+// del que debería tener.
+//
+// Es la tolerancia GD&T **más honesta que existe para una silueta**, porque
+// está definida sobre un elemento lineal y no sobre una superficie: lo que se
+// mide en la imagen es exactamente lo que la cota describe.
+//
+// **No hace falta ICP.** El plan lo pedía para alinear medida y nominal, pero
+// este programa ya resuelve la alineación rígida antes de medir nada: el
+// Position Fixture. Si los dos contornos están en coordenadas de PIEZA, ya
+// están alineados, y meter un ICP encima sería alinear dos veces — y peor,
+// dejaría que el ajuste se comiera una desviación real girando el nominal para
+// que encajara.
+//
+// El signo dice de qué lado: positivo = el material sobresale del nominal,
+// negativo = falta. La zona bilateral simétrica de la norma es `2·max|d|`.
+struct ProfileDeviation {
+    double worstOutside = 0.0;  // lo que más sobresale (px)
+    double worstInside = 0.0;   // lo que más falta (px, positivo)
+    double zoneWidth = 0.0;     // 2·max(|fuera|, |dentro|): la cota bilateral
+    cv::Point2f worstAt{0.0F, 0.0F};  // dónde ocurre lo peor
+    int comparedPoints = 0;
+    bool valid = false;
+};
+
+// `measured` y `nominal` tienen que estar en el MISMO sistema (coordenadas de
+// pieza). `nominal` se trata como polilínea cerrada.
+[[nodiscard]] ProfileDeviation profileDeviation(const std::vector<cv::Point2f>& measured,
+                                                const std::vector<cv::Point2f>& nominal);
+
 // El contorno en CSV, para llevárselo a un CAD.
 //
 // `mmPerPixel > 0` exporta en mm; si no, en px. La unidad va en el NOMBRE de la

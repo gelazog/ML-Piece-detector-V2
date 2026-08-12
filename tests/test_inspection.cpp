@@ -796,6 +796,17 @@ ToolConfig makeToolAt(int index, float x, float y) {
         case ToolType::BoltPattern:
             geometry = BoltPatternGeometry{{x, y}, 60.0F, 60.0F, 0, true};
             break;
+        case ToolType::Profile: {
+            ProfileGeometry profile;
+            for (int k = 0; k < 24; ++k) {
+                const double a = 2.0 * CV_PI * k / 24.0;
+                profile.nominal.emplace_back(
+                    cv::Point2f(x + static_cast<float>(20.0 * std::cos(a)),
+                                y + static_cast<float>(20.0 * std::sin(a))));
+            }
+            geometry = profile;
+            break;
+        }
         case ToolType::ConstructedLine:
             geometry = ConstructedLineGeometry{LineConstruction::ThroughTwoPoints, {x, y}};
             break;
@@ -4884,4 +4895,135 @@ TEST(BoltPattern, ThePitchCircleIsOfferedAsADatum) {
     ASSERT_TRUE(result.value().derived.valid()) << result.value().detail;
     EXPECT_EQ(result.value().derived.kind, DerivedKind::Circle);
     EXPECT_NEAR(result.value().derived.radius, 140.0, 2.0);
+}
+
+// ---------------------------------------------------------------------------
+// Perfil de línea contra un nominal (G7)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Silueta con forma de rueda dentada suave: `bump` px de material de más en un
+// sector. Con bump = 0 es el nominal.
+std::vector<cv::Point2f> lobedOutline(double radius, double bump) {
+    std::vector<cv::Point2f> points;
+    for (int k = 0; k < 360; ++k) {
+        const double a = 2.0 * CV_PI * k / 360.0;
+        // El bulto ocupa un sector de unos 60° alrededor de 0 rad.
+        const double grow = bump * std::exp(-std::pow(std::sin(a / 2.0) * 4.0, 2.0));
+        const double r = radius + grow;
+        points.emplace_back(static_cast<float>(200.0 + r * std::cos(a)),
+                            static_cast<float>(200.0 + r * std::sin(a)));
+    }
+    return points;
+}
+
+cv::Mat outlineToImage(const std::vector<cv::Point2f>& outline) {
+    cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(230));
+    std::vector<cv::Point> poly;
+    poly.reserve(outline.size());
+    for (const auto& p : outline) {
+        poly.emplace_back(cv::Point(cvRound(p.x), cvRound(p.y)));
+    }
+    cv::fillPoly(gray, std::vector<std::vector<cv::Point>>{poly}, cv::Scalar(30));
+    return gray;
+}
+
+ToolConfig profileWith(const std::vector<cv::Point2f>& nominal) {
+    ToolConfig config;
+    config.type = ToolType::Profile;
+    config.name = "perfil";
+    ProfileGeometry g;
+    g.nominal = nominal;
+    config.geometryJson = toJson(ToolGeometry(g));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+}  // namespace
+
+TEST(Profile, ThePieceComparedWithItselfIsNearlyZero) {
+    const auto nominal = lobedOutline(120.0, 0.0);
+    const auto result =
+        runTool(outlineToImage(nominal), kIdentity, profileWith(nominal));
+    ASSERT_TRUE(result.isOk()) << result.error().message;
+    std::printf("  contra sí misma -> %s\n", result.value().detail.c_str());
+    // Solo el redondeo de la rasterización.
+    EXPECT_LT(result.value().measured, 3.0) << result.value().detail;
+}
+
+TEST(Profile, ADeformationOfAKnownSizeComesOutAsTheZone) {
+    // 8 px de material de más en un sector: la zona bilateral es 2·8 = 16.
+    const auto nominal = lobedOutline(120.0, 0.0);
+    const auto deformed = lobedOutline(120.0, 8.0);
+    const auto result =
+        runTool(outlineToImage(deformed), kIdentity, profileWith(nominal));
+    ASSERT_TRUE(result.isOk());
+    const std::string& detail = result.value().detail;
+    std::printf("  bulto de 8 px -> %s\n", detail.c_str());
+    EXPECT_NEAR(result.value().measured, 16.0, 2.5) << detail;
+    // Y distingue de qué lado: aquí SOBRA material, no falta.
+    EXPECT_NE(detail.find("sobra"), std::string::npos) << detail;
+    const auto at = detail.find("sobra ");
+    const double outside = std::atof(detail.c_str() + at + std::string("sobra ").size());
+    EXPECT_NEAR(outside, 8.0, 1.5) << detail;
+}
+
+TEST(Profile, ItTellsMaterialMissingFromMaterialLeftOver) {
+    // Una pieza más pequeña que su nominal: falta material en todo el contorno.
+    const auto nominal = lobedOutline(120.0, 0.0);
+    const auto shrunk = lobedOutline(114.0, 0.0);
+    const auto result = runTool(outlineToImage(shrunk), kIdentity, profileWith(nominal));
+    ASSERT_TRUE(result.isOk());
+    const std::string& detail = result.value().detail;
+    std::printf("  6 px de menos -> %s\n", detail.c_str());
+    const auto at = detail.find("falta ");
+    ASSERT_NE(at, std::string::npos) << detail;
+    const double inside = std::atof(detail.c_str() + at + std::string("falta ").size());
+    EXPECT_NEAR(inside, 6.0, 1.5) << detail;
+
+    // Y lo que sobra es casi nada: son dos averías distintas y se distinguen.
+    const auto out = detail.find("sobra ");
+    ASSERT_NE(out, std::string::npos) << detail;
+    EXPECT_LT(std::atof(detail.c_str() + out + std::string("sobra ").size()), 2.0) << detail;
+}
+
+TEST(Profile, ATurnedPieceIsNotADefectBecauseTheFixtureAlreadyAligned) {
+    // La razón por la que no hace falta ICP: los dos contornos están en
+    // coordenadas de pieza y el fixture ya los alineó. Aquí se comprueba con un
+    // fixture girado — la pieza llega girada y el perfil sigue saliendo limpio.
+    const auto nominal = lobedOutline(120.0, 0.0);
+    const cv::Mat gray = outlineToImage(nominal);
+
+    // El nominal se expresa en coordenadas de pieza respecto a un fixture
+    // girado 30°; la misma imagen medida con ese fixture tiene que dar cero.
+    Fixture turned;
+    turned.origin = cv::Point2f(200.0F, 200.0F);
+    turned.angleDeg = 30.0;
+    std::vector<cv::Point2f> nominalInPiece;
+    nominalInPiece.reserve(nominal.size());
+    for (const auto& p : nominal) {
+        nominalInPiece.push_back(pci::vision::toPieceCoords(turned, p));
+    }
+
+    const auto result = runTool(gray, turned, profileWith(nominalInPiece));
+    ASSERT_TRUE(result.isOk());
+    std::printf("  fixture girado 30° -> %s\n", result.value().detail.c_str());
+    EXPECT_LT(result.value().measured, 3.0) << result.value().detail;
+}
+
+TEST(Profile, WithoutANominalItSaysSo) {
+    ProfileGeometry empty;
+    ToolConfig config;
+    config.type = ToolType::Profile;
+    config.name = "perfil";
+    // Se salta `toJson` a propósito: un nominal vacío no pasa el parseo, así
+    // que se comprueba el camino en el que la geometría llega vacía.
+    config.geometryJson = R"({"nominal": [ 1.0, 2.0, 3.0, 4.0 ]})";
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    const auto result =
+        runTool(outlineToImage(lobedOutline(120.0, 0.0)), kIdentity, config);
+    EXPECT_FALSE(result.isOk()) << "un nominal de dos puntos no es un contorno";
 }
