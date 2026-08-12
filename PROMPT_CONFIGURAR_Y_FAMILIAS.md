@@ -721,7 +721,21 @@ tiene que estar accesible desde la familia.
   puntos, con los dos impresos en el test (**este ítem tiene que hacer visible
   la diferencia con números**, no solo pasar).
 
-- [ ] **G2 — Redondez por zona mínima (MZC).** La redondez ISO es el mínimo,
+- [x] **G2 — Redondez por zona mínima (MZC).** *(Nelder-Mead sobre el centro,
+  sembrado con Taubin, en `vision::minimumZoneCircle`. Verificado con una elipse
+  de 100×94, cuya redondez es exactamente 6: sale **6,000**. Sobre perfiles
+  SIMÉTRICOS —tres lóbulos iguales— el centro de mínimos cuadrados ya es el
+  óptimo y los dos números coinciden, lo que puede hacer pensar que la
+  minimización no hace nada; por eso hay un test con una protuberancia
+  asimétrica donde sí se separan: 6,355 frente a 7,175 (un 12,9 % mejor) con el
+  centro corrido 1,48 px. Se corrigió además algo que ya estaba mal en la app:
+  el Círculo llamaba «redondez» a `max|r−R|`, que es media banda y otro número
+  — ahora dice «desv. radial máx.» y para la cota del plano está esta
+  herramienta (10,1 frente a 5,1 sobre el mismo disco). Y es más exigente que
+  el Círculo con el borde: exige el 80 % de los rayos en vez del 60 %, porque
+  un diámetro se saca de medio contorno pero la redondez es la FORMA, y con un
+  trozo sin ver el círculo interior se apoya donde le da la gana y el número
+  sale bonito.)* La redondez ISO es el mínimo,
   sobre todos los centros posibles, de `Rmax − Rmin`: dos círculos concéntricos
   de separación radial mínima que contienen el perfil. Lo que la app da hoy
   (`tool_executor.cpp:382`) es `max |rᵢ − R_LSQ|`, otro número.

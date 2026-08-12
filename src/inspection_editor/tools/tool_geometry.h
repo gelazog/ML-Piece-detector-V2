@@ -305,6 +305,15 @@ struct StraightnessGeometry {
     int scanCount = 60;
 };
 
+// Redondez por ZONA MÍNIMA (G2). Mismo gesto que el Círculo —centro y radio—
+// porque es la misma exploración; lo que cambia es el número que sale.
+struct RoundnessGeometry {
+    cv::Point2f center;
+    float radius = 50.0F;
+    float searchBand = 12.0F;
+    int rayCount = 72;  // más rayos que el Círculo: aquí la FORMA es la medida
+};
+
 [[nodiscard]] const std::array<RegionMeasure, 6>& allRegionMeasures();
 [[nodiscard]] const char* regionMeasureLabel(RegionMeasure measure);
 
@@ -316,7 +325,7 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
                                   ConstructedLineGeometry, MedianAxisGeometry,
                                   RegionGeometry, SymmetryGeometry, PolygonGeometry,
                                   EdgeDefectsGeometry, ClearanceGeometry,
-                                  StraightnessGeometry>;
+                                  StraightnessGeometry, RoundnessGeometry>;
 
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
@@ -347,7 +356,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 23>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 24>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que

@@ -141,4 +141,28 @@ struct MinimumZone {
 
 [[nodiscard]] MinimumZone minimumZoneBand(const std::vector<cv::Point2f>& points);
 
+// Redondez por ZONA MÍNIMA (MZC), que es como la define la norma: los dos
+// círculos CONCÉNTRICOS de separación radial más pequeña que contienen el
+// perfil. El valor es esa separación, `outerRadius − innerRadius`.
+//
+// No es lo que da un ajuste de mínimos cuadrados. Ese fija el centro
+// minimizando los residuos al cuadrado, que es otra cosa: el centro que menos
+// separa el radio máximo del mínimo casi nunca es el mismo. La zona mínima
+// nunca puede ser mayor que la del centro de mínimos cuadrados, porque ese
+// centro es un candidato más.
+//
+// Se resuelve con Nelder-Mead sobre el centro, sembrado con el ajuste de
+// Taubin. La función `max‖p−c‖ − min‖p−c‖` no es convexa, así que la semilla
+// importa: partir del centro de mínimos cuadrados es partir muy cerca.
+struct MinimumZoneCircle {
+    cv::Point2f center{0.0F, 0.0F};
+    double innerRadius = 0.0;
+    double outerRadius = 0.0;
+    bool valid = false;
+
+    [[nodiscard]] double width() const { return outerRadius - innerRadius; }
+};
+
+[[nodiscard]] MinimumZoneCircle minimumZoneCircle(const std::vector<cv::Point2f>& points);
+
 }  // namespace pci::vision

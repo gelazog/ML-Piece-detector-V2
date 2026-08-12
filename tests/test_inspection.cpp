@@ -776,6 +776,9 @@ ToolConfig makeToolAt(int index, float x, float y) {
         case ToolType::Straightness:
             geometry = StraightnessGeometry{{x - 20.0F, y}, {x + 20.0F, y}, 12.0F, 20};
             break;
+        case ToolType::Roundness:
+            geometry = RoundnessGeometry{{x, y}, 18.0F, 6.0F, 36};
+            break;
         case ToolType::EdgeDefects:
             geometry =
                 EdgeDefectsGeometry{{x - 20.0F, y}, {x + 20.0F, y}, 12.0F, 20, 1.5F, true};
@@ -4131,4 +4134,135 @@ TEST(Straightness, AStraightEdgeIsNearlyZero) {
     ASSERT_TRUE(result.isOk());
     std::printf("  borde recto -> %s\n", result.value().detail.c_str());
     EXPECT_LT(result.value().measured, 1.0) << result.value().detail;
+}
+
+// ---------------------------------------------------------------------------
+// Redondez por zona mínima (G2)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Disco oscuro cuyo radio varía con el ángulo: `lobes` lóbulos de amplitud
+// `amplitude`. La redondez dibujada es 2*amplitude (de valle a cresta).
+cv::Mat lobedDisc(double radius, int lobes, double amplitude) {
+    cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(230));
+    std::vector<cv::Point> poly;
+    for (int k = 0; k < 720; ++k) {
+        const double a = 2.0 * CV_PI * k / 720.0;
+        const double r = radius + amplitude * std::sin(lobes * a);
+        poly.emplace_back(cv::Point(static_cast<int>(std::lround(200.0 + r * std::cos(a))),
+                                    static_cast<int>(std::lround(200.0 + r * std::sin(a)))));
+    }
+    cv::fillPoly(gray, std::vector<std::vector<cv::Point>>{poly}, cv::Scalar(30));
+    return gray;
+}
+
+ToolConfig roundnessOver(float radius = 120.0F) {
+    ToolConfig config;
+    config.type = ToolType::Roundness;
+    config.name = "redondez";
+    config.geometryJson =
+        toJson(ToolGeometry(RoundnessGeometry{{200.0F, 200.0F}, radius, 20.0F, 180}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+double numberAfter(const std::string& text, const std::string& key) {
+    const auto at = text.find(key);
+    return at == std::string::npos ? -1.0 : std::atof(text.c_str() + at + key.size());
+}
+
+}  // namespace
+
+TEST(Roundness, ADiscWithAKnownDeformationMeasuresIt) {
+    // Tres lóbulos de amplitud 4: de valle a cresta son 8 px de redondez.
+    const auto result = runTool(lobedDisc(120.0, 3, 4.0), kIdentity, roundnessOver());
+    ASSERT_TRUE(result.isOk()) << result.error().message;
+    std::printf("  %s\n", result.value().detail.c_str());
+    EXPECT_NEAR(result.value().measured, 8.0, 1.2) << result.value().detail;
+}
+
+TEST(Roundness, BothNumbersAreReportedAndTheMinimumZoneIsNeverBigger) {
+    // El plan pedía los dos en el test: el de la norma y el de mínimos
+    // cuadrados, que es el que dan las máquinas de medir y con el que el
+    // operador va a comparar.
+    for (const int lobes : {2, 3, 5}) {
+        const auto result = runTool(lobedDisc(120.0, lobes, 5.0), kIdentity, roundnessOver());
+        ASSERT_TRUE(result.isOk());
+        const std::string& detail = result.value().detail;
+        const double mzc = numberAfter(detail, "redondez (zona mínima)=");
+        const double lsq = numberAfter(detail, "por mínimos cuadrados ");
+        std::printf("  %d lóbulos: zona mínima %.2f, mínimos cuadrados %.2f\n", lobes, mzc,
+                    lsq);
+        ASSERT_GT(mzc, 0.0) << detail;
+        ASSERT_GT(lsq, 0.0) << detail;
+        // El margen es el redondeo a un decimal del texto, no holgura del
+        // algoritmo: la desigualdad exacta se comprueba en `MinimumZoneCircle`.
+        EXPECT_LE(mzc, lsq + 0.05) << detail;
+    }
+}
+
+TEST(Roundness, ItIsBiggerThanTheNumberTheCircleToolCalls) {
+    // El Círculo da la desviación radial MÁXIMA respecto al ajuste, que es media
+    // banda. La redondez de la norma es la banda entera, así que sale mayor sin
+    // que la pieza haya empeorado — el mismo malentendido que en la rectitud.
+    const cv::Mat gray = lobedDisc(120.0, 3, 5.0);
+
+    ToolConfig circle;
+    circle.type = ToolType::Circle;
+    circle.name = "circulo";
+    circle.geometryJson =
+        toJson(ToolGeometry(CircleGeometry{{200.0F, 200.0F}, 120.0F, 20.0F, 180}));
+    circle.toleranceMin = 0.0;
+    circle.toleranceMax = 1e9;
+
+    const auto round = runTool(gray, kIdentity, roundnessOver());
+    const auto disc = runTool(gray, kIdentity, circle);
+    ASSERT_TRUE(round.isOk());
+    ASSERT_TRUE(disc.isOk());
+    const double half = numberAfter(disc.value().detail, "desv. radial máx.=");
+    std::printf("  redondez de la norma %.2f, desv. radial máx. del Círculo %.2f\n",
+                round.value().measured, half);
+    ASSERT_GT(half, 0.0) << disc.value().detail;
+    EXPECT_GT(round.value().measured, half);
+
+    // Y el Círculo ya NO llama "redondez" a ese número: llamarlo así invitaba a
+    // apuntarlo en un informe como si fuera la cota del plano.
+    EXPECT_EQ(disc.value().detail.find("redondez"), std::string::npos)
+        << disc.value().detail;
+}
+
+TEST(Roundness, ARoundDiscIsNearlyZero) {
+    const auto result = runTool(lobedDisc(120.0, 3, 0.0), kIdentity, roundnessOver());
+    ASSERT_TRUE(result.isOk());
+    std::printf("  disco redondo -> %s\n", result.value().detail.c_str());
+    EXPECT_LT(result.value().measured, 2.0) << result.value().detail;
+}
+
+TEST(Roundness, ItRefusesWithHalfTheContourInsteadOfGivingAPrettyNumber) {
+    // Un diámetro se puede sacar de medio contorno; la redondez no, porque es
+    // la FORMA: con un trozo sin ver, el círculo interior se apoya donde le da
+    // la gana y el número sale bonito.
+    cv::Mat gray = lobedDisc(120.0, 3, 5.0);
+    cv::rectangle(gray, cv::Rect(0, 0, 200, 400), cv::Scalar(230), cv::FILLED);
+    const auto result = runTool(gray, kIdentity, roundnessOver());
+    ASSERT_TRUE(result.isOk());
+    EXPECT_FALSE(result.value().ok);
+    EXPECT_NE(result.value().detail.find("contorno entero"), std::string::npos)
+        << result.value().detail;
+}
+
+TEST(Roundness, TheDescriptionWarnsThatItOnlyWorksFaceOn) {
+    // La silueta de un cilindro visto de perfil son dos tangentes, no un
+    // círculo, y ahí no hay redondez que medir por mucho que la herramienta se
+    // deje dibujar encima.
+    const std::string description = toolTypeDescription(ToolType::Roundness);
+    EXPECT_NE(description.find("SOLO VALE DE FRENTE"), std::string::npos);
+    EXPECT_NE(description.find("tangentes"), std::string::npos);
+
+    const auto result = runTool(lobedDisc(120.0, 3, 2.0), kIdentity, roundnessOver());
+    ASSERT_TRUE(result.isOk());
+    EXPECT_NE(result.value().detail.find("solo vale de frente"), std::string::npos)
+        << result.value().detail;
 }

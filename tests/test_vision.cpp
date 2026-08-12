@@ -1959,3 +1959,87 @@ TEST(MinimumZone, CollinearPointsHaveNoWidthAndDoNotBreakIt) {
     EXPECT_FALSE(minimumZoneBand({}).valid);
     EXPECT_FALSE(minimumZoneBand({{1.0F, 1.0F}}).valid);
 }
+
+TEST(MinimumZoneCircle, ItNeverExceedsTheLeastSquaresAnnulus) {
+    // La desigualdad que justifica el algoritmo: el centro de mínimos cuadrados
+    // es un candidato más, así que la zona mínima nunca puede ser peor. Se
+    // comprueba sobre perfiles con distintas deformaciones.
+    for (const int lobes : {2, 3, 5}) {
+        for (const double amplitude : {1.0, 3.0, 6.0}) {
+            std::vector<cv::Point2f> profile;
+            for (int k = 0; k < 180; ++k) {
+                const double a = 2.0 * kPi * k / 180.0;
+                const double r = 100.0 + amplitude * std::sin(lobes * a);
+                profile.emplace_back(static_cast<float>(200.0 + r * std::cos(a)),
+                                     static_cast<float>(200.0 + r * std::sin(a)));
+            }
+            const auto zone = minimumZoneCircle(profile);
+            ASSERT_TRUE(zone.valid);
+
+            const auto lsq = fitCircleTaubin(profile);
+            ASSERT_TRUE(lsq.valid);
+            double inner = 1e18;
+            double outer = 0.0;
+            for (const auto& p : profile) {
+                const double d = cv::norm(p - lsq.center);
+                inner = std::min(inner, d);
+                outer = std::max(outer, d);
+            }
+            EXPECT_LE(zone.width(), (outer - inner) * (1.0 + 1e-6) + 1e-6)
+                << lobes << " lóbulos de " << amplitude;
+        }
+    }
+}
+
+TEST(MinimumZoneCircle, AnOvalHasTheRoundnessItWasDrawnWith) {
+    // Una elipse de semiejes 100 y 94: los dos círculos concéntricos más juntos
+    // que la contienen son el de 94 y el de 100, así que la redondez es 6.
+    std::vector<cv::Point2f> oval;
+    for (int k = 0; k < 360; ++k) {
+        const double a = 2.0 * kPi * k / 360.0;
+        oval.emplace_back(static_cast<float>(200.0 + 100.0 * std::cos(a)),
+                          static_cast<float>(200.0 + 94.0 * std::sin(a)));
+    }
+    const auto zone = minimumZoneCircle(oval);
+    ASSERT_TRUE(zone.valid);
+    std::printf("  elipse 100x94 -> zona mínima %.3f (dibujada 6,0)\n", zone.width());
+    EXPECT_NEAR(zone.width(), 6.0, 0.15);
+}
+
+TEST(MinimumZoneCircle, OnAnAsymmetricProfileTheOptimalCentreIsNotTheLeastSquaresOne) {
+    // Sobre un perfil SIMÉTRICO —tres lóbulos iguales, una elipse— el centro de
+    // mínimos cuadrados ya es el óptimo y los dos números coinciden. Eso puede
+    // hacer pensar que la minimización no hace nada, así que aquí va el caso
+    // donde sí: una sola protuberancia. El centro que menos separa el radio
+    // máximo del mínimo se corre hacia el lado contrario del bulto, y el de
+    // mínimos cuadrados no.
+    std::vector<cv::Point2f> profile;
+    for (int k = 0; k < 360; ++k) {
+        const double a = 2.0 * kPi * k / 360.0;
+        // Un bulto suave centrado en 0 rad, de 10 px, sobre un radio de 100.
+        const double bump = 10.0 * std::exp(-std::pow(std::sin(a / 2.0) * 3.0, 2.0));
+        const double r = 100.0 + bump;
+        profile.emplace_back(static_cast<float>(200.0 + r * std::cos(a)),
+                             static_cast<float>(200.0 + r * std::sin(a)));
+    }
+
+    const auto zone = minimumZoneCircle(profile);
+    ASSERT_TRUE(zone.valid);
+    const auto lsq = fitCircleTaubin(profile);
+    ASSERT_TRUE(lsq.valid);
+    double inner = 1e18;
+    double outer = 0.0;
+    for (const auto& p : profile) {
+        const double d = cv::norm(p - lsq.center);
+        inner = std::min(inner, d);
+        outer = std::max(outer, d);
+    }
+    const double lsqWidth = outer - inner;
+    const double shift = cv::norm(zone.center - lsq.center);
+    std::printf("  zona mínima %.3f, mínimos cuadrados %.3f (%.1f %% más), "
+                "centro corrido %.2f px\n",
+                zone.width(), lsqWidth, 100.0 * (lsqWidth / zone.width() - 1.0), shift);
+
+    EXPECT_LT(zone.width(), lsqWidth) << "aquí el óptimo sí es otro centro";
+    EXPECT_GT(shift, 0.3) << "y está en otro sitio, no en el de mínimos cuadrados";
+}

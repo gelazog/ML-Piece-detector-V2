@@ -250,6 +250,20 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      **0,82** (el valor exacto de un cuadrado es 0,785 — la diferencia es el
      sesgo conocido de medir un borde recto sobre una rejilla de píxeles). Una
      mota de ruido **no** cuenta como agujero.
+   - *Redondez (zona mínima)*: el valor **de la norma** — la separación radial
+     entre los dos círculos **concéntricos** más juntos que contienen el borde.
+     Se arrastra igual que el *Círculo*. Da **los dos números**: el de zona
+     mínima (el del plano) y el de mínimos cuadrados (el que dan casi todas las
+     máquinas de medir, y con el que vas a comparar); el primero nunca es mayor.
+
+     **Solo vale de frente.** La silueta de un cilindro visto de perfil no es un
+     círculo: son dos tangentes, y ahí no hay redondez que medir por mucho que
+     la herramienta se deje dibujar encima. Y con medio contorno tapado **no
+     mide**: un diámetro se saca de media pieza, pero la redondez es la forma.
+
+     El *Círculo* ya no llama «redondez» a su número: da la **desviación radial
+     máxima** respecto al ajuste, que es media banda. Sobre el mismo disco, 5,1
+     px de desviación frente a 10,1 px de redondez de la norma.
    - *Rectitud (zona mínima)*: el valor **de la norma** — la anchura de la banda
      más estrecha de dos rectas paralelas que contiene todo el borde. Traza una
      línea sobre el borde a vigilar; las dos rectas de la banda se dibujan, para

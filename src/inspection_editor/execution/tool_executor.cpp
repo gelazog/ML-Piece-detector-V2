@@ -418,7 +418,12 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
     result.derived.radius = r;
     result.detail = "D=" + fmtLen(result.measured, fmt) +
                     ", R=" + fmtLen(r, fmt) +
-                    ", redondez=" + fmtLen(roundness, fmt);
+                    // NO se llama "redondez": es la desviación radial máxima
+                    // respecto al círculo de mínimos cuadrados, que es media
+                    // banda y otro número distinto del de la norma. Llamarlo
+                    // redondez invitaba a apuntarlo en un informe como si fuera
+                    // la cota del plano. Para esa está la herramienta Redondez.
+                    ", desv. radial máx.=" + fmtLen(roundness, fmt);
     if (discarded > 0) {
         // Decirlo importa: un borde con muchos puntos descartados puede seguir
         // dando un diámetro perfecto y estar midiendo solo media pieza.
@@ -1557,6 +1562,85 @@ ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& confi
     return result;
 }
 
+// Redondez por ZONA MÍNIMA (G2): la separación radial entre los dos círculos
+// concéntricos más juntos que contienen el perfil, que es como la define la
+// norma. Se dan también los números de mínimos cuadrados, porque son los que
+// dan casi todas las máquinas de medir y el operador va a comparar.
+ToolRunResult runRoundness(const cv::Mat& gray, const Fixture& fixture,
+                           const ToolConfig& config, const RoundnessGeometry& g,
+                           const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+    const cv::Point2f center = toImg(fixture, g.center);
+
+    const int rays = std::clamp(g.rayCount, 12, 720);
+    std::vector<cv::Point2f> points;
+    double edgeStrength = 0.0;
+    int edgeCount = 0;
+    for (int k = 0; k < rays; ++k) {
+        const double theta = 2.0 * kPi * k / rays;
+        const cv::Point2f dir(static_cast<float>(std::cos(theta)),
+                              static_cast<float>(std::sin(theta)));
+        const auto edges = detectEdges(gray, center + dir * (g.radius - g.searchBand),
+                                       center + dir * (g.radius + g.searchBand), 3.0F, 1);
+        if (!edges.empty()) {
+            points.push_back(edges[0].point);
+            edgeStrength += std::abs(edges[0].strength);
+            ++edgeCount;
+        }
+    }
+    if (edgeCount > 0) {
+        edgeStrength /= edgeCount;
+    }
+    if (static_cast<int>(points.size()) < rays * 8 / 10) {
+        // Más exigente que el Círculo (que se conforma con el 60 %) y a
+        // propósito: un diámetro se puede sacar de medio contorno, pero la
+        // redondez es la FORMA. Con un trozo del borde sin ver, el círculo
+        // interior se apoya donde le da la gana y el número sale bonito.
+        result.detail = "Borde circular insuficiente para juzgar la forma (" +
+                        std::to_string(points.size()) + "/" + std::to_string(rays) +
+                        " rayos): la redondez necesita ver el contorno entero";
+        return result;
+    }
+
+    const vision::CircleFit lsq = vision::fitCircleRobust(points);
+    if (!lsq.valid) {
+        result.detail = "No se pudo ajustar el círculo";
+        return result;
+    }
+    const vision::MinimumZoneCircle zone = vision::minimumZoneCircle(points);
+    if (!zone.valid) {
+        result.detail = "No se pudo calcular la zona mínima";
+        return result;
+    }
+
+    // La banda de mínimos cuadrados, para comparar peras con peras: la misma
+    // separación radial pero con el centro del ajuste en vez del óptimo.
+    double lsqInner = 1e18;
+    double lsqOuter = 0.0;
+    for (const auto& p : points) {
+        const double distance = cv::norm(p - lsq.center);
+        lsqInner = std::min(lsqInner, distance);
+        lsqOuter = std::max(lsqOuter, distance);
+    }
+
+    result.measured = zone.width();
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = "redondez (zona mínima)=" + fmtLen(zone.width(), fmt) +
+                    ", por mínimos cuadrados " + fmtLen(lsqOuter - lsqInner, fmt) +
+                    " · Ø=" + fmtLen(2.0 * lsq.radius, fmt) + " · solo vale de frente";
+
+    // El círculo de mínimos cuadrados como referencia: es el centro
+    // convencional de un agujero, y el que esperan las demás herramientas.
+    result.derived.kind = DerivedKind::Circle;
+    result.derived.point = vision::toPieceCoords(fixture, lsq.center);
+    result.derived.radius = lsq.radius;
+
+    appendConditionWarnings(result.detail, fmt, edgeStrength);
+    result.overlayPoints = points;
+    result.overlayPoints.push_back(zone.center);
+    return result;
+}
+
 // Rectitud por ZONA MÍNIMA (G1): el valor con el que la norma define la
 // rectitud, y que no es el que da el Borde liso.
 ToolRunResult runStraightness(const cv::Mat& gray, const Fixture& fixture,
@@ -2604,6 +2688,10 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Region:
                 return ResultT::ok(runRegion(gray, fixture, config,
                                              std::get<RegionGeometry>(geometry.value()), fmt));
+            case ToolType::Roundness:
+                return ResultT::ok(runRoundness(
+                    gray, fixture, config, std::get<RoundnessGeometry>(geometry.value()),
+                    fmt));
             case ToolType::Straightness:
                 return ResultT::ok(runStraightness(
                     gray, fixture, config, std::get<StraightnessGeometry>(geometry.value()),

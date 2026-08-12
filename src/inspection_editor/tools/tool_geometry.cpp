@@ -34,19 +34,20 @@ const char* toolTypeName(ToolType type) {
         case ToolType::EdgeDefects: return "edge_defects";
         case ToolType::Clearance: return "clearance";
         case ToolType::Straightness: return "straightness";
+        case ToolType::Roundness: return "roundness";
     }
     return "unknown";
 }
 
-const std::array<ToolType, 23>& allToolTypes() {
-    static const std::array<ToolType, 23> kTypes{
+const std::array<ToolType, 24>& allToolTypes() {
+    static const std::array<ToolType, 24> kTypes{
         ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine, ToolType::EdgeFlaw,
         ToolType::Blob,     ToolType::Ruler,    ToolType::LineToLine,  ToolType::Angle,
         ToolType::PolyBlob, ToolType::Position, ToolType::Arc,         ToolType::Shaft,
         ToolType::Thread,   ToolType::Gear,     ToolType::ConstructedPoint,
         ToolType::ConstructedLine, ToolType::MedianAxis, ToolType::Region,
         ToolType::Symmetry, ToolType::Polygon, ToolType::EdgeDefects,
-        ToolType::Clearance, ToolType::Straightness};
+        ToolType::Clearance, ToolType::Straightness, ToolType::Roundness};
     return kTypes;
 }
 
@@ -90,6 +91,7 @@ ToolCategory categoryOf(ToolType type) {
         // Posición es una tolerancia geométrica: mide contra una referencia.
         case ToolType::Position:
         case ToolType::Straightness:
+        case ToolType::Roundness:
             return ToolCategory::Gdt;
         // No miden: se calculan a partir de otras y existen para ser el datum
         // contra el que miden las de GD&T.
@@ -307,6 +309,7 @@ const char* toolTypeLabel(ToolType type) {
         case ToolType::EdgeDefects: return "Rebabas y mellas";
         case ToolType::Clearance: return "Holgura";
         case ToolType::Straightness: return "Rectitud (zona mínima)";
+        case ToolType::Roundness: return "Redondez (zona mínima)";
     }
     return "?";
 }
@@ -468,6 +471,16 @@ const char* toolTypeDescription(ToolType type) {
                    "Límite de la óptica: esto es la rectitud PROYECTADA en el plano de\n"
                    "la imagen. Lo que se tuerza hacia la cámara o en contra no se ve, y\n"
                    "ninguna cámara sola puede verlo.";
+        case ToolType::Roundness:
+            return "Redondez (zona mínima) — el valor DE LA NORMA: la separación\n"
+                   "radial entre los dos círculos CONCÉNTRICOS más juntos que\n"
+                   "contienen el borde. Arrastra del centro al borde, como el Círculo.\n"
+                   "Se dan los dos números: el de zona mínima (el del plano) y el de\n"
+                   "mínimos cuadrados (el que dan casi todas las máquinas de medir, y\n"
+                   "con el que el operador va a comparar). El primero nunca es mayor.\n"
+                   "SOLO VALE DE FRENTE. La silueta de un cilindro visto de perfil no\n"
+                   "es un círculo: son dos tangentes, y ahí no hay redondez que medir\n"
+                   "por mucho que la herramienta se deje dibujar encima.";
     }
     return "";
 }
@@ -520,6 +533,7 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
         // fracción. Meterlo en la rama de arriba le recortaba el techo a 1 y
         // dejaba fuera de tolerancia cualquier eje con más de 1 px de
         // desviación. Lo cazó el barrido de coherencia.
+        case ToolType::Roundness:
         case ToolType::Straightness:
         case ToolType::MedianAxis:
         case ToolType::EdgeFlaw:
@@ -657,6 +671,8 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::Clearance;
             } else if constexpr (std::is_same_v<T, StraightnessGeometry>) {
                 return ToolType::Straightness;
+            } else if constexpr (std::is_same_v<T, RoundnessGeometry>) {
+                return ToolType::Roundness;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -681,6 +697,7 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 g.p0 += delta;
                 g.p1 += delta;
             } else if constexpr (std::is_same_v<T, CircleGeometry> ||
+                                 std::is_same_v<T, RoundnessGeometry> ||
                                  std::is_same_v<T, BlobGeometry> ||
                                  std::is_same_v<T, RegionGeometry> ||
                                  std::is_same_v<T, SymmetryGeometry> ||
@@ -863,6 +880,11 @@ std::string toJson(const ToolGeometry& geometry) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "cx" << g.center.x << "cy" << g.center.y << "w" << g.width << "h"
                        << g.height << "dark" << (g.darkPiece ? 1 : 0);
+                });
+            } else if constexpr (std::is_same_v<T, RoundnessGeometry>) {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "cx" << g.center.x << "cy" << g.center.y << "r" << g.radius
+                       << "band" << g.searchBand << "rays" << g.rayCount;
                 });
             } else if constexpr (std::is_same_v<T, StraightnessGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
@@ -1117,6 +1139,18 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.axisTo = {static_cast<float>(bx.value()), static_cast<float>(by.value())};
                 g.searchBand = static_cast<float>(band.value());
                 g.stations = static_cast<int>(reader.numberOr("stations", 32.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::Roundness: {
+                RoundnessGeometry g;
+                auto cx = f("cx"), cy = f("cy"), r = f("r"), band = f("band");
+                for (const auto* v : {&cx, &cy, &r, &band}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
+                g.radius = static_cast<float>(r.value());
+                g.searchBand = static_cast<float>(band.value());
+                g.rayCount = static_cast<int>(reader.numberOr("rays", 72.0));
                 return ResultT::ok(g);
             }
             case ToolType::Straightness: {

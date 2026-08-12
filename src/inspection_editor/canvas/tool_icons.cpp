@@ -112,6 +112,26 @@ QIcon toolIcon(ToolType type) {
                 p.setPen(dashed);
                 p.drawLine(14, 11, 14, 19);
             });
+        case ToolType::Roundness:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // Los DOS circulos concentricos de la zona minima, con el perfil
+                // ondulado metido entre ellos.
+                QPen band = p.pen();
+                band.setWidthF(1.2);
+                p.setPen(band);
+                p.drawEllipse(QPointF(14, 14), 11.0, 11.0);
+                p.drawEllipse(QPointF(14, 14), 6.5, 6.5);
+                QPen profile = p.pen();
+                profile.setWidthF(1.8);
+                p.setPen(profile);
+                QPolygonF wave;
+                for (int k = 0; k <= 24; ++k) {
+                    const double a = k * 2.0 * 3.14159265358979323846 / 24.0;
+                    const double r = 8.75 + 1.6 * std::sin(3.0 * a);
+                    wave << QPointF(14 + r * std::cos(a), 14 + r * std::sin(a));
+                }
+                p.drawPolyline(wave);
+            });
         case ToolType::Straightness:
             return makeIcon([](QPainter& p, const QColor&) {
                 // Un borde ondulado metido entre las DOS rectas de la banda: es

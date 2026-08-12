@@ -30,7 +30,8 @@ enum class ToolType {
     Polygon,
     EdgeDefects,
     Clearance,
-    Straightness
+    Straightness,
+    Roundness
 };
 
 const char* toolTypeName(ToolType type);

@@ -3,6 +3,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <cmath>
 #include <numeric>
@@ -392,6 +393,108 @@ LineFit fitLineWeighted(const std::vector<cv::Point2f>& points,
 
 LineFit fitLineTotal(const std::vector<cv::Point2f>& points) {
     return fitLineWeighted(points, {});
+}
+
+namespace {
+
+// Separación radial que deja un centro dado: lo que hay que minimizar.
+double radialSpread(const std::vector<cv::Point2f>& points, const cv::Point2f& centre,
+                    double& innerOut, double& outerOut) {
+    double inner = std::numeric_limits<double>::max();
+    double outer = 0.0;
+    for (const auto& p : points) {
+        const double distance = cv::norm(p - centre);
+        inner = std::min(inner, distance);
+        outer = std::max(outer, distance);
+    }
+    innerOut = inner;
+    outerOut = outer;
+    return outer - inner;
+}
+
+}  // namespace
+
+MinimumZoneCircle minimumZoneCircle(const std::vector<cv::Point2f>& points) {
+    MinimumZoneCircle zone;
+    if (points.size() < 3) {
+        return zone;
+    }
+    const CircleFit seed = fitCircleTaubin(points);
+    if (!seed.valid) {
+        return zone;
+    }
+
+    // Nelder-Mead en dos dimensiones sobre el centro. El símplex arranca del
+    // tamaño del residuo del ajuste: buscar más lejos sería tirar iteraciones,
+    // porque el centro de la zona mínima está a esa escala del de mínimos
+    // cuadrados, no a la escala del radio.
+    const double scale = std::max(0.5, std::min(seed.rmsResidual * 4.0, seed.radius * 0.25));
+    std::array<cv::Point2f, 3> simplex{
+        seed.center, seed.center + cv::Point2f(static_cast<float>(scale), 0.0F),
+        seed.center + cv::Point2f(0.0F, static_cast<float>(scale))};
+    std::array<double, 3> value{};
+    double inner = 0.0;
+    double outer = 0.0;
+    for (std::size_t i = 0; i < simplex.size(); ++i) {
+        value[i] = radialSpread(points, simplex[i], inner, outer);
+    }
+
+    constexpr int kMaxIterations = 200;
+    constexpr double kTolerance = 1e-4;
+    for (int iteration = 0; iteration < kMaxIterations; ++iteration) {
+        // Ordenar: mejor, medio, peor.
+        std::array<std::size_t, 3> order{0, 1, 2};
+        std::sort(order.begin(), order.end(),
+                  [&value](std::size_t a, std::size_t b) { return value[a] < value[b]; });
+        const std::size_t best = order[0];
+        const std::size_t middle = order[1];
+        const std::size_t worst = order[2];
+        if (value[worst] - value[best] < kTolerance) {
+            break;
+        }
+
+        const cv::Point2f centroid = (simplex[best] + simplex[middle]) * 0.5F;
+        const auto evaluate = [&](const cv::Point2f& candidate) {
+            double lo = 0.0;
+            double hi = 0.0;
+            return radialSpread(points, candidate, lo, hi);
+        };
+
+        const cv::Point2f reflected = centroid + (centroid - simplex[worst]);
+        const double reflectedValue = evaluate(reflected);
+        if (reflectedValue < value[best]) {
+            const cv::Point2f expanded = centroid + (centroid - simplex[worst]) * 2.0F;
+            const double expandedValue = evaluate(expanded);
+            simplex[worst] = expandedValue < reflectedValue ? expanded : reflected;
+            value[worst] = std::min(expandedValue, reflectedValue);
+        } else if (reflectedValue < value[middle]) {
+            simplex[worst] = reflected;
+            value[worst] = reflectedValue;
+        } else {
+            const cv::Point2f contracted = centroid + (simplex[worst] - centroid) * 0.5F;
+            const double contractedValue = evaluate(contracted);
+            if (contractedValue < value[worst]) {
+                simplex[worst] = contracted;
+                value[worst] = contractedValue;
+            } else {
+                // Encoger hacia el mejor.
+                for (std::size_t i = 0; i < simplex.size(); ++i) {
+                    if (i == best) {
+                        continue;
+                    }
+                    simplex[i] = simplex[best] + (simplex[i] - simplex[best]) * 0.5F;
+                    value[i] = evaluate(simplex[i]);
+                }
+            }
+        }
+    }
+
+    const std::size_t best = static_cast<std::size_t>(
+        std::min_element(value.begin(), value.end()) - value.begin());
+    zone.center = simplex[best];
+    radialSpread(points, zone.center, zone.innerRadius, zone.outerRadius);
+    zone.valid = true;
+    return zone;
 }
 
 MinimumZone minimumZoneBand(const std::vector<cv::Point2f>& points) {

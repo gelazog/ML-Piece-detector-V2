@@ -114,7 +114,7 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
                           std::is_same_v<T, StraightnessGeometry> ||
                           std::is_same_v<T, RulerGeometry>) {
                 return {g.p0, g.p1};
-            } else if constexpr (std::is_same_v<T, CircleGeometry>) {
+            } else if constexpr ((std::is_same_v<T, CircleGeometry> || std::is_same_v<T, RoundnessGeometry>)) {
                 return {g.center,
                         g.center + cv::Point2f(-g.radius, 0.0F),
                         g.center + cv::Point2f(g.radius, 0.0F),
@@ -184,7 +184,7 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
                           std::is_same_v<T, StraightnessGeometry> ||
                           std::is_same_v<T, RulerGeometry>) {
                 return {g.p0, g.p1};
-            } else if constexpr (std::is_same_v<T, CircleGeometry>) {
+            } else if constexpr ((std::is_same_v<T, CircleGeometry> || std::is_same_v<T, RoundnessGeometry>)) {
                 return {g.center, g.center + cv::Point2f(g.radius, 0.0F)};
             } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
                 return {g.lineA, g.lineB, g.scanA, g.scanB};
@@ -250,7 +250,7 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
                 } else {
                     g.p1 = q;
                 }
-            } else if constexpr (std::is_same_v<T, CircleGeometry>) {
+            } else if constexpr ((std::is_same_v<T, CircleGeometry> || std::is_same_v<T, RoundnessGeometry>)) {
                 if (handle == 0) {
                     g.center = q;
                 } else {
@@ -342,7 +342,7 @@ double distanceToGeometry(const ToolGeometry& geometry, const vision::Fixture& f
                               std::is_same_v<T, StraightnessGeometry> ||
                               std::is_same_v<T, RulerGeometry>) {
                     d = distanceToSegment(p, vision::toImageCoords(fixture, g.p0), vision::toImageCoords(fixture, g.p1));
-                } else if constexpr (std::is_same_v<T, CircleGeometry>) {
+                } else if constexpr ((std::is_same_v<T, CircleGeometry> || std::is_same_v<T, RoundnessGeometry>)) {
                     d = std::abs(cv::norm(p - vision::toImageCoords(fixture, g.center)) - g.radius);
                 } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
                     d = std::min(distanceToSegment(p, vision::toImageCoords(fixture, g.lineA), vision::toImageCoords(fixture, g.lineB)),

@@ -45,6 +45,7 @@ QColor toolColor(ToolType type) {
         case ToolType::EdgeFlaw: return {0, 230, 120};
         case ToolType::EdgeDefects: return {120, 255, 60};
         case ToolType::Straightness: return {255, 120, 120};
+        case ToolType::Roundness: return {255, 190, 90};
         case ToolType::Blob: return {255, 105, 180};
         case ToolType::Region: return {255, 150, 200};
         case ToolType::Symmetry: return {200, 160, 255};
@@ -929,6 +930,14 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         case ToolType::Caliper:
             geometry = CaliperGeometry{a, b, 10.0F};
             break;
+        case ToolType::Roundness: {
+            RoundnessGeometry g;
+            g.center = a;
+            g.radius = static_cast<float>(cv::norm(b - a));
+            g.searchBand = std::min(12.0F, g.radius / 2.0F);
+            geometry = g;
+            break;
+        }
         case ToolType::Circle: {
             CircleGeometry g;
             g.center = a;
@@ -1199,7 +1208,8 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 painter.drawLine(a - tick, a + tick);
                 painter.drawLine(b - tick, b + tick);
                 labelPos = (a + b) / 2.0;
-            } else if constexpr (std::is_same_v<T, CircleGeometry>) {
+            } else if constexpr (std::is_same_v<T, CircleGeometry> ||
+                                 std::is_same_v<T, RoundnessGeometry>) {
                 const QPointF c = imageToWidget(toImg(g.center));
                 const double scale = targetRect().width() / image_.width();
                 painter.drawEllipse(c, g.radius * scale, g.radius * scale);
