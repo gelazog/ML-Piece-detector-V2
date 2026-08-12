@@ -26,6 +26,12 @@ public:
     core::Result<double> getDouble(const std::string& key, double defaultValue = 0.0);
 
     // Todos los ajustes tal cual están guardados, para exportarlos (O4).
+    // Olvidar un ajuste, que NO es lo mismo que ponerlo a su valor por defecto:
+    // varios sitios distinguen «el operador eligió esto» de «no ha elegido
+    // nada», y sin borrar de verdad no hay forma de volver al segundo estado.
+    // Borrar una clave que no existe no es un error.
+    core::Result<void> remove(const std::string& key);
+
     core::Result<std::vector<std::pair<std::string, std::string>>> listAll();
 
 private:

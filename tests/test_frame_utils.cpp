@@ -447,3 +447,45 @@ TEST(ProfileVerdict, WithoutAReferenceItDoesNotSecondGuessItself) {
     EXPECT_TRUE(pci::camera::judgeProfile(0.0, 46.0, 30.0, 5.0).keep);
     EXPECT_TRUE(pci::camera::judgeProfile(29.7, 0.0, 30.0, 5.0).keep);
 }
+
+// ---------------------------------------------------------------------------
+// El aviso de «escala calibrada + automatico encendido» (C4)
+// ---------------------------------------------------------------------------
+
+TEST(AutomaticsWarning, ItOnlyFiresOnTheOneQuadrantThatIsActuallyDangerous) {
+    // Los cuatro cuadrantes, y el aviso en UNO. Que se calle en los otros tres
+    // no es tacaneria: sin calibrar, el autofoco es una comodidad legitima
+    // —las medidas van en pixeles y nadie ha prometido milimetros—, y un aviso
+    // que salta siempre se aprende a ignorar, con lo que tampoco serviria donde
+    // de verdad importa.
+    using pci::camera::automaticsWarning;
+
+    EXPECT_TRUE(automaticsWarning(false, false, false).empty());
+    EXPECT_TRUE(automaticsWarning(false, true, true).empty())
+        << "sin calibrar no hay milimetros que estropear";
+    EXPECT_TRUE(automaticsWarning(true, false, false).empty())
+        << "calibrado y sin automaticos es justo el estado bueno";
+    EXPECT_FALSE(automaticsWarning(true, true, false).empty());
+    EXPECT_FALSE(automaticsWarning(true, false, true).empty());
+    EXPECT_FALSE(automaticsWarning(true, true, true).empty());
+}
+
+TEST(AutomaticsWarning, ItNamesWhichAutomaticBecauseTheDamageIsDifferent) {
+    using pci::camera::automaticsWarning;
+
+    // El autofoco cambia la MAGNIFICACION: todas las cotas a la vez y
+    // proporcionalmente, que es la forma de estar equivocado que no se nota.
+    const std::string focus = automaticsWarning(true, false, true);
+    EXPECT_NE(focus.find("enfoque"), std::string::npos) << focus;
+    EXPECT_NE(focus.find("TODAS"), std::string::npos) << focus;
+
+    // La exposicion mueve el umbral aparente del borde: la pieza sale mas
+    // gorda o mas fina. Es otro dano y se dice con otras palabras.
+    const std::string exposure = automaticsWarning(true, true, false);
+    EXPECT_NE(exposure.find("exposicion"), std::string::npos) << exposure;
+    EXPECT_NE(exposure.find("borde"), std::string::npos) << exposure;
+
+    // Con los dos encendidos manda el peor, que es el enfoque.
+    const std::string both = automaticsWarning(true, true, true);
+    EXPECT_NE(both.find("enfoque"), std::string::npos) << both;
+}

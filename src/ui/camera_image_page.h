@@ -47,6 +47,9 @@ signals:
     // Resolución elegida, para que la ventana la persista y reajuste lo que
     // vive en píxeles (zona de detección, cero fijado del tablero).
     void resolutionChosen(const pci::camera::CameraResolution& resolution);
+    // «Volver a los ajustes de medición»: olvidar lo que el operador guardó
+    // para esta cámara y dejar que el perfil y el barrido decidan otra vez.
+    void measurementProfileRequested();
 
 public slots:
     // Llega desde el hilo de captura cuando termina el sondeo.

@@ -188,6 +188,25 @@ struct ProfileVerdict {
 [[nodiscard]] ProfileVerdict judgeProfile(double fpsBefore, double contrastBefore,
                                           double fpsAfter, double contrastAfter);
 
+// El aviso de «escala calibrada + automático encendido», o vacío si no hay nada
+// que decir.
+//
+// Es la combinación que produce números **creíbles y falsos**, que es la peor
+// clase de error que puede dar este programa. La escala px→mm se fijó con una
+// magnificación concreta; si el autofoco reenfoca, la magnificación cambia y
+// **todas las cotas cambian a la vez**, proporcionalmente, sin que nada en
+// pantalla lo delate. La exposición automática es más sutil pero del mismo
+// tipo: mueve el umbral aparente del borde, así que la misma pieza sale más
+// gorda o más fina según la luz que entre.
+//
+// El aviso se da SOLO con las dos condiciones juntas, y eso es una decisión de
+// diseño, no una economía. Sin calibrar, el autofoco es una comodidad legítima
+// —las medidas van en píxeles y nadie ha prometido milímetros—, así que avisar
+// ahí sería ruido; y un aviso que salta siempre es un aviso que se aprende a
+// ignorar, con lo que tampoco serviría donde de verdad importa.
+[[nodiscard]] std::string automaticsWarning(bool calibrated, bool autoExposureOn,
+                                            bool autoFocusOn);
+
 // Mezcla peticiones nuevas en la cola pendiente dejando SOLO el último valor de
 // cada propiedad. Arrastrar un deslizador genera decenas de valores por segundo
 // y cada capture.set() cuesta milisegundos en el hilo de captura: aplicarlos

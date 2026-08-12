@@ -6,6 +6,21 @@
 
 namespace pci::repositories {
 
+core::Result<void> SettingsRepository::remove(const std::string& key) {
+    auto stmt = db_.prepare("DELETE FROM Settings WHERE key = ?;");
+    if (!stmt.isOk()) {
+        return core::Result<void>::err(stmt.error().message);
+    }
+    if (auto bind = stmt.value().bindText(1, key); !bind.isOk()) {
+        return bind;
+    }
+    auto step = stmt.value().step();
+    if (!step.isOk()) {
+        return core::Result<void>::err(step.error().message);
+    }
+    return core::Result<void>::ok();
+}
+
 core::Result<void> SettingsRepository::setString(const std::string& key,
                                                  const std::string& value) {
     auto stmt = db_.prepare(

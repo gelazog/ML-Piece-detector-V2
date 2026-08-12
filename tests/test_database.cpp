@@ -997,3 +997,24 @@ TEST_F(DatabaseTest, SavingTheBoardMustNotWipeTheOtherPieceSettings) {
         << "cambiar el tablero no puede llevarse por delante el recuento";
     EXPECT_DOUBLE_EQ(reloaded.value().maxOffsetPx, 12.5);
 }
+
+TEST_F(DatabaseTest, SettingsRemoveForgetsAKeyInsteadOfBlankingIt) {
+    // Olvidar NO es poner a cero. Varios sitios distinguen "el operador eligio
+    // esto" de "no ha elegido nada" —el perfil de camara se salta a proposito
+    // toda propiedad que el operador haya tocado—, asi que sin un borrado de
+    // verdad no hay forma de volver al segundo estado.
+    auto& db = openAndMigrate();
+    repositories::SettingsRepository settings(db);
+
+    ASSERT_TRUE(settings.setDouble("cam_exposure", -5.0).isOk());
+    EXPECT_DOUBLE_EQ(settings.getDouble("cam_exposure", -1e9).value(), -5.0);
+
+    ASSERT_TRUE(settings.remove("cam_exposure").isOk());
+    // El centinela vuelve: la clave ya no esta, no es que valga cero.
+    EXPECT_DOUBLE_EQ(settings.getDouble("cam_exposure", -1e9).value(), -1e9);
+
+    // Y borrar lo que no existe no es un error: el boton que restaura los
+    // ajustes borra las siete propiedades sin mirar cuales habia.
+    EXPECT_TRUE(settings.remove("cam_exposure").isOk());
+    EXPECT_TRUE(settings.remove("no_existe_esta_clave").isOk());
+}

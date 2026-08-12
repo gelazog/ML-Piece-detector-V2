@@ -346,6 +346,26 @@ ProfileVerdict judgeProfile(double fpsBefore, double contrastBefore, double fpsA
     return verdict;
 }
 
+std::string automaticsWarning(bool calibrated, bool autoExposureOn, bool autoFocusOn) {
+    if (!calibrated || (!autoExposureOn && !autoFocusOn)) {
+        return {};
+    }
+    // Se nombra cuál está encendido porque la consecuencia no es la misma y lo
+    // que hay que hacer tampoco. El autofoco va primero: es el que puede
+    // estropear todas las cotas de golpe.
+    if (autoFocusOn && autoExposureOn) {
+        return "el enfoque y la exposicion automaticos siguen encendidos: la escala se "
+               "fijo con un enfoque concreto, asi que un reenfoque cambia TODAS las cotas "
+               "a la vez";
+    }
+    if (autoFocusOn) {
+        return "el enfoque automatico sigue encendido: la escala se fijo con un enfoque "
+               "concreto, asi que un reenfoque cambia TODAS las cotas a la vez";
+    }
+    return "la exposicion automatica sigue encendida: mueve el umbral aparente del borde, "
+           "asi que la misma pieza mide distinto segun la luz";
+}
+
 std::vector<CameraControlState> probeControls(cv::VideoCapture& capture) {
     std::vector<CameraControlState> states;
     for (const CameraProperty property : allCameraProperties()) {

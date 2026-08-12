@@ -150,6 +150,35 @@ La moraleja, que es lo que hay que llevarse: **de una cámara no se cree lo que
 dice, se mide lo que hace**. Las tres versiones tenían tests verdes; las tres
 veces fue la cámara real la que dijo que no.
 
+### El aviso de «calibrado + automático encendido»
+
+La combinación que produce números **creíbles y falsos**, que es la peor clase
+de error que este programa puede dar. La escala px→mm se fijó con una
+magnificación concreta: si el autofoco reenfoca, la magnificación cambia y
+**todas las cotas cambian a la vez y proporcionalmente**, sin que nada en
+pantalla lo delate. La exposición automática es más sutil pero del mismo tipo —
+mueve el umbral aparente del borde, así que la misma pieza sale más gorda o más
+fina según la luz.
+
+Tres decisiones:
+
+- **Solo con las dos condiciones juntas.** Sin calibrar, el autofoco es una
+  comodidad legítima: las medidas van en píxeles y nadie ha prometido
+  milímetros. Avisar ahí sería ruido, y un aviso que salta siempre es uno que se
+  aprende a ignorar — con lo que tampoco serviría donde importa. El barrido
+  recorre los cuatro cuadrantes y exige silencio en tres.
+- **Va donde se ve la escala**, en la misma etiqueta que dice «Escala: 0,0421
+  mm/px», no en una pestaña que el operador no va a abrir. Reutiliza el sitio y
+  el estilo del aviso de calibración obsoleta, que existía por la misma razón.
+- **Nombra cuál está encendido**, porque el daño no es el mismo ni lo que hay
+  que hacer tampoco.
+
+El estado de los automáticos **se lleva en la ventana, no se le pregunta a la
+cámara**: `get(CAP_PROP_AUTO_EXPOSURE)` devuelve −1 pase lo que pase, y sobre
+esa mentira ya se perdieron dos diseños del perfil de medición. Se actualiza en
+los cuatro sitios donde puede cambiar: el sondeo inicial, el perfil, el veredicto
+del barrido y un cambio del operador.
+
 ### Asistente de enfoque
 
 `vision::sharpnessOf(imagen, roi)` es la varianza del Laplaciano de una región.

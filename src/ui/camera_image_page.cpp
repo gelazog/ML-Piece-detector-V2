@@ -182,6 +182,28 @@ CameraImagePage::CameraImagePage(
     connect(resetPeak, &QPushButton::clicked, this, &CameraImagePage::resetSharpnessPeak);
 
     root->addWidget(focusBox);
+
+    // --- Volver a los ajustes de medición (C4) ---
+    //
+    // Quien toca los deslizadores hasta perderse no tenía vuelta atrás: los
+    // valores quedan guardados y el perfil de arranque no los pisa nunca —a
+    // propósito—, así que sin este botón la única salida era borrar los ajustes
+    // a mano en la base de datos.
+    auto* restoreRow = new QHBoxLayout();
+    auto* restore = new QPushButton(tr("Volver a los ajustes de medición"), this);
+    restore->setToolTip(
+        tr("Olvida los valores que hayas dejado puestos en esta cámara y deja que\n"
+           "el programa los elija otra vez midiendo: apaga los automáticos que\n"
+           "pueda sustituir y busca la exposición más larga que aún dé la\n"
+           "velocidad máxima.\n\n"
+           "Tarda unos segundos porque prueba de verdad, y si el resultado sale\n"
+           "peor que el automático lo deshace y te dice por qué."));
+    restoreRow->addStretch(1);
+    restoreRow->addWidget(restore);
+    root->addLayout(restoreRow);
+    connect(restore, &QPushButton::clicked, this,
+            [this] { emit measurementProfileRequested(); });
+
     root->addStretch(1);
 
     syncAutoDependencies();

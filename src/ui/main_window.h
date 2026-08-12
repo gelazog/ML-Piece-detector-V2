@@ -260,6 +260,13 @@ private:
     QLabel* verdictBanner_ = nullptr;
     QLabel* boardReadoutLabel_ = nullptr;  // dx/dy/radio/giro respecto al tablero (T3)
     inspection::EditorCanvas* video_ = nullptr;
+    // Si cada automático de la cámara está encendido AHORA. No se lee de la
+    // cámara: se lleva la cuenta de lo que se le ha hecho, porque preguntárselo
+    // no sirve — `get(CAP_PROP_AUTO_EXPOSURE)` devuelve −1 pase lo que pase, y
+    // sobre esa mentira ya se perdieron dos diseños en C1.
+    bool autoExposureOn_ = false;
+    bool autoFocusOn_ = false;
+
     QLabel* statsLabel_ = nullptr;
     // Indicadores de estado (S4): cámara / base de datos / modelo ONNX.
     QLabel* camIndicator_ = nullptr;

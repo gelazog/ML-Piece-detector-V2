@@ -523,12 +523,23 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(&controller_, &camera::CameraController::resolutionsProbed, this,
             &MainWindow::onResolutionsProbed);
     connect(&controller_, &camera::CameraController::exposureChosen, this,
-            [](double exposure, const std::vector<camera::ExposureFpsSample>& sweep) {
+            [this](double exposure, const std::vector<camera::ExposureFpsSample>& sweep) {
                 // Se deja en el log lo que se PROBÓ y no solo lo que salió: si
                 // algún día una cámara elige mal, la tabla dice por qué.
                 core::logInfo("Exposición elegida por medida: " +
                               std::to_string(exposure) + " (de " +
                               std::to_string(sweep.size()) + " probadas)");
+                autoExposureOn_ = false;
+                updateCalibrationLabel();
+            });
+    connect(&controller_, &camera::CameraController::profileRejected, this,
+            [this](const QString& reason) {
+                // El perfil se deshizo: la cámara vuelve a automático, así que
+                // las medidas NO son repetibles y hay que decirlo donde se
+                // miran — que es la etiqueta de la escala, no un log.
+                core::logWarning("Perfil rechazado: " + reason.toStdString());
+                autoExposureOn_ = true;
+                updateCalibrationLabel();
             });
 
     connect(toolPalette_, &inspection::ToolPalette::toolChosen, this,
@@ -1303,6 +1314,17 @@ void MainWindow::updateCalibrationLabel() {
         calibLabel_->setText(
             tr("⚠ Calibración obsoleta (%1) — recalibra con C")
                 .arg(resMismatch ? tr("otra resolución") : tr("otra cámara")));
+        return;
+    }
+    // Escala calibrada + automático encendido es la combinación que da números
+    // creíbles y falsos, y el sitio donde hay que decirlo es este: junto a la
+    // escala que el operador se está creyendo, no en una pestaña que no abrirá.
+    const std::string warning =
+        camera::automaticsWarning(true, autoExposureOn_, autoFocusOn_);
+    if (!warning.empty()) {
+        calibLabel_->setText(tr("⚠ Escala: %1 mm/px — %2")
+                                 .arg(calibration_.mmPerPixel, 0, 'f', 4)
+                                 .arg(QString::fromStdString(warning)));
         return;
     }
     calibLabel_->setText(tr("Escala: %1 mm/px · cámara ~%2 mm")
@@ -2482,6 +2504,18 @@ void MainWindow::onControlsProbed(const std::vector<camera::CameraControlState>&
         core::logInfo("La cámara no expone ningún control ajustable");
     }
 
+    // De dónde parte cada automático. `probeControls` da 0 cuando la cámara no
+    // informa, que es lo más honesto que se puede suponer, pero el estado real
+    // lo van fijando el perfil y el barrido justo debajo.
+    for (const auto& state : controls) {
+        if (state.property == camera::CameraProperty::AutoExposure) {
+            autoExposureOn_ = state.value > 0.5;
+        }
+        if (state.property == camera::CameraProperty::AutoFocus) {
+            autoFocusOn_ = state.value > 0.5;
+        }
+    }
+
     // Perfil de medición (C1). Va aquí y no antes de abrir porque depende del
     // SONDEO: qué controles acepta esta cámara y en qué valor los tiene. Antes
     // de sondear no se sabe ni una cosa ni la otra.
@@ -2498,6 +2532,15 @@ void MainWindow::onControlsProbed(const std::vector<camera::CameraControlState>&
                           std::to_string(value.value));
         }
         controller_.requestControls(defaults);
+        for (const auto& value : defaults) {
+            if (value.property == camera::CameraProperty::AutoExposure) {
+                autoExposureOn_ = value.value > 0.5;
+            }
+            if (value.property == camera::CameraProperty::AutoFocus) {
+                autoFocusOn_ = value.value > 0.5;
+            }
+        }
+        updateCalibrationLabel();
     }
 
     // Y la exposición se ELIGE midiendo, que es la parte que no se puede hacer
@@ -2526,6 +2569,28 @@ void MainWindow::wireCameraPage(CameraImagePage* page) {
     if (page == nullptr) {
         return;
     }
+    connect(page, &CameraImagePage::measurementProfileRequested, this, [this] {
+        // Olvidar lo guardado es la mitad que importa: el perfil se salta a
+        // propósito toda propiedad que el operador haya tocado, así que sin
+        // borrarlas volvería a saltárselas y el botón no haría nada.
+        for (const auto property : camera::allCameraProperties()) {
+            if (repos_.settings != nullptr) {
+                repos_.settings->remove(std::string(camera::propertyKey(property)));
+            }
+        }
+        savedCameraControls_.clear();
+        core::logInfo("Ajustes de cámara olvidados a petición del operador");
+
+        const auto defaults = camera::measurementDefaults(cameraControls_, {});
+        if (!defaults.empty()) {
+            controller_.requestControls(defaults);
+        }
+        for (const auto& state : cameraControls_) {
+            if (state.property == camera::CameraProperty::Exposure && state.supported) {
+                controller_.requestExposureSweep(state.min, state.max);
+            }
+        }
+    });
     connect(page, &CameraImagePage::resolutionChosen, this,
             [this](const camera::CameraResolution& resolution) {
                 savedResolution_ = resolution;
@@ -2536,6 +2601,16 @@ void MainWindow::wireCameraPage(CameraImagePage* page) {
             });
     connect(page, &CameraImagePage::controlChanged, this,
             [this](const camera::CameraControlValue& control) {
+                // Si el operador vuelve a encender un automático, el aviso tiene
+                // que aparecer: no es menos peligroso por haberlo pedido él.
+                if (control.property == camera::CameraProperty::AutoExposure) {
+                    autoExposureOn_ = control.value > 0.5;
+                    updateCalibrationLabel();
+                }
+                if (control.property == camera::CameraProperty::AutoFocus) {
+                    autoFocusOn_ = control.value > 0.5;
+                    updateCalibrationLabel();
+                }
                 // Se recuerda el último valor de cada propiedad para reaplicarlo
                 // en el próximo arranque.
                 for (auto& saved : savedCameraControls_) {

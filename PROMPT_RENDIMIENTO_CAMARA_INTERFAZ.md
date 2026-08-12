@@ -141,7 +141,18 @@ que ser un veredicto capaz de DESHACER el perfil. Lo que este ítem pedía decir
 —«no hay luz suficiente, sube la iluminación»— es el texto que emite
 `profileRejected`.)*
 
-### - [ ] C4 — «Restaurar los valores de medición» y el aviso que falta
+### - [x] C4 — «Restaurar los valores de medición» y el aviso que falta
+
+*(Las dos partes hechas. El botón obligó a añadir `SettingsRepository::remove`:
+no valía poner los ajustes a cero, porque el perfil se salta a propósito toda
+propiedad que el operador haya tocado y «cero» sigue siendo haberla tocado —
+olvidar y poner a cero son estados distintos y hacía falta el primero.
+El aviso salió más barato de lo previsto porque el sitio ya existía: la
+etiqueta de la escala ya avisaba de «calibración obsoleta» por la misma razón,
+así que reutiliza sitio y estilo. Lo que sí costó es que el estado de los
+automáticos hay que LLEVARLO en la ventana —cuatro sitios lo cambian: sondeo,
+perfil, veredicto del barrido y el operador—, porque preguntárselo a la cámara
+no sirve: `get(CAP_PROP_AUTO_EXPOSURE)` devuelve −1 pase lo que pase.)*
 
 Dos cosas pequeñas y la segunda es la que más vale:
 
