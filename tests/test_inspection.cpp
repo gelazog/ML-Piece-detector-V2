@@ -770,6 +770,10 @@ ToolConfig makeToolAt(int index, float x, float y) {
         case ToolType::Polygon:
             geometry = PolygonGeometry{{x, y}, 40.0F, 30.0F, 0.02F, true};
             break;
+        case ToolType::EdgeDefects:
+            geometry =
+                EdgeDefectsGeometry{{x - 20.0F, y}, {x + 20.0F, y}, 12.0F, 20, 1.5F, true};
+            break;
         case ToolType::ConstructedPoint:
             geometry = ConstructedPointGeometry{PointConstruction::Midpoint, {x, y}};
             break;
@@ -3698,5 +3702,165 @@ TEST(Polygon, AnEmptyRegionSaysSoInsteadOfCountingNothing) {
     ASSERT_TRUE(result.isOk());
     EXPECT_FALSE(result.value().ok);
     EXPECT_NE(result.value().detail.find("figura"), std::string::npos)
+        << result.value().detail;
+}
+
+// ---------------------------------------------------------------------------
+// Rebabas y mellas (F4)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Un bloque oscuro cuyo borde SUPERIOR está en y = kEdgeY, con defectos
+// dibujados encima. Altura positiva = rebaba (material que sobresale hacia
+// arriba, fuera de la pieza); negativa = mella (material comido hacia abajo).
+constexpr int kEdgeY = 200;
+
+struct DrawnDefect {
+    int centreX = 0;
+    int height = 0;  // + rebaba, − mella
+    int width = 0;
+};
+
+cv::Mat edgeWithDefects(const std::vector<DrawnDefect>& defects) {
+    cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(230));
+    cv::rectangle(gray, cv::Rect(0, kEdgeY, 400, 400 - kEdgeY), cv::Scalar(30), cv::FILLED);
+    for (const auto& d : defects) {
+        const cv::Rect box(d.centreX - d.width / 2,
+                           d.height > 0 ? kEdgeY - d.height : kEdgeY, d.width,
+                           std::abs(d.height));
+        cv::rectangle(gray, box, cv::Scalar(d.height > 0 ? 30 : 230), cv::FILLED);
+    }
+    return gray;
+}
+
+ToolConfig edgeDefectsOver(float minHeight, int scans = 120) {
+    ToolConfig config;
+    config.type = ToolType::EdgeDefects;
+    config.name = "defectos";
+    config.geometryJson = toJson(ToolGeometry(EdgeDefectsGeometry{
+        {60.0F, static_cast<float>(kEdgeY)}, {340.0F, static_cast<float>(kEdgeY)},
+        30.0F, scans, minHeight, true}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+}  // namespace
+
+TEST(EdgeDefects, ACleanEdgeHasNoDefects) {
+    const auto result = runTool(edgeWithDefects({}), kIdentity, edgeDefectsOver(1.5F));
+    ASSERT_TRUE(result.isOk()) << result.error().message;
+    std::printf("  borde limpio -> %s\n", result.value().detail.c_str());
+    EXPECT_EQ(static_cast<int>(result.value().measured), 0);
+    EXPECT_NE(result.value().detail.find("sin defectos"), std::string::npos)
+        << result.value().detail;
+}
+
+TEST(EdgeDefects, OneDefectIsCountedOnceAndMeasuredAsDrawn) {
+    const auto result =
+        runTool(edgeWithDefects({{200, 8, 14}}), kIdentity, edgeDefectsOver(1.5F));
+    ASSERT_TRUE(result.isOk());
+    const auto& value = result.value();
+    std::printf("  una rebaba de 8x14 -> %s\n", value.detail.c_str());
+    EXPECT_EQ(static_cast<int>(value.measured), 1) << value.detail;
+    EXPECT_NE(value.detail.find("rebaba"), std::string::npos) << value.detail;
+}
+
+TEST(EdgeDefects, ThreeDefectsAreCountedSeparatelyAndNotAsOne) {
+    // La razón de ser de la herramienta: el Borde liso daría UN número —la
+    // desviación máxima— y estos tres defectos se leerían igual que uno solo.
+    const auto result = runTool(
+        edgeWithDefects({{120, 6, 12}, {200, 9, 12}, {280, 5, 12}}), kIdentity,
+        edgeDefectsOver(1.5F));
+    ASSERT_TRUE(result.isOk());
+    std::printf("  tres rebabas -> %s\n", result.value().detail.c_str());
+    EXPECT_EQ(static_cast<int>(result.value().measured), 3) << result.value().detail;
+}
+
+TEST(EdgeDefects, TheSignTellsABurrFromANick) {
+    // Sin esto la herramienta diría "hay un defecto de 8 px" sin decir si sobra
+    // material o falta, que son dos averías distintas con dos arreglos
+    // distintos. El lado del material se decide MIRANDO LA IMAGEN, no
+    // suponiendo hacia dónde trazó la línea el operador.
+    const auto burr =
+        runTool(edgeWithDefects({{200, 8, 14}}), kIdentity, edgeDefectsOver(1.5F));
+    ASSERT_TRUE(burr.isOk());
+    EXPECT_NE(burr.value().detail.find("rebaba"), std::string::npos) << burr.value().detail;
+    EXPECT_EQ(burr.value().detail.find("mella"), std::string::npos) << burr.value().detail;
+
+    const auto nick =
+        runTool(edgeWithDefects({{200, -8, 14}}), kIdentity, edgeDefectsOver(1.5F));
+    ASSERT_TRUE(nick.isOk());
+    std::printf("  una mella de 8x14 -> %s\n", nick.value().detail.c_str());
+    EXPECT_NE(nick.value().detail.find("mella"), std::string::npos) << nick.value().detail;
+    EXPECT_EQ(nick.value().detail.find("rebaba"), std::string::npos) << nick.value().detail;
+}
+
+TEST(EdgeDefects, TheMinimumHeightDecidesWhatCountsAsADefect) {
+    // Un defecto grande y tres pequeños. Subiendo el umbral, los pequeños dejan
+    // de contar: la medida es "cuántos defectos mayores que esto", que es una
+    // pregunta con respuesta, y no "cuántos defectos hay", que no la tiene.
+    const std::vector<DrawnDefect> mixed{
+        {120, 3, 10}, {180, 12, 14}, {240, 3, 10}, {300, 3, 10}};
+    const auto many = runTool(edgeWithDefects(mixed), kIdentity, edgeDefectsOver(1.5F));
+    const auto few = runTool(edgeWithDefects(mixed), kIdentity, edgeDefectsOver(6.0F));
+    ASSERT_TRUE(many.isOk());
+    ASSERT_TRUE(few.isOk());
+    std::printf("  umbral 1,5 -> %s\n", many.value().detail.c_str());
+    std::printf("  umbral 6,0 -> %s\n", few.value().detail.c_str());
+    EXPECT_EQ(static_cast<int>(many.value().measured), 4) << many.value().detail;
+    EXPECT_EQ(static_cast<int>(few.value().measured), 1) << few.value().detail;
+}
+
+TEST(EdgeDefects, ADefectTallerThanTheScanWindowIsReportedAndNotCalledClean) {
+    // Este test nació de un fallo de verdad. Una rebaba de 20 px con una ventana
+    // de escaneo de 30 px se sale de la ventana: esos escaneos no encuentran
+    // borde, se saltaban, y la herramienta respondía "sin defectos" — un OK
+    // rotundo sobre el tramo donde estaba el defecto más gordo.
+    ToolConfig narrow = edgeDefectsOver(2.0F);
+    narrow.geometryJson = toJson(ToolGeometry(EdgeDefectsGeometry{
+        {60.0F, static_cast<float>(kEdgeY)}, {340.0F, static_cast<float>(kEdgeY)},
+        30.0F, 120, 2.0F, true}));
+    const auto blind = runTool(edgeWithDefects({{200, 20, 40}}), kIdentity, narrow);
+    ASSERT_TRUE(blind.isOk());
+    std::printf("  ventana corta -> %s\n", blind.value().detail.c_str());
+    EXPECT_FALSE(blind.value().ok);
+    EXPECT_NE(blind.value().detail.find("No se pudo ver el borde"), std::string::npos)
+        << blind.value().detail;
+    EXPECT_EQ(blind.value().detail.find("sin defectos"), std::string::npos)
+        << "no puede darlo por limpio: " << blind.value().detail;
+}
+
+TEST(EdgeDefects, ABigBurrDoesNotDragTheBaselineAndShrinkItself) {
+    // El motivo de ajustar la recta base de forma robusta. Con mínimos cuadrados
+    // clásicos, una rebaba grande arrastra el ajuste y reparte su altura entre
+    // ella y el resto del borde: el defecto sale más pequeño de lo que es y el
+    // borde sano parece torcido. Con la ventana lo bastante holgada para verla
+    // entera, la altura medida tiene que ser la dibujada.
+    ToolConfig wide = edgeDefectsOver(2.0F);
+    wide.geometryJson = toJson(ToolGeometry(EdgeDefectsGeometry{
+        {60.0F, static_cast<float>(kEdgeY)}, {340.0F, static_cast<float>(kEdgeY)},
+        70.0F, 120, 2.0F, true}));
+    const auto result = runTool(edgeWithDefects({{200, 20, 40}}), kIdentity, wide);
+    ASSERT_TRUE(result.isOk());
+    const std::string& detail = result.value().detail;
+    std::printf("  rebaba grande -> %s\n", detail.c_str());
+    ASSERT_EQ(static_cast<int>(result.value().measured), 1) << detail;
+
+    const auto at = detail.find("rebaba ");
+    ASSERT_NE(at, std::string::npos) << detail;
+    const double height = std::atof(detail.c_str() + at + std::string("rebaba ").size());
+    EXPECT_NEAR(height, 20.0, 3.0) << detail;
+}
+
+TEST(EdgeDefects, WithoutAnEdgeItSaysSoInsteadOfCountingZero) {
+    // Un lienzo liso no tiene borde que seguir. Decir "0 defectos" seria dar por
+    // buena una pieza que ni siquiera se ha visto.
+    const cv::Mat blank(400, 400, CV_8UC1, cv::Scalar(230));
+    const auto result = runTool(blank, kIdentity, edgeDefectsOver(1.5F));
+    ASSERT_TRUE(result.isOk());
+    EXPECT_FALSE(result.value().ok);
+    EXPECT_NE(result.value().detail.find("no detectado"), std::string::npos)
         << result.value().detail;
 }

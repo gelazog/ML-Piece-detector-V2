@@ -250,6 +250,21 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      **0,82** (el valor exacto de un cuadrado es 0,785 — la diferencia es el
      sesgo conocido de medir un borde recto sobre una rejilla de píxeles). Una
      mota de ruido **no** cuenta como agujero.
+   - *Rebabas y mellas*: cuenta y mide los defectos de un borde **uno a uno**,
+     en vez de dar una sola desviación máxima como el *Borde liso*. Traza una
+     línea sobre el borde a vigilar. De cada defecto da su **altura**, su
+     **extensión** y si es **rebaba** (material de más) o **mella** (material de
+     menos) — dos averías distintas con dos arreglos distintos, y el lado del
+     material lo decide mirando la imagen, no suponiendo hacia dónde trazaste la
+     línea. El campo *Altura mínima* dice a partir de qué desviación algo cuenta:
+     la medida es «cuántos defectos mayores que esto». Un borde con una mella
+     grande y otro con veinte pequeñas dan la misma lectura con el Borde liso, y
+     no son la misma pieza.
+
+     Si un defecto es **más alto que media ventana de escaneo** se sale de ella y
+     la herramienta **no lo da por limpio**: avisa de que no pudo ver el borde en
+     ese tramo y te dice que subas el largo de escaneo. Es el error más peligroso
+     que podría cometer, así que se comprueba a propósito.
    - *Lados*: cuenta los **lados** de un perfil poligonal y mide cada uno y sus
      **ángulos interiores** — el hexágono de una tuerca es el caso típico.
      Arrastra un rectángulo sobre la pieza. El campo *Epsilon* (en milésimas del

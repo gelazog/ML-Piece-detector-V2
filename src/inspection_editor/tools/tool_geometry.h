@@ -250,6 +250,28 @@ struct PolygonGeometry {
     bool darkPiece = true;
 };
 
+// Rebabas y mellas de un borde (F4). Distinta del Borde liso, que devuelve UNA
+// desviación máxima: aquí los defectos se detectan, se cuentan y se miden por
+// separado.
+//
+// La diferencia importa: un borde con una mella de 0,5 mm y otro con veinte de
+// 0,1 mm dan la misma lectura con el Borde liso y no son la misma pieza.
+struct EdgeDefectsGeometry {
+    cv::Point2f p0;  // tramo del borde a vigilar
+    cv::Point2f p1;
+    float scanLength = 16.0F;  // largo de cada escaneo perpendicular
+    // Más escaneos que el Borde liso a propósito: aquí hay que RESOLVER los
+    // eventos uno por uno, no quedarse con el máximo, y dos defectos separados
+    // por menos de un escaneo se leerían como uno solo.
+    int scanCount = 60;
+    // A partir de qué altura una desviación cuenta como defecto (px). Es el
+    // parámetro que define la herramienta: "cuántos defectos de más de esto
+    // hay", que es una pregunta con respuesta, a diferencia de "cuántos
+    // defectos hay".
+    float minHeight = 1.5F;
+    bool darkPiece = true;  // la pieza es lo oscuro (decide rebaba vs mella)
+};
+
 [[nodiscard]] const std::array<RegionMeasure, 6>& allRegionMeasures();
 [[nodiscard]] const char* regionMeasureLabel(RegionMeasure measure);
 
@@ -259,7 +281,8 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
                                   PositionGeometry, ArcGeometry, ShaftGeometry,
                                   ThreadGeometry, GearGeometry, ConstructedPointGeometry,
                                   ConstructedLineGeometry, MedianAxisGeometry,
-                                  RegionGeometry, SymmetryGeometry, PolygonGeometry>;
+                                  RegionGeometry, SymmetryGeometry, PolygonGeometry,
+                                  EdgeDefectsGeometry>;
 
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
@@ -290,7 +313,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 20>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 21>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que

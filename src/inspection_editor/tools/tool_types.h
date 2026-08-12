@@ -27,7 +27,8 @@ enum class ToolType {
     MedianAxis,
     Region,
     Symmetry,
-    Polygon
+    Polygon,
+    EdgeDefects
 };
 
 const char* toolTypeName(ToolType type);

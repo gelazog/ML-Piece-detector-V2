@@ -31,18 +31,19 @@ const char* toolTypeName(ToolType type) {
         case ToolType::Region: return "region";
         case ToolType::Symmetry: return "symmetry";
         case ToolType::Polygon: return "polygon";
+        case ToolType::EdgeDefects: return "edge_defects";
     }
     return "unknown";
 }
 
-const std::array<ToolType, 20>& allToolTypes() {
-    static const std::array<ToolType, 20> kTypes{
+const std::array<ToolType, 21>& allToolTypes() {
+    static const std::array<ToolType, 21> kTypes{
         ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine, ToolType::EdgeFlaw,
         ToolType::Blob,     ToolType::Ruler,    ToolType::LineToLine,  ToolType::Angle,
         ToolType::PolyBlob, ToolType::Position, ToolType::Arc,         ToolType::Shaft,
         ToolType::Thread,   ToolType::Gear,     ToolType::ConstructedPoint,
         ToolType::ConstructedLine, ToolType::MedianAxis, ToolType::Region,
-        ToolType::Symmetry, ToolType::Polygon};
+        ToolType::Symmetry, ToolType::Polygon, ToolType::EdgeDefects};
     return kTypes;
 }
 
@@ -71,6 +72,7 @@ ToolCategory categoryOf(ToolType type) {
         case ToolType::Region:
         case ToolType::Symmetry:
         case ToolType::Polygon:
+        case ToolType::EdgeDefects:
             return ToolCategory::BasicShape;
         // La cota directa, que es lo que se pide en un plano.
         case ToolType::Caliper:
@@ -297,6 +299,7 @@ const char* toolTypeLabel(ToolType type) {
         case ToolType::Region: return "Región";
         case ToolType::Symmetry: return "Simetría";
         case ToolType::Polygon: return "Lados";
+        case ToolType::EdgeDefects: return "Rebabas y mellas";
     }
     return "?";
 }
@@ -427,6 +430,17 @@ const char* toolTypeDescription(ToolType type) {
                    "Si el recuento no aguanta al doblar y al partir ese valor, la\n"
                    "figura no es un polígono claro (un círculo, por ejemplo) y lo dice\n"
                    "en vez de dar un número que cambiaría solo.";
+        case ToolType::EdgeDefects:
+            return "Rebabas y mellas — cuenta y mide los defectos de un borde UNO A\n"
+                   "UNO, en vez de dar una sola desviación máxima como el Borde liso.\n"
+                   "Traza una línea SOBRE el borde a vigilar. De cada defecto da su\n"
+                   "altura, su extensión y si es rebaba (material de más, hacia fuera)\n"
+                   "o mella (material de menos, hacia dentro).\n"
+                   "El campo Altura mínima (px) dice a partir de qué desviación algo\n"
+                   "cuenta como defecto: la medida es «cuántos defectos mayores que\n"
+                   "esto», que es una pregunta con respuesta.\n"
+                   "Un borde con una mella grande y otro con veinte pequeñas dan la\n"
+                   "misma lectura con el Borde liso, y no son la misma pieza.";
     }
     return "";
 }
@@ -441,6 +455,7 @@ bool measuresFraction(ToolType type) {
 void suggestTolerances(ToolType type, double measured, double& toleranceMin,
                        double& toleranceMax) {
     switch (type) {
+        case ToolType::EdgeDefects:
         case ToolType::Polygon:
         case ToolType::Blob:
         case ToolType::PolyBlob:
@@ -593,6 +608,8 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::Symmetry;
             } else if constexpr (std::is_same_v<T, PolygonGeometry>) {
                 return ToolType::Polygon;
+            } else if constexpr (std::is_same_v<T, EdgeDefectsGeometry>) {
+                return ToolType::EdgeDefects;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -611,6 +628,7 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
             using T = std::decay_t<decltype(g)>;
             if constexpr (std::is_same_v<T, CaliperGeometry> ||
                           std::is_same_v<T, EdgeFlawGeometry> ||
+                          std::is_same_v<T, EdgeDefectsGeometry> ||
                           std::is_same_v<T, RulerGeometry>) {
                 g.p0 += delta;
                 g.p1 += delta;
@@ -791,6 +809,12 @@ std::string toJson(const ToolGeometry& geometry) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "cx" << g.center.x << "cy" << g.center.y << "w" << g.width << "h"
                        << g.height << "minArea" << g.minArea << "dark" << (g.darkBlobs ? 1 : 0);
+                });
+            } else if constexpr (std::is_same_v<T, EdgeDefectsGeometry>) {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "x0" << g.p0.x << "y0" << g.p0.y << "x1" << g.p1.x << "y1"
+                       << g.p1.y << "scanLen" << g.scanLength << "scans" << g.scanCount
+                       << "minH" << g.minHeight << "dark" << (g.darkPiece ? 1 : 0);
                 });
             } else if constexpr (std::is_same_v<T, PolygonGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
@@ -1034,6 +1058,20 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.axisTo = {static_cast<float>(bx.value()), static_cast<float>(by.value())};
                 g.searchBand = static_cast<float>(band.value());
                 g.stations = static_cast<int>(reader.numberOr("stations", 32.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::EdgeDefects: {
+                EdgeDefectsGeometry g;
+                auto x0 = f("x0"), y0 = f("y0"), x1 = f("x1"), y1 = f("y1");
+                for (const auto* v : {&x0, &y0, &x1, &y1}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.p0 = {static_cast<float>(x0.value()), static_cast<float>(y0.value())};
+                g.p1 = {static_cast<float>(x1.value()), static_cast<float>(y1.value())};
+                g.scanLength = static_cast<float>(reader.numberOr("scanLen", 16.0));
+                g.scanCount = static_cast<int>(reader.numberOr("scans", 60.0));
+                g.minHeight = static_cast<float>(reader.numberOr("minH", 1.5));
+                g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
                 return ResultT::ok(g);
             }
             case ToolType::Polygon: {

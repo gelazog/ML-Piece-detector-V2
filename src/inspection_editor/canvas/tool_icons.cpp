@@ -112,6 +112,20 @@ QIcon toolIcon(ToolType type) {
                 p.setPen(dashed);
                 p.drawLine(14, 11, 14, 19);
             });
+        case ToolType::EdgeDefects:
+            return makeIcon([](QPainter& p, const QColor& c) {
+                // Un borde con DOS defectos, uno hacia fuera y otro hacia
+                // dentro: es lo que la distingue del Borde liso, que da uno solo.
+                QPolygonF edge;
+                edge << QPointF(3, 16) << QPointF(8, 16) << QPointF(9, 9)
+                     << QPointF(11, 16) << QPointF(17, 16) << QPointF(19, 22)
+                     << QPointF(21, 16) << QPointF(25, 16);
+                p.drawPolyline(edge);
+                p.setBrush(c);
+                p.setPen(Qt::NoPen);
+                p.drawEllipse(QPointF(9, 9), 1.6, 1.6);
+                p.drawEllipse(QPointF(19, 22), 1.6, 1.6);
+            });
         case ToolType::EdgeFlaw:
             return makeIcon([](QPainter& p, const QColor&) {
                 // Borde recto con una muesca al medio.

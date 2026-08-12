@@ -1557,6 +1557,185 @@ ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& confi
     return result;
 }
 
+// Rebabas y mellas (F4): los defectos de un borde, contados y medidos UNO A UNO.
+//
+// El Borde liso da la desviación máxima, y con eso un borde con una mella de
+// 0,5 mm y otro con veinte de 0,1 mm se leen igual. No son la misma pieza: la
+// primera se rectifica, la segunda se tira.
+ToolRunResult runEdgeDefects(const cv::Mat& gray, const Fixture& fixture,
+                             const ToolConfig& config, const EdgeDefectsGeometry& g,
+                             const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+    const cv::Point2f p0 = toImg(fixture, g.p0);
+    const cv::Point2f p1 = toImg(fixture, g.p1);
+    result.overlaySegments.push_back({p0, p1});
+
+    const cv::Point2f delta = p1 - p0;
+    const float length = static_cast<float>(cv::norm(delta));
+    const int scans = std::clamp(g.scanCount, 8, 400);
+    if (length < static_cast<float>(scans)) {
+        result.detail = "Tramo demasiado corto para " + std::to_string(scans) + " escaneos";
+        return result;
+    }
+    const cv::Point2f u = delta / length;
+    const cv::Point2f n(-u.y, u.x);
+    const double step = static_cast<double>(length) / (scans - 1);
+
+    std::vector<double> ts;
+    std::vector<double> offsets;
+    std::vector<cv::Point2f> points;
+    // Escaneos SEGUIDOS sin borde. No es lo mismo que el total de fallos: unos
+    // cuantos sueltos son ruido, pero un tramo entero sin ver el borde es un
+    // punto ciego, y casi siempre significa que el defecto se sale de la
+    // ventana de escaneo.
+    int longestGap = 0;
+    int currentGap = 0;
+    for (int k = 0; k < scans; ++k) {
+        const float t = static_cast<float>(step * k);
+        const cv::Point2f base = p0 + u * t;
+        const cv::Point2f from = base - n * (g.scanLength / 2.0F);
+        const cv::Point2f to = base + n * (g.scanLength / 2.0F);
+        const auto edges = detectEdges(gray, from, to, 1.0F, 1);
+        if (edges.empty()) {
+            longestGap = std::max(longestGap, ++currentGap);
+            continue;
+        }
+        currentGap = 0;
+        ts.push_back(static_cast<double>(t));
+        offsets.push_back(edges[0].position - static_cast<double>(g.scanLength) / 2.0);
+        points.push_back(edges[0].point);
+    }
+    if (ts.size() < static_cast<std::size_t>(scans) * 6 / 10) {
+        result.detail = "Borde no detectado en suficientes escaneos (" +
+                        std::to_string(ts.size()) + "/" + std::to_string(scans) + ")";
+        return result;
+    }
+    // Un hueco seguido NO se puede reportar como "sin defectos". Es el fallo más
+    // peligroso que puede tener esta herramienta: una rebaba más alta que media
+    // ventana de escaneo hace que esos escaneos no encuentren borde, y con los
+    // huecos ignorados la herramienta daría por limpio justo el tramo donde está
+    // el defecto GORDO. Se corta en tres escaneos seguidos: uno o dos son ruido
+    // de binarización, tres ya dibujan un tramo.
+    constexpr int kGapTolerated = 2;
+    if (longestGap > kGapTolerated) {
+        result.detail = "No se pudo ver el borde en un tramo de " +
+                        fmtLen(longestGap * step, fmt) +
+                        ": sube el largo de escaneo (ahora " +
+                        fmtLen(static_cast<double>(g.scanLength), fmt) +
+                        "). Un defecto más alto que media ventana se sale de ella, y "
+                        "dar el borde por limpio ahí sería el peor error posible";
+        return result;
+    }
+
+    // Recta base AJUSTADA ROBUSTAMENTE, no por mínimos cuadrados. La diferencia
+    // importa justo aquí: una rebaba grande arrastra el ajuste clásico y
+    // reparte su altura entre ella y el resto del borde, así que el defecto sale
+    // más pequeño de lo que es y el borde sano parece torcido. La reponderación
+    // de Tukey deja los defectos fuera del ajuste, que es donde tienen que
+    // estar — son justo los atípicos que se buscan.
+    std::vector<cv::Point2f> profile;
+    profile.reserve(ts.size());
+    for (std::size_t i = 0; i < ts.size(); ++i) {
+        profile.emplace_back(static_cast<float>(ts[i]), static_cast<float>(offsets[i]));
+    }
+    const vision::LineFit base = vision::fitLineRobust(profile);
+    if (!base.valid) {
+        result.detail = "No se pudo ajustar la recta base del borde";
+        return result;
+    }
+    const double slope = std::abs(base.direction.x) > 1e-6
+                             ? static_cast<double>(base.direction.y) / base.direction.x
+                             : 0.0;
+
+    // De qué lado está el material. Sin esto no se puede distinguir una rebaba
+    // de una mella: el signo del residuo depende de hacia dónde trazó el
+    // operador la línea, no de la pieza. Se mira el gris a los dos lados del
+    // borde y se decide con la imagen, no con una suposición.
+    const cv::Point2f middle = p0 + u * (length / 2.0F);
+    const auto graySample = [&gray](const cv::Point2f& p) -> double {
+        const int x = std::clamp(cvRound(p.x), 0, gray.cols - 1);
+        const int y = std::clamp(cvRound(p.y), 0, gray.rows - 1);
+        return gray.at<unsigned char>(y, x);
+    };
+    const double towardPositive = graySample(middle + n * (g.scanLength * 0.45F));
+    const double towardNegative = graySample(middle - n * (g.scanLength * 0.45F));
+    // Si la pieza es lo oscuro, el material está del lado más oscuro.
+    const bool materialTowardPositive =
+        g.darkPiece ? towardPositive < towardNegative : towardPositive > towardNegative;
+    // Un residuo que se aleja del material es material de MÁS sobresaliendo:
+    // rebaba. Uno que entra hacia el material es material de MENOS: mella.
+    const double burrSign = materialTowardPositive ? -1.0 : 1.0;
+
+    // Agrupación por conectividad: muestras seguidas por encima del umbral y
+    // con el mismo signo son UN defecto.
+    struct Defect {
+        double peak = 0.0;    // altura con signo (+ rebaba, − mella)
+        double from = 0.0;    // extensión a lo largo del borde
+        double to = 0.0;
+        cv::Point2f at{0.0F, 0.0F};
+    };
+    std::vector<Defect> defects;
+    const double threshold = std::max(0.05, static_cast<double>(g.minHeight));
+    bool inDefect = false;
+    for (std::size_t i = 0; i < ts.size(); ++i) {
+        const double residual =
+            offsets[i] - (base.point.y + (ts[i] - base.point.x) * slope);
+        const double signedHeight = residual * burrSign;
+        const bool over = std::abs(residual) >= threshold;
+        const bool sameSign =
+            inDefect && !defects.empty() && (signedHeight > 0.0) == (defects.back().peak > 0.0);
+        if (over && inDefect && sameSign) {
+            Defect& current = defects.back();
+            current.to = ts[i];
+            if (std::abs(signedHeight) > std::abs(current.peak)) {
+                current.peak = signedHeight;
+                current.at = points[i];
+            }
+        } else if (over) {
+            Defect fresh;
+            fresh.peak = signedHeight;
+            fresh.from = ts[i];
+            fresh.to = ts[i];
+            fresh.at = points[i];
+            defects.push_back(fresh);
+            inDefect = true;
+        } else {
+            inDefect = false;
+        }
+    }
+
+    result.measured = static_cast<double>(defects.size());
+    result.ok = withinTolerance(config, result.measured);
+
+    if (defects.empty()) {
+        result.detail = "sin defectos por encima de " + fmtLen(threshold, fmt) + " (" +
+                        std::to_string(ts.size()) + " escaneos)";
+        return result;
+    }
+
+    // El mayor primero: es el que decide si la pieza se rectifica o se tira.
+    std::sort(defects.begin(), defects.end(), [](const Defect& a, const Defect& b) {
+        return std::abs(a.peak) > std::abs(b.peak);
+    });
+    std::string detail = std::to_string(defects.size()) + " defecto(s):";
+    constexpr std::size_t kListed = 4;
+    for (std::size_t i = 0; i < std::min(defects.size(), kListed); ++i) {
+        const Defect& d = defects[i];
+        // La extensión de un defecto de una sola muestra no es cero: ocupa al
+        // menos el paso entre escaneos, que es lo que se pudo resolver.
+        const double extent = std::max(d.to - d.from, step);
+        detail += (i == 0 ? " " : ", ");
+        detail += std::string(d.peak > 0.0 ? "rebaba " : "mella ") +
+                  fmtLen(std::abs(d.peak), fmt) + "×" + fmtLen(extent, fmt);
+        result.overlayPoints.push_back(d.at);
+    }
+    if (defects.size() > kListed) {
+        detail += " y " + std::to_string(defects.size() - kListed) + " más";
+    }
+    result.detail = detail;
+    return result;
+}
+
 // Lados de un perfil poligonal (F3).
 //
 // `approxPolyDP` hace el trabajo; lo que hay que hacer bien es DECIDIR SI EL
@@ -2212,6 +2391,10 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Region:
                 return ResultT::ok(runRegion(gray, fixture, config,
                                              std::get<RegionGeometry>(geometry.value()), fmt));
+            case ToolType::EdgeDefects:
+                return ResultT::ok(runEdgeDefects(
+                    gray, fixture, config, std::get<EdgeDefectsGeometry>(geometry.value()),
+                    fmt));
             case ToolType::Polygon:
                 return ResultT::ok(runPolygon(
                     gray, fixture, config, std::get<PolygonGeometry>(geometry.value()), fmt));

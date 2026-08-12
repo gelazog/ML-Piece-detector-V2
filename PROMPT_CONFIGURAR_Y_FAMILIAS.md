@@ -629,7 +629,20 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
   número de lados de un hexágono no cambia al escalar la imagen — ese test es
   el que justifica que epsilon sea relativo.
 
-- [ ] **F4 — Rebaba y mella: contar eventos, no dar un número.** Distinta del
+- [x] **F4 — Rebaba y mella: contar eventos, no dar un número.** *(Dos cosas
+  que no estaban en el plan y salieron al hacerlo. La primera: la recta base se
+  ajusta de forma ROBUSTA y no por mínimos cuadrados, porque una rebaba grande
+  arrastra el ajuste clásico y reparte su altura entre ella y el resto del
+  borde — el defecto sale más pequeño de lo que es y el borde sano parece
+  torcido. La segunda la destapó un test que falló: una rebaba de 20 px con una
+  ventana de escaneo de 30 se sale de la ventana, esos escaneos no encuentran
+  borde, se saltaban, y la herramienta respondía «sin defectos». Un OK rotundo
+  sobre el tramo donde estaba el defecto más gordo, que es el peor error que
+  podía cometer. Ahora se cuentan los escaneos SEGUIDOS sin borde —uno o dos son
+  ruido, tres ya son un tramo— y se avisa de que hay que subir el largo de
+  escaneo. Medido: alturas de 3, 5, 6, 8, 9, 12 y 20 px se leen exactas, y el
+  signo distingue rebaba de mella mirando de qué lado está el material en la
+  imagen, no suponiendo hacia dónde se trazó la línea.)* Distinta del
   Borde liso, que devuelve *una* desviación máxima. Aquí se detectan, cuentan y
   miden **los defectos por separado**: residuo respecto al elemento ajustado
   (recta, círculo o el contorno esperado) → umbral → agrupación por
