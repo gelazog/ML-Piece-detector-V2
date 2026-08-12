@@ -1049,7 +1049,28 @@ tiene que estar accesible desde la familia.
   en GD&T; por qué el ROI automático se rinde). Tabla de herramientas ampliada
   a las que hayan entrado.
 
-- [ ] **D2 — Repaso de coherencia.** Ampliar los barridos `ToolCoherence` que
+- [x] **D2 — Repaso de coherencia.** *(El barrido encontró algo nada más
+  escribirlo, que es para lo que estaba: el panel del editor decidía por su
+  cuenta qué herramientas llevan referencia preguntándose «¿es una
+  construcción?», y con esa pregunta **Posición, Orientación y Desviación de
+  centros se quedaban sin desplegables**. Medían contra una referencia que no
+  había forma de asignarles salvo editando la plantilla a mano. La regla se ha
+  movido al modelo (`referenceOperandsOf`) y el barrido la recorre por los dos
+  lados: toda herramienta que se queje de que le falta un datum tiene que
+  declararlo.
+  El barrido de GD&T falló primero por MI premisa, no por las herramientas:
+  exigía que todas dijeran contra qué datum miden, y rectitud y redondez son
+  tolerancias de FORMA que por norma no llevan ninguno. La regla buena tiene
+  dos ramas, y la segunda también hacía falta: las cuatro que no llevan datum
+  ahora lo dicen, porque quien viene de un plano asocia GD&T con declarar
+  datums y se queda buscando un desplegable que no existe.
+  El invariante de la zona mínima está al revés en el enunciado de abajo: es la
+  zona mínima la que nunca puede dar MÁS que los mínimos cuadrados, no menos,
+  porque la banda de mínimos cuadrados es una candidata más y la zona mínima es
+  el mínimo sobre todas. Implementado en el sentido correcto, y con la mitad
+  que de verdad prueba algo: que **no coinciden** — la zona mínima gana
+  estrictamente en las 200 nubes y la MZC en los 100 perfiles. Sin eso, un test
+  de «≤» pasaría verde con las dos funciones devolviendo lo mismo.)* Ampliar los barridos `ToolCoherence` que
   ya existen para cubrir lo nuevo: toda herramienta tiene familia; toda
   herramienta que acepte referencia la declara y falla con motivo si no está;
   toda herramienta GD&T dice en su descripción qué necesita y qué no puede; y

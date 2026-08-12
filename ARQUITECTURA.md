@@ -509,8 +509,42 @@ escribir por qué no se tomó.
 De ahí `minimumZoneBand` (casco convexo + calípers giratorios) y
 `minimumZoneCircle` (Nelder-Mead sembrado con Taubin) en `vision/fitting.*`. El
 invariante que los guarda es barato y fuerte: **la zona mínima nunca puede dar
-más que su equivalente por mínimos cuadrados**. Si un día lo diera, hay un error
-de implementación, y el test lo dice.
+más que su equivalente por mínimos cuadrados**, porque la banda alrededor de la
+recta de mínimos cuadrados es una candidata más entre todas las orientaciones y
+la zona mínima es el mínimo sobre todas. Si un día diera más, hay un error de
+implementación, y el barrido lo dice.
+
+El barrido comprueba además que **no coinciden**: sobre 200 nubes de puntos la
+zona mínima gana estrictamente en las 200, y sobre 100 perfiles circulares la
+MZC gana en los 100. Sin esa segunda mitad, un test que solo exigiera «≤»
+pasaría igual de verde con las dos funciones devolviendo lo mismo, que es
+exactamente el error que buscaría.
+
+### Quién decide qué herramientas llevan referencia
+
+`referenceOperandsOf(const ToolGeometry&)`, en el modelo, y solo ahí. Antes lo
+decidía el panel del editor por su cuenta, y la pregunta que se hacía —«¿es una
+construcción?»— dejaba fuera a **Posición, Orientación y Desviación de
+centros**: medían contra una referencia que desde el editor no había forma de
+asignarles, así que solo se podían configurar editando la plantilla a mano.
+
+Lo encontró el barrido de coherencia del cierre, y la forma de encontrarlo es
+la parte reutilizable: recorrer **todas** las herramientas, ejecutarlas sin
+referencias y exigir que **toda la que se queje de que le falta un datum lo
+declare**. Dos sitios que tienen que estar de acuerdo —el ejecutor que se niega
+a medir y el panel que ofrece los desplegables— no se mantienen sincronizados
+por buena voluntad: o comparten la fuente o divergen.
+
+`OperandKind::PointOrLine` existe por el datum secundario de Posición, que
+admite las dos cosas: una recta corta a la primaria y un punto se proyecta
+sobre ella, y las dos maneras fijan el origen. Etiquetarlo «recta» habría sido
+una mentira pequeña en el sitio donde el operador mira para decidir.
+
+**Las de forma no llevan datum, y eso también hay que decirlo.** Rectitud,
+Redondez, Patrón de agujeros y Perfil de línea no toman referencia, y sus
+descripciones lo dicen en voz alta desde este repaso. Quien viene de un plano
+asocia GD&T con declarar datums: sin la frase, se queda buscando un desplegable
+que no existe y lee el hueco como un fallo del programa.
 
 ### Referencias entre herramientas
 
