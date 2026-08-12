@@ -770,6 +770,9 @@ ToolConfig makeToolAt(int index, float x, float y) {
         case ToolType::Polygon:
             geometry = PolygonGeometry{{x, y}, 40.0F, 30.0F, 0.02F, true};
             break;
+        case ToolType::Clearance:
+            geometry = ClearanceGeometry{{x, y}, 50.0F, 40.0F, true};
+            break;
         case ToolType::EdgeDefects:
             geometry =
                 EdgeDefectsGeometry{{x - 20.0F, y}, {x + 20.0F, y}, 12.0F, 20, 1.5F, true};
@@ -3862,5 +3865,134 @@ TEST(EdgeDefects, WithoutAnEdgeItSaysSoInsteadOfCountingZero) {
     ASSERT_TRUE(result.isOk());
     EXPECT_FALSE(result.value().ok);
     EXPECT_NE(result.value().detail.find("no detectado"), std::string::npos)
+        << result.value().detail;
+}
+
+// ---------------------------------------------------------------------------
+// Holgura: la separación más corta entre dos figuras (L1)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Dos círculos de radio 40 cuyos BORDES quedan separados `gap` px. Con gap
+// negativo se solapan.
+cv::Mat twoCircles(double gap, int radius = 40) {
+    cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(230));
+    const double centreDistance = 2.0 * radius + gap;
+    const int leftX = static_cast<int>(std::lround(200.0 - centreDistance / 2.0));
+    const int rightX = static_cast<int>(std::lround(200.0 + centreDistance / 2.0));
+    cv::circle(gray, {leftX, 200}, radius, cv::Scalar(30), cv::FILLED);
+    cv::circle(gray, {rightX, 200}, radius, cv::Scalar(30), cv::FILLED);
+    return gray;
+}
+
+ToolConfig clearanceOver(float w = 360.0F, float h = 200.0F) {
+    ToolConfig config;
+    config.type = ToolType::Clearance;
+    config.name = "holgura";
+    config.geometryJson =
+        toJson(ToolGeometry(ClearanceGeometry{{200.0F, 200.0F}, w, h, true}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+}  // namespace
+
+TEST(Clearance, TwoCirclesAtAKnownGapMeasureThatGap) {
+    for (const double gap : {10.0, 25.0, 60.0}) {
+        const auto result = runTool(twoCircles(gap), kIdentity, clearanceOver());
+        ASSERT_TRUE(result.isOk()) << result.error().message;
+        std::printf("  separación dibujada %4.0f -> %s\n", gap,
+                    result.value().detail.c_str());
+        EXPECT_NEAR(result.value().measured, gap, 2.0) << result.value().detail;
+        EXPECT_NE(result.value().detail.find("holgura mínima"), std::string::npos);
+    }
+}
+
+TEST(Clearance, TouchingShapesAreOneSilhouetteAndTheToolSaysThat) {
+    // El plan pedía que dos figuras que se tocan dieran 0 y que las solapadas
+    // dieran negativo. Lo segundo NO SE PUEDE, y conviene que quede escrito: en
+    // cuanto dos piezas se tocan, la binarización las une y aquí llega UNA
+    // silueta, no dos que se solapan. Cuánto se meten la una en la otra no es
+    // una medida que contenga una imagen de siluetas.
+    //
+    // Lo honesto es decirlo, y de paso el mensaje es útil: "puede que se estén
+    // tocando" es justo lo que el operador necesita saber.
+    for (const double gap : {0.0, -20.0}) {
+        const auto result = runTool(twoCircles(gap), kIdentity, clearanceOver());
+        ASSERT_TRUE(result.isOk());
+        std::printf("  separación %5.0f -> %s\n", gap, result.value().detail.c_str());
+        EXPECT_FALSE(result.value().ok);
+        EXPECT_NE(result.value().detail.find("TOCANDO"), std::string::npos)
+            << result.value().detail;
+    }
+
+    // Y con la separación más pequeña que sí deja dos siluetas, se mide.
+    const auto narrow = runTool(twoCircles(4.0), kIdentity, clearanceOver());
+    ASSERT_TRUE(narrow.isOk());
+    std::printf("  separación     4 -> %s\n", narrow.value().detail.c_str());
+    EXPECT_NEAR(narrow.value().measured, 4.0, 2.0) << narrow.value().detail;
+}
+
+TEST(Clearance, ItSaysWhereTheMinimumIsAndNotJustHowMuch) {
+    // La mitad del valor de la herramienta: un mínimo que no se puede señalar
+    // en el lienzo no se puede verificar a ojo.
+    const auto result = runTool(twoCircles(25.0), kIdentity, clearanceOver());
+    ASSERT_TRUE(result.isOk());
+    const auto& value = result.value();
+    ASSERT_GE(value.overlayPoints.size(), 2U) << "faltan los dos extremos del mínimo";
+    ASSERT_FALSE(value.overlaySegments.empty());
+
+    // Los dos extremos están separados por la distancia medida, y a la altura
+    // de los centros, que es donde dos círculos alineados están más cerca.
+    const auto& a = value.overlayPoints[0];
+    const auto& b = value.overlayPoints[1];
+    EXPECT_NEAR(cv::norm(a - b), value.measured, 2.5);
+    EXPECT_NEAR(a.y, 200.0, 6.0) << "el mínimo entre dos círculos alineados va por el eje";
+    EXPECT_NEAR(b.y, 200.0, 6.0);
+}
+
+TEST(Clearance, TheMinimumIsNotWhatACaliperWouldGiveOffTheNarrowestPoint) {
+    // La razón de ser de la herramienta. Un calíper trazado 30 px por encima del
+    // eje mediría bastante más que la holgura real, porque los círculos se
+    // separan al alejarse del eje. Aquí se comprueba que la holgura es
+    // CLARAMENTE menor que esa lectura desviada.
+    const double gap = 25.0;
+    const auto result = runTool(twoCircles(gap), kIdentity, clearanceOver());
+    ASSERT_TRUE(result.isOk());
+
+    // Separación entre los bordes a 30 px del eje, calculada a mano: cada
+    // círculo de radio 40 está a sqrt(40² − 30²) = 26,46 de su centro.
+    const double radius = 40.0;
+    const double halfChord = std::sqrt(radius * radius - 30.0 * 30.0);
+    const double centreDistance = 2.0 * radius + gap;
+    const double offAxis = centreDistance - 2.0 * halfChord;
+    std::printf("  holgura real %.1f, lectura a 30 px del eje %.1f\n",
+                result.value().measured, offAxis);
+    EXPECT_LT(result.value().measured, offAxis - 10.0)
+        << "si fueran parecidas, la herramienta no aportaría nada sobre un calíper";
+}
+
+TEST(Clearance, WithOnlyOneShapeItSaysSoInsteadOfMeasuringAgainstNothing) {
+    cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(230));
+    cv::circle(gray, {200, 200}, 40, cv::Scalar(30), cv::FILLED);
+    const auto result = runTool(gray, kIdentity, clearanceOver());
+    ASSERT_TRUE(result.isOk());
+    EXPECT_FALSE(result.value().ok);
+    EXPECT_NE(result.value().detail.find("Solo se ve una figura"), std::string::npos)
+        << result.value().detail;
+}
+
+TEST(Clearance, WithMoreThanTwoShapesItMeasuresTheBiggestAndSaysSo) {
+    // Un recuadro que abarca de más es un error fácil de cometer y difícil de
+    // ver: la herramienta mide las dos mayores y avisa de cuántas había.
+    cv::Mat gray = twoCircles(30.0);
+    cv::circle(gray, {200, 340}, 12, cv::Scalar(30), cv::FILLED);  // una tercera, pequeña
+    const auto result = runTool(gray, kIdentity, clearanceOver(360.0F, 380.0F));
+    ASSERT_TRUE(result.isOk());
+    std::printf("  tres figuras -> %s\n", result.value().detail.c_str());
+    EXPECT_NEAR(result.value().measured, 30.0, 2.0) << result.value().detail;
+    EXPECT_NE(result.value().detail.find("3 figuras"), std::string::npos)
         << result.value().detail;
 }

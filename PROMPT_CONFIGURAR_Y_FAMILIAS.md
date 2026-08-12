@@ -659,7 +659,19 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
 *(Ya dentro: Caliper, Círculo, Regla, Punto-Línea, Ángulo, Línea-Línea, Arco —
 diámetro, radio, punto a punto y ángulos ya estaban cubiertos.)*
 
-- [ ] **L1 — Distancia mínima entre dos elementos.** La holgura: la separación
+- [x] **L1 — Distancia mínima entre dos elementos.** *(Dos de las tres
+  verificaciones salen exactas: dos círculos separados 10, 25 y 60 px se miden
+  en 10,0, 25,0 y 60,0. La tercera —"solapados dan negativo (interferencia)"—
+  **no se puede entregar, y no por falta de ganas**: dos contornos externos de
+  una misma binarización jamás se solapan, porque en cuanto dos piezas se tocan
+  la silueta las une y llega UNA figura. Escribí la rama de interferencia, vi
+  que era inalcanzable y la quité en vez de dejarla de adorno; en su lugar, el
+  caso de una sola figura dice "puede que se estén TOCANDO", que es justo el
+  dato que el operador necesita. Cuánto se meten dos piezas la una en la otra no
+  es una medida que contenga una imagen de siluetas. Se dibuja UN recuadro y no
+  dos: el gesto de "mide la holgura de aquí" es uno solo. Y hay un test que
+  compara con lo que daría un calíper desviado del punto más estrecho —25 px
+  frente a 52— porque si fueran parecidos la herramienta no aportaría nada.)* La holgura: la separación
   **más corta** entre dos bordes, dos contornos o un contorno y una recta, que
   no es la que da un calíper (el calíper mide donde el operador cruzó, no donde
   la pieza está más apretada).

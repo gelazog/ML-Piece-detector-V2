@@ -1557,6 +1557,138 @@ ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& confi
     return result;
 }
 
+// Holgura: la separación más corta entre dos figuras (L1).
+//
+// `pointPolygonTest` con `measureDist` da la distancia con signo de un punto a
+// un contorno: positiva dentro, negativa fuera. Recorriendo los puntos de una
+// figura contra la otra sale el mínimo y, con él, DÓNDE está — que es la mitad
+// del valor de esta herramienta: un mínimo que no se puede señalar en el lienzo
+// no se puede verificar a ojo.
+ToolRunResult runClearance(const cv::Mat& gray, const Fixture& fixture,
+                           const ToolConfig& config, const ClearanceGeometry& g,
+                           const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+
+    const float hw = g.width / 2.0F;
+    const float hh = g.height / 2.0F;
+    const std::vector<cv::Point2f> quad{
+        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, hh)),
+        toImg(fixture, g.center + cv::Point2f(-hw, hh))};
+    for (std::size_t i = 0; i < quad.size(); ++i) {
+        result.overlaySegments.push_back({quad[i], quad[(i + 1) % quad.size()]});
+    }
+
+    std::vector<cv::Point> quadInt;
+    quadInt.reserve(quad.size());
+    for (const auto& p : quad) {
+        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
+    }
+    const cv::Rect bounds = cv::boundingRect(quadInt) & cv::Rect(0, 0, gray.cols, gray.rows);
+    if (bounds.area() < 25) {
+        result.detail = "La región cae fuera de la imagen";
+        return result;
+    }
+
+    cv::Mat regionMask = cv::Mat::zeros(bounds.size(), CV_8UC1);
+    std::vector<cv::Point> quadLocal;
+    quadLocal.reserve(quadInt.size());
+    for (const auto& p : quadInt) {
+        quadLocal.emplace_back(p.x - bounds.x, p.y - bounds.y);
+    }
+    cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
+
+    cv::Mat binary;
+    cv::threshold(gray(bounds), binary, 0.0, 255.0,
+                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
+    cv::bitwise_and(binary, regionMask, binary);
+
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    // Se descartan las motas: dos píxeles sueltos harían de "segunda figura" y
+    // la holgura medida sería contra el ruido.
+    constexpr double kMinShapeArea = 20.0;
+    std::vector<std::vector<cv::Point>> shapes;
+    for (auto& contour : contours) {
+        if (cv::contourArea(contour) >= kMinShapeArea) {
+            shapes.push_back(std::move(contour));
+        }
+    }
+    if (shapes.size() < 2) {
+        if (shapes.size() == 1) {
+            // No es solo "falta una figura": si las dos se tocan, la
+            // binarización las une y aquí llega UNA. Decirlo convierte la
+            // limitación en el dato que el operador necesita.
+            result.detail =
+                "Solo se ve una figura: o el recuadro no abarca las dos, o se están "
+                "TOCANDO — dos piezas en contacto se leen como una sola silueta";
+        } else {
+            result.detail = "No se ve ninguna figura dentro del recuadro";
+        }
+        return result;
+    }
+    std::sort(shapes.begin(), shapes.end(), [](const auto& a, const auto& b) {
+        return cv::contourArea(a) > cv::contourArea(b);
+    });
+
+    // Se mide entre las DOS MAYORES. Con más figuras dentro, las pequeñas se
+    // ignoran y el detalle dice cuántas había, para que el operador sepa que su
+    // recuadro abarca más de lo que cree.
+    const auto& first = shapes[0];
+    const auto& second = shapes[1];
+
+    // Distancia con signo de cada punto de la primera a la segunda: negativa
+    // fuera, y el máximo (el menos negativo) es lo más cerca que están.
+    //
+    // Nota de honestidad: el plan pedía además que dos figuras SOLAPADAS dieran
+    // una medida negativa de interferencia. No se puede, y no por falta de
+    // ganas: dos contornos externos de una misma binarización jamás se solapan
+    // — en cuanto dos piezas se tocan, la silueta las une en una sola y aquí
+    // llega UNA figura, no dos. Se escribió la rama de interferencia y resultó
+    // ser inalcanzable, así que se quitó en vez de dejarla de adorno. Lo que
+    // queda es el caso de una sola figura, que se explica arriba diciendo que
+    // pueden estar tocándose. Medir cuánto se solapan dos piezas es una medida
+    // que una silueta 2D no contiene.
+    double best = -1e18;
+    cv::Point bestPoint = first.front();
+    for (const auto& point : first) {
+        const double signed_ = cv::pointPolygonTest(second, cv::Point2f(point), true);
+        if (signed_ > best) {
+            best = signed_;
+            bestPoint = point;
+        }
+    }
+
+    // El punto de la otra figura donde ocurre, para poder dibujar el segmento.
+    // Sin los dos extremos la medida no se puede comprobar a ojo.
+    cv::Point partner = second.front();
+    double closest = 1e18;
+    for (const auto& point : second) {
+        const double distance = cv::norm(cv::Point2f(point) - cv::Point2f(bestPoint));
+        if (distance < closest) {
+            closest = distance;
+            partner = point;
+        }
+    }
+
+    const cv::Point2f offset(static_cast<float>(bounds.x), static_cast<float>(bounds.y));
+    const cv::Point2f a = cv::Point2f(bestPoint) + offset;
+    const cv::Point2f b = cv::Point2f(partner) + offset;
+    result.overlayPoints.push_back(a);
+    result.overlayPoints.push_back(b);
+    result.overlaySegments.push_back({a, b});
+
+    const std::string extra =
+        shapes.size() > 2 ? " (" + std::to_string(shapes.size()) +
+                                " figuras en el recuadro; se miden las dos mayores)"
+                          : "";
+    result.measured = -best;
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = "holgura mínima=" + fmtLenPts(a, b, fmt) + extra;
+    return result;
+}
+
 // Rebabas y mellas (F4): los defectos de un borde, contados y medidos UNO A UNO.
 //
 // El Borde liso da la desviación máxima, y con eso un borde con una mella de
@@ -2391,6 +2523,10 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Region:
                 return ResultT::ok(runRegion(gray, fixture, config,
                                              std::get<RegionGeometry>(geometry.value()), fmt));
+            case ToolType::Clearance:
+                return ResultT::ok(runClearance(
+                    gray, fixture, config, std::get<ClearanceGeometry>(geometry.value()),
+                    fmt));
             case ToolType::EdgeDefects:
                 return ResultT::ok(runEdgeDefects(
                     gray, fixture, config, std::get<EdgeDefectsGeometry>(geometry.value()),

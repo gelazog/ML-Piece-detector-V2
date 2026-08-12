@@ -250,6 +250,18 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      **0,82** (el valor exacto de un cuadrado es 0,785 — la diferencia es el
      sesgo conocido de medir un borde recto sobre una rejilla de píxeles). Una
      mota de ruido **no** cuenta como agujero.
+   - *Holgura*: la separación **más corta** entre dos figuras, y **dónde** está.
+     Arrastra un recuadro que abarque las dos; se miden las dos mayores que haya
+     dentro (si hay más, lo dice). No es lo que da un *Caliper*: el calíper mide
+     donde cruzaste tú, y el sitio donde la pieza está más apretada casi nunca
+     es ese — medido sobre dos círculos, 25 px de holgura real frente a 52 px si
+     mides 30 px fuera del eje. El mínimo se dibuja con sus dos extremos, porque
+     un mínimo que no se puede señalar no se puede comprobar a ojo.
+
+     Si solo ve una figura puede que las dos **se estén tocando**: en cuanto se
+     tocan, la silueta las une y ya no son dos. Cuánto se solapan dos piezas
+     **no** es una medida que una imagen de siluetas contenga, y la herramienta
+     lo dice en vez de inventar un número.
    - *Rebabas y mellas*: cuenta y mide los defectos de un borde **uno a uno**,
      en vez de dar una sola desviación máxima como el *Borde liso*. Traza una
      línea sobre el borde a vigilar. De cada defecto da su **altura**, su

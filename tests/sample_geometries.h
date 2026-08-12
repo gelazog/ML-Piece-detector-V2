@@ -48,6 +48,8 @@ inline ToolGeometry sampleGeometry(ToolType type) {
         case ToolType::EdgeDefects:
             return EdgeDefectsGeometry{{5.0F, 5.0F}, {60.0F, 8.0F}, 16.0F, 60, 1.5F,
                                        true};
+        case ToolType::Clearance:
+            return ClearanceGeometry{{0.0F, 0.0F}, 200.0F, 160.0F, true};
         case ToolType::Polygon:
             return PolygonGeometry{{0.0F, 0.0F}, 160.0F, 120.0F, 0.02F, true};
         case ToolType::Symmetry:

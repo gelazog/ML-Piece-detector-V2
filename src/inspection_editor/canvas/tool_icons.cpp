@@ -191,6 +191,20 @@ QIcon toolIcon(ToolType type) {
                 p.drawEllipse(QPointF(12, 13), 2.0, 2.0);
                 p.drawEllipse(QPointF(18, 15), 1.6, 1.6);
             });
+        case ToolType::Clearance:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // Dos figuras enfrentadas y la cota entre lo mas cercano.
+                QPen thin = p.pen();
+                thin.setWidthF(1.6);
+                p.setPen(thin);
+                p.drawArc(QRectF(-6, 4, 20, 20), -90 * 16, 180 * 16);
+                p.drawArc(QRectF(14, 4, 20, 20), 90 * 16, 180 * 16);
+                p.drawLine(11, 14, 17, 14);
+                p.drawLine(11, 14, 13, 12);
+                p.drawLine(11, 14, 13, 16);
+                p.drawLine(17, 14, 15, 12);
+                p.drawLine(17, 14, 15, 16);
+            });
         case ToolType::Polygon:
             return makeIcon([](QPainter& p, const QColor& c) {
                 // Un hexagono -la tuerca- con sus vertices marcados.

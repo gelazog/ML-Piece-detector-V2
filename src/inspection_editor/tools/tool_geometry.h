@@ -272,6 +272,24 @@ struct EdgeDefectsGeometry {
     bool darkPiece = true;  // la pieza es lo oscuro (decide rebaba vs mella)
 };
 
+// Holgura: la separación MÁS CORTA entre dos figuras (L1).
+//
+// No es lo que da un calíper. El calíper mide donde el operador cruzó, y en una
+// pieza el sitio donde algo está más apretado casi nunca es donde uno pone la
+// línea. Aquí se busca el mínimo de verdad y se dice DÓNDE está, porque un
+// mínimo que no se puede señalar en el lienzo no se puede verificar a ojo.
+//
+// Se dibuja UN recuadro que abarque las dos figuras y se miden las dos mayores
+// que haya dentro. Es un recuadro y no dos porque el gesto de "mide la holgura
+// de aquí" es uno solo; si dentro hay más de dos figuras, las pequeñas se
+// ignoran y el detalle dice cuántas se vieron.
+struct ClearanceGeometry {
+    cv::Point2f center;  // rectángulo alineado a los ejes de la pieza
+    float width = 200.0F;
+    float height = 160.0F;
+    bool darkPiece = true;
+};
+
 [[nodiscard]] const std::array<RegionMeasure, 6>& allRegionMeasures();
 [[nodiscard]] const char* regionMeasureLabel(RegionMeasure measure);
 
@@ -282,7 +300,7 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
                                   ThreadGeometry, GearGeometry, ConstructedPointGeometry,
                                   ConstructedLineGeometry, MedianAxisGeometry,
                                   RegionGeometry, SymmetryGeometry, PolygonGeometry,
-                                  EdgeDefectsGeometry>;
+                                  EdgeDefectsGeometry, ClearanceGeometry>;
 
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
@@ -313,7 +331,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 21>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 22>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que
