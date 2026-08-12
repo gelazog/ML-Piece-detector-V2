@@ -1,6 +1,9 @@
 #include "vision/fitting.h"
 
+#include <opencv2/imgproc.hpp>
+
 #include <algorithm>
+#include <limits>
 #include <cmath>
 #include <numeric>
 
@@ -389,6 +392,62 @@ LineFit fitLineWeighted(const std::vector<cv::Point2f>& points,
 
 LineFit fitLineTotal(const std::vector<cv::Point2f>& points) {
     return fitLineWeighted(points, {});
+}
+
+MinimumZone minimumZoneBand(const std::vector<cv::Point2f>& points) {
+    MinimumZone zone;
+    if (points.size() < 2) {
+        return zone;
+    }
+
+    std::vector<cv::Point2f> hull;
+    cv::convexHull(points, hull);
+    if (hull.size() < 2) {
+        return zone;
+    }
+    if (hull.size() == 2) {
+        // Todos los puntos alineados: la banda tiene anchura cero.
+        const cv::Point2f delta = hull[1] - hull[0];
+        const double length = cv::norm(delta);
+        if (length < 1e-9) {
+            return zone;
+        }
+        zone.width = 0.0;
+        zone.direction = delta / static_cast<float>(length);
+        zone.point = (hull[0] + hull[1]) * 0.5F;
+        zone.valid = true;
+        return zone;
+    }
+
+    // Calibres rotantes: una orientación por arista del casco. El mínimo de la
+    // anchura se alcanza siempre en una de ellas, así que esto no es una
+    // aproximación por muestreo — es el mínimo exacto.
+    double best = std::numeric_limits<double>::max();
+    for (std::size_t i = 0; i < hull.size(); ++i) {
+        const cv::Point2f a = hull[i];
+        const cv::Point2f b = hull[(i + 1) % hull.size()];
+        const cv::Point2f edge = b - a;
+        const double length = cv::norm(edge);
+        if (length < 1e-9) {
+            continue;
+        }
+        const cv::Point2f direction = edge / static_cast<float>(length);
+        const cv::Point2f normal(-direction.y, direction.x);
+        // Todo el casco cae del mismo lado de su propia arista, así que la
+        // anchura es simplemente el punto más lejano.
+        double farthest = 0.0;
+        for (const auto& p : hull) {
+            farthest = std::max(farthest, std::abs(static_cast<double>((p - a).dot(normal))));
+        }
+        if (farthest < best) {
+            best = farthest;
+            zone.width = farthest;
+            zone.direction = direction;
+            zone.point = a + normal * static_cast<float>(farthest / 2.0);
+            zone.valid = true;
+        }
+    }
+    return zone;
 }
 
 LineFit fitLineRobust(const std::vector<cv::Point2f>& points, int iterations) {

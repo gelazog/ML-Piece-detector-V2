@@ -117,4 +117,28 @@ struct LineFit {
 [[nodiscard]] LineFit fitLineRobust(const std::vector<cv::Point2f>& points,
                                     int iterations = 5);
 
+// La banda MÁS ESTRECHA de dos rectas paralelas que contiene todos los puntos.
+//
+// Es el valor con el que la norma define la rectitud, y no es lo mismo que la
+// desviación respecto a la recta de mínimos cuadrados: esa banda es una
+// candidata más entre todas las orientaciones posibles, así que su anchura
+// nunca puede ser menor que la de la mejor. `width` <= cualquier otra.
+//
+// Se resuelve con el casco convexo y calibres rotantes. El teorema que lo hace
+// barato: la banda mínima **siempre apoya uno de sus lados en una arista del
+// casco**, así que basta con probar tantas orientaciones como aristas tenga, y
+// no un barrido de ángulos.
+//
+// **`cv::minAreaRect` NO sirve para esto.** Minimiza el ÁREA del rectángulo, no
+// su anchura, y son dos mínimos distintos: un rectángulo un poco más ancho pero
+// mucho más corto puede tener menos área. Es el error que hay que no cometer.
+struct MinimumZone {
+    double width = 0.0;             // anchura de la banda (px)
+    cv::Point2f direction{1.0F, 0.0F};  // dirección de las dos rectas, unitaria
+    cv::Point2f point{0.0F, 0.0F};      // un punto de la recta CENTRAL de la banda
+    bool valid = false;
+};
+
+[[nodiscard]] MinimumZone minimumZoneBand(const std::vector<cv::Point2f>& points);
+
 }  // namespace pci::vision

@@ -33,19 +33,20 @@ const char* toolTypeName(ToolType type) {
         case ToolType::Polygon: return "polygon";
         case ToolType::EdgeDefects: return "edge_defects";
         case ToolType::Clearance: return "clearance";
+        case ToolType::Straightness: return "straightness";
     }
     return "unknown";
 }
 
-const std::array<ToolType, 22>& allToolTypes() {
-    static const std::array<ToolType, 22> kTypes{
+const std::array<ToolType, 23>& allToolTypes() {
+    static const std::array<ToolType, 23> kTypes{
         ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine, ToolType::EdgeFlaw,
         ToolType::Blob,     ToolType::Ruler,    ToolType::LineToLine,  ToolType::Angle,
         ToolType::PolyBlob, ToolType::Position, ToolType::Arc,         ToolType::Shaft,
         ToolType::Thread,   ToolType::Gear,     ToolType::ConstructedPoint,
         ToolType::ConstructedLine, ToolType::MedianAxis, ToolType::Region,
         ToolType::Symmetry, ToolType::Polygon, ToolType::EdgeDefects,
-        ToolType::Clearance};
+        ToolType::Clearance, ToolType::Straightness};
     return kTypes;
 }
 
@@ -88,6 +89,7 @@ ToolCategory categoryOf(ToolType type) {
             return ToolCategory::InLine;
         // Posición es una tolerancia geométrica: mide contra una referencia.
         case ToolType::Position:
+        case ToolType::Straightness:
             return ToolCategory::Gdt;
         // No miden: se calculan a partir de otras y existen para ser el datum
         // contra el que miden las de GD&T.
@@ -304,6 +306,7 @@ const char* toolTypeLabel(ToolType type) {
         case ToolType::Polygon: return "Lados";
         case ToolType::EdgeDefects: return "Rebabas y mellas";
         case ToolType::Clearance: return "Holgura";
+        case ToolType::Straightness: return "Rectitud (zona mínima)";
     }
     return "?";
 }
@@ -454,6 +457,17 @@ const char* toolTypeDescription(ToolType type) {
                    "Si solo se ve una figura, puede que las dos se estén TOCANDO:\n"
                    "en cuanto se tocan, la silueta las une y ya no son dos. Cuánto se\n"
                    "solapan dos piezas no es una medida que una silueta 2D contenga.";
+        case ToolType::Straightness:
+            return "Rectitud (zona mínima) — el valor DE LA NORMA: la anchura de la\n"
+                   "banda más estrecha de dos rectas paralelas que contiene todo el\n"
+                   "borde. Traza una línea sobre el borde a vigilar.\n"
+                   "OJO al comparar con el Borde liso: aquel da la desviación máxima\n"
+                   "respecto a la recta media, que es media banda. Este número saldrá\n"
+                   "MAYOR sin que la pieza haya empeorado — son dos cosas distintas, y\n"
+                   "la que aparece en un plano es esta.\n"
+                   "Límite de la óptica: esto es la rectitud PROYECTADA en el plano de\n"
+                   "la imagen. Lo que se tuerza hacia la cámara o en contra no se ve, y\n"
+                   "ninguna cámara sola puede verlo.";
     }
     return "";
 }
@@ -506,6 +520,7 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
         // fracción. Meterlo en la rama de arriba le recortaba el techo a 1 y
         // dejaba fuera de tolerancia cualquier eje con más de 1 px de
         // desviación. Lo cazó el barrido de coherencia.
+        case ToolType::Straightness:
         case ToolType::MedianAxis:
         case ToolType::EdgeFlaw:
             // Desviación: la pieza buena define el piso; techo holgado.
@@ -640,6 +655,8 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::EdgeDefects;
             } else if constexpr (std::is_same_v<T, ClearanceGeometry>) {
                 return ToolType::Clearance;
+            } else if constexpr (std::is_same_v<T, StraightnessGeometry>) {
+                return ToolType::Straightness;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -659,6 +676,7 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
             if constexpr (std::is_same_v<T, CaliperGeometry> ||
                           std::is_same_v<T, EdgeFlawGeometry> ||
                           std::is_same_v<T, EdgeDefectsGeometry> ||
+                          std::is_same_v<T, StraightnessGeometry> ||
                           std::is_same_v<T, RulerGeometry>) {
                 g.p0 += delta;
                 g.p1 += delta;
@@ -845,6 +863,11 @@ std::string toJson(const ToolGeometry& geometry) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "cx" << g.center.x << "cy" << g.center.y << "w" << g.width << "h"
                        << g.height << "dark" << (g.darkPiece ? 1 : 0);
+                });
+            } else if constexpr (std::is_same_v<T, StraightnessGeometry>) {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "x0" << g.p0.x << "y0" << g.p0.y << "x1" << g.p1.x << "y1"
+                       << g.p1.y << "scanLen" << g.scanLength << "scans" << g.scanCount;
                 });
             } else if constexpr (std::is_same_v<T, EdgeDefectsGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
@@ -1094,6 +1117,18 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.axisTo = {static_cast<float>(bx.value()), static_cast<float>(by.value())};
                 g.searchBand = static_cast<float>(band.value());
                 g.stations = static_cast<int>(reader.numberOr("stations", 32.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::Straightness: {
+                StraightnessGeometry g;
+                auto x0 = f("x0"), y0 = f("y0"), x1 = f("x1"), y1 = f("y1");
+                for (const auto* v : {&x0, &y0, &x1, &y1}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.p0 = {static_cast<float>(x0.value()), static_cast<float>(y0.value())};
+                g.p1 = {static_cast<float>(x1.value()), static_cast<float>(y1.value())};
+                g.scanLength = static_cast<float>(reader.numberOr("scanLen", 16.0));
+                g.scanCount = static_cast<int>(reader.numberOr("scans", 60.0));
                 return ResultT::ok(g);
             }
             case ToolType::Clearance: {

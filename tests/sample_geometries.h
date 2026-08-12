@@ -45,6 +45,8 @@ inline ToolGeometry sampleGeometry(ToolType type) {
             return ThreadGeometry{{-90.0F, 5.0F}, {90.0F, 5.0F}, 60.0F, 240};
         case ToolType::Gear:
             return GearGeometry{{0.0F, 0.0F}, 40.0F, 90.0F, 1440};
+        case ToolType::Straightness:
+            return StraightnessGeometry{{5.0F, 5.0F}, {60.0F, 8.0F}, 16.0F, 60};
         case ToolType::EdgeDefects:
             return EdgeDefectsGeometry{{5.0F, 5.0F}, {60.0F, 8.0F}, 16.0F, 60, 1.5F,
                                        true};

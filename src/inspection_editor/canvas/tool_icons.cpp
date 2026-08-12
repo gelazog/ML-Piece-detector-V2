@@ -112,6 +112,23 @@ QIcon toolIcon(ToolType type) {
                 p.setPen(dashed);
                 p.drawLine(14, 11, 14, 19);
             });
+        case ToolType::Straightness:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // Un borde ondulado metido entre las DOS rectas de la banda: es
+                // la definicion de la norma dibujada.
+                QPen band = p.pen();
+                band.setWidthF(1.3);
+                p.setPen(band);
+                p.drawLine(3, 8, 25, 8);
+                p.drawLine(3, 20, 25, 20);
+                QPen edge = p.pen();
+                edge.setWidthF(2.0);
+                p.setPen(edge);
+                QPolygonF wave;
+                wave << QPointF(4, 13) << QPointF(9, 9) << QPointF(14, 15)
+                     << QPointF(19, 11) << QPointF(24, 19);
+                p.drawPolyline(wave);
+            });
         case ToolType::EdgeDefects:
             return makeIcon([](QPainter& p, const QColor& c) {
                 // Un borde con DOS defectos, uno hacia fuera y otro hacia

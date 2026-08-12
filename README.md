@@ -250,6 +250,21 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      **0,82** (el valor exacto de un cuadrado es 0,785 — la diferencia es el
      sesgo conocido de medir un borde recto sobre una rejilla de píxeles). Una
      mota de ruido **no** cuenta como agujero.
+   - *Rectitud (zona mínima)*: el valor **de la norma** — la anchura de la banda
+     más estrecha de dos rectas paralelas que contiene todo el borde. Traza una
+     línea sobre el borde a vigilar; las dos rectas de la banda se dibujan, para
+     que el número se pueda comprobar a ojo.
+
+     **Ojo al compararlo con el *Borde liso***: aquel da la desviación máxima
+     respecto a la recta media, que es media banda. Este número saldrá **mayor
+     sin que la pieza haya empeorado** — medido sobre el mismo borde, 10,3 px de
+     rectitud frente a 5,8 px de desviación. Son dos cosas distintas y la que
+     aparece en un plano es esta. El detalle publica además la banda de mínimos
+     cuadrados, para poder comparar peras con peras.
+
+     Límite de la óptica: es la rectitud **proyectada** en el plano de la imagen.
+     Lo que se tuerza hacia la cámara o en contra no se ve, y ninguna cámara sola
+     puede verlo.
    - *Holgura*: la separación **más corta** entre dos figuras, y **dónde** está.
      Arrastra un recuadro que abarque las dos; se miden las dos mayores que haya
      dentro (si hay más, lo dice). No es lo que da un *Caliper*: el calíper mide

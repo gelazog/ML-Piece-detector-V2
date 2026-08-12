@@ -773,6 +773,9 @@ ToolConfig makeToolAt(int index, float x, float y) {
         case ToolType::Clearance:
             geometry = ClearanceGeometry{{x, y}, 50.0F, 40.0F, true};
             break;
+        case ToolType::Straightness:
+            geometry = StraightnessGeometry{{x - 20.0F, y}, {x + 20.0F, y}, 12.0F, 20};
+            break;
         case ToolType::EdgeDefects:
             geometry =
                 EdgeDefectsGeometry{{x - 20.0F, y}, {x + 20.0F, y}, 12.0F, 20, 1.5F, true};
@@ -3995,4 +3998,137 @@ TEST(Clearance, WithMoreThanTwoShapesItMeasuresTheBiggestAndSaysSo) {
     EXPECT_NEAR(result.value().measured, 30.0, 2.0) << result.value().detail;
     EXPECT_NE(result.value().detail.find("3 figuras"), std::string::npos)
         << result.value().detail;
+}
+
+// ---------------------------------------------------------------------------
+// Rectitud por zona mínima (G1)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Bloque oscuro cuyo borde superior sigue el perfil que se le pase.
+cv::Mat edgeWithProfile(const std::function<double(double)>& offsetAt) {
+    cv::Mat gray(400, 600, CV_8UC1, cv::Scalar(230));
+    for (int x = 0; x < 600; ++x) {
+        const int top = static_cast<int>(std::lround(200.0 + offsetAt(x)));
+        cv::line(gray, {x, std::clamp(top, 0, 399)}, {x, 399}, cv::Scalar(30), 1);
+    }
+    return gray;
+}
+
+ToolConfig straightnessOver() {
+    ToolConfig config;
+    config.type = ToolType::Straightness;
+    config.name = "rectitud";
+    config.geometryJson = toJson(
+        ToolGeometry(StraightnessGeometry{{80.0F, 200.0F}, {520.0F, 200.0F}, 40.0F, 80}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+// El número del Borde liso sobre el MISMO tramo, para poder comparar.
+ToolConfig edgeFlawOver() {
+    ToolConfig config;
+    config.type = ToolType::EdgeFlaw;
+    config.name = "borde liso";
+    config.geometryJson = toJson(
+        ToolGeometry(EdgeFlawGeometry{{80.0F, 200.0F}, {520.0F, 200.0F}, 40.0F, 80}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+}  // namespace
+
+TEST(Straightness, ABandOfKnownWidthMeasuresThatWidth) {
+    // Borde en diente de sierra entre 0 y 8 px: la banda mínima mide 8.
+    const cv::Mat gray =
+        edgeWithProfile([](double x) { return (static_cast<int>(x / 20) % 2) ? 8.0 : 0.0; });
+    const auto result = runTool(gray, kIdentity, straightnessOver());
+    ASSERT_TRUE(result.isOk()) << result.error().message;
+    std::printf("  %s\n", result.value().detail.c_str());
+    EXPECT_NEAR(result.value().measured, 8.0, 1.2) << result.value().detail;
+}
+
+TEST(Straightness, ItIsNotTheNumberTheSmoothEdgeToolGives) {
+    // El ítem existe para hacer VISIBLE esta diferencia, así que el test la
+    // imprime en vez de solo comprobarla.
+    //
+    // El Borde liso da la desviación máxima respecto a la recta media: media
+    // banda, más o menos. La rectitud de la norma es la banda ENTERA y la más
+    // estrecha de todas las orientaciones. Son dos números distintos, y quien
+    // cambie de una herramienta a la otra verá subir la cifra sin que la pieza
+    // haya empeorado.
+    const cv::Mat gray = edgeWithProfile([](double x) {
+        return 5.0 * std::sin(x / 30.0) + 0.02 * (x - 300.0);  // ondulado y con deriva
+    });
+
+    const auto zone = runTool(gray, kIdentity, straightnessOver());
+    const auto flaw = runTool(gray, kIdentity, edgeFlawOver());
+    ASSERT_TRUE(zone.isOk());
+    ASSERT_TRUE(flaw.isOk());
+    std::printf("  rectitud de la norma (banda mínima): %.2f px\n", zone.value().measured);
+    std::printf("  Borde liso (desviación máx. vs recta media): %.2f px\n",
+                flaw.value().measured);
+    std::printf("  %s\n", zone.value().detail.c_str());
+
+    // Son distintos de verdad, no dos nombres del mismo número.
+    EXPECT_GT(std::abs(zone.value().measured - flaw.value().measured), 1.0);
+    // Y la banda mínima nunca puede pasarse de la banda de mínimos cuadrados,
+    // que el propio detalle publica para poder compararlas.
+    EXPECT_NE(zone.value().detail.find("banda por mínimos cuadrados"), std::string::npos)
+        << zone.value().detail;
+}
+
+TEST(Straightness, TheMinimumZoneNeverExceedsTheLeastSquaresBand) {
+    // La desigualdad que justifica el algoritmo: la banda de mínimos cuadrados
+    // es una candidata más entre todas las orientaciones, así que la mejor nunca
+    // puede ser peor. Se comprueba sobre tres perfiles distintos.
+    const std::vector<std::function<double(double)>> profiles{
+        [](double x) { return 4.0 * std::sin(x / 25.0); },
+        [](double x) { return 0.03 * (x - 300.0); },
+        [](double x) { return 3.0 * std::sin(x / 15.0) + 0.02 * (x - 300.0); },
+    };
+    for (std::size_t i = 0; i < profiles.size(); ++i) {
+        const auto result = runTool(edgeWithProfile(profiles[i]), kIdentity,
+                                    straightnessOver());
+        ASSERT_TRUE(result.isOk()) << i;
+        const std::string& detail = result.value().detail;
+        const auto at = detail.find("banda por mínimos cuadrados ");
+        ASSERT_NE(at, std::string::npos) << detail;
+        const double lsqBand =
+            std::atof(detail.c_str() + at + std::string("banda por mínimos cuadrados ").size());
+        std::printf("  perfil %zu: zona mínima %.2f, mínimos cuadrados %.2f\n", i,
+                    result.value().measured, lsqBand);
+        // El margen de 0,05 no es holgura del algoritmo: el detalle publica la
+        // banda de mínimos cuadrados con UN decimal, así que el número que se
+        // lee aquí ya viene redondeado hasta ±0,05. La desigualdad exacta se
+        // comprueba en `MinimumZone`, sobre los puntos y sin texto de por medio.
+        EXPECT_LE(result.value().measured, lsqBand + 0.05) << detail;
+    }
+}
+
+TEST(Straightness, ItSaysThatOnlyTheProjectedStraightnessIsMeasurable) {
+    // El límite de la óptica va en el propio resultado, no solo en la ayuda:
+    // lo que se tuerza hacia la cámara o en contra no se ve, y ninguna cámara
+    // sola puede verlo.
+    const cv::Mat gray = edgeWithProfile([](double) { return 0.0; });
+    const auto result = runTool(gray, kIdentity, straightnessOver());
+    ASSERT_TRUE(result.isOk());
+    EXPECT_NE(result.value().detail.find("proyectada en el plano"), std::string::npos)
+        << result.value().detail;
+    const std::string description = toolTypeDescription(ToolType::Straightness);
+    EXPECT_NE(description.find("PROYECTADA"), std::string::npos);
+    EXPECT_NE(description.find("Borde liso"), std::string::npos)
+        << "la descripción tiene que avisar de que el número sube al cambiar de "
+           "herramienta sin que la pieza empeore";
+}
+
+TEST(Straightness, AStraightEdgeIsNearlyZero) {
+    const cv::Mat gray = edgeWithProfile([](double) { return 0.0; });
+    const auto result = runTool(gray, kIdentity, straightnessOver());
+    ASSERT_TRUE(result.isOk());
+    std::printf("  borde recto -> %s\n", result.value().detail.c_str());
+    EXPECT_LT(result.value().measured, 1.0) << result.value().detail;
 }

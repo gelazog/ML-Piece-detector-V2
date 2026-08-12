@@ -689,7 +689,22 @@ diámetro, radio, punto a punto y ángulos ya estaban cubiertos.)*
 descripción la nota de la óptica, y la tabla de "lo que no se puede medir"
 tiene que estar accesible desde la familia.
 
-- [ ] **G1 — Rectitud por zona mínima.** El valor de la norma es la **anchura
+- [x] **G1 — Rectitud por zona mínima.** *(El ítem pedía "hacer visible la
+  diferencia con números" y ahí están: sobre el mismo borde, 10,33 px de
+  rectitud de la norma frente a 5,76 px del Borde liso. La comparación honesta
+  no es esa, y conviene decirlo: el Borde liso da MEDIA banda (desviación
+  máxima respecto a la recta media), así que el número sube al cambiar de
+  herramienta sin que la pieza empeore. Eso está avisado en la descripción de la
+  propia herramienta, porque es el malentendido que va a tener el operador.
+  La trampa de `minAreaRect` no se dejó solo escrita: se buscó a propósito, con
+  un barrido de polígonos al azar, una figura donde los dos criterios discrepen
+  —en la mayoría coinciden y un test con una cualquiera no demostraría nada—, y
+  el triángulo que salió da 97,9 de anchura mínima frente a 138,0 de lado corto
+  de `minAreaRect`: un 41 % de rectitud inflada si se usara. La banda mínima
+  vive en `vision::minimumZoneBand` y la usará también `G3`.
+  Un test falló por un epsilon absoluto de 1e-6 donde `minAreaRect` trabaja en
+  float y la función en double; se pasó a tolerancia relativa, que es lo que
+  correspondía — el test estaba comprobando algo cierto.)* El valor de la norma es la **anchura
   de la banda más estrecha de dos rectas paralelas que contiene todos los
   puntos** — no la desviación respecto a la recta de mínimos cuadrados, que es
   lo que da hoy el Borde liso y siempre sale menor.

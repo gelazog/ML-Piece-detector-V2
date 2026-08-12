@@ -111,6 +111,7 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
             if constexpr (std::is_same_v<T, CaliperGeometry> ||
                           std::is_same_v<T, EdgeFlawGeometry> ||
                           std::is_same_v<T, EdgeDefectsGeometry> ||
+                          std::is_same_v<T, StraightnessGeometry> ||
                           std::is_same_v<T, RulerGeometry>) {
                 return {g.p0, g.p1};
             } else if constexpr (std::is_same_v<T, CircleGeometry>) {
@@ -180,6 +181,7 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
             if constexpr (std::is_same_v<T, CaliperGeometry> ||
                           std::is_same_v<T, EdgeFlawGeometry> ||
                           std::is_same_v<T, EdgeDefectsGeometry> ||
+                          std::is_same_v<T, StraightnessGeometry> ||
                           std::is_same_v<T, RulerGeometry>) {
                 return {g.p0, g.p1};
             } else if constexpr (std::is_same_v<T, CircleGeometry>) {
@@ -241,6 +243,7 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
             if constexpr (std::is_same_v<T, CaliperGeometry> ||
                           std::is_same_v<T, EdgeFlawGeometry> ||
                           std::is_same_v<T, EdgeDefectsGeometry> ||
+                          std::is_same_v<T, StraightnessGeometry> ||
                           std::is_same_v<T, RulerGeometry>) {
                 if (handle == 0) {
                     g.p0 = q;
@@ -336,6 +339,7 @@ double distanceToGeometry(const ToolGeometry& geometry, const vision::Fixture& f
                 if constexpr (std::is_same_v<T, CaliperGeometry> ||
                               std::is_same_v<T, EdgeFlawGeometry> ||
                               std::is_same_v<T, EdgeDefectsGeometry> ||
+                              std::is_same_v<T, StraightnessGeometry> ||
                               std::is_same_v<T, RulerGeometry>) {
                     d = distanceToSegment(p, vision::toImageCoords(fixture, g.p0), vision::toImageCoords(fixture, g.p1));
                 } else if constexpr (std::is_same_v<T, CircleGeometry>) {

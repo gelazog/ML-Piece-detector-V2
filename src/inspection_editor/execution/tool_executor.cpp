@@ -1557,6 +1557,87 @@ ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& confi
     return result;
 }
 
+// Rectitud por ZONA MÍNIMA (G1): el valor con el que la norma define la
+// rectitud, y que no es el que da el Borde liso.
+ToolRunResult runStraightness(const cv::Mat& gray, const Fixture& fixture,
+                              const ToolConfig& config, const StraightnessGeometry& g,
+                              const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+    const cv::Point2f p0 = toImg(fixture, g.p0);
+    const cv::Point2f p1 = toImg(fixture, g.p1);
+    result.overlaySegments.push_back({p0, p1});
+
+    const cv::Point2f delta = p1 - p0;
+    const float length = static_cast<float>(cv::norm(delta));
+    const int scans = std::clamp(g.scanCount, 5, 400);
+    if (length < static_cast<float>(scans)) {
+        result.detail = "Tramo demasiado corto para " + std::to_string(scans) + " escaneos";
+        return result;
+    }
+    const cv::Point2f u = delta / length;
+    const cv::Point2f n(-u.y, u.x);
+
+    std::vector<cv::Point2f> edgePoints;
+    edgePoints.reserve(static_cast<std::size_t>(scans));
+    for (int k = 0; k < scans; ++k) {
+        const float t = length * static_cast<float>(k) / static_cast<float>(scans - 1);
+        const cv::Point2f base = p0 + u * t;
+        const auto edges = detectEdges(gray, base - n * (g.scanLength / 2.0F),
+                                       base + n * (g.scanLength / 2.0F), 1.0F, 1);
+        if (edges.empty()) {
+            continue;
+        }
+        edgePoints.push_back(edges[0].point);
+        result.overlayPoints.push_back(edges[0].point);
+    }
+    if (edgePoints.size() < static_cast<std::size_t>(scans) * 6 / 10) {
+        result.detail = "Borde no detectado en suficientes escaneos (" +
+                        std::to_string(edgePoints.size()) + "/" + std::to_string(scans) + ")";
+        return result;
+    }
+
+    const vision::MinimumZone zone = vision::minimumZoneBand(edgePoints);
+    if (!zone.valid) {
+        result.detail = "No se pudo calcular la banda mínima del borde";
+        return result;
+    }
+    result.measured = zone.width;
+    result.ok = withinTolerance(config, result.measured);
+
+    // La misma banda, pero orientada según la recta de mínimos cuadrados. Se da
+    // para que el número de la norma se pueda comparar con el de siempre: la
+    // banda mínima NUNCA puede ser mayor, porque la de mínimos cuadrados es una
+    // candidata más entre todas las orientaciones.
+    const vision::LineFit lsq = vision::fitLineTotal(edgePoints);
+    std::string comparison;
+    if (lsq.valid) {
+        double lowest = 1e18;
+        double highest = -1e18;
+        for (const auto& p : edgePoints) {
+            const double d = lsq.signedDistance(p);
+            lowest = std::min(lowest, d);
+            highest = std::max(highest, d);
+        }
+        comparison = ", banda por mínimos cuadrados " + fmtLen(highest - lowest, fmt);
+    }
+
+    result.detail = "rectitud (zona mínima)=" + fmtLen(zone.width, fmt) + comparison + " · " +
+                    std::to_string(edgePoints.size()) + " puntos · proyectada en el plano " +
+                    "de la imagen";
+
+    // Las dos rectas de la banda, dibujadas: sin verlas, un número de rectitud
+    // no se puede comprobar a ojo.
+    const cv::Point2f bandNormal(-zone.direction.y, zone.direction.x);
+    const float half = static_cast<float>(zone.width / 2.0);
+    for (const float side : {-1.0F, 1.0F}) {
+        const cv::Point2f centre = zone.point + bandNormal * (half * side);
+        result.overlaySegments.push_back(
+            {centre - zone.direction * (length / 2.0F),
+             centre + zone.direction * (length / 2.0F)});
+    }
+    return result;
+}
+
 // Holgura: la separación más corta entre dos figuras (L1).
 //
 // `pointPolygonTest` con `measureDist` da la distancia con signo de un punto a
@@ -2523,6 +2604,10 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Region:
                 return ResultT::ok(runRegion(gray, fixture, config,
                                              std::get<RegionGeometry>(geometry.value()), fmt));
+            case ToolType::Straightness:
+                return ResultT::ok(runStraightness(
+                    gray, fixture, config, std::get<StraightnessGeometry>(geometry.value()),
+                    fmt));
             case ToolType::Clearance:
                 return ResultT::ok(runClearance(
                     gray, fixture, config, std::get<ClearanceGeometry>(geometry.value()),

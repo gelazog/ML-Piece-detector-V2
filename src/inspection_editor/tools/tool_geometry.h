@@ -290,6 +290,21 @@ struct ClearanceGeometry {
     bool darkPiece = true;
 };
 
+// Rectitud por ZONA MÍNIMA (G1), que es el valor de la norma: la anchura de la
+// banda más estrecha de dos rectas paralelas que contiene todos los puntos del
+// borde.
+//
+// No es lo que da el Borde liso. Aquel devuelve la desviación máxima respecto a
+// la recta de mínimos cuadrados, que es otro número y siempre sale menor que la
+// banda mínima (la banda de mínimos cuadrados es una candidata más entre todas
+// las orientaciones, así que nunca puede ganar a la mejor).
+struct StraightnessGeometry {
+    cv::Point2f p0;  // tramo del borde cuya rectitud se juzga
+    cv::Point2f p1;
+    float scanLength = 16.0F;  // largo de cada escaneo perpendicular
+    int scanCount = 60;
+};
+
 [[nodiscard]] const std::array<RegionMeasure, 6>& allRegionMeasures();
 [[nodiscard]] const char* regionMeasureLabel(RegionMeasure measure);
 
@@ -300,7 +315,8 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
                                   ThreadGeometry, GearGeometry, ConstructedPointGeometry,
                                   ConstructedLineGeometry, MedianAxisGeometry,
                                   RegionGeometry, SymmetryGeometry, PolygonGeometry,
-                                  EdgeDefectsGeometry, ClearanceGeometry>;
+                                  EdgeDefectsGeometry, ClearanceGeometry,
+                                  StraightnessGeometry>;
 
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
@@ -331,7 +347,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 22>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 23>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que

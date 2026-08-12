@@ -13,6 +13,7 @@
 #include "vision/auto_roi.h"
 #include "vision/board_frame.h"
 #include "vision/contour_analysis.h"
+#include "vision/fitting.h"
 #include "vision/fixture_stabilizer.h"
 #include "vision/frame_geometry.h"
 #include "vision/orientation.h"
@@ -1881,4 +1882,80 @@ TEST(AutoRoi, AFrameThatWasNeverAnalysedMustNotCountAsALostPiece) {
     EXPECT_EQ(tracker.lastGiveUp(), AutoRoiGiveUp::PieceLost)
         << "y el motivo que vería el operador sería este, que con la pose "
            "congelada era mentira";
+}
+
+// ---------------------------------------------------------------------------
+// Banda de zona mínima (G1)
+// ---------------------------------------------------------------------------
+
+TEST(MinimumZone, TheWidthOfAKnownBandIsTheWidthOfThatBand) {
+    // Puntos repartidos entre dos rectas horizontales separadas 6 px: la banda
+    // mínima tiene que medir 6 y ser horizontal.
+    std::vector<cv::Point2f> points;
+    for (int x = 0; x <= 200; x += 10) {
+        points.emplace_back(static_cast<float>(x), (x / 10) % 2 == 0 ? 0.0F : 6.0F);
+    }
+    const auto zone = minimumZoneBand(points);
+    ASSERT_TRUE(zone.valid);
+    EXPECT_NEAR(zone.width, 6.0, 1e-6);
+    EXPECT_NEAR(std::abs(zone.direction.x), 1.0, 1e-6) << "la banda va a lo largo";
+}
+
+TEST(MinimumZone, MinAreaRectIsNotTheAnswerAndHereIsAShapeThatProvesIt) {
+    // La trampa que el plan pedía dejar escrita: `cv::minAreaRect` minimiza el
+    // ÁREA, no la ANCHURA, y son dos mínimos distintos.
+    //
+    // Este triángulo se buscó a propósito barriendo polígonos al azar, porque en
+    // la mayoría de las figuras los dos criterios coinciden y un test con una
+    // cualquiera no demostraría nada. En este, el lado corto del rectángulo de
+    // área mínima es un 41 % más ancho que la banda mínima de verdad: usar
+    // `minAreaRect` daría una rectitud inflada en esa proporción.
+    const std::vector<cv::Point2f> triangle{{194.1F, 168.2F}, {12.9F, 96.2F},
+                                            {139.8F, 41.3F}};
+    const auto zone = minimumZoneBand(triangle);
+    ASSERT_TRUE(zone.valid);
+    const cv::RotatedRect box = cv::minAreaRect(triangle);
+    const double boxWidth = std::min(box.size.width, box.size.height);
+    std::printf("  zona mínima %.2f, lado corto de minAreaRect %.2f (%.0f %% más ancho)\n",
+                zone.width, boxWidth, 100.0 * (boxWidth / zone.width - 1.0));
+    EXPECT_NEAR(zone.width, 97.87, 0.1);
+    EXPECT_GT(boxWidth, zone.width * 1.3) << "si coincidieran, este test no probaría nada";
+}
+
+TEST(MinimumZone, ItIsNeverWiderThanTheRectangleThatMinimisesArea) {
+    // El lado corto de cualquier rectángulo que contenga los puntos es una banda
+    // válida, así que la banda mínima nunca puede ser mayor. Aquí la tolerancia
+    // es RELATIVA: `minAreaRect` trabaja en float y esta función en double, y
+    // sobre figuras donde los dos criterios coinciden la diferencia son unas
+    // pocas ulps — un epsilon absoluto de 1e-6 se quedaba corto y hacía fallar
+    // un test que estaba comprobando algo cierto.
+    std::vector<std::vector<cv::Point2f>> cases;
+    cases.push_back({{0, 0}, {100, 3}, {200, 0}, {150, 9}, {50, 8}});
+    cases.push_back({{0, 0}, {60, 40}, {120, 0}});
+    cases.push_back({{0, 0}, {200, 20}, {190, 34}, {10, 16}});
+    cases.push_back({{194.1F, 168.2F}, {12.9F, 96.2F}, {139.8F, 41.3F}});
+
+    for (std::size_t i = 0; i < cases.size(); ++i) {
+        const auto zone = minimumZoneBand(cases[i]);
+        ASSERT_TRUE(zone.valid) << i;
+        const cv::RotatedRect box = cv::minAreaRect(cases[i]);
+        const double boxWidth = std::min(box.size.width, box.size.height);
+        std::printf("  caso %zu: zona mínima %.3f, lado corto de minAreaRect %.3f\n", i,
+                    zone.width, boxWidth);
+        EXPECT_LE(zone.width, boxWidth * (1.0 + 1e-5))
+            << "la banda mínima no puede ser más ancha que la de minAreaRect";
+    }
+}
+
+TEST(MinimumZone, CollinearPointsHaveNoWidthAndDoNotBreakIt) {
+    std::vector<cv::Point2f> line;
+    for (int x = 0; x < 50; x += 5) {
+        line.emplace_back(static_cast<float>(x), static_cast<float>(x));
+    }
+    const auto zone = minimumZoneBand(line);
+    ASSERT_TRUE(zone.valid);
+    EXPECT_NEAR(zone.width, 0.0, 1e-6);
+
+    EXPECT_FALSE(minimumZoneBand({}).valid);
+    EXPECT_FALSE(minimumZoneBand({{1.0F, 1.0F}}).valid);
 }
