@@ -434,6 +434,29 @@ struct ChamferGeometry {
     bool darkPiece = true;
 };
 
+// Radio de acuerdo (M3): el radio del arco de transición Y si de verdad empalma
+// TANGENTE con los tramos rectos vecinos.
+//
+// Lo segundo es lo que aporta: un acuerdo que no entra tangente es un defecto de
+// mecanizado —un salto, una herramienta mal compensada— que el radio por sí solo
+// no delata. Dos piezas con el mismo radio y distinta tangencia no son la misma
+// pieza.
+enum class FilletMeasure {
+    Radius,     // el radio del arco
+    Tangency,   // el peor de los dos empalmes, en grados (0 = perfecto)
+};
+
+struct FilletGeometry {
+    cv::Point2f center;  // recuadro que abarca el acuerdo y las dos caras
+    float width = 120.0F;
+    float height = 120.0F;
+    FilletMeasure measure = FilletMeasure::Radius;
+    bool darkPiece = true;
+};
+
+[[nodiscard]] const std::array<FilletMeasure, 2>& allFilletMeasures();
+[[nodiscard]] const char* filletMeasureLabel(FilletMeasure measure);
+
 [[nodiscard]] const std::array<ChamferMeasure, 3>& allChamferMeasures();
 [[nodiscard]] const char* chamferMeasureLabel(ChamferMeasure measure);
 
@@ -454,7 +477,8 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
                                   StraightnessGeometry, RoundnessGeometry,
                                   OrientationGeometry, CentreOffsetGeometry,
                                   BoltPatternGeometry, ProfileGeometry,
-                                  ExtremesGeometry, ChamferGeometry>;
+                                  ExtremesGeometry, ChamferGeometry,
+                                  FilletGeometry>;
 
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
@@ -485,7 +509,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 30>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 31>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que

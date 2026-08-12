@@ -941,7 +941,18 @@ tiene que estar accesible desde la familia.
   caras adyacentes, e intersecar. Reutiliza íntegramente Línea-Línea.
   Verificación: chaflanes sintéticos de 30°, 45° y 60° con catetos conocidos.
 
-- [ ] **M3 — Radio de acuerdo (fillet) con comprobación de tangencia.** El
+- [x] **M3 — Radio de acuerdo (fillet) con comprobación de tangencia.** *(«Casi
+  gratis con lo que hay» y esta vez sí lo fue: `decomposeContour` da el arco y
+  su radio, y la tangente en un extremo es perpendicular al radio ahí. Radios
+  medidos 29,6 / 50,5 / 79,0 sobre dibujados de 30 / 50 / 80.
+  Mi primera versión del test solo probaba el caso tangente —el parámetro de
+  inclinación estaba mal escrito y no hacía nada—, o sea que verificaba la
+  mitad que no aporta. Con el escalón bien hecho, el resultado es el que
+  justifica la herramienta: con 0°, 12° y 22° de escalón el RADIO da 50,5 /
+  50,4 / 50,4, indistinguibles, y la TANGENCIA da 4,4° / 10,7° / 20,6°.
+  El suelo de ruido queda dicho: sobre un acuerdo perfectamente tangente el
+  dentado de los píxeles deja 3-4° de desviación aparente, así que por debajo de
+  eso la herramienta no puede afirmar nada.)* El
   radio del arco de transición **y si de verdad es tangente** a los tramos
   rectos vecinos: un acuerdo que no empalma tangente es un defecto de
   mecanizado que el radio solo no delata.

@@ -41,12 +41,13 @@ const char* toolTypeName(ToolType type) {
         case ToolType::Profile: return "profile";
         case ToolType::Extremes: return "extremes";
         case ToolType::Chamfer: return "chamfer";
+        case ToolType::Fillet: return "fillet";
     }
     return "unknown";
 }
 
-const std::array<ToolType, 30>& allToolTypes() {
-    static const std::array<ToolType, 30> kTypes{
+const std::array<ToolType, 31>& allToolTypes() {
+    static const std::array<ToolType, 31> kTypes{
         ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine, ToolType::EdgeFlaw,
         ToolType::Blob,     ToolType::Ruler,    ToolType::LineToLine,  ToolType::Angle,
         ToolType::PolyBlob, ToolType::Position, ToolType::Arc,         ToolType::Shaft,
@@ -55,7 +56,8 @@ const std::array<ToolType, 30>& allToolTypes() {
         ToolType::Symmetry, ToolType::Polygon, ToolType::EdgeDefects,
         ToolType::Clearance, ToolType::Straightness, ToolType::Roundness,
         ToolType::Orientation, ToolType::CentreOffset, ToolType::BoltPattern,
-        ToolType::Profile, ToolType::Extremes, ToolType::Chamfer};
+        ToolType::Profile, ToolType::Extremes, ToolType::Chamfer,
+        ToolType::Fillet};
     return kTypes;
 }
 
@@ -118,6 +120,7 @@ ToolCategory categoryOf(ToolType type) {
         case ToolType::Gear:
         case ToolType::Extremes:
         case ToolType::Chamfer:
+        case ToolType::Fillet:
             return ToolCategory::TurnedAndExtremes;
     }
     return ToolCategory::InLine;
@@ -204,6 +207,20 @@ ToolReferences referencesFromParams(const std::string& paramsJson) {
         // medir; reventar aquí tumbaría la carga de la plantilla entera.
         return {};
     }
+}
+
+const std::array<FilletMeasure, 2>& allFilletMeasures() {
+    static const std::array<FilletMeasure, 2> kMeasures{FilletMeasure::Radius,
+                                                        FilletMeasure::Tangency};
+    return kMeasures;
+}
+
+const char* filletMeasureLabel(FilletMeasure measure) {
+    switch (measure) {
+        case FilletMeasure::Radius: return "Radio";
+        case FilletMeasure::Tangency: return "Desviación de tangencia";
+    }
+    return "?";
 }
 
 const std::array<ChamferMeasure, 3>& allChamferMeasures() {
@@ -359,6 +376,7 @@ const char* toolTypeLabel(ToolType type) {
         case ToolType::Profile: return "Perfil de línea";
         case ToolType::Extremes: return "Máx./mín.";
         case ToolType::Chamfer: return "Chaflán";
+        case ToolType::Fillet: return "Radio de acuerdo";
     }
     return "?";
 }
@@ -603,6 +621,15 @@ const char* toolTypeDescription(ToolType type) {
                    "tres se dan siempre en el detalle, junto con el ángulo del bisel\n"
                    "con CADA cara — el plano acota desde una de las dos y hay que poder\n"
                    "comparar con la que sea.";
+        case ToolType::Fillet:
+            return "Radio de acuerdo — el radio del redondeo de transición y, lo que\n"
+                   "de verdad importa, SI EMPALMA TANGENTE con las caras vecinas.\n"
+                   "Arrastra un recuadro que abarque el acuerdo con un trozo de las dos\n"
+                   "caras; el recuadro selecciona qué tramos se miran, no recorta.\n"
+                   "Un acuerdo que no entra tangente es un defecto de mecanizado —un\n"
+                   "salto, una herramienta mal compensada— y el radio por sí solo no lo\n"
+                   "delata: dos piezas con el mismo radio y distinta tangencia no son\n"
+                   "la misma pieza. La desviación se da en grados; 0 es perfecto.";
     }
     return "";
 }
@@ -687,6 +714,7 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
             toleranceMin = 0.0;
             toleranceMax = 1e9;
             return;
+        case ToolType::Fillet:
         case ToolType::Chamfer:
         case ToolType::LineToLine:
         case ToolType::Angle: {
@@ -818,6 +846,8 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::Extremes;
             } else if constexpr (std::is_same_v<T, ChamferGeometry>) {
                 return ToolType::Chamfer;
+            } else if constexpr (std::is_same_v<T, FilletGeometry>) {
+                return ToolType::Fillet;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -849,6 +879,7 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                                  std::is_same_v<T, BoltPatternGeometry> ||
                                  std::is_same_v<T, ExtremesGeometry> ||
                                  std::is_same_v<T, ChamferGeometry> ||
+                                 std::is_same_v<T, FilletGeometry> ||
                                  std::is_same_v<T, SymmetryGeometry> ||
                                  std::is_same_v<T, PolygonGeometry> ||
                                  std::is_same_v<T, ClearanceGeometry>) {
@@ -1129,6 +1160,12 @@ std::string toJson(const ToolGeometry& geometry) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "cx" << g.center.x << "cy" << g.center.y << "rin"
                        << g.innerRadius << "rout" << g.outerRadius << "rays" << g.rayCount;
+                });
+            } else if constexpr (std::is_same_v<T, FilletGeometry>) {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "cx" << g.center.x << "cy" << g.center.y << "w" << g.width << "h"
+                       << g.height << "mode" << static_cast<int>(g.measure) << "dark"
+                       << (g.darkPiece ? 1 : 0);
                 });
             } else if constexpr (std::is_same_v<T, ChamferGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
@@ -1478,6 +1515,21 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.innerRadius = static_cast<float>(rin.value());
                 g.outerRadius = static_cast<float>(rout.value());
                 g.rayCount = static_cast<int>(reader.numberOr("rays", 1440.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::Fillet: {
+                FilletGeometry g;
+                auto cx = f("cx"), cy = f("cy"), w = f("w"), h = f("h");
+                for (const auto* v : {&cx, &cy, &w, &h}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
+                g.width = static_cast<float>(w.value());
+                g.height = static_cast<float>(h.value());
+                g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
+                const auto measure = readConstruction(reader, allFilletMeasures());
+                if (!measure.isOk()) return ResultT::err(measure.error().message);
+                g.measure = measure.value();
                 return ResultT::ok(g);
             }
             case ToolType::Chamfer: {

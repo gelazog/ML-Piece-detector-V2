@@ -133,6 +133,19 @@ QIcon toolIcon(ToolType type) {
                        << QPointF(25, 22);
                 p.drawPolyline(actual);
             });
+        case ToolType::Fillet:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // Una esquina redondeada con la flecha del radio: lo que se mide
+                // es el arco y como empalma con las dos rectas.
+                p.drawLine(4, 6, 16, 6);
+                p.drawArc(QRectF(4, 6, 20, 20), 90 * 16, -90 * 16);
+                p.drawLine(24, 16, 24, 24);
+                QPen thin = p.pen();
+                thin.setWidthF(1.1);
+                thin.setStyle(Qt::DashLine);
+                p.setPen(thin);
+                p.drawLine(14, 16, 24, 16);
+            });
         case ToolType::Chamfer:
             return makeIcon([](QPainter& p, const QColor&) {
                 // Una esquina achaflanada, con la esquina viva a trazos detras:

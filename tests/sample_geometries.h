@@ -75,6 +75,9 @@ inline ToolGeometry sampleGeometry(ToolType type) {
             }
             return profile;
         }
+        case ToolType::Fillet:
+            return FilletGeometry{{0.0F, 0.0F}, 120.0F, 120.0F,
+                                  FilletMeasure::Radius, true};
         case ToolType::Chamfer:
             return ChamferGeometry{{0.0F, 0.0F}, 120.0F, 120.0F,
                                    ChamferMeasure::Angle, true};

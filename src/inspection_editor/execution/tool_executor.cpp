@@ -1669,6 +1669,141 @@ ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& confi
     return result;
 }
 
+// Radio de acuerdo con comprobación de tangencia (M3).
+//
+// El radio sale casi gratis: `decomposeContour` ya separa rectas de arcos y ya
+// ajusta el círculo. Lo que aporta esta herramienta es lo OTRO: el ángulo con
+// el que el arco entra en cada recta vecina. Un acuerdo que no empalma tangente
+// es un defecto de mecanizado que el radio por sí solo no delata — dos piezas
+// con el mismo radio y distinta tangencia no son la misma pieza.
+ToolRunResult runFillet(const cv::Mat& gray, const Fixture& fixture,
+                        const ToolConfig& config, const FilletGeometry& g,
+                        const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+
+    const float hw = g.width / 2.0F;
+    const float hh = g.height / 2.0F;
+    const std::vector<cv::Point2f> quad{
+        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, hh)),
+        toImg(fixture, g.center + cv::Point2f(-hw, hh))};
+    for (std::size_t i = 0; i < quad.size(); ++i) {
+        result.overlaySegments.push_back({quad[i], quad[(i + 1) % quad.size()]});
+    }
+    std::vector<cv::Point> quadInt;
+    for (const auto& p : quad) {
+        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
+    }
+    const cv::Rect selection = cv::boundingRect(quadInt);
+    // Igual que el Chaflán: el recuadro SELECCIONA, no recorta. Recortar
+    // convertiría sus propios cortes en tramos rectos del contorno.
+    cv::Rect bounds = selection;
+    bounds -= cv::Point(selection.width / 2, selection.height / 2);
+    bounds += cv::Size(selection.width, selection.height);
+    bounds &= cv::Rect(0, 0, gray.cols, gray.rows);
+    if (bounds.area() < 100) {
+        result.detail = "La región cae fuera de la imagen";
+        return result;
+    }
+
+    cv::Mat binary;
+    cv::threshold(gray(bounds), binary, 0.0, 255.0,
+                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+    if (contours.empty()) {
+        result.detail = "No se ve ningún borde dentro del recuadro";
+        return result;
+    }
+    const auto& outer = *std::max_element(
+        contours.begin(), contours.end(), [](const auto& a, const auto& b) {
+            return cv::contourArea(a) < cv::contourArea(b);
+        });
+
+    const auto primitives = vision::decomposeContour(outer);
+    const cv::Rect2f selectionLocal(
+        static_cast<float>(selection.x - bounds.x), static_cast<float>(selection.y - bounds.y),
+        static_cast<float>(selection.width), static_cast<float>(selection.height));
+
+    // Se busca un ARCO con una recta a cada lado, todos dentro del recuadro.
+    int arcIndex = -1;
+    for (int i = 1; i + 1 < static_cast<int>(primitives.size()); ++i) {
+        const auto& previous = primitives[static_cast<std::size_t>(i - 1)];
+        const auto& arc = primitives[static_cast<std::size_t>(i)];
+        const auto& next = primitives[static_cast<std::size_t>(i + 1)];
+        if (arc.kind != vision::PrimitiveKind::Arc || arc.radius <= 1.0) {
+            continue;
+        }
+        if (previous.kind != vision::PrimitiveKind::Line ||
+            next.kind != vision::PrimitiveKind::Line) {
+            continue;
+        }
+        if (!selectionLocal.contains(arc.mid) || previous.length < 8.0 ||
+            next.length < 8.0) {
+            continue;
+        }
+        if (arcIndex < 0 ||
+            arc.length > primitives[static_cast<std::size_t>(arcIndex)].length) {
+            arcIndex = i;
+        }
+    }
+    if (arcIndex < 0) {
+        result.detail = "No se ve un arco con una recta a cada lado dentro del recuadro: "
+                        "¿es un chaflán en vez de un acuerdo, o falta encuadrar las caras?";
+        return result;
+    }
+
+    const auto& before = primitives[static_cast<std::size_t>(arcIndex - 1)];
+    const auto& arc = primitives[static_cast<std::size_t>(arcIndex)];
+    const auto& after = primitives[static_cast<std::size_t>(arcIndex + 1)];
+
+    // La TANGENTE del arco en un extremo es perpendicular al radio en ese punto.
+    // Comparada con la dirección de la recta vecina, su diferencia es lo que
+    // separa un acuerdo bien hecho de uno con un salto.
+    const auto unit = [](const cv::Point2f& v) {
+        const double length = cv::norm(v);
+        return length > 1e-9 ? v / static_cast<float>(length) : cv::Point2f(1.0F, 0.0F);
+    };
+    const auto tangentAt = [&arc, &unit](const cv::Point2f& p) {
+        const cv::Point2f radial = unit(p - arc.center);
+        return cv::Point2f(-radial.y, radial.x);
+    };
+    const auto angleOf = [](const cv::Point2f& a, const cv::Point2f& b) {
+        const double dot =
+            std::abs(static_cast<double>(a.x) * b.x + static_cast<double>(a.y) * b.y);
+        const double cross =
+            std::abs(static_cast<double>(a.x) * b.y - static_cast<double>(a.y) * b.x);
+        return std::atan2(cross, dot) * 180.0 / kPi;
+    };
+
+    const double deviationStart =
+        angleOf(tangentAt(arc.start), unit(before.end - before.start));
+    const double deviationEnd = angleOf(tangentAt(arc.end), unit(after.end - after.start));
+    const double worst = std::max(deviationStart, deviationEnd);
+
+    switch (g.measure) {
+        case FilletMeasure::Radius: result.measured = arc.radius; break;
+        case FilletMeasure::Tangency:
+            result.measured = worst;
+            result.measuredIsAngle = true;
+            break;
+    }
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = std::string(filletMeasureLabel(g.measure)) + " · R=" +
+                    fmtLen(arc.radius, fmt) + " · barrido " + fmt2(arc.sweepDeg) +
+                    "° · tangencia " + fmt2(deviationStart) + "° y " + fmt2(deviationEnd) +
+                    "° (0 = empalme perfecto)";
+
+    const cv::Point2f offset(static_cast<float>(bounds.x), static_cast<float>(bounds.y));
+    result.overlayPoints.push_back(arc.center + offset);
+    result.overlayPoints.push_back(arc.start + offset);
+    result.overlayPoints.push_back(arc.end + offset);
+    result.overlaySegments.push_back({arc.center + offset, arc.start + offset});
+    result.overlaySegments.push_back({arc.center + offset, arc.end + offset});
+    return result;
+}
+
 // Chaflán (M2): el ángulo del bisel y sus dos catetos.
 //
 // Cero algoritmo nuevo: `decomposeContour` ya separa el contorno en rectas y
@@ -3597,6 +3732,10 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Region:
                 return ResultT::ok(runRegion(gray, fixture, config,
                                              std::get<RegionGeometry>(geometry.value()), fmt));
+            case ToolType::Fillet:
+                return ResultT::ok(runFillet(
+                    gray, fixture, config, std::get<FilletGeometry>(geometry.value()),
+                    fmt));
             case ToolType::Chamfer:
                 return ResultT::ok(runChamfer(
                     gray, fixture, config, std::get<ChamferGeometry>(geometry.value()),

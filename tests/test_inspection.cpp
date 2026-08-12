@@ -803,6 +803,9 @@ ToolConfig makeToolAt(int index, float x, float y) {
         case ToolType::Chamfer:
             geometry = ChamferGeometry{{x, y}, 60.0F, 60.0F, ChamferMeasure::Angle, true};
             break;
+        case ToolType::Fillet:
+            geometry = FilletGeometry{{x, y}, 60.0F, 60.0F, FilletMeasure::Radius, true};
+            break;
         case ToolType::Profile: {
             ProfileGeometry profile;
             for (int k = 0; k < 24; ++k) {
@@ -5244,4 +5247,122 @@ TEST(Chamfer, WithoutThreeStraightRunsItSaysSo) {
     ASSERT_TRUE(result.isOk());
     EXPECT_FALSE(result.value().ok);
     std::printf("  sin chaflán -> %s\n", result.value().detail.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// Radio de acuerdo con comprobación de tangencia (M3)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Bloque con la esquina superior derecha redondeada de radio `radius`.
+//
+// El cuarto de círculo empalma tangente con las dos caras por construcción. Con
+// `tiltDeg` distinto de cero, la cara de ARRIBA llega girada ese ángulo pero
+// sigue tocando el mismo punto: el arco es el mismo y lo único que cambia es el
+// ángulo del empalme. Eso es exactamente el defecto que la herramienta busca —
+// un acuerdo que no entra tangente— y su magnitud es la dibujada.
+cv::Mat filletedCorner(double radius, double tiltDeg = 0.0) {
+    const double cornerX = 320.0;
+    const double cornerY = 140.0;
+    const double centreX = cornerX - radius;
+    const double centreY = cornerY + radius;
+    const double tilt = tiltDeg * CV_PI / 180.0;
+
+    cv::Mat gray(400, 500, CV_8UC1, cv::Scalar(230));
+    std::vector<cv::Point> poly;
+    // Extremo izquierdo de la cara de arriba: sube (o baja) según la
+    // inclinación, pero la cara sigue acabando en el arranque del arco.
+    const double leftX = 60.0;
+    const double leftY = cornerY - (centreX - leftX) * std::tan(tilt);
+    poly.emplace_back(cv::Point(static_cast<int>(std::lround(leftX)),
+                                static_cast<int>(std::lround(leftY))));
+    poly.emplace_back(cv::Point(static_cast<int>(std::lround(centreX)),
+                                static_cast<int>(std::lround(cornerY))));
+    for (int k = 0; k <= 24; ++k) {
+        const double a = -CV_PI / 2.0 + (CV_PI / 2.0) * k / 24.0;
+        poly.emplace_back(
+            cv::Point(static_cast<int>(std::lround(centreX + radius * std::cos(a))),
+                      static_cast<int>(std::lround(centreY + radius * std::sin(a)))));
+    }
+    poly.emplace_back(cv::Point(static_cast<int>(std::lround(cornerX)), 360));
+    poly.emplace_back(cv::Point(static_cast<int>(std::lround(leftX)), 360));
+    cv::fillPoly(gray, std::vector<std::vector<cv::Point>>{poly}, cv::Scalar(30));
+    return gray;
+}
+
+ToolConfig filletOver(FilletMeasure measure) {
+    ToolConfig config;
+    config.type = ToolType::Fillet;
+    config.name = "acuerdo";
+    config.geometryJson = toJson(
+        ToolGeometry(FilletGeometry{{250.0F, 200.0F}, 320.0F, 260.0F, measure, true}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+}  // namespace
+
+TEST(Fillet, TheRadiusIsTheOneItWasDrawnWith) {
+    for (const double radius : {30.0, 50.0, 80.0}) {
+        const auto result =
+            runTool(filletedCorner(radius), kIdentity, filletOver(FilletMeasure::Radius));
+        ASSERT_TRUE(result.isOk()) << result.error().message;
+        std::printf("  R dibujado %4.0f -> %s\n", radius, result.value().detail.c_str());
+        EXPECT_NEAR(result.value().measured, radius, radius * 0.12)
+            << result.value().detail;
+    }
+}
+
+TEST(Fillet, ATangentFilletDeviatesLittleAndABrokenOneDeviatesTheAngleItWasGiven) {
+    // La comprobación que de verdad justifica la herramienta: el radio no
+    // distingue estos dos casos y la tangencia sí.
+    //
+    // El suelo de ruido no es cero y conviene saberlo: sobre un acuerdo
+    // perfectamente tangente, el dentado de la rasterización deja unos 3-4° de
+    // desviación aparente. Por debajo de eso la herramienta no puede afirmar
+    // nada, y por eso el defecto se busca por encima.
+    const auto tangent =
+        runTool(filletedCorner(50.0), kIdentity, filletOver(FilletMeasure::Tangency));
+    ASSERT_TRUE(tangent.isOk());
+    std::printf("  tangente        -> %s\n", tangent.value().detail.c_str());
+    EXPECT_LT(tangent.value().measured, 6.0) << tangent.value().detail;
+    EXPECT_TRUE(tangent.value().measuredIsAngle);
+
+    for (const double tilt : {12.0, 22.0}) {
+        const auto broken = runTool(filletedCorner(50.0, tilt), kIdentity,
+                                    filletOver(FilletMeasure::Tangency));
+        ASSERT_TRUE(broken.isOk()) << broken.error().message;
+        std::printf("  escalón de %2.0f° -> %s\n", tilt, broken.value().detail.c_str());
+        // La desviación medida es la dibujada, con el margen del suelo de ruido.
+        EXPECT_NEAR(broken.value().measured, tilt, 6.0) << broken.value().detail;
+        EXPECT_GT(broken.value().measured, tangent.value().measured + 4.0)
+            << "el defecto tiene que separarse del acuerdo sano";
+    }
+}
+
+TEST(Fillet, ItSaysWhenThereIsNoArcToMeasure) {
+    // Un chaflán no es un acuerdo, y decir un radio ahí sería inventarlo.
+    cv::Mat gray(400, 500, CV_8UC1, cv::Scalar(230));
+    std::vector<cv::Point> poly{{60, 140}, {260, 140}, {320, 200}, {320, 360}, {60, 360}};
+    cv::fillPoly(gray, std::vector<std::vector<cv::Point>>{poly}, cv::Scalar(30));
+    const auto result = runTool(gray, kIdentity, filletOver(FilletMeasure::Radius));
+    ASSERT_TRUE(result.isOk());
+    EXPECT_FALSE(result.value().ok);
+    std::printf("  chaflán en vez de acuerdo -> %s\n", result.value().detail.c_str());
+    EXPECT_NE(result.value().detail.find("chaflán"), std::string::npos)
+        << result.value().detail;
+}
+
+TEST(Fillet, TheDetailAlwaysCarriesRadiusSweepAndBothTangencies) {
+    const auto result =
+        runTool(filletedCorner(50.0), kIdentity, filletOver(FilletMeasure::Radius));
+    ASSERT_TRUE(result.isOk());
+    const std::string& detail = result.value().detail;
+    EXPECT_NE(detail.find("R="), std::string::npos) << detail;
+    EXPECT_NE(detail.find("barrido"), std::string::npos) << detail;
+    EXPECT_NE(detail.find("tangencia"), std::string::npos) << detail;
+    // Y se dibujan el centro y los dos extremos del arco.
+    EXPECT_GE(result.value().overlayPoints.size(), 3U);
 }

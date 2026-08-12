@@ -37,7 +37,8 @@ enum class ToolType {
     BoltPattern,
     Profile,
     Extremes,
-    Chamfer
+    Chamfer,
+    Fillet
 };
 
 const char* toolTypeName(ToolType type);

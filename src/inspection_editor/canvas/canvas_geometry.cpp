@@ -128,7 +128,8 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
                                  std::is_same_v<T, ClearanceGeometry> ||
                                  std::is_same_v<T, BoltPatternGeometry> ||
                                  std::is_same_v<T, ExtremesGeometry> ||
-                                 std::is_same_v<T, ChamferGeometry>) {
+                                 std::is_same_v<T, ChamferGeometry> ||
+                                 std::is_same_v<T, FilletGeometry>) {
                 const float hw = g.width / 2.0F;
                 const float hh = g.height / 2.0F;
                 return {g.center,
@@ -207,7 +208,8 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
                                  std::is_same_v<T, ClearanceGeometry> ||
                                  std::is_same_v<T, BoltPatternGeometry> ||
                                  std::is_same_v<T, ExtremesGeometry> ||
-                                 std::is_same_v<T, ChamferGeometry>) {
+                                 std::is_same_v<T, ChamferGeometry> ||
+                                 std::is_same_v<T, FilletGeometry>) {
                 return {g.center,
                         g.center + cv::Point2f(g.width / 2.0F, g.height / 2.0F)};
             } else if constexpr (std::is_same_v<T, PositionGeometry>) {
@@ -321,7 +323,8 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
                                  std::is_same_v<T, ClearanceGeometry> ||
                                  std::is_same_v<T, BoltPatternGeometry> ||
                                  std::is_same_v<T, ExtremesGeometry> ||
-                                 std::is_same_v<T, ChamferGeometry>) {
+                                 std::is_same_v<T, ChamferGeometry> ||
+                                 std::is_same_v<T, FilletGeometry>) {
                 if (handle == 0) {
                     g.center = q;
                 } else {
@@ -420,7 +423,8 @@ double distanceToGeometry(const ToolGeometry& geometry, const vision::Fixture& f
                                      std::is_same_v<T, ClearanceGeometry> ||
                                      std::is_same_v<T, BoltPatternGeometry> ||
                                      std::is_same_v<T, ExtremesGeometry> ||
-                                     std::is_same_v<T, ChamferGeometry>) {
+                                     std::is_same_v<T, ChamferGeometry> ||
+                                     std::is_same_v<T, FilletGeometry>) {
                     const float hw = g.width / 2.0F;
                     const float hh = g.height / 2.0F;
                     const cv::Point2f c[4] = {

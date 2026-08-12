@@ -263,6 +263,19 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      **0,82** (el valor exacto de un cuadrado es 0,785 — la diferencia es el
      sesgo conocido de medir un borde recto sobre una rejilla de píxeles). Una
      mota de ruido **no** cuenta como agujero.
+   - *Radio de acuerdo*: el radio del redondeo de transición y —lo que de verdad
+     aporta— **si empalma tangente** con las caras vecinas. Arrastra un recuadro
+     que abarque el acuerdo con un trozo de las dos caras.
+
+     Un acuerdo que no entra tangente es un defecto de mecanizado (un salto, una
+     herramienta mal compensada) y **el radio por sí solo no lo delata**: medido
+     sobre tres piezas con un escalón de 0°, 12° y 22°, el radio da 50,5 / 50,4 /
+     50,4 —indistinguibles— y la tangencia 4,4° / 10,7° / 20,6°.
+
+     El suelo de ruido no es cero: sobre un acuerdo perfectamente tangente, el
+     dentado de los píxeles deja unos 3-4° de desviación aparente. Por debajo de
+     eso la herramienta no puede afirmar nada, y conviene saberlo antes de poner
+     la tolerancia.
    - *Chaflán*: el **ángulo del bisel y sus dos catetos**, que es como lo escribe
      un plano: «1 × 45°». Arrastra un recuadro que abarque la esquina
      achaflanada **con un trozo de las dos caras**; el recuadro *selecciona* qué
