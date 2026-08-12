@@ -348,3 +348,112 @@ TEST(CircleFitting, ResidualTellsACircleFromSomethingElse) {
     EXPECT_LT(circleResidual, 0.5);
     EXPECT_GT(squareResidual, 5.0);
 }
+
+// ---------------------------------------------------------------------------
+// El invariante de la zona minima (D2)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Banda que hace falta alrededor de la recta de MINIMOS CUADRADOS para contener
+// todos los puntos: el maximo residuo con signo menos el minimo.
+double leastSquaresBandWidth(const std::vector<cv::Point2f>& points) {
+    const pci::vision::LineFit fit = pci::vision::fitLineRobust(points);
+    EXPECT_TRUE(fit.valid);
+    const cv::Point2f normal(-fit.direction.y, fit.direction.x);
+    double lo = 1e18;
+    double hi = -1e18;
+    for (const auto& p : points) {
+        const double d = (p - fit.point).dot(normal);
+        lo = std::min(lo, d);
+        hi = std::max(hi, d);
+    }
+    return hi - lo;
+}
+
+// Lo mismo para la redondez: separacion radial alrededor del centro que da el
+// ajuste de circulo por minimos cuadrados.
+double leastSquaresRadialWidth(const std::vector<cv::Point2f>& points) {
+    const pci::vision::CircleFit fit = pci::vision::fitCircleTaubin(points);
+    EXPECT_TRUE(fit.valid);
+    double lo = 1e18;
+    double hi = -1e18;
+    for (const auto& p : points) {
+        const double r = cv::norm(p - fit.center);
+        lo = std::min(lo, r);
+        hi = std::max(hi, r);
+    }
+    return hi - lo;
+}
+
+}  // namespace
+
+TEST(MinimumZoneInvariant, NeverWiderThanTheLeastSquaresBand) {
+    // Invariante matematico, no una medida empirica: la zona minima es el MINIMO
+    // sobre todas las orientaciones, y la banda alrededor de la recta de minimos
+    // cuadrados es una candidata mas. No puede ganarle nunca.
+    //
+    // Barato de comprobar y sorprendentemente util: casi cualquier error de
+    // implementacion en los calipers giratorios lo rompe. Y de paso deja escrito
+    // por que la norma pide zona minima — usar minimos cuadrados da SIEMPRE un
+    // valor igual o mayor, o sea que rechaza piezas buenas.
+    std::mt19937 rng(20260812);
+    std::uniform_real_distribution<double> noise(-3.0, 3.0);
+    double worstRatio = 0.0;
+    int strictlyBetter = 0;
+    for (int trial = 0; trial < 200; ++trial) {
+        std::vector<cv::Point2f> points;
+        const double slope = std::uniform_real_distribution<double>(-2.0, 2.0)(rng);
+        for (int i = 0; i < 40; ++i) {
+            const double x = i * 4.0;
+            points.emplace_back(static_cast<float>(x + noise(rng)),
+                                static_cast<float>(120.0 + slope * x + noise(rng)));
+        }
+        const auto zone = pci::vision::minimumZoneBand(points);
+        ASSERT_TRUE(zone.valid);
+        const double lsq = leastSquaresBandWidth(points);
+        EXPECT_LE(zone.width, lsq + 1e-6)
+            << "zona minima " << zone.width << " > minimos cuadrados " << lsq;
+        if (zone.width < lsq - 1e-6) {
+            ++strictlyBetter;
+        }
+        worstRatio = std::max(worstRatio, zone.width / std::max(lsq, 1e-9));
+    }
+    std::printf("  200 nubes: la zona minima gana estrictamente en %d, peor razon %.4f\n",
+                strictlyBetter, worstRatio);
+    // Y que no sea una igualdad disfrazada: si las dos dieran siempre lo mismo,
+    // el test pasaria sin probar que son cosas distintas.
+    EXPECT_GT(strictlyBetter, 100) << "las dos coinciden demasiado: ¿de verdad se esta "
+                                      "minimizando el ancho y no los cuadrados?";
+}
+
+TEST(MinimumZoneInvariant, TheRoundnessZoneIsNeverWiderThanTheLeastSquaresOne) {
+    // El mismo argumento en circular: el centro que menos separa el radio maximo
+    // del minimo casi nunca es el que minimiza los residuos al cuadrado.
+    std::mt19937 rng(20260813);
+    std::uniform_real_distribution<double> noise(-2.0, 2.0);
+    double worstRatio = 0.0;
+    int strictlyBetter = 0;
+    for (int trial = 0; trial < 100; ++trial) {
+        std::vector<cv::Point2f> points;
+        const double radius = std::uniform_real_distribution<double>(40.0, 120.0)(rng);
+        for (int i = 0; i < 72; ++i) {
+            const double a = 2.0 * CV_PI * i / 72.0;
+            const double r = radius + noise(rng);
+            points.emplace_back(static_cast<float>(200.0 + r * std::cos(a)),
+                                static_cast<float>(200.0 + r * std::sin(a)));
+        }
+        const auto zone = pci::vision::minimumZoneCircle(points);
+        ASSERT_TRUE(zone.valid);
+        const double lsq = leastSquaresRadialWidth(points);
+        EXPECT_LE(zone.width(), lsq + 1e-6)
+            << "MZC " << zone.width() << " > minimos cuadrados " << lsq;
+        if (zone.width() < lsq - 1e-6) {
+            ++strictlyBetter;
+        }
+        worstRatio = std::max(worstRatio, zone.width() / std::max(lsq, 1e-9));
+    }
+    std::printf("  100 perfiles: la MZC gana estrictamente en %d, peor razon %.4f\n",
+                strictlyBetter, worstRatio);
+    EXPECT_GT(strictlyBetter, 50) << "la MZC y los minimos cuadrados coinciden demasiado";
+}

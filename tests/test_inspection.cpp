@@ -5647,3 +5647,95 @@ TEST(ThreadSuite, TheHelixBiasIsAnnouncedOnACoarseThreadAndKeptQuietOnAFineOne) 
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Repaso de coherencia del cierre (D2)
+// ---------------------------------------------------------------------------
+
+TEST(ToolCoherence, EveryToolThatMeasuresAgainstAReferenceDeclaresIt) {
+    // Este es el barrido que faltaba, y encontro algo nada mas escribirlo.
+    //
+    // Hay dos sitios que tienen que estar de acuerdo sobre que herramientas
+    // llevan referencia: el ejecutor, que se niega a medir sin ella, y el panel
+    // del editor, que decide si ensena los desplegables. Estaban en desacuerdo:
+    // el panel se preguntaba "¿es una construccion?" y con esa pregunta
+    // Posicion, Orientacion y Desviacion de centros se quedaban sin
+    // desplegables. Median contra una referencia que no habia forma de
+    // asignarles salvo editando la plantilla a mano.
+    //
+    // Ahora la regla vive en el modelo (`referenceOperandsOf`) y este barrido la
+    // recorre por los DOS lados, que es lo que hace que no vuelva a pasar.
+    cv::Mat gray(360, 480, CV_8UC1, cv::Scalar(220));
+    cv::rectangle(gray, cv::Rect(120, 90, 200, 150), cv::Scalar(40), cv::FILLED);
+
+    for (const ToolType type : allToolTypes()) {
+        const ToolGeometry geometry = testing_support::sampleGeometry(type);
+        const auto kinds = referenceOperandsOf(geometry);
+        const bool declares =
+            kinds[0] != OperandKind::Unused || kinds[1] != OperandKind::Unused;
+
+        ToolConfig config = makeConfig(type, geometry, 0.0, 1e9);
+        const auto run = runTool(gray, kIdentity, config);
+        ASSERT_TRUE(run.isOk()) << toolTypeLabel(type) << ": " << run.error().message;
+        const std::string& detail = run.value().detail;
+
+        // Lado A: si el ejecutor se queja de que falta una referencia o un
+        // datum, la herramienta TIENE que declararlo. Sin esto, el panel no
+        // ensena los desplegables y la herramienta queda inservible.
+        const bool complains = !run.value().ok &&
+                               (detail.find("DATUM") != std::string::npos ||
+                                detail.find("referencia") != std::string::npos ||
+                                detail.find("Referencia") != std::string::npos);
+        if (complains) {
+            EXPECT_TRUE(declares)
+                << toolTypeLabel(type)
+                << " pide una referencia al medir pero no la declara, asi que el panel "
+                   "no ofrece con que darsela. Dijo: "
+                << detail;
+        }
+
+        // Lado B: la etiqueta de cada hueco declarado tiene que decir algo, o el
+        // operador ve un desplegable sin saber que meterle.
+        for (const auto kind : kinds) {
+            EXPECT_STRNE(operandKindLabel(kind), "?") << toolTypeLabel(type);
+        }
+        if (declares) {
+            std::printf("  %-24s referencias: %s | %s\n", toolTypeLabel(type),
+                        operandKindLabel(kinds[0]), operandKindLabel(kinds[1]));
+        }
+    }
+}
+
+TEST(ToolCoherence, EveryGdtToolSaysWhetherItNeedsADatumAndWhichOne) {
+    // Mi primera version de este barrido exigia que TODA herramienta de GD&T
+    // dijera contra que datum mide, y fallo en Rectitud y Redondez. La premisa
+    // era la equivocada, no las herramientas: son tolerancias de FORMA y la
+    // norma las define contra el propio elemento, sin datum.
+    //
+    // La regla buena tiene dos ramas, y las dos importan: si lleva datum hay
+    // que decir cual, y si no lo lleva hay que decir ESO, porque quien viene de
+    // un plano asocia GD&T con declarar datums y se queda buscando un
+    // desplegable que no existe. Un hueco en la explicacion se lee como un
+    // fallo del programa.
+    for (const ToolType type : toolsInCategory(ToolCategory::Gdt)) {
+        const std::string description = toolTypeDescription(type);
+        const auto kinds = referenceOperandsOf(testing_support::sampleGeometry(type));
+        const bool takesReference =
+            kinds[0] != OperandKind::Unused || kinds[1] != OperandKind::Unused;
+
+        const bool namesADatum = description.find("DATUM") != std::string::npos ||
+                                 description.find("datum") != std::string::npos ||
+                                 description.find("Referencia") != std::string::npos ||
+                                 description.find("referencia") != std::string::npos;
+        std::printf("  %-24s %s\n", toolTypeLabel(type),
+                    takesReference ? "lleva datum" : "de forma: sin datum");
+        // Las dos ramas caen en la misma exigencia —hablar del asunto—, y por
+        // eso se comprueba tambien que la palabra "DATUM" en mayusculas aparece
+        // en las que NO lo llevan: es donde hace falta el enfasis.
+        EXPECT_TRUE(namesADatum)
+            << toolTypeLabel(type)
+            << (takesReference ? " lleva referencia y no dice cual"
+                               : " no lleva datum y tampoco lo dice");
+        EXPECT_GT(description.size(), 120U) << toolTypeLabel(type);
+    }
+}

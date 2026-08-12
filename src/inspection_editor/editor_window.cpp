@@ -474,11 +474,17 @@ void EditorWindow::syncConstructionPanel(const EditedTool* tool) {
                             tool->config.type == ToolType::ConstructedLine);
     const bool isRegion = tool != nullptr && tool->config.type == ToolType::Region;
     constructionCombo_->setEnabled(isConstruction || isRegion);
-    ref1Combo_->setEnabled(isConstruction);
-    ref2Combo_->setEnabled(isConstruction);
-    ref1Label_->setEnabled(isConstruction);
-    ref2Label_->setEnabled(isConstruction);
     choiceLabel_->setEnabled(isConstruction || isRegion);
+
+    // Qué referencias admite esta herramienta lo dice el MODELO, no el panel.
+    // Antes lo decidía aquí preguntándose «¿es una construcción?», y con esa
+    // pregunta Posición, Orientación y Desviación de centros se quedaban sin
+    // desplegables: medían contra una referencia que no había forma de
+    // asignarles desde el editor.
+    std::array<OperandKind, 2> kinds{OperandKind::Unused, OperandKind::Unused};
+    if (tool != nullptr) {
+        kinds = referenceOperandsOf(tool->geometry);
+    }
 
     // La Región usa el mismo desplegable para elegir QUÉ mide. Es el mismo
     // gesto —una opción discreta de la herramienta— y darle un control propio
@@ -492,39 +498,29 @@ void EditorWindow::syncConstructionPanel(const EditedTool* tool) {
         }
         constructionCombo_->setCurrentIndex(
             constructionCombo_->findData(static_cast<int>(g.measure)));
-        ref1Label_->setText(tr("1ª referencia (no se usa):"));
-        ref2Label_->setText(tr("2ª referencia (no se usa):"));
-        return;
-    }
-
-    choiceLabel_->setText(tr("Construcción:"));
-    if (!isConstruction) {
-        ref1Label_->setText(tr("1ª referencia:"));
-        ref2Label_->setText(tr("2ª referencia:"));
-        return;
-    }
-
-    // Los modos que ofrece este tipo, con su valor guardado como dato para no
-    // depender del orden del desplegable.
-    std::array<OperandKind, 2> kinds{OperandKind::Unused, OperandKind::Unused};
-    if (tool->config.type == ToolType::ConstructedPoint) {
-        const auto& g = std::get<ConstructedPointGeometry>(tool->geometry);
-        for (const auto mode : allPointConstructions()) {
-            constructionCombo_->addItem(QString::fromUtf8(constructionLabel(mode)),
-                                        static_cast<int>(mode));
+    } else if (isConstruction) {
+        choiceLabel_->setText(tr("Construcción:"));
+        // Los modos que ofrece este tipo, con su valor guardado como dato para
+        // no depender del orden del desplegable.
+        if (tool->config.type == ToolType::ConstructedPoint) {
+            const auto& g = std::get<ConstructedPointGeometry>(tool->geometry);
+            for (const auto mode : allPointConstructions()) {
+                constructionCombo_->addItem(QString::fromUtf8(constructionLabel(mode)),
+                                            static_cast<int>(mode));
+            }
+            constructionCombo_->setCurrentIndex(
+                constructionCombo_->findData(static_cast<int>(g.mode)));
+        } else {
+            const auto& g = std::get<ConstructedLineGeometry>(tool->geometry);
+            for (const auto mode : allLineConstructions()) {
+                constructionCombo_->addItem(QString::fromUtf8(constructionLabel(mode)),
+                                            static_cast<int>(mode));
+            }
+            constructionCombo_->setCurrentIndex(
+                constructionCombo_->findData(static_cast<int>(g.mode)));
         }
-        constructionCombo_->setCurrentIndex(
-            constructionCombo_->findData(static_cast<int>(g.mode)));
-        kinds = operandsOf(g.mode);
     } else {
-        const auto& g = std::get<ConstructedLineGeometry>(tool->geometry);
-        for (const auto mode : allLineConstructions()) {
-            constructionCombo_->addItem(QString::fromUtf8(constructionLabel(mode)),
-                                        static_cast<int>(mode));
-        }
-        constructionCombo_->setCurrentIndex(
-            constructionCombo_->findData(static_cast<int>(g.mode)));
-        kinds = operandsOf(g.mode);
+        choiceLabel_->setText(tr("Construcción:"));
     }
 
     // Las candidatas son TODAS las demás herramientas, no solo las que hoy
@@ -535,19 +531,21 @@ void EditorWindow::syncConstructionPanel(const EditedTool* tool) {
     const auto fill = [this, tool](QComboBox* combo, OperandKind kind,
                                    const std::string& current) {
         combo->addItem(tr("— ninguna —"), QString());
-        for (const auto& other : tools_) {
-            if (other.deleted || &other == tool || other.config.name.empty()) {
-                continue;
+        if (tool != nullptr) {
+            for (const auto& other : tools_) {
+                if (other.deleted || &other == tool || other.config.name.empty()) {
+                    continue;
+                }
+                const QString name = QString::fromStdString(other.config.name);
+                combo->addItem(name, name);
             }
-            const QString name = QString::fromStdString(other.config.name);
-            combo->addItem(name, name);
         }
         const int index = combo->findData(QString::fromStdString(current));
         combo->setCurrentIndex(index >= 0 ? index : 0);
         combo->setEnabled(kind != OperandKind::Unused);
     };
-    fill(ref1Combo_, kinds[0], tool->config.reference);
-    fill(ref2Combo_, kinds[1], tool->config.reference2);
+    fill(ref1Combo_, kinds[0], tool != nullptr ? tool->config.reference : std::string());
+    fill(ref2Combo_, kinds[1], tool != nullptr ? tool->config.reference2 : std::string());
 
     const auto label = [](OperandKind kind, const QString& prefix) {
         if (kind == OperandKind::Unused) {
@@ -557,6 +555,8 @@ void EditorWindow::syncConstructionPanel(const EditedTool* tool) {
     };
     ref1Label_->setText(label(kinds[0], tr("1ª referencia")));
     ref2Label_->setText(label(kinds[1], tr("2ª referencia")));
+    ref1Label_->setEnabled(kinds[0] != OperandKind::Unused);
+    ref2Label_->setEnabled(kinds[1] != OperandKind::Unused);
 }
 
 void EditorWindow::applyConstructionPanel(EditedTool& tool) {

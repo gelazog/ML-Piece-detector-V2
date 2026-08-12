@@ -349,6 +349,32 @@ std::array<OperandKind, 2> operandsOf(LineConstruction mode) {
     return {OperandKind::Unused, OperandKind::Unused};
 }
 
+std::array<OperandKind, 2> referenceOperandsOf(const ToolGeometry& geometry) {
+    return std::visit(
+        [](const auto& g) -> std::array<OperandKind, 2> {
+            using T = std::decay_t<decltype(g)>;
+            if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
+                          std::is_same_v<T, ConstructedLineGeometry>) {
+                // Lo que pida la construcción elegida.
+                return operandsOf(g.mode);
+            } else if constexpr (std::is_same_v<T, PositionGeometry>) {
+                // Opcionales: sin ellas la Posición se lee contra el cero del
+                // tablero, y con ellas contra un marco de referencia declarado.
+                // El secundario admite recta o punto — una recta corta a la
+                // primaria y un punto se proyecta sobre ella; las dos maneras
+                // fijan el origen.
+                return {OperandKind::Line, OperandKind::PointOrLine};
+            } else if constexpr (std::is_same_v<T, OrientationGeometry>) {
+                return {OperandKind::Line, OperandKind::Unused};
+            } else if constexpr (std::is_same_v<T, CentreOffsetGeometry>) {
+                return {OperandKind::Point, OperandKind::Point};
+            } else {
+                return {OperandKind::Unused, OperandKind::Unused};
+            }
+        },
+        geometry);
+}
+
 const char* operandKindLabel(OperandKind kind) {
     switch (kind) {
         // "con punto" y no "punto" porque un Círculo vale donde se pide un
@@ -356,6 +382,7 @@ const char* operandKindLabel(OperandKind kind) {
         case OperandKind::Point: return "una herramienta con punto (o un círculo)";
         case OperandKind::Line: return "una herramienta con recta";
         case OperandKind::Circle: return "un círculo";
+        case OperandKind::PointOrLine: return "una herramienta con recta o con punto";
         case OperandKind::Unused: return "nada";
     }
     return "?";
@@ -556,6 +583,9 @@ const char* toolTypeDescription(ToolType type) {
             return "Rectitud (zona mínima) — el valor DE LA NORMA: la anchura de la\n"
                    "banda más estrecha de dos rectas paralelas que contiene todo el\n"
                    "borde. Traza una línea sobre el borde a vigilar.\n"
+                   "NO LLEVA DATUM, y no es un olvido: es una tolerancia de FORMA, y\n"
+                   "la norma las define contra el propio elemento. Si buscas el\n"
+                   "desplegable de referencia, no lo hay porque no toca.\n"
                    "OJO al comparar con el Borde liso: aquel da la desviación máxima\n"
                    "respecto a la recta media, que es media banda. Este número saldrá\n"
                    "MAYOR sin que la pieza haya empeorado — son dos cosas distintas, y\n"
@@ -567,6 +597,8 @@ const char* toolTypeDescription(ToolType type) {
             return "Redondez (zona mínima) — el valor DE LA NORMA: la separación\n"
                    "radial entre los dos círculos CONCÉNTRICOS más juntos que\n"
                    "contienen el borde. Arrastra del centro al borde, como el Círculo.\n"
+                   "NO LLEVA DATUM: es una tolerancia de FORMA y la norma la define\n"
+                   "contra el propio elemento, no contra una referencia.\n"
                    "Se dan los dos números: el de zona mínima (el del plano) y el de\n"
                    "mínimos cuadrados (el que dan casi todas las máquinas de medir, y\n"
                    "con el que el operador va a comparar). El primero nunca es mayor.\n"
@@ -598,6 +630,11 @@ const char* toolTypeDescription(ToolType type) {
             return "Patrón de agujeros — la cota de una brida. Arrastra un recuadro\n"
                    "que abarque la pieza entera: se encuentran los agujeros, se ajusta\n"
                    "el círculo primitivo y se mide cuánto se sale cada uno de su sitio.\n"
+                   "No hay que declarar DATUM: la referencia es el propio círculo\n"
+                   "primitivo ajustado a los agujeros que se ven. Eso mide el patrón\n"
+                   "CONTRA SÍ MISMO — si todo el patrón está desplazado respecto a un\n"
+                   "borde de la pieza, esta herramienta no se entera; para eso está\n"
+                   "Posición con su marco de referencia.\n"
                    "La medida es la desviación del PEOR agujero, en diámetro de zona, y\n"
                    "el detalle dice cuál es. Con Agujeros esperados puesto, que falte\n"
                    "uno es el defecto y se dice.\n"
@@ -609,6 +646,8 @@ const char* toolTypeDescription(ToolType type) {
             return "Perfil de línea — cuánto se separa el contorno de la pieza del que\n"
                    "DEBERÍA tener. Es la tolerancia GD&T más honesta para una silueta,\n"
                    "porque está definida sobre una línea y no sobre una superficie.\n"
+                   "No hay que declarar DATUM: el nominal se guarda en coordenadas de\n"
+                   "PIEZA, así que el fixture ya lo alinea antes de comparar.\n"
                    "El nominal se captura del contorno de la pieza BUENA al dibujar la\n"
                    "herramienta, y se queda guardado dentro de la plantilla. Colócala\n"
                    "con un clic sobre la pieza de referencia; si la pieza que tienes\n"

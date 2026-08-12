@@ -515,10 +515,24 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
 // Qué hace falta en `reference` y `reference2` para cada construcción. Lo
 // consulta el ejecutor para dar un motivo concreto cuando falta algo, y lo
 // consultará el panel para etiquetar los dos desplegables.
-enum class OperandKind { Point, Line, Circle, Unused };
+enum class OperandKind { Point, Line, Circle, PointOrLine, Unused };
 [[nodiscard]] std::array<OperandKind, 2> operandsOf(PointConstruction mode);
 [[nodiscard]] std::array<OperandKind, 2> operandsOf(LineConstruction mode);
 [[nodiscard]] const char* operandKindLabel(OperandKind kind);
+
+// Qué puede llevar CADA HERRAMIENTA en `reference` y `reference2`.
+//
+// Existe porque el panel del editor lo decidía por su cuenta, y la pregunta que
+// se hacía —«¿es una construcción?»— dejaba fuera a Posición, Orientación y
+// Desviación de centros, que también miden contra una referencia: desde el
+// editor no había forma de asignársela y solo se podían configurar editando la
+// plantilla a mano. Lo encontró el barrido de coherencia de `D2`.
+//
+// La regla vive aquí, en el modelo, por la misma razón que `allToolTypes()`:
+// para que el panel y el ejecutor no puedan discrepar. `Unused` es el valor por
+// defecto correcto para una herramienta nueva —la mayoría no lleva referencia—,
+// así que aquí no hace falta terminador que obligue a decidir.
+[[nodiscard]] std::array<OperandKind, 2> referenceOperandsOf(const ToolGeometry& geometry);
 
 // (De)serialización JSON (cv::FileStorage en memoria). El tipo del JSON debe
 // coincidir con config.type al parsear.
