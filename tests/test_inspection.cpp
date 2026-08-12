@@ -5739,3 +5739,104 @@ TEST(ToolCoherence, EveryGdtToolSaysWhetherItNeedsADatumAndWhichOne) {
         EXPECT_GT(description.size(), 120U) << toolTypeLabel(type);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Cuanto cuesta runTools con una plantilla real (R3)
+//
+// Hubo un primer banco con las geometrias de `makeToolAt` que daba 0,5 ms
+// con veinte herramientas y habria cerrado el item con un "despreciable".
+// Eran de juguete: un Eje de 50 px con 12 cortes cuando el real cruza 400
+// px con 64. A tamaño de verdad la respuesta es la contraria, asi que ese
+// banco se borro en vez de dejarlo dando una cifra que engaña.
+// ---------------------------------------------------------------------------
+
+TEST(ToolsCost, TheSameQuestionWithToolsTheSizeOfTheRealOnes) {
+    // El banco de arriba usa las geometrias de `makeToolAt`, que son de
+    // juguete: un Eje de 50 px con 12 cortes, una Rosca con 60. En una pieza de
+    // verdad el Eje cruza 400 px con 64 cortes y la Rosca pide 400, y el coste
+    // de esas herramientas esta DOMINADO por el numero de cortes. Concluir
+    // "despreciable" con las pequeñas seria concluir sobre otra cosa.
+    cv::Mat gray(600, 900, CV_8UC1, cv::Scalar(225));
+    cv::rectangle(gray, cv::Rect(120, 220, 660, 160), cv::Scalar(35), cv::FILLED);
+    cv::circle(gray, cv::Point(300, 300), 45, cv::Scalar(225), cv::FILLED);
+
+    // Las cinco caras, a tamaño de pieza.
+    const auto bigTool = [](int index) {
+        const auto y = static_cast<float>(300 + (index % 3) * 8);
+        switch (index % 5) {
+            case 0:
+                return makeConfig(ToolType::Shaft,
+                                  ToolGeometry(ShaftGeometry{{140.0F, y}, {760.0F, y},
+                                                             90.0F, 64}),
+                                  0.0, 1e9);
+            case 1:
+                return makeConfig(ToolType::Thread,
+                                  ToolGeometry(ThreadGeometry{{140.0F, y}, {760.0F, y},
+                                                              90.0F, 400}),
+                                  0.0, 1e9);
+            case 2:
+                return makeConfig(ToolType::Groove,
+                                  ToolGeometry(GrooveGeometry{{140.0F, y}, {760.0F, y},
+                                                              90.0F, 200,
+                                                              GrooveMeasure::Width}),
+                                  0.0, 1e9);
+            case 3:
+                return makeConfig(ToolType::Region,
+                                  ToolGeometry(RegionGeometry{{450.0F, 300.0F}, 640.0F,
+                                                              150.0F, RegionMeasure::Area,
+                                                              true}),
+                                  0.0, 1e9);
+            default:
+                return makeConfig(ToolType::Extremes,
+                                  ToolGeometry(ExtremesGeometry{{450.0F, 300.0F}, 640.0F,
+                                                                150.0F,
+                                                                ExtremeMeasure::MaxSpan,
+                                                                true}),
+                                  0.0, 1e9);
+        }
+    };
+
+    std::printf("  herramientas grandes | ms por frame | %% de un frame a 30 fps\n");
+    double atTen = 0.0;
+    double atTwenty = 0.0;
+    for (const int count : {1, 5, 10, 20}) {
+        std::vector<ToolConfig> tools;
+        for (int i = 0; i < count; ++i) {
+            tools.push_back(bigTool(i));
+            tools.back().name = "g" + std::to_string(i);
+        }
+        (void)runTools(gray, kIdentity, tools);
+
+        constexpr int kRepeats = 10;
+        const auto started = std::chrono::steady_clock::now();
+        for (int r = 0; r < kRepeats; ++r) {
+            const auto results = runTools(gray, kIdentity, tools);
+            EXPECT_EQ(results.size(), tools.size());
+        }
+        const double ms = std::chrono::duration<double, std::milli>(
+                              std::chrono::steady_clock::now() - started)
+                              .count() /
+                          kRepeats;
+        std::printf("  %20d | %12.2f | %.1f %%\n", count, ms, ms / 33.3 * 100.0);
+        if (count == 10) {
+            atTen = ms;
+        }
+        if (count == 20) {
+            atTwenty = ms;
+        }
+    }
+
+    // Crece LINEAL con el numero de herramientas, y esa es la respuesta a la
+    // pregunta que traia el item: no hay trabajo repetido entre herramientas
+    // que se pueda quitar. Cada una escanea su propia region y lo que cuesta es
+    // escanearla. Si algun dia dejara de ser lineal, habria aparecido trabajo
+    // compartido y entonces si valdria la pena buscarlo.
+    //
+    // Los margenes son anchos a proposito: lo que se caza es un cambio de
+    // FORMA, y un umbral apretado sobre una medida de tiempo falla solo cuando
+    // la maquina esta ocupada.
+    ASSERT_GT(atTen, 0.0);
+    EXPECT_GT(atTwenty / atTen, 1.5) << "doblar las herramientas deberia doblar el coste";
+    EXPECT_LT(atTwenty / atTen, 2.6)
+        << "el coste crece mas que lineal: hay trabajo repetido entre herramientas";
+}

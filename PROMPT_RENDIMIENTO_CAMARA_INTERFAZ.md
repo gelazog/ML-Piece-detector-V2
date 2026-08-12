@@ -233,7 +233,24 @@ Verificación: con el desglose apagado, el tiempo de `analyzeFrame` no empeora d
 forma medible respecto a la referencia; encendido, las etapas suman el total
 dentro de un margen pequeño (si no suman, el desglose miente).
 
-### - [ ] R3 — `runTools` con muchas herramientas: el coste que nadie ha medido
+### - [x] R3 — `runTools` con muchas herramientas: el coste que nadie ha medido
+
+*(Medido, y resultó ser el primer puesto: con veinte herramientas del tamaño de
+las de verdad, `runTools` cuesta **27,8 ms**, el 83 % de un frame a 30 fps y
+más que la segmentación, el fixture y el recorte juntos. Sumado al análisis no
+cabe en el frame, así que el análisis descarta — que es justo lo que R1 acaba
+de hacer visible.
+Crece **lineal**, o sea que no hay trabajo repetido entre herramientas que
+quitar: cada una escanea su región y eso es lo que cuesta. El test vigila la
+forma, no el número.
+Y el aviso de método: mi primer banco uso las geometrías de prueba que ya
+existían y dio 0,5 ms con veinte, que habría cerrado el ítem con un
+«despreciable». Eran de juguete —un Eje de 50 px con 12 cortes cuando el real
+cruza 400 con 64— y el coste está dominado por los cortes. Medir el tamaño
+equivocado no da un número impreciso: da la conclusión contraria. Ese banco se
+borró en vez de dejarlo dando una cifra que engaña, y de paso era un generador
+de fallos intermitentes: media décimas de milisegundo y solo fallaba con la
+máquina ocupada.)*
 
 Todo el reparto conocido se midió **sin herramientas dibujadas**. Una plantilla
 real lleva diez o veinte, cada una con su barrido de perfiles, y se ejecutan por
@@ -250,6 +267,14 @@ el resultado. Un «se midió y no hacía falta» es un resultado que ahorra trab
 al siguiente, exactamente como la escala de trabajo adaptativa.
 
 ### - [ ] R4 — La escala de trabajo, esta vez sin modo nuevo
+
+> **Lo que R3 le hace a este ítem.** La escala de trabajo acelera **la
+> segmentación**, y con herramientas dibujadas la segmentación no es el cuello:
+> con veinte herramientas son ~1,6 ms de 31 (el 5 %), así que el 1,33× que
+> valdría sobre la segmentación se queda en **menos de un 2 % del frame**.
+> Este ítem estaba escrito para poder caerse y R3 ya lo ha empujado; queda
+> decidir si se cierra con un «se midió y no hacía falta» o si el esfuerzo se
+> pone donde está el 83 %.
 
 `ARQUITECTURA.md` deja el cabo suelto explícito: la escala de trabajo valía
 1,10× cuando se probó y valdría **~1,33×** sobre el reparto de hoy, y se

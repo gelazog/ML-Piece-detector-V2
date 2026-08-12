@@ -358,6 +358,41 @@ llega o se mide o se descarta**: si esa suma no cuadra, el número que ve el
 operador miente, y un indicador de rendimiento que miente es peor que no
 tenerlo.
 
+### Lo que cuestan las herramientas, que resultó ser el primer puesto
+
+Todo el reparto de tiempos de más abajo se midió **sin herramientas dibujadas**.
+Una plantilla real lleva diez o veinte y se ejecutan en cada frame, así que
+faltaba el número más importante. Medido sobre 900×600 con herramientas del
+tamaño de las que se dibujan de verdad —un Eje que cruza 620 px con 64 cortes,
+una Rosca con 400, una Ranura con 200, una Región y un Máx./mín. sobre la pieza
+entera—:
+
+| Herramientas | ms por frame | % de un frame a 30 fps |
+|---|---|---|
+| 1 | 0,7 | 2 % |
+| 5 | 7,0 | 21 % |
+| 10 | 13,9 | 42 % |
+| **20** | **27,8** | **83 %** |
+
+Con veinte herramientas, `runTools` **es el mayor coste del frame con
+diferencia** — más que la segmentación, el fixture y el recorte juntos, que
+suman ~3,5 ms sobre esta imagen. Sumado al análisis, veinte herramientas no
+caben en los 33,3 ms de un frame a 30 fps: el análisis empieza a descartar, y
+por eso R1 existe.
+
+**Crece lineal** (13,9 → 27,8 al doblar), y eso es la respuesta a la pregunta
+que traía el asunto: **no hay trabajo repetido entre herramientas que quitar**.
+Cada una escanea su propia región y lo que cuesta es escanearla. Si algún día
+dejara de ser lineal, habría aparecido trabajo compartido y entonces sí valdría
+la pena buscarlo — el test lo vigila.
+
+Un aviso de método, porque estuvo a punto de salir la conclusión contraria: el
+primer banco usó las geometrías de prueba que ya existían y dio **0,5 ms con
+veinte herramientas**, que habría cerrado el asunto con un «despreciable». Eran
+de juguete —un Eje de 50 px con 12 cortes cuando el real cruza 400 con 64— y el
+coste de estas herramientas está dominado por el número de cortes. Medir el
+tamaño equivocado no da un número impreciso: da la conclusión contraria.
+
 ### El desglose de tiempos que la propia app puede dar
 
 Los tiempos de la sección siguiente se midieron una vez, con un programa suelto.
