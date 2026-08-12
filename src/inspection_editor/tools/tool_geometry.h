@@ -88,6 +88,15 @@ enum class PositionAxis { Radial, X, Y };
 struct PositionGeometry {
     cv::Point2f point;  // rasgo marcado, en coords de pieza (viaja con ella)
     PositionAxis axis = PositionAxis::Radial;
+    // Posición verdadera con marco de referencia (G4). Con `reference` puesta a
+    // una herramienta que dé una recta, esa recta es el DATUM PRIMARIO —fija la
+    // orientación del marco— y `reference2` el secundario, que fija el origen.
+    // El rasgo se mide en ese marco contra el punto teórico de abajo, y el valor
+    // pasa a ser el DIÁMETRO DE ZONA de la norma: 2·√(dx²+dy²).
+    //
+    // Sin referencias se comporta exactamente como antes: contra el cero del
+    // tablero y con el selector de eje. Ampliar y no duplicar era la condición.
+    cv::Point2f nominal{0.0F, 0.0F};  // punto teórico, en coordenadas del marco
 };
 
 // Arco: el radio de una esquina o de un redondeo, que es una medida de plano

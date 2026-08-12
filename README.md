@@ -239,6 +239,19 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      que el tablero pasa a ser criterio OK/NG y no solo ayuda visual. Con el
      cero *en la propia pieza* la desviación es constante: usa el centro de la
      imagen o un punto fijado para que mida algo útil.
+
+     **Con datums declarados es la posición verdadera de la norma.** Elige en
+     *Referencia* el datum **primario** (una recta: orienta el marco) y en *2ª
+     referencia* el **secundario** (fija el origen; vale una recta o un punto,
+     que es como se usa un agujero). Entonces la medida pasa a ser el **diámetro
+     de zona**, 2·√(dx²+dy²) respecto al punto teórico, medido dentro del marco —
+     y **no cambia aunque la pieza llegue girada**, porque el marco gira con
+     ella. Sin datums se comporta exactamente como antes.
+
+     Solo es honesta si los datums se resuelven en el plano de la imagen: una
+     cara perpendicular a la cámara no da datum, y entonces no mide. Un marco a
+     medias tampoco: sin secundario no hay origen, y dos datums paralelos no se
+     cortan.
    - *Región*: describe la **forma** de lo que hay dentro del recuadro. Arrastra
      un rectángulo sobre la pieza y elige en *Medida* qué vigilar: **área**,
      **perímetro**, **solidez** (cuánto se aparta de su casco convexo: 1 = sin

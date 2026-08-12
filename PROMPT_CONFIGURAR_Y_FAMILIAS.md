@@ -777,7 +777,21 @@ tiene que estar accesible desde la familia.
   puesto a 90° da lo mismo; y un test que compruebe explícitamente que **no** se
   está devolviendo el ángulo.
 
-- [ ] **G4 — Posición verdadera con marco de referencia.** La herramienta
+- [x] **G4 — Posición verdadera con marco de referencia.** *(Se amplió la
+  Posición, no se duplicó, y hay un test que lo fija: sin datums el detalle
+  sigue siendo el de siempre (dx/dy/r/ángulo) y no aparece ningún diámetro de
+  zona. Con datums, Ø = 2·√(dx²+dy²) medido en el marco, y girando la pieza
+  entera por 0°, 17°, 45°, 90° y 143° sale Ø10,000 en los cinco — que es la
+  comprobación que pedía el plan y la que demuestra que el marco es un marco.
+  El datum secundario admite recta (origen = intersección) o punto (origen =
+  ese punto proyectado sobre la primaria), porque un agujero como secundario es
+  lo normal en una brida. Los marcos a medias no miden: sin secundario no hay
+  origen, y dos datums paralelos no se cortan.
+  De paso hubo que subir los helpers geométricos de `X1` —`operand`,
+  `intersectLines`, `projectOnLine`— a la zona de helpers generales del archivo:
+  ya los usan las construcciones, `G3` y `G4`, y la Posición se ejecuta antes en
+  el archivo. Subirlos era lo correcto; ya no pertenecen a una herramienta sino
+  al mecanismo de referencias.)* La herramienta
   Posición de hoy mide contra el cero del tablero. La de la norma mide contra
   un **marco de referencia (DRF)** construido con datums, y se expresa como
   **diámetro de zona**: `P = 2·√(dx² + dy²)`.

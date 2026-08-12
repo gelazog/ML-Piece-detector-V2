@@ -4449,3 +4449,160 @@ TEST(Orientation, ItIsNeverSmallerThanTheStraightnessOfTheSameEdge) {
                 oriented.measured);
     EXPECT_GE(oriented.measured, zone.value().measured - 0.05) << oriented.detail;
 }
+
+// ---------------------------------------------------------------------------
+// Posición verdadera con marco de referencia (G4)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// El marco: dos reglas que se cortan en el origen elegido, trazadas en
+// coordenadas de pieza. La primaria orienta, la secundaria fija el origen.
+ToolConfig frameRuler(const std::string& name, cv::Point2f a, cv::Point2f b) {
+    ToolConfig config;
+    config.type = ToolType::Ruler;
+    config.name = name;
+    config.geometryJson = toJson(ToolGeometry(RulerGeometry{a, b}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+ToolConfig truePosition(cv::Point2f feature, cv::Point2f nominal,
+                        const std::string& primary = "datum A",
+                        const std::string& secondary = "datum B") {
+    ToolConfig config;
+    config.type = ToolType::Position;
+    config.name = "posicion";
+    config.reference = primary;
+    config.reference2 = secondary;
+    PositionGeometry g;
+    g.point = feature;
+    g.nominal = nominal;
+    config.geometryJson = toJson(ToolGeometry(g));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+// Escena mínima: la imagen no importa para estas herramientas (Regla y Posición
+// miden sobre coordenadas de pieza, no buscan bordes).
+ToolRunResult positionIn(const std::vector<ToolConfig>& tools) {
+    const cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(128));
+    for (const auto& r : runTools(gray, kIdentity, tools)) {
+        if (r.name == "posicion") {
+            return r;
+        }
+    }
+    return {};
+}
+
+}  // namespace
+
+TEST(TruePosition, TheZoneDiameterIsTwiceTheDistanceToTheTheoreticalPoint) {
+    // Marco: eje X sobre y=0 (datum A) y origen en x=0 (datum B, vertical).
+    // Rasgo teórico en (100; 50); el real está desplazado (3; 4), así que la
+    // distancia es 5 y el DIÁMETRO de zona 10.
+    const auto result = positionIn({
+        frameRuler("datum A", {0, 0}, {200, 0}),
+        frameRuler("datum B", {0, -50}, {0, 50}),
+        truePosition({103.0F, 54.0F}, {100.0F, 50.0F}),
+    });
+    std::printf("  %s\n", result.detail.c_str());
+    EXPECT_NEAR(result.measured, 10.0, 1e-3) << result.detail;
+    EXPECT_NE(result.detail.find("posición verdadera Ø"), std::string::npos)
+        << result.detail;
+}
+
+TEST(TruePosition, TurningThePieceDoesNotChangeTheValue) {
+    // Todo se mide DENTRO del marco, así que girar la pieza entera —datums y
+    // rasgo a la vez— no puede cambiar el resultado. Es la prueba de que el
+    // marco es un marco y no una excusa.
+    const double reference = 10.0;
+    for (const double turnDeg : {0.0, 17.0, 45.0, 90.0, 143.0}) {
+        const double t = turnDeg * CV_PI / 180.0;
+        const auto turn = [t](cv::Point2f p) {
+            return cv::Point2f(
+                static_cast<float>(p.x * std::cos(t) - p.y * std::sin(t)),
+                static_cast<float>(p.x * std::sin(t) + p.y * std::cos(t)));
+        };
+        const auto result = positionIn({
+            frameRuler("datum A", turn({0, 0}), turn({200, 0})),
+            frameRuler("datum B", turn({0, -50}), turn({0, 50})),
+            truePosition(turn({103.0F, 54.0F}), {100.0F, 50.0F}),
+        });
+        std::printf("  girada %5.0f° -> Ø%.3f\n", turnDeg, result.measured);
+        EXPECT_NEAR(result.measured, reference, 0.02)
+            << "girada " << turnDeg << "°: " << result.detail;
+    }
+}
+
+TEST(TruePosition, APointCanBeTheSecondaryDatum) {
+    // Un agujero como datum secundario es lo normal en una brida: el origen es
+    // ese punto llevado sobre la recta primaria, que es quien manda.
+    ToolConfig hole;
+    hole.type = ToolType::Position;
+    hole.name = "datum B";
+    hole.geometryJson =
+        toJson(ToolGeometry(PositionGeometry{{0.0F, 30.0F}, PositionAxis::Radial, {0, 0}}));
+    hole.toleranceMin = 0.0;
+    hole.toleranceMax = 1e9;
+
+    const auto result = positionIn({
+        frameRuler("datum A", {0, 0}, {200, 0}),
+        hole,
+        truePosition({103.0F, 54.0F}, {100.0F, 50.0F}),
+    });
+    // El punto (0;30) proyectado sobre y=0 da el origen (0;0), así que sale lo
+    // mismo que con la recta vertical.
+    std::printf("  datum secundario puntual -> %s\n", result.detail.c_str());
+    EXPECT_NEAR(result.measured, 10.0, 1e-3) << result.detail;
+}
+
+TEST(TruePosition, WithoutReferencesItBehavesExactlyAsBefore) {
+    // La condición del plan: ampliar y no duplicar. Quien no declare datums no
+    // puede notar ningún cambio.
+    ToolConfig legacy;
+    legacy.type = ToolType::Position;
+    legacy.name = "posicion";
+    legacy.geometryJson = toJson(
+        ToolGeometry(PositionGeometry{{30.0F, 40.0F}, PositionAxis::Radial, {0, 0}}));
+    legacy.toleranceMin = 0.0;
+    legacy.toleranceMax = 1e9;
+
+    const auto result = positionIn({legacy});
+    std::printf("  sin datums -> %s\n", result.detail.c_str());
+    // Formato de siempre: dx/dy/r/ángulo, y NADA de diámetro de zona.
+    EXPECT_NE(result.detail.find("dx="), std::string::npos) << result.detail;
+    EXPECT_EQ(result.detail.find("posición verdadera"), std::string::npos)
+        << result.detail;
+    EXPECT_NEAR(result.measured, 50.0, 1e-3) << "radio de (30;40) respecto al cero";
+}
+
+TEST(TruePosition, AnIncompleteFrameDoesNotMeasure) {
+    // Un marco a medias no es un marco: sin secundario no hay origen, y medir
+    // contra un origen supuesto es justo lo que no se puede hacer.
+    const auto missing = positionIn({
+        frameRuler("datum A", {0, 0}, {200, 0}),
+        truePosition({103.0F, 54.0F}, {100.0F, 50.0F}, "datum A", ""),
+    });
+    EXPECT_FALSE(missing.ok);
+    EXPECT_NE(missing.detail.find("SECUNDARIO"), std::string::npos) << missing.detail;
+
+    // Y dos datums paralelos no se cortan, así que no fijan origen.
+    const auto parallel = positionIn({
+        frameRuler("datum A", {0, 0}, {200, 0}),
+        frameRuler("datum B", {0, 40}, {200, 40}),
+        truePosition({103.0F, 54.0F}, {100.0F, 50.0F}),
+    });
+    EXPECT_FALSE(parallel.ok);
+    EXPECT_NE(parallel.detail.find("paralelos"), std::string::npos) << parallel.detail;
+}
+
+TEST(TruePosition, TheDescriptionSaysWhenItCannotBeHonest) {
+    // El límite de la óptica: si el datum es una cara perpendicular a la cámara,
+    // no se resuelve en el plano y no hay marco que valga.
+    const std::string description = toolTypeDescription(ToolType::Position);
+    EXPECT_NE(description.find("plano de la imagen"), std::string::npos);
+    EXPECT_NE(description.find("DIÁMETRO"), std::string::npos);
+}

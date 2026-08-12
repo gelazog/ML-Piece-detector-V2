@@ -176,6 +176,122 @@ ToolRunResult baseResult(const ToolConfig& config) {
     return result;
 }
 
+// --- Geometría compartida: referencias y elementos derivados -------------
+//
+// Nació con las construcciones de `X1` y vive aquí arriba porque ya la usan
+// tres familias: las construcciones, la Orientación (`G3`) y la Posición
+// verdadera (`G4`). Estaba definida más abajo, junto a sus primeros
+// usuarios, y al necesitarla la Posición —que se ejecuta antes en el
+// archivo— tocaba subirla o declararla a medias; subirla es lo correcto,
+// porque ya no pertenece a una herramienta sino al mecanismo de referencias.
+// --- Construcciones geométricas (X1) ----------------------------------------
+//
+// Trigonometría sobre elementos que otras herramientas ya ajustan: cero
+// algoritmo nuevo. Lo único delicado son los casos degenerados, y ahí la regla
+// es siempre la misma — se falla con motivo y NUNCA se devuelve un NaN, que es
+// un número con toda la pinta de ser una medida.
+
+// Dos rectas cuentan como paralelas cuando el seno del ángulo que forman baja
+// de esto. Con direcciones unitarias |cross| ES ese seno, así que 1e-3 son
+// 0,057°: por debajo el corte existe en matemáticas pero cae a más de cien mil
+// píxeles, y eso no dice nada de la pieza.
+constexpr double kParallelSin = 1e-3;
+// Dos puntos "distintos" tienen que estarlo de verdad: por debajo de una
+// milésima de píxel no hay ninguna dirección que sacar de ellos.
+constexpr double kCoincidentPx = 1e-3;
+// Medio largo del tramo que se dibuja de una recta construida. Es una longitud
+// de DIBUJO: la recta es infinita y esto solo decide cuánto se ve.
+constexpr float kDrawHalfLengthPx = 150.0F;
+
+std::optional<cv::Point2f> intersectLines(const DerivedElement& a, const DerivedElement& b) {
+    const double cross = static_cast<double>(a.direction.x) * b.direction.y -
+                         static_cast<double>(a.direction.y) * b.direction.x;
+    if (std::abs(cross) < kParallelSin) {
+        return std::nullopt;
+    }
+    const cv::Point2f w = b.point - a.point;
+    const double t = (static_cast<double>(w.x) * b.direction.y -
+                      static_cast<double>(w.y) * b.direction.x) /
+                     cross;
+    return a.point + static_cast<float>(t) * a.direction;
+}
+
+cv::Point2f projectOnLine(const cv::Point2f& p, const DerivedElement& line) {
+    return line.point + (p - line.point).dot(line.direction) * line.direction;
+}
+
+// Una recta no tiene sentido, solo dirección, pero su vector SÍ lo tiene, y
+// depende de hacia dónde la trazara el operador. Esto lo lleva siempre al
+// semiplano superior para que dos trazos opuestos de la misma recta den el
+// mismo vector. Sin esto la bisectriz de dos rectas perpendiculares salía a 45°
+// o a 135° según el sentido del trazo: las dos son igual de válidas —con 90°
+// entre las rectas no hay ángulo agudo que partir— pero que cambie sola no lo
+// es, porque el datum giraría 90° sin que nadie tocara nada.
+cv::Point2f canonicalDirection(const cv::Point2f& d) {
+    if (d.y < 0.0F || (d.y == 0.0F && d.x < 0.0F)) {
+        return -d;
+    }
+    return d;
+}
+
+// Resuelve un operando comprobando que sea de la clase que la construcción
+// necesita. El motivo se escribe para el operador: qué falta y de qué clase
+// tendría que ser, no un "referencia inválida" que no dice dónde mirar.
+const DerivedElement* operand(const DerivedElements& refs, const std::string& name,
+                              OperandKind kind, const char* which, std::string& why) {
+    if (kind == OperandKind::Unused) {
+        return nullptr;
+    }
+    if (name.empty()) {
+        why = std::string("falta la ") + which + " referencia: hace falta " +
+              operandKindLabel(kind);
+        return nullptr;
+    }
+    const auto found = refs.find(name);
+    if (found == refs.end()) {
+        why = "no se pudo usar la referencia '" + name +
+              "': no existe, está desactivada o falló al medir";
+        return nullptr;
+    }
+    const DerivedElement& element = found->second;
+    const bool fits = (kind == OperandKind::Point)  ? element.hasPoint()
+                      : (kind == OperandKind::Line) ? element.hasLine()
+                                                    : element.kind == DerivedKind::Circle;
+    if (!fits) {
+        why = "'" + name + "' no sirve como " + which + " referencia: hace falta " +
+              operandKindLabel(kind);
+        return nullptr;
+    }
+    // Una recta con dirección degenerada haría aparecer NaN más abajo. Se corta
+    // aquí, en el único sitio por el que pasan todos los operandos, en vez de
+    // repetir la comprobación en cada construcción.
+    if (kind == OperandKind::Line && cv::norm(element.direction) < 0.5) {
+        why = "la recta de '" + name + "' no tiene dirección utilizable";
+        return nullptr;
+    }
+    return &element;
+}
+
+// Comprueba los dos operandos de una construcción. Devuelve false y deja el
+// motivo en el resultado cuando alguno no sirve.
+bool resolveOperands(const DerivedElements& refs, const ToolConfig& config,
+                     const std::array<OperandKind, 2>& kinds, const DerivedElement*& a,
+                     const DerivedElement*& b, ToolRunResult& result) {
+    std::string why;
+    a = operand(refs, config.reference, kinds[0], "primera", why);
+    if (kinds[0] != OperandKind::Unused && a == nullptr) {
+        result.detail = why;
+        return false;
+    }
+    b = operand(refs, config.reference2, kinds[1], "segunda", why);
+    if (kinds[1] != OperandKind::Unused && b == nullptr) {
+        result.detail = why;
+        return false;
+    }
+    return true;
+}
+
+
 ToolRunResult runCaliper(const cv::Mat& gray, const Fixture& fixture,
                          const ToolConfig& config, const CaliperGeometry& g,
                          const Fmt& fmt) {
@@ -246,9 +362,107 @@ ToolRunResult runRuler(const Fixture& fixture, const ToolConfig& config,
 
 // Posición: dónde cae un rasgo respecto al cero del tablero de referencia.
 // Es lo que convierte el tablero en criterio OK/NG y no solo en ayuda visual.
+// Posición verdadera con marco de referencia (G4).
+//
+// El marco lo forman dos datums: el PRIMARIO orienta —su dirección es el eje X
+// del marco— y el SECUNDARIO fija el origen. Con dos rectas, el origen es su
+// intersección; con una recta y un punto, el origen es el punto proyectado
+// sobre la primaria, que es como se materializa un marco cuando el secundario
+// es un agujero.
+//
+// Todo se mide DENTRO del marco, y por eso girar la pieza entera no cambia el
+// resultado: el marco gira con ella.
+struct DatumFrame {
+    cv::Point2f origin{0.0F, 0.0F};
+    cv::Point2f axisX{1.0F, 0.0F};
+    bool valid = false;
+    std::string problem;
+};
+
+DatumFrame buildDatumFrame(const DerivedElements& refs, const ToolConfig& config) {
+    DatumFrame frame;
+    std::string why;
+    const DerivedElement* primary =
+        operand(refs, config.reference, OperandKind::Line, "primera", why);
+    if (primary == nullptr) {
+        frame.problem = config.reference.empty()
+                            ? "falta el DATUM PRIMARIO: una recta que oriente el marco"
+                            : "el datum primario no vale — " + why;
+        return frame;
+    }
+    if (config.reference2.empty()) {
+        frame.problem = "falta el DATUM SECUNDARIO: sin él el marco no tiene origen";
+        return frame;
+    }
+    const auto found = refs.find(config.reference2);
+    if (found == refs.end()) {
+        frame.problem = "no se pudo usar '" + config.reference2 +
+                        "' como datum secundario: no existe, está desactivada o falló";
+        return frame;
+    }
+
+    frame.axisX = primary->direction;
+    const DerivedElement& secondary = found->second;
+    if (secondary.hasLine()) {
+        const auto crossing = intersectLines(*primary, secondary);
+        if (!crossing.has_value()) {
+            frame.problem =
+                "los dos datums son paralelos: no se cortan, así que no fijan un origen";
+            return frame;
+        }
+        frame.origin = *crossing;
+    } else if (secondary.hasPoint()) {
+        // El origen es el punto llevado sobre la recta primaria: así el marco
+        // queda anclado al datum primario, que es quien manda.
+        frame.origin = projectOnLine(secondary.point, *primary);
+    } else {
+        frame.problem = "'" + config.reference2 +
+                        "' no sirve como datum secundario: hace falta una recta o un punto";
+        return frame;
+    }
+    frame.valid = true;
+    return frame;
+}
+
 ToolRunResult runPosition(const Fixture& fixture, const ToolConfig& config,
                           const PositionGeometry& g, const Fmt& fmt,
-                          const vision::BoardFrame& board) {
+                          const vision::BoardFrame& board, const DerivedElements& refs) {
+    // Con datums declarados, la posición verdadera de la norma. Sin ellos, el
+    // comportamiento de siempre contra el cero del tablero: ampliar y no
+    // duplicar significa que quien no toque nada no nota nada.
+    if (!config.reference.empty() || !config.reference2.empty()) {
+        ToolRunResult framed = baseResult(config);
+        const DatumFrame frame = buildDatumFrame(refs, config);
+        if (!frame.valid) {
+            framed.detail = frame.problem;
+            return framed;
+        }
+        // El rasgo, en coordenadas del marco.
+        const cv::Point2f axisY(-frame.axisX.y, frame.axisX.x);
+        const cv::Point2f offset = g.point - frame.origin;
+        const double x = offset.dot(frame.axisX);
+        const double y = offset.dot(axisY);
+        const double dx = x - static_cast<double>(g.nominal.x);
+        const double dy = y - static_cast<double>(g.nominal.y);
+        // El valor de la norma es un DIÁMETRO de zona, no un radio: la zona es
+        // un círculo alrededor del punto teórico y la cota da su diámetro.
+        framed.measured = 2.0 * std::hypot(dx, dy);
+        framed.ok = withinTolerance(config, framed.measured);
+        framed.derived.kind = DerivedKind::Point;
+        framed.derived.point = g.point;
+        framed.detail = "posición verdadera Ø" + fmtLen(framed.measured, fmt) +
+                        " (dx=" + fmtLen(dx, fmt) + ", dy=" + fmtLen(dy, fmt) +
+                        " en el marco " + config.reference + "|" + config.reference2 + ")";
+
+        const cv::Point2f nominalPiece =
+            frame.origin + frame.axisX * g.nominal.x + axisY * g.nominal.y;
+        framed.overlayPoints.push_back(toImg(fixture, nominalPiece));
+        framed.overlayPoints.push_back(toImg(fixture, g.point));
+        framed.overlaySegments.push_back(
+            {toImg(fixture, nominalPiece), toImg(fixture, g.point)});
+        return framed;
+    }
+
     ToolRunResult result = baseResult(config);
     const cv::Point2f p = toImg(fixture, g.point);
     result.overlayPoints.push_back(board.origin);
@@ -1313,113 +1527,6 @@ ToolRunResult runPolyBlob(const cv::Mat& gray, const Fixture& fixture, const Too
     result.ok = withinTolerance(config, result.measured);
     result.detail = std::to_string(count) + " blob(s), área=" + fmtArea(totalArea, fmt);
     return result;
-}
-
-// --- Construcciones geométricas (X1) ----------------------------------------
-//
-// Trigonometría sobre elementos que otras herramientas ya ajustan: cero
-// algoritmo nuevo. Lo único delicado son los casos degenerados, y ahí la regla
-// es siempre la misma — se falla con motivo y NUNCA se devuelve un NaN, que es
-// un número con toda la pinta de ser una medida.
-
-// Dos rectas cuentan como paralelas cuando el seno del ángulo que forman baja
-// de esto. Con direcciones unitarias |cross| ES ese seno, así que 1e-3 son
-// 0,057°: por debajo el corte existe en matemáticas pero cae a más de cien mil
-// píxeles, y eso no dice nada de la pieza.
-constexpr double kParallelSin = 1e-3;
-// Dos puntos "distintos" tienen que estarlo de verdad: por debajo de una
-// milésima de píxel no hay ninguna dirección que sacar de ellos.
-constexpr double kCoincidentPx = 1e-3;
-// Medio largo del tramo que se dibuja de una recta construida. Es una longitud
-// de DIBUJO: la recta es infinita y esto solo decide cuánto se ve.
-constexpr float kDrawHalfLengthPx = 150.0F;
-
-std::optional<cv::Point2f> intersectLines(const DerivedElement& a, const DerivedElement& b) {
-    const double cross = static_cast<double>(a.direction.x) * b.direction.y -
-                         static_cast<double>(a.direction.y) * b.direction.x;
-    if (std::abs(cross) < kParallelSin) {
-        return std::nullopt;
-    }
-    const cv::Point2f w = b.point - a.point;
-    const double t = (static_cast<double>(w.x) * b.direction.y -
-                      static_cast<double>(w.y) * b.direction.x) /
-                     cross;
-    return a.point + static_cast<float>(t) * a.direction;
-}
-
-cv::Point2f projectOnLine(const cv::Point2f& p, const DerivedElement& line) {
-    return line.point + (p - line.point).dot(line.direction) * line.direction;
-}
-
-// Una recta no tiene sentido, solo dirección, pero su vector SÍ lo tiene, y
-// depende de hacia dónde la trazara el operador. Esto lo lleva siempre al
-// semiplano superior para que dos trazos opuestos de la misma recta den el
-// mismo vector. Sin esto la bisectriz de dos rectas perpendiculares salía a 45°
-// o a 135° según el sentido del trazo: las dos son igual de válidas —con 90°
-// entre las rectas no hay ángulo agudo que partir— pero que cambie sola no lo
-// es, porque el datum giraría 90° sin que nadie tocara nada.
-cv::Point2f canonicalDirection(const cv::Point2f& d) {
-    if (d.y < 0.0F || (d.y == 0.0F && d.x < 0.0F)) {
-        return -d;
-    }
-    return d;
-}
-
-// Resuelve un operando comprobando que sea de la clase que la construcción
-// necesita. El motivo se escribe para el operador: qué falta y de qué clase
-// tendría que ser, no un "referencia inválida" que no dice dónde mirar.
-const DerivedElement* operand(const DerivedElements& refs, const std::string& name,
-                              OperandKind kind, const char* which, std::string& why) {
-    if (kind == OperandKind::Unused) {
-        return nullptr;
-    }
-    if (name.empty()) {
-        why = std::string("falta la ") + which + " referencia: hace falta " +
-              operandKindLabel(kind);
-        return nullptr;
-    }
-    const auto found = refs.find(name);
-    if (found == refs.end()) {
-        why = "no se pudo usar la referencia '" + name +
-              "': no existe, está desactivada o falló al medir";
-        return nullptr;
-    }
-    const DerivedElement& element = found->second;
-    const bool fits = (kind == OperandKind::Point)  ? element.hasPoint()
-                      : (kind == OperandKind::Line) ? element.hasLine()
-                                                    : element.kind == DerivedKind::Circle;
-    if (!fits) {
-        why = "'" + name + "' no sirve como " + which + " referencia: hace falta " +
-              operandKindLabel(kind);
-        return nullptr;
-    }
-    // Una recta con dirección degenerada haría aparecer NaN más abajo. Se corta
-    // aquí, en el único sitio por el que pasan todos los operandos, en vez de
-    // repetir la comprobación en cada construcción.
-    if (kind == OperandKind::Line && cv::norm(element.direction) < 0.5) {
-        why = "la recta de '" + name + "' no tiene dirección utilizable";
-        return nullptr;
-    }
-    return &element;
-}
-
-// Comprueba los dos operandos de una construcción. Devuelve false y deja el
-// motivo en el resultado cuando alguno no sirve.
-bool resolveOperands(const DerivedElements& refs, const ToolConfig& config,
-                     const std::array<OperandKind, 2>& kinds, const DerivedElement*& a,
-                     const DerivedElement*& b, ToolRunResult& result) {
-    std::string why;
-    a = operand(refs, config.reference, kinds[0], "primera", why);
-    if (kinds[0] != OperandKind::Unused && a == nullptr) {
-        result.detail = why;
-        return false;
-    }
-    b = operand(refs, config.reference2, kinds[1], "segunda", why);
-    if (kinds[1] != OperandKind::Unused && b == nullptr) {
-        result.detail = why;
-        return false;
-    }
-    return true;
 }
 
 std::string fmtPieceCoords(const cv::Point2f& p) {
@@ -2810,9 +2917,11 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Position: {
                 // Sin tablero explícito: cero en la pieza y ejes de la imagen.
                 const vision::BoardFrame fallback{fixture.origin, 0.0};
+                static const DerivedElements kNone;
                 return ResultT::ok(runPosition(fixture, config,
                                                std::get<PositionGeometry>(geometry.value()),
-                                               fmt, board != nullptr ? *board : fallback));
+                                               fmt, board != nullptr ? *board : fallback,
+                                               references != nullptr ? *references : kNone));
             }
             case ToolType::Region:
                 return ResultT::ok(runRegion(gray, fixture, config,

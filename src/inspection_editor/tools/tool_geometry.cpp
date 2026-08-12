@@ -368,7 +368,14 @@ const char* toolTypeDescription(ToolType type) {
                    "de referencia (Ver ▸ Tablero). Marca el rasgo con un clic-arrastre;\n"
                    "se mide su desviación (radial, en X o en Y) y se compara con las\n"
                    "tolerancias. Con el cero en la pieza la desviación es fija: usa el\n"
-                   "centro de la imagen o un punto fijado para que signifique algo.";
+                   "centro de la imagen o un punto fijado para que signifique algo.\n"
+                   "CON REFERENCIA es la posición verdadera de la norma: elige el datum\n"
+                   "primario en Referencia (una recta: orienta el marco) y el secundario\n"
+                   "en 2ª referencia (fija el origen). Entonces la medida es el DIÁMETRO\n"
+                   "DE ZONA, 2·raíz(dx²+dy²), medido en ese marco — y no cambia aunque\n"
+                   "la pieza llegue girada, porque todo se mide dentro del marco.\n"
+                   "Solo es honesta si los datums se resuelven en el plano de la imagen:\n"
+                   "una cara perpendicular a la cámara no da datum, y entonces no mide.";
         case ToolType::Arc:
             return "Arco — mide el RADIO de una esquina redondeada o un redondeo.\n"
                    "Marca tres puntos SOBRE el arco: los dos extremos y uno\n"
@@ -972,7 +979,8 @@ std::string toJson(const ToolGeometry& geometry) {
             } else if constexpr (std::is_same_v<T, PositionGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "px" << g.point.x << "py" << g.point.y << "axis"
-                       << static_cast<int>(g.axis);
+                       << static_cast<int>(g.axis) << "nx" << g.nominal.x << "ny"
+                       << g.nominal.y;
                 });
             } else if constexpr (std::is_same_v<T, ArcGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
@@ -1138,6 +1146,10 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.axis = (axis == 1)   ? PositionAxis::X
                          : (axis == 2) ? PositionAxis::Y
                                        : PositionAxis::Radial;
+                // "nx"/"ny" llegaron con G4: las plantillas anteriores no las
+                // tienen y su punto teórico es el origen del marco.
+                g.nominal = {static_cast<float>(reader.numberOr("nx", 0.0)),
+                             static_cast<float>(reader.numberOr("ny", 0.0))};
                 return ResultT::ok(g);
             }
             case ToolType::Arc: {
