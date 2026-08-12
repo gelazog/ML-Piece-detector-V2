@@ -893,7 +893,17 @@ tiene que estar accesible desde la familia.
 
 *(Ya dentro: Eje/Diámetro, Rosca, Engranaje.)*
 
-- [ ] **M1 — Anchura mínima y máxima de la silueta.** "Lo de max y mini": la
+- [x] **M1 — Anchura mínima y máxima de la silueta.** *(La anchura mínima
+  reutiliza `minimumZoneBand` de `G1`; el diámetro máximo es nuevo
+  (`vision::maximumSpan`) y se resuelve recorriendo los pares del casco convexo,
+  que con unas decenas de vértices es trivial y evita la maquinaria de antípodas
+  para ganar un tiempo que aquí no se nota. Rectángulo de 200×80 girado 30°:
+  anchura 81,5 y diámetro 216,5 (teóricos 80 y 215,4), y girándolo por 0, 17, 30
+  y 65° la anchura no se mueve — que es la razón de ser de la herramienta.
+  El test de que `minAreaRect` no vale para el DIÁMETRO costó un intento: sobre
+  el triángulo alargado que ya servía para la anchura, la diagonal se quedaba a
+  0,4 px del diámetro real y no demostraba nada. Hace falta una figura COMPACTA,
+  y en un equilátero de lado 150 la diagonal marca 198, un 32 % de más.)* "Lo de max y mini": la
   medida más grande y la más pequeña de la pieza **en cualquier dirección**, no
   en la que el operador acertó a trazar. Es la cota de "¿pasa por la ranura?".
   Algoritmo: `cv::convexHull` + rotating calipers → anchura mínima y su

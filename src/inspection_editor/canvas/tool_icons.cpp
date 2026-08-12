@@ -133,6 +133,27 @@ QIcon toolIcon(ToolType type) {
                        << QPointF(25, 22);
                 p.drawPolyline(actual);
             });
+        case ToolType::Extremes:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // Una silueta con su cota mas larga y su banda mas estrecha.
+                QPolygonF blob;
+                blob << QPointF(5, 12) << QPointF(13, 4) << QPointF(24, 13)
+                     << QPointF(16, 24) << QPointF(6, 20);
+                QPen thin = p.pen();
+                thin.setWidthF(1.4);
+                p.setPen(thin);
+                p.drawPolygon(blob);
+                QPen span = p.pen();
+                span.setWidthF(1.8);
+                p.setPen(span);
+                p.drawLine(13, 4, 16, 24);   // diametro maximo
+                QPen band = p.pen();
+                band.setStyle(Qt::DotLine);
+                band.setWidthF(1.1);
+                p.setPen(band);
+                p.drawLine(3, 9, 26, 16);
+                p.drawLine(3, 17, 26, 24);
+            });
         case ToolType::BoltPattern:
             return makeIcon([](QPainter& p, const QColor& c) {
                 // Una brida: el circulo primitivo a trazos y seis agujeros

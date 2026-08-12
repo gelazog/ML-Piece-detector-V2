@@ -391,6 +391,25 @@ struct ProfileGeometry {
     std::vector<cv::Point2f> nominal;  // contorno de la pieza buena, cerrado
 };
 
+// Anchura mínima y máxima de la silueta (M1): la medida más grande y la más
+// pequeña de la pieza EN CUALQUIER DIRECCIÓN, no en la que el operador acertó a
+// trazar. Es la cota de «¿pasa por la ranura?» y la de «¿qué hueco necesita?».
+enum class ExtremeMeasure {
+    MinWidth,  // la banda más estrecha que la contiene: ¿por dónde pasa?
+    MaxSpan,   // el par de puntos más separados: ¿cuánto hueco necesita?
+};
+
+struct ExtremesGeometry {
+    cv::Point2f center;  // recuadro que abarca la pieza
+    float width = 240.0F;
+    float height = 240.0F;
+    ExtremeMeasure measure = ExtremeMeasure::MinWidth;
+    bool darkPiece = true;
+};
+
+[[nodiscard]] const std::array<ExtremeMeasure, 2>& allExtremeMeasures();
+[[nodiscard]] const char* extremeMeasureLabel(ExtremeMeasure measure);
+
 [[nodiscard]] const std::array<RegionMeasure, 6>& allRegionMeasures();
 [[nodiscard]] const char* regionMeasureLabel(RegionMeasure measure);
 
@@ -404,7 +423,8 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
                                   EdgeDefectsGeometry, ClearanceGeometry,
                                   StraightnessGeometry, RoundnessGeometry,
                                   OrientationGeometry, CentreOffsetGeometry,
-                                  BoltPatternGeometry, ProfileGeometry>;
+                                  BoltPatternGeometry, ProfileGeometry,
+                                  ExtremesGeometry>;
 
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
@@ -435,7 +455,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 28>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 29>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que

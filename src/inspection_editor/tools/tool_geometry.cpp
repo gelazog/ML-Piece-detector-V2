@@ -39,12 +39,13 @@ const char* toolTypeName(ToolType type) {
         case ToolType::CentreOffset: return "centre_offset";
         case ToolType::BoltPattern: return "bolt_pattern";
         case ToolType::Profile: return "profile";
+        case ToolType::Extremes: return "extremes";
     }
     return "unknown";
 }
 
-const std::array<ToolType, 28>& allToolTypes() {
-    static const std::array<ToolType, 28> kTypes{
+const std::array<ToolType, 29>& allToolTypes() {
+    static const std::array<ToolType, 29> kTypes{
         ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine, ToolType::EdgeFlaw,
         ToolType::Blob,     ToolType::Ruler,    ToolType::LineToLine,  ToolType::Angle,
         ToolType::PolyBlob, ToolType::Position, ToolType::Arc,         ToolType::Shaft,
@@ -53,7 +54,7 @@ const std::array<ToolType, 28>& allToolTypes() {
         ToolType::Symmetry, ToolType::Polygon, ToolType::EdgeDefects,
         ToolType::Clearance, ToolType::Straightness, ToolType::Roundness,
         ToolType::Orientation, ToolType::CentreOffset, ToolType::BoltPattern,
-        ToolType::Profile};
+        ToolType::Profile, ToolType::Extremes};
     return kTypes;
 }
 
@@ -114,6 +115,7 @@ ToolCategory categoryOf(ToolType type) {
         case ToolType::Shaft:
         case ToolType::Thread:
         case ToolType::Gear:
+        case ToolType::Extremes:
             return ToolCategory::TurnedAndExtremes;
     }
     return ToolCategory::InLine;
@@ -200,6 +202,20 @@ ToolReferences referencesFromParams(const std::string& paramsJson) {
         // medir; reventar aquí tumbaría la carga de la plantilla entera.
         return {};
     }
+}
+
+const std::array<ExtremeMeasure, 2>& allExtremeMeasures() {
+    static const std::array<ExtremeMeasure, 2> kMeasures{ExtremeMeasure::MinWidth,
+                                                         ExtremeMeasure::MaxSpan};
+    return kMeasures;
+}
+
+const char* extremeMeasureLabel(ExtremeMeasure measure) {
+    switch (measure) {
+        case ExtremeMeasure::MinWidth: return "Anchura mínima";
+        case ExtremeMeasure::MaxSpan: return "Diámetro máximo";
+    }
+    return "?";
 }
 
 const std::array<RegionMeasure, 6>& allRegionMeasures() {
@@ -324,6 +340,7 @@ const char* toolTypeLabel(ToolType type) {
         case ToolType::CentreOffset: return "Desviación de centros";
         case ToolType::BoltPattern: return "Patrón de agujeros";
         case ToolType::Profile: return "Perfil de línea";
+        case ToolType::Extremes: return "Máx./mín.";
     }
     return "?";
 }
@@ -545,6 +562,17 @@ const char* toolTypeDescription(ToolType type) {
                    "Da la zona bilateral 2·máx|d| y, por separado, cuánto material\n"
                    "sobra y cuánto falta — que son dos averías distintas.\n"
                    "No necesita alinear nada: la pieza ya viene alineada por su fixture.";
+        case ToolType::Extremes:
+            return "Máx./mín. — la medida más grande y la más pequeña de la pieza EN\n"
+                   "CUALQUIER DIRECCIÓN, no en la que acertaras a trazar. Arrastra un\n"
+                   "recuadro sobre la pieza y elige en Medida cuál vigilar.\n"
+                   "Anchura mínima: la banda más estrecha que contiene la pieza. Es la\n"
+                   "cota de «¿pasa por la ranura?».\n"
+                   "Diámetro máximo: los dos puntos más separados. Es «¿cuánto hueco\n"
+                   "necesita?».\n"
+                   "Las dos se dan siempre en el detalle, con su dirección. No salen de\n"
+                   "minAreaRect: ese minimiza el ÁREA, y ni su lado corto es la anchura\n"
+                   "mínima ni su diagonal es el diámetro.";
     }
     return "";
 }
@@ -642,6 +670,7 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
         // sobrecarga que la mira. Sin ella, la banda relativa es lo menos malo
         // que se puede decir — nunca el conteo exacto, que dejaría un área
         // fuera de tolerancia por un píxel.
+        case ToolType::Extremes:
         case ToolType::Region:
         case ToolType::Caliper:
         case ToolType::Circle:
@@ -754,6 +783,8 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::BoltPattern;
             } else if constexpr (std::is_same_v<T, ProfileGeometry>) {
                 return ToolType::Profile;
+            } else if constexpr (std::is_same_v<T, ExtremesGeometry>) {
+                return ToolType::Extremes;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -783,6 +814,7 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                                  std::is_same_v<T, BlobGeometry> ||
                                  std::is_same_v<T, RegionGeometry> ||
                                  std::is_same_v<T, BoltPatternGeometry> ||
+                                 std::is_same_v<T, ExtremesGeometry> ||
                                  std::is_same_v<T, SymmetryGeometry> ||
                                  std::is_same_v<T, PolygonGeometry> ||
                                  std::is_same_v<T, ClearanceGeometry>) {
@@ -1063,6 +1095,12 @@ std::string toJson(const ToolGeometry& geometry) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "cx" << g.center.x << "cy" << g.center.y << "rin"
                        << g.innerRadius << "rout" << g.outerRadius << "rays" << g.rayCount;
+                });
+            } else if constexpr (std::is_same_v<T, ExtremesGeometry>) {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "cx" << g.center.x << "cy" << g.center.y << "w" << g.width << "h"
+                       << g.height << "mode" << static_cast<int>(g.measure) << "dark"
+                       << (g.darkPiece ? 1 : 0);
                 });
             } else if constexpr (std::is_same_v<T, ProfileGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
@@ -1400,6 +1438,21 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.innerRadius = static_cast<float>(rin.value());
                 g.outerRadius = static_cast<float>(rout.value());
                 g.rayCount = static_cast<int>(reader.numberOr("rays", 1440.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::Extremes: {
+                ExtremesGeometry g;
+                auto cx = f("cx"), cy = f("cy"), w = f("w"), h = f("h");
+                for (const auto* v : {&cx, &cy, &w, &h}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
+                g.width = static_cast<float>(w.value());
+                g.height = static_cast<float>(h.value());
+                g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
+                const auto measure = readConstruction(reader, allExtremeMeasures());
+                if (!measure.isOk()) return ResultT::err(measure.error().message);
+                g.measure = measure.value();
                 return ResultT::ok(g);
             }
             case ToolType::Profile: {

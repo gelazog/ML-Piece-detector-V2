@@ -414,6 +414,34 @@ double radialSpread(const std::vector<cv::Point2f>& points, const cv::Point2f& c
 
 }  // namespace
 
+MaximumSpan maximumSpan(const std::vector<cv::Point2f>& points) {
+    MaximumSpan span;
+    if (points.size() < 2) {
+        return span;
+    }
+    std::vector<cv::Point2f> hull;
+    cv::convexHull(points, hull);
+    if (hull.size() < 2) {
+        return span;
+    }
+    // Los dos puntos más separados están SIEMPRE en el casco convexo, así que
+    // basta con recorrer sus pares. Con un casco de unas decenas de vértices
+    // eso es trivial, y evita la maquinaria de los calibres rotantes por
+    // antípodas para ganar un tiempo que aquí no se nota.
+    for (std::size_t i = 0; i < hull.size(); ++i) {
+        for (std::size_t j = i + 1; j < hull.size(); ++j) {
+            const double distance = cv::norm(hull[i] - hull[j]);
+            if (distance > span.length) {
+                span.length = distance;
+                span.from = hull[i];
+                span.to = hull[j];
+            }
+        }
+    }
+    span.valid = span.length > 0.0;
+    return span;
+}
+
 MinimumZoneCircle minimumZoneCircle(const std::vector<cv::Point2f>& points) {
     MinimumZoneCircle zone;
     if (points.size() < 3) {

@@ -1669,6 +1669,112 @@ ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& confi
     return result;
 }
 
+// Anchura mínima y diámetro máximo de la silueta (M1).
+//
+// «Lo de máx y mín»: la medida más grande y la más pequeña de la pieza EN
+// CUALQUIER DIRECCIÓN, no en la que el operador acertó a trazar. Las dos salen
+// del casco convexo y ninguna sale de `minAreaRect`, que minimiza el ÁREA: ni
+// su lado corto es la anchura mínima ni su diagonal es el diámetro.
+ToolRunResult runExtremes(const cv::Mat& gray, const Fixture& fixture,
+                          const ToolConfig& config, const ExtremesGeometry& g,
+                          const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+
+    const float hw = g.width / 2.0F;
+    const float hh = g.height / 2.0F;
+    const std::vector<cv::Point2f> quad{
+        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, hh)),
+        toImg(fixture, g.center + cv::Point2f(-hw, hh))};
+    for (std::size_t i = 0; i < quad.size(); ++i) {
+        result.overlaySegments.push_back({quad[i], quad[(i + 1) % quad.size()]});
+    }
+
+    std::vector<cv::Point> quadInt;
+    for (const auto& p : quad) {
+        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
+    }
+    const cv::Rect bounds = cv::boundingRect(quadInt) & cv::Rect(0, 0, gray.cols, gray.rows);
+    if (bounds.area() < 25) {
+        result.detail = "La región cae fuera de la imagen";
+        return result;
+    }
+    cv::Mat regionMask = cv::Mat::zeros(bounds.size(), CV_8UC1);
+    std::vector<cv::Point> quadLocal;
+    for (const auto& p : quadInt) {
+        quadLocal.emplace_back(p.x - bounds.x, p.y - bounds.y);
+    }
+    cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
+
+    cv::Mat binary;
+    cv::threshold(gray(bounds), binary, 0.0, 255.0,
+                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
+    cv::bitwise_and(binary, regionMask, binary);
+
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+    if (contours.empty()) {
+        result.detail = "No se ve ninguna figura dentro del recuadro";
+        return result;
+    }
+    const auto& outer = *std::max_element(
+        contours.begin(), contours.end(), [](const auto& a, const auto& b) {
+            return cv::contourArea(a) < cv::contourArea(b);
+        });
+    if (cv::contourArea(outer) < 25.0) {
+        result.detail = "No se ve ninguna figura dentro del recuadro";
+        return result;
+    }
+
+    const cv::Point2f offset(static_cast<float>(bounds.x), static_cast<float>(bounds.y));
+    std::vector<cv::Point2f> points;
+    points.reserve(outer.size());
+    for (const auto& p : outer) {
+        points.emplace_back(cv::Point2f(p) + offset);
+    }
+
+    const vision::MinimumZone narrow = vision::minimumZoneBand(points);
+    const vision::MaximumSpan wide = vision::maximumSpan(points);
+    if (!narrow.valid || !wide.valid) {
+        result.detail = "No se pudieron calcular los extremos de la silueta";
+        return result;
+    }
+
+    // Las direcciones, para que el operador sepa POR DÓNDE hay que meterla.
+    const double narrowAngle =
+        std::fmod(std::atan2(narrow.direction.y, narrow.direction.x) * 180.0 / kPi + 180.0,
+                  180.0);
+    const cv::Point2f spanDir = wide.to - wide.from;
+    const double wideAngle =
+        std::fmod(std::atan2(spanDir.y, spanDir.x) * 180.0 / kPi + 180.0, 180.0);
+
+    switch (g.measure) {
+        case ExtremeMeasure::MinWidth: result.measured = narrow.width; break;
+        case ExtremeMeasure::MaxSpan: result.measured = wide.length; break;
+    }
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = std::string(extremeMeasureLabel(g.measure)) + " · anchura mín " +
+                    fmtLen(narrow.width, fmt) + " (banda a " + fmt2(narrowAngle) +
+                    "°) · diámetro máx " + fmtLen(wide.length, fmt) + " (a " +
+                    fmt2(wideAngle) + "°)";
+
+    // El par más separado y las dos rectas de la banda: sin verlos, los dos
+    // números no se pueden comprobar a ojo.
+    result.overlayPoints.push_back(wide.from);
+    result.overlayPoints.push_back(wide.to);
+    result.overlaySegments.push_back({wide.from, wide.to});
+    const cv::Point2f bandNormal(-narrow.direction.y, narrow.direction.x);
+    const float half = static_cast<float>(narrow.width / 2.0);
+    const float reach = static_cast<float>(wide.length / 2.0);
+    for (const float side : {-1.0F, 1.0F}) {
+        const cv::Point2f centre = narrow.point + bandNormal * (half * side);
+        result.overlaySegments.push_back(
+            {centre - narrow.direction * reach, centre + narrow.direction * reach});
+    }
+    return result;
+}
+
 // Perfil de línea contra un nominal (G7).
 //
 // El nominal es el contorno de la pieza buena, capturado al crear la
@@ -3254,6 +3360,10 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Region:
                 return ResultT::ok(runRegion(gray, fixture, config,
                                              std::get<RegionGeometry>(geometry.value()), fmt));
+            case ToolType::Extremes:
+                return ResultT::ok(runExtremes(
+                    gray, fixture, config, std::get<ExtremesGeometry>(geometry.value()),
+                    fmt));
             case ToolType::Profile:
                 return ResultT::ok(runProfile(
                     gray, fixture, config, std::get<ProfileGeometry>(geometry.value()),

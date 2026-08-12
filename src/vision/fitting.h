@@ -165,4 +165,21 @@ struct MinimumZoneCircle {
 
 [[nodiscard]] MinimumZoneCircle minimumZoneCircle(const std::vector<cv::Point2f>& points);
 
+// El par de puntos MÁS SEPARADOS de una nube: el diámetro de la figura, la
+// medida más grande que tiene en cualquier dirección.
+//
+// Junto con `minimumZoneBand` responde a la pregunta de taller «¿pasa por la
+// ranura?» y a su contraria «¿qué hueco necesita?». Ninguna de las dos se
+// responde con `minAreaRect`: su lado corto no es la anchura mínima (minimiza
+// área) y su diagonal no es el diámetro (el par más separado no tiene por qué
+// caer en las esquinas del rectángulo).
+struct MaximumSpan {
+    double length = 0.0;
+    cv::Point2f from{0.0F, 0.0F};
+    cv::Point2f to{0.0F, 0.0F};
+    bool valid = false;
+};
+
+[[nodiscard]] MaximumSpan maximumSpan(const std::vector<cv::Point2f>& points);
+
 }  // namespace pci::vision

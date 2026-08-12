@@ -263,6 +263,16 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      **0,82** (el valor exacto de un cuadrado es 0,785 — la diferencia es el
      sesgo conocido de medir un borde recto sobre una rejilla de píxeles). Una
      mota de ruido **no** cuenta como agujero.
+   - *Máx./mín.*: la medida **más grande y más pequeña de la pieza en cualquier
+     dirección**, no en la que acertaras a trazar. Arrastra un recuadro sobre la
+     pieza y elige en *Medida* cuál vigilar: **anchura mínima** (la banda más
+     estrecha que la contiene — «¿pasa por la ranura?») o **diámetro máximo**
+     (los dos puntos más separados — «¿cuánto hueco necesita?»). Las dos se dan
+     siempre en el detalle **con su dirección**, para que sepas por dónde.
+
+     No salen de `minAreaRect`: ese minimiza el **área**, y ni su lado corto es
+     la anchura mínima ni su diagonal el diámetro. En un triángulo equilátero de
+     lado 150, su diagonal marca 198.
    - *Perfil de línea*: cuánto se separa el contorno de la pieza del que
      **debería** tener. Es la tolerancia GD&T más honesta para una silueta,
      porque está definida sobre una línea y no sobre una superficie: lo que se ve

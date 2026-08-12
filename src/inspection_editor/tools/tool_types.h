@@ -35,7 +35,8 @@ enum class ToolType {
     Orientation,
     CentreOffset,
     BoltPattern,
-    Profile
+    Profile,
+    Extremes
 };
 
 const char* toolTypeName(ToolType type);

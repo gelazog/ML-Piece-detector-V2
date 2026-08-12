@@ -75,6 +75,9 @@ inline ToolGeometry sampleGeometry(ToolType type) {
             }
             return profile;
         }
+        case ToolType::Extremes:
+            return ExtremesGeometry{{0.0F, 0.0F}, 240.0F, 240.0F,
+                                    ExtremeMeasure::MinWidth, true};
         case ToolType::BoltPattern:
             return BoltPatternGeometry{{0.0F, 0.0F}, 300.0F, 300.0F, 0, true};
         case ToolType::CentreOffset:

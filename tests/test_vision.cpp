@@ -2043,3 +2043,58 @@ TEST(MinimumZoneCircle, OnAnAsymmetricProfileTheOptimalCentreIsNotTheLeastSquare
     EXPECT_LT(zone.width(), lsqWidth) << "aquí el óptimo sí es otro centro";
     EXPECT_GT(shift, 0.3) << "y está en otro sitio, no en el de mínimos cuadrados";
 }
+
+TEST(MaximumSpan, TheDiagonalOfARotatedRectangleIsItsLongestMeasure) {
+    // Un rectángulo de 200x80 girado 30°: su medida más larga es la diagonal,
+    // sqrt(200² + 80²) = 215,4, y el ángulo no importa — por eso la herramienta
+    // existe, para no depender de por dónde se trace.
+    for (const double turn : {0.0, 30.0, 57.0}) {
+        const double t = turn * kPi / 180.0;
+        std::vector<cv::Point2f> corners;
+        for (const auto& c : {cv::Point2f(-100, -40), cv::Point2f(100, -40),
+                              cv::Point2f(100, 40), cv::Point2f(-100, 40)}) {
+            corners.emplace_back(static_cast<float>(c.x * std::cos(t) - c.y * std::sin(t)),
+                                 static_cast<float>(c.x * std::sin(t) + c.y * std::cos(t)));
+        }
+        const auto span = maximumSpan(corners);
+        ASSERT_TRUE(span.valid);
+        EXPECT_NEAR(span.length, std::sqrt(200.0 * 200.0 + 80.0 * 80.0), 1e-3)
+            << "girado " << turn;
+
+        // Y la anchura mínima es su lado corto, 80, se gire como se gire.
+        const auto band = minimumZoneBand(corners);
+        ASSERT_TRUE(band.valid);
+        EXPECT_NEAR(band.width, 80.0, 1e-3) << "girado " << turn;
+    }
+}
+
+TEST(MaximumSpan, ItIsNotTheDiagonalOfMinAreaRect) {
+    // La otra mitad de la trampa de `minAreaRect`: ni su lado corto es la
+    // anchura mínima ni su diagonal es el diámetro.
+    //
+    // Aquí hace falta una figura COMPACTA, y conviene decir por qué: en una
+    // pieza alargada la diagonal del rectángulo se pega mucho al diámetro real
+    // —el primer triángulo que probé se quedaba en 0,4 px de diferencia y no
+    // demostraba nada—. En un triángulo equilátero, en cambio, el rectángulo
+    // sobra por los dos lados y su diagonal se pasa un 32 %.
+    const double side = 150.0;
+    const std::vector<cv::Point2f> triangle{
+        {0.0F, 0.0F}, {static_cast<float>(side), 0.0F},
+        {static_cast<float>(side / 2.0), static_cast<float>(side * 0.8660254)}};
+    const auto span = maximumSpan(triangle);
+    ASSERT_TRUE(span.valid);
+    const cv::RotatedRect box = cv::minAreaRect(triangle);
+    const double diagonal = std::hypot(box.size.width, box.size.height);
+    std::printf("  diámetro real %.2f, diagonal de minAreaRect %.2f\n", span.length,
+                diagonal);
+    EXPECT_LT(span.length, diagonal * 0.85)
+        << "si coincidieran, no haría falta implementación propia";
+
+    // El diámetro real es el lado más largo del triángulo.
+    double longest = 0.0;
+    for (std::size_t i = 0; i < triangle.size(); ++i) {
+        longest = std::max(longest,
+                           cv::norm(triangle[i] - triangle[(i + 1) % triangle.size()]));
+    }
+    EXPECT_NEAR(span.length, longest, 1e-3);
+}

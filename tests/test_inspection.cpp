@@ -796,6 +796,10 @@ ToolConfig makeToolAt(int index, float x, float y) {
         case ToolType::BoltPattern:
             geometry = BoltPatternGeometry{{x, y}, 60.0F, 60.0F, 0, true};
             break;
+        case ToolType::Extremes:
+            geometry =
+                ExtremesGeometry{{x, y}, 60.0F, 60.0F, ExtremeMeasure::MinWidth, true};
+            break;
         case ToolType::Profile: {
             ProfileGeometry profile;
             for (int k = 0; k < 24; ++k) {
@@ -5026,4 +5030,90 @@ TEST(Profile, WithoutANominalItSaysSo) {
     const auto result =
         runTool(outlineToImage(lobedOutline(120.0, 0.0)), kIdentity, config);
     EXPECT_FALSE(result.isOk()) << "un nominal de dos puntos no es un contorno";
+}
+
+// ---------------------------------------------------------------------------
+// Máximos y mínimos de la silueta (M1)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+cv::Mat rotatedBar(double longSide, double shortSide, double turnDeg) {
+    cv::Mat gray(500, 500, CV_8UC1, cv::Scalar(230));
+    const cv::RotatedRect rect(cv::Point2f(250.0F, 250.0F),
+                               cv::Size2f(static_cast<float>(longSide),
+                                          static_cast<float>(shortSide)),
+                               static_cast<float>(turnDeg));
+    cv::Point2f corners[4];
+    rect.points(corners);
+    std::vector<cv::Point> poly;
+    for (const auto& c : corners) {
+        poly.emplace_back(cv::Point(cvRound(c.x), cvRound(c.y)));
+    }
+    cv::fillPoly(gray, std::vector<std::vector<cv::Point>>{poly}, cv::Scalar(30));
+    return gray;
+}
+
+ToolConfig extremesOver(ExtremeMeasure measure) {
+    ToolConfig config;
+    config.type = ToolType::Extremes;
+    config.name = "extremos";
+    config.geometryJson = toJson(
+        ToolGeometry(ExtremesGeometry{{250.0F, 250.0F}, 460.0F, 460.0F, measure, true}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+}  // namespace
+
+TEST(Extremes, ARotatedRectangleGivesItsShortSideAndItsDiagonal) {
+    // La comprobación que pedía el plan: un rectángulo girado 30°, cuya anchura
+    // mínima es su lado corto y cuyo diámetro máximo es su diagonal.
+    const cv::Mat gray = rotatedBar(200.0, 80.0, 30.0);
+
+    const auto narrow = runTool(gray, kIdentity, extremesOver(ExtremeMeasure::MinWidth));
+    ASSERT_TRUE(narrow.isOk()) << narrow.error().message;
+    std::printf("  %s\n", narrow.value().detail.c_str());
+    EXPECT_NEAR(narrow.value().measured, 80.0, 2.0) << narrow.value().detail;
+
+    const auto wide = runTool(gray, kIdentity, extremesOver(ExtremeMeasure::MaxSpan));
+    ASSERT_TRUE(wide.isOk());
+    EXPECT_NEAR(wide.value().measured, std::sqrt(200.0 * 200.0 + 80.0 * 80.0), 3.0)
+        << wide.value().detail;
+}
+
+TEST(Extremes, TheAnswerDoesNotDependOnHowThePieceIsTurned) {
+    // Es la razón de ser de la herramienta: la medida es "en cualquier
+    // dirección", no en la que el operador acertó a trazar.
+    for (const double turn : {0.0, 17.0, 30.0, 65.0}) {
+        const cv::Mat gray = rotatedBar(200.0, 80.0, turn);
+        const auto narrow = runTool(gray, kIdentity, extremesOver(ExtremeMeasure::MinWidth));
+        ASSERT_TRUE(narrow.isOk());
+        std::printf("  girada %4.0f° -> anchura mín %.1f\n", turn, narrow.value().measured);
+        EXPECT_NEAR(narrow.value().measured, 80.0, 2.5) << "girada " << turn;
+    }
+}
+
+TEST(Extremes, BothNumbersAndTheirDirectionsAreAlwaysReported) {
+    // El operador necesita saber POR DÓNDE pasa la pieza, no solo cuánto mide.
+    const auto result =
+        runTool(rotatedBar(200.0, 80.0, 30.0), kIdentity, extremesOver(ExtremeMeasure::MinWidth));
+    ASSERT_TRUE(result.isOk());
+    const std::string& detail = result.value().detail;
+    EXPECT_NE(detail.find("anchura mín"), std::string::npos) << detail;
+    EXPECT_NE(detail.find("diámetro máx"), std::string::npos) << detail;
+    EXPECT_NE(detail.find("banda a "), std::string::npos) << detail;
+    // Y se dibujan los dos: el par más separado y las dos rectas de la banda.
+    EXPECT_GE(result.value().overlayPoints.size(), 2U);
+    EXPECT_GE(result.value().overlaySegments.size(), 6U);
+}
+
+TEST(Extremes, AnEmptyRegionSaysSoInsteadOfMeasuringNothing) {
+    const cv::Mat blank(500, 500, CV_8UC1, cv::Scalar(230));
+    const auto result = runTool(blank, kIdentity, extremesOver(ExtremeMeasure::MinWidth));
+    ASSERT_TRUE(result.isOk());
+    EXPECT_FALSE(result.value().ok);
+    EXPECT_NE(result.value().detail.find("figura"), std::string::npos)
+        << result.value().detail;
 }
