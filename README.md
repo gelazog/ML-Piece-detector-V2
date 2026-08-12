@@ -250,6 +250,22 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      **0,82** (el valor exacto de un cuadrado es 0,785 — la diferencia es el
      sesgo conocido de medir un borde recto sobre una rejilla de píxeles). Una
      mota de ruido **no** cuenta como agujero.
+   - *Orientación*: **paralelismo, perpendicularidad y angularidad**, que son la
+     misma medida con distinto ángulo nominal (0, 90 o el que pongas). Traza una
+     línea sobre el borde tolerado y elige en *Referencia* la herramienta que da
+     el **datum**; sin datum no mide, porque una orientación sin decir respecto
+     a qué no significa nada.
+
+     **No devuelve un ángulo: devuelve una distancia** — la anchura de la banda,
+     orientada según el datum, que contiene todo el borde. La diferencia no es
+     académica: un borde ondulado puede ir a 0,4° del datum (paralelo de media)
+     y necesitar una banda de 12 px. El ángulo no lo vería, y es el número que
+     lleva el plano. El desvío angular se da igualmente, marcado como
+     informativo.
+
+     Siempre sale **mayor o igual que la rectitud** del mismo borde: la rectitud
+     elige la orientación de la banda buscando la más estrecha, y aquí la impone
+     el datum.
    - *Redondez (zona mínima)*: el valor **de la norma** — la separación radial
      entre los dos círculos **concéntricos** más juntos que contienen el borde.
      Se arrastra igual que el *Círculo*. Da **los dos números**: el de zona

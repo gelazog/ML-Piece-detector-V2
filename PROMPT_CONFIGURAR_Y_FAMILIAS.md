@@ -750,8 +750,21 @@ tiene que estar accesible desde la familia.
   coincide con lo dibujado y **es ≥** que la desviación LSC; los dos números en
   el test.
 
-- [ ] **G3 — Orientación respecto a un datum: paralelismo, perpendicularidad y
-  angularidad.** Son **la misma medida** con distinto ángulo nominal (0°, 90° o
+- [x] **G3 — Orientación respecto a un datum: paralelismo, perpendicularidad y
+  angularidad.** *(Una sola herramienta con campo de ángulo, y el datum viene por
+  la referencia de `X0` — que es exactamente para lo que se construyó. El test
+  que pedía el plan («comprobar que NO se está devolviendo el ángulo») está, y
+  el que de verdad lo demuestra es otro: un borde ondulado que va a 0,41° del
+  datum —paralelo de media— y necesita 12 px de banda. Si la herramienta
+  devolviera el ángulo, ese borde pasaría. Se añadió una relación que ayuda a
+  entender el bloque: la orientación nunca es menor que la rectitud del mismo
+  borde (medido, 11,00 frente a 8,35), porque la rectitud elige la orientación
+  de su banda y aquí la impone el datum. Dos correcciones propias: el mensaje de
+  «falta la referencia» se reescribe en el idioma de la herramienta —quien pone
+  un paralelismo busca la palabra DATUM—, y el test del nominal a 90° estaba
+  girando datum y elemento a la vez, que es invariancia al giro y no lo que
+  pedía el plan; ahora el datum se queda horizontal, el elemento va vertical y
+  el nominal a 90.)* Son **la misma medida** con distinto ángulo nominal (0°, 90° o
   el que se ponga), así que son **una sola herramienta** con un campo de
   ángulo, no tres.
   **El error que hay que no cometer:** paralelismo **no es el ángulo entre dos

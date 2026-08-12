@@ -1562,6 +1562,135 @@ ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& confi
     return result;
 }
 
+// Orientación respecto a un datum (G3): paralelismo, perpendicularidad y
+// angularidad, que son la misma medida con distinto ángulo nominal.
+//
+// Lo que devuelve es una DISTANCIA, no un ángulo, y esa es la diferencia entre
+// medir la cota del plano y medir otra cosa parecida. La zona de tolerancia de
+// la norma son dos rectas paralelas ORIENTADAS SEGÚN EL DATUM que tienen que
+// contener el elemento; el valor es su separación.
+//
+// Ojo a la diferencia con la rectitud (G1), que se parece pero no es: allí la
+// banda se orienta como quiera, buscando la más estrecha. Aquí la orientación
+// la manda el datum y no se puede elegir — por eso una orientación siempre es
+// mayor o igual que la rectitud del mismo borde.
+ToolRunResult runOrientation(const cv::Mat& gray, const Fixture& fixture,
+                             const ToolConfig& config, const OrientationGeometry& g,
+                             const Fmt& fmt, const DerivedElements& refs) {
+    ToolRunResult result = baseResult(config);
+
+    std::string why;
+    const DerivedElement* datum =
+        operand(refs, config.reference, OperandKind::Line, "primera", why);
+    if (datum == nullptr) {
+        // Sin datum no se mide. Una orientación sin decir respecto a qué es el
+        // número con nombre de norma que este programa existe para no dar.
+        //
+        // El motivo se reescribe en el idioma de esta herramienta: `operand`
+        // habla de "referencia", que es correcto en general, pero quien pone un
+        // paralelismo busca la palabra DATUM y es la que tiene que leer.
+        result.detail = config.reference.empty()
+                            ? "falta el DATUM: elige en Referencia la herramienta que "
+                              "da la recta contra la que se mide"
+                            : "no se puede usar '" + config.reference +
+                                  "' como DATUM — " + why;
+        return result;
+    }
+
+    const cv::Point2f p0 = toImg(fixture, g.p0);
+    const cv::Point2f p1 = toImg(fixture, g.p1);
+    result.overlaySegments.push_back({p0, p1});
+
+    const cv::Point2f delta = p1 - p0;
+    const float length = static_cast<float>(cv::norm(delta));
+    const int scans = std::clamp(g.scanCount, 5, 400);
+    if (length < static_cast<float>(scans)) {
+        result.detail = "Tramo demasiado corto para " + std::to_string(scans) + " escaneos";
+        return result;
+    }
+    const cv::Point2f u = delta / length;
+    const cv::Point2f n(-u.y, u.x);
+
+    std::vector<cv::Point2f> edgePoints;
+    for (int k = 0; k < scans; ++k) {
+        const float t = length * static_cast<float>(k) / static_cast<float>(scans - 1);
+        const cv::Point2f base = p0 + u * t;
+        const auto edges = detectEdges(gray, base - n * (g.scanLength / 2.0F),
+                                       base + n * (g.scanLength / 2.0F), 1.0F, 1);
+        if (!edges.empty()) {
+            edgePoints.push_back(edges[0].point);
+            result.overlayPoints.push_back(edges[0].point);
+        }
+    }
+    if (edgePoints.size() < static_cast<std::size_t>(scans) * 6 / 10) {
+        result.detail = "Borde no detectado en suficientes escaneos (" +
+                        std::to_string(edgePoints.size()) + "/" + std::to_string(scans) + ")";
+        return result;
+    }
+
+    // El datum viene en coordenadas de PIEZA; se lleva a imagen para medir
+    // contra los puntos del borde, que están en imagen.
+    const cv::Point2f datumFrom = toImg(fixture, datum->point);
+    const cv::Point2f datumTo = toImg(fixture, datum->point + datum->direction);
+    cv::Point2f datumDir = datumTo - datumFrom;
+    const double datumLength = cv::norm(datumDir);
+    if (datumLength < 1e-6) {
+        result.detail = "la recta del datum no tiene dirección utilizable";
+        return result;
+    }
+    datumDir /= static_cast<float>(datumLength);
+
+    // La dirección IDEAL del elemento: el datum girado el ángulo nominal. Con 0°
+    // es paralelismo, con 90° perpendicularidad, con cualquier otro angularidad.
+    const double nominal = static_cast<double>(g.nominalAngleDeg) * kPi / 180.0;
+    const cv::Point2f ideal(
+        static_cast<float>(datumDir.x * std::cos(nominal) - datumDir.y * std::sin(nominal)),
+        static_cast<float>(datumDir.x * std::sin(nominal) + datumDir.y * std::cos(nominal)));
+    const cv::Point2f bandNormal(-ideal.y, ideal.x);
+
+    // La anchura de la banda: proyección de los puntos sobre la normal de la
+    // dirección ideal. NO se busca la orientación óptima — la manda el datum.
+    double lowest = 1e18;
+    double highest = -1e18;
+    for (const auto& p : edgePoints) {
+        const double d = p.dot(bandNormal);
+        lowest = std::min(lowest, d);
+        highest = std::max(highest, d);
+    }
+    result.measured = highest - lowest;
+    result.ok = withinTolerance(config, result.measured);
+
+    // El ángulo real, INFORMATIVO. Se da porque ayuda a entender de dónde sale
+    // la banda, pero no es la medida: un borde puede ir a 0,0° del datum y no
+    // caber en la banda por estar ondulado.
+    const vision::LineFit actual = vision::fitLineTotal(edgePoints);
+    std::string angleNote;
+    if (actual.valid) {
+        const double dot = std::abs(static_cast<double>(actual.direction.x) * ideal.x +
+                                    static_cast<double>(actual.direction.y) * ideal.y);
+        const double cross = std::abs(static_cast<double>(actual.direction.x) * ideal.y -
+                                      static_cast<double>(actual.direction.y) * ideal.x);
+        angleNote = ", desvío angular " + fmt2(std::atan2(cross, dot) * 180.0 / kPi) +
+                    "° (informativo, no es la medida)";
+    }
+
+    const char* kind = std::abs(g.nominalAngleDeg) < 0.01F          ? "paralelismo"
+                       : std::abs(g.nominalAngleDeg - 90.0F) < 0.01F ? "perpendicularidad"
+                                                                     : "angularidad";
+    result.detail = std::string(kind) + " respecto a '" + config.reference +
+                    "' = " + fmtLen(result.measured, fmt) + " de anchura de banda" +
+                    angleNote;
+
+    // Las dos rectas de la banda, en la orientación que manda el datum.
+    for (const double edge : {lowest, highest}) {
+        const cv::Point2f base = bandNormal * static_cast<float>(edge);
+        const cv::Point2f centre = base + ideal * ((p0 + p1) * 0.5F).dot(ideal);
+        result.overlaySegments.push_back(
+            {centre - ideal * (length / 2.0F), centre + ideal * (length / 2.0F)});
+    }
+    return result;
+}
+
 // Redondez por ZONA MÍNIMA (G2): la separación radial entre los dos círculos
 // concéntricos más juntos que contienen el perfil, que es como la define la
 // norma. Se dan también los números de mínimos cuadrados, porque son los que
@@ -2688,6 +2817,12 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Region:
                 return ResultT::ok(runRegion(gray, fixture, config,
                                              std::get<RegionGeometry>(geometry.value()), fmt));
+            case ToolType::Orientation: {
+                static const DerivedElements kNone;
+                return ResultT::ok(runOrientation(
+                    gray, fixture, config, std::get<OrientationGeometry>(geometry.value()),
+                    fmt, references != nullptr ? *references : kNone));
+            }
             case ToolType::Roundness:
                 return ResultT::ok(runRoundness(
                     gray, fixture, config, std::get<RoundnessGeometry>(geometry.value()),

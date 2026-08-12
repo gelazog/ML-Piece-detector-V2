@@ -314,6 +314,27 @@ struct RoundnessGeometry {
     int rayCount = 72;  // más rayos que el Círculo: aquí la FORMA es la medida
 };
 
+// Orientación respecto a un datum (G3): paralelismo, perpendicularidad y
+// angularidad.
+//
+// Son LA MISMA MEDIDA con distinto ángulo nominal —0°, 90° o el que se ponga—,
+// así que son una sola herramienta con un campo de ángulo y no tres
+// herramientas que compartirían todo menos una constante.
+//
+// **El paralelismo NO es el ángulo entre dos rectas.** Es una DISTANCIA: la
+// anchura de la banda, paralela al datum, que contiene todos los puntos del
+// elemento tolerado. Un borde puede ser exactamente paralelo al datum en
+// promedio y estar tan ondulado que no quepa en la banda del plano.
+struct OrientationGeometry {
+    cv::Point2f p0;  // tramo del borde tolerado
+    cv::Point2f p1;
+    float scanLength = 16.0F;
+    int scanCount = 60;
+    // Ángulo nominal respecto al datum: 0 = paralelismo, 90 =
+    // perpendicularidad, cualquier otro = angularidad.
+    float nominalAngleDeg = 0.0F;
+};
+
 [[nodiscard]] const std::array<RegionMeasure, 6>& allRegionMeasures();
 [[nodiscard]] const char* regionMeasureLabel(RegionMeasure measure);
 
@@ -325,7 +346,8 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
                                   ConstructedLineGeometry, MedianAxisGeometry,
                                   RegionGeometry, SymmetryGeometry, PolygonGeometry,
                                   EdgeDefectsGeometry, ClearanceGeometry,
-                                  StraightnessGeometry, RoundnessGeometry>;
+                                  StraightnessGeometry, RoundnessGeometry,
+                                  OrientationGeometry>;
 
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
@@ -356,7 +378,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 24>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 25>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que

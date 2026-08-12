@@ -46,6 +46,7 @@ QColor toolColor(ToolType type) {
         case ToolType::EdgeDefects: return {120, 255, 60};
         case ToolType::Straightness: return {255, 120, 120};
         case ToolType::Roundness: return {255, 190, 90};
+        case ToolType::Orientation: return {200, 140, 255};
         case ToolType::Blob: return {255, 105, 180};
         case ToolType::Region: return {255, 150, 200};
         case ToolType::Symmetry: return {200, 160, 255};
@@ -969,6 +970,9 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         case ToolType::Straightness:
             geometry = StraightnessGeometry{a, b, 16.0F, 60};
             break;
+        case ToolType::Orientation:
+            geometry = OrientationGeometry{a, b, 16.0F, 60, 0.0F};
+            break;
         case ToolType::Ruler:
             geometry = RulerGeometry{a, b};
             break;
@@ -1166,7 +1170,8 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
             if constexpr (std::is_same_v<T, CaliperGeometry> ||
                           std::is_same_v<T, EdgeFlawGeometry> ||
                           std::is_same_v<T, EdgeDefectsGeometry> ||
-                          std::is_same_v<T, StraightnessGeometry>) {
+                          std::is_same_v<T, StraightnessGeometry> ||
+                          std::is_same_v<T, OrientationGeometry>) {
                 const cv::Point2f p0 = toImg(g.p0);
                 const cv::Point2f p1 = toImg(g.p1);
                 const QPointF a = imageToWidget(p0);

@@ -112,6 +112,28 @@ QIcon toolIcon(ToolType type) {
                 p.setPen(dashed);
                 p.drawLine(14, 11, 14, 19);
             });
+        case ToolType::Orientation:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // El datum abajo, el borde tolerado arriba metido en su banda:
+                // la cota es la SEPARACION entre las dos rectas de la banda.
+                QPen datum = p.pen();
+                datum.setStyle(Qt::DashDotLine);
+                datum.setWidthF(1.5);
+                p.setPen(datum);
+                p.drawLine(3, 24, 25, 24);
+                QPen band = p.pen();
+                band.setStyle(Qt::DotLine);
+                band.setWidthF(1.1);
+                p.setPen(band);
+                p.drawLine(3, 6, 25, 6);
+                p.drawLine(3, 15, 25, 15);
+                QPen edge = p.pen();
+                edge.setStyle(Qt::SolidLine);
+                edge.setWidthF(2.0);
+                p.setPen(edge);
+                p.drawLine(4, 13, 14, 8);
+                p.drawLine(14, 8, 24, 12);
+            });
         case ToolType::Roundness:
             return makeIcon([](QPainter& p, const QColor&) {
                 // Los DOS circulos concentricos de la zona minima, con el perfil

@@ -779,6 +779,10 @@ ToolConfig makeToolAt(int index, float x, float y) {
         case ToolType::Roundness:
             geometry = RoundnessGeometry{{x, y}, 18.0F, 6.0F, 36};
             break;
+        case ToolType::Orientation:
+            geometry =
+                OrientationGeometry{{x - 20.0F, y}, {x + 20.0F, y}, 12.0F, 20, 0.0F};
+            break;
         case ToolType::EdgeDefects:
             geometry =
                 EdgeDefectsGeometry{{x - 20.0F, y}, {x + 20.0F, y}, 12.0F, 20, 1.5F, true};
@@ -4265,4 +4269,183 @@ TEST(Roundness, TheDescriptionWarnsThatItOnlyWorksFaceOn) {
     ASSERT_TRUE(result.isOk());
     EXPECT_NE(result.value().detail.find("solo vale de frente"), std::string::npos)
         << result.value().detail;
+}
+
+// ---------------------------------------------------------------------------
+// Orientación respecto a un datum (G3)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Dos bordes: uno de referencia (recto, horizontal, en y=320) y otro tolerado
+// arriba, cuyo perfil se pasa como función de x.
+cv::Mat twoEdges(const std::function<double(double)>& topOffsetAt) {
+    cv::Mat gray(400, 600, CV_8UC1, cv::Scalar(230));
+    // Barra inferior: su borde superior es el datum, en y=320.
+    cv::rectangle(gray, cv::Rect(0, 320, 600, 80), cv::Scalar(30), cv::FILLED);
+    // Barra superior: su borde inferior es el elemento tolerado, hacia y=150.
+    for (int x = 0; x < 600; ++x) {
+        const int bottom = static_cast<int>(std::lround(150.0 + topOffsetAt(x)));
+        cv::line(gray, {x, 0}, {x, std::clamp(bottom, 0, 399)}, cv::Scalar(30), 1);
+    }
+    return gray;
+}
+
+// El datum: una Regla trazada sobre el borde de la barra de abajo.
+ToolConfig datumRuler() {
+    ToolConfig config;
+    config.type = ToolType::Ruler;
+    config.name = "cara A";
+    config.geometryJson =
+        toJson(ToolGeometry(RulerGeometry{{60.0F, 320.0F}, {540.0F, 320.0F}}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+ToolConfig orientationOver(float nominalDeg, const std::string& reference = "cara A") {
+    ToolConfig config;
+    config.type = ToolType::Orientation;
+    config.name = "orientacion";
+    config.reference = reference;
+    config.geometryJson = toJson(ToolGeometry(
+        OrientationGeometry{{80.0F, 150.0F}, {520.0F, 150.0F}, 40.0F, 80, nominalDeg}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+ToolRunResult orientationOn(const cv::Mat& gray, float nominalDeg = 0.0F) {
+    const std::vector<ToolConfig> tools{datumRuler(), orientationOver(nominalDeg)};
+    for (const auto& r : runTools(gray, kIdentity, tools)) {
+        if (r.name == "orientacion") {
+            return r;
+        }
+    }
+    return {};
+}
+
+}  // namespace
+
+TEST(Orientation, ParallelismIsTheBandWidthNotTheAngle) {
+    // ESTE es el test que el plan pedía explícitamente. Un borde con una
+    // divergencia conocida: sube 12 px a lo largo de 440 px de tramo, así que la
+    // banda paralela al datum que lo contiene mide 12 px. El ÁNGULO sería
+    // atan(12/440) = 1,56°, un número completamente distinto.
+    const auto result = orientationOn(twoEdges([](double x) {
+        return 12.0 * (x - 80.0) / 440.0;
+    }));
+    ASSERT_TRUE(result.derived.valid() || !result.detail.empty());
+    std::printf("  %s\n", result.detail.c_str());
+    EXPECT_NEAR(result.measured, 12.0, 1.5) << result.detail;
+
+    // Y no es el ángulo: 1,56° no se parece a 12.
+    const double angle = std::atan2(12.0, 440.0) * 180.0 / CV_PI;
+    EXPECT_GT(std::abs(result.measured - angle), 5.0)
+        << "si devolviera el ángulo, valdría " << angle;
+    EXPECT_NE(result.detail.find("anchura de banda"), std::string::npos) << result.detail;
+}
+
+TEST(Orientation, AWavyEdgeThatIsParallelOnAverageStillFailsTheBand) {
+    // La razón por la que la cota es una distancia y no un ángulo: este borde va
+    // EXACTAMENTE paralelo al datum de media —desvío angular ~0°— y aun así no
+    // cabe en una banda estrecha, porque está ondulado. El ángulo no lo vería.
+    const auto result =
+        orientationOn(twoEdges([](double x) { return 6.0 * std::sin(x / 25.0); }));
+    std::printf("  %s\n", result.detail.c_str());
+    EXPECT_NEAR(result.measured, 12.0, 2.0) << result.detail;
+    EXPECT_NE(result.detail.find("informativo, no es la medida"), std::string::npos)
+        << result.detail;
+
+    // El desvío angular es casi cero y la banda es ancha: la prueba de que son
+    // dos cosas distintas.
+    const auto at = result.detail.find("desvío angular ");
+    ASSERT_NE(at, std::string::npos) << result.detail;
+    const double angle =
+        std::atof(result.detail.c_str() + at + std::string("desvío angular ").size());
+    EXPECT_LT(angle, 1.0) << "de media va paralelo: " << result.detail;
+    EXPECT_GT(result.measured, 8.0) << "y aun así no cabe en la banda";
+}
+
+TEST(Orientation, PerpendicularityUsesTheSameMeasureWithTheNominalAtNinety) {
+    // El datum se queda HORIZONTAL y el elemento tolerado se pone VERTICAL, con
+    // el nominal a 90. Es lo que justifica que las tres sean una herramienta:
+    // la banda se orienta girando el datum el ángulo nominal, y la medida —una
+    // anchura— es exactamente la misma cuenta.
+    cv::Mat gray(600, 600, CV_8UC1, cv::Scalar(230));
+    // Datum: borde superior de la barra de abajo, horizontal en y=520.
+    cv::rectangle(gray, cv::Rect(0, 520, 600, 80), cv::Scalar(30), cv::FILLED);
+    // Elemento tolerado: borde derecho de una barra vertical, con 12 px de
+    // divergencia a lo largo del tramo.
+    for (int y = 0; y < 520; ++y) {
+        const int right = static_cast<int>(std::lround(200.0 + 12.0 * (y - 60.0) / 400.0));
+        cv::line(gray, {0, y}, {std::clamp(right, 0, 599), y}, cv::Scalar(30), 1);
+    }
+
+    ToolConfig datum;
+    datum.type = ToolType::Ruler;
+    datum.name = "cara A";
+    datum.geometryJson =
+        toJson(ToolGeometry(RulerGeometry{{60.0F, 520.0F}, {540.0F, 520.0F}}));
+    datum.toleranceMin = 0.0;
+    datum.toleranceMax = 1e9;
+
+    ToolConfig tool;
+    tool.type = ToolType::Orientation;
+    tool.name = "orientacion";
+    tool.reference = "cara A";
+    tool.geometryJson = toJson(ToolGeometry(
+        OrientationGeometry{{200.0F, 60.0F}, {200.0F, 460.0F}, 40.0F, 80, 90.0F}));
+    tool.toleranceMin = 0.0;
+    tool.toleranceMax = 1e9;
+
+    for (const auto& r : runTools(gray, kIdentity, {datum, tool})) {
+        if (r.name == "orientacion") {
+            std::printf("  nominal 90: %s\n", r.detail.c_str());
+            EXPECT_NE(r.detail.find("perpendicularidad"), std::string::npos) << r.detail;
+            EXPECT_NEAR(r.measured, 12.0, 1.5) << r.detail;
+        }
+    }
+}
+
+TEST(Orientation, TheNominalAngleChangesWhatItIsCalled) {
+    const cv::Mat gray = twoEdges([](double) { return 0.0; });
+    EXPECT_NE(orientationOn(gray, 0.0F).detail.find("paralelismo"), std::string::npos);
+    EXPECT_NE(orientationOn(gray, 90.0F).detail.find("perpendicularidad"),
+              std::string::npos);
+    EXPECT_NE(orientationOn(gray, 30.0F).detail.find("angularidad"), std::string::npos);
+}
+
+TEST(Orientation, WithoutADatumItDoesNotMeasure) {
+    // Una orientación sin decir respecto a qué es exactamente el número con
+    // nombre de norma que este programa existe para no dar.
+    const cv::Mat gray = twoEdges([](double) { return 0.0; });
+    const std::vector<ToolConfig> tools{orientationOver(0.0F, "")};
+    const auto results = runTools(gray, kIdentity, tools);
+    ASSERT_EQ(results.size(), 1U);
+    EXPECT_FALSE(results[0].ok);
+    EXPECT_NE(results[0].detail.find("DATUM"), std::string::npos) << results[0].detail;
+}
+
+TEST(Orientation, ItIsNeverSmallerThanTheStraightnessOfTheSameEdge) {
+    // La relación entre G1 y G3, que conviene entender: la rectitud elige la
+    // orientación de la banda buscando la más estrecha; la orientación no puede
+    // elegirla, se la impone el datum. Así que la segunda nunca es menor.
+    const cv::Mat gray =
+        twoEdges([](double x) { return 4.0 * std::sin(x / 40.0) + 0.015 * (x - 300.0); });
+
+    ToolConfig straight;
+    straight.type = ToolType::Straightness;
+    straight.name = "rectitud";
+    straight.geometryJson = toJson(
+        ToolGeometry(StraightnessGeometry{{80.0F, 150.0F}, {520.0F, 150.0F}, 40.0F, 80}));
+    straight.toleranceMin = 0.0;
+    straight.toleranceMax = 1e9;
+
+    const auto zone = runTool(gray, kIdentity, straight);
+    const auto oriented = orientationOn(gray);
+    ASSERT_TRUE(zone.isOk());
+    std::printf("  rectitud %.2f, orientación %.2f\n", zone.value().measured,
+                oriented.measured);
+    EXPECT_GE(oriented.measured, zone.value().measured - 0.05) << oriented.detail;
 }
