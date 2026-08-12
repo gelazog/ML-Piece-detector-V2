@@ -1669,6 +1669,198 @@ ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& confi
     return result;
 }
 
+// Patrón de agujeros (G6): la cota de una brida.
+//
+// Cero algoritmo nuevo: los agujeros salen de la jerarquía de contornos, el
+// centro de cada uno del ajuste de círculo que ya existe, y el círculo
+// primitivo de ajustar otro círculo a esos centros.
+//
+// La referencia es EL PROPIO PATRÓN —su primitivo ajustado y su reparto
+// angular—, no un datum de fuera. Es lo que se quiere aquí: girar la brida
+// entera no puede sacar de tolerancia unos agujeros que están donde deben. Para
+// medir contra un datum externo está la Posición verdadera.
+ToolRunResult runBoltPattern(const cv::Mat& gray, const Fixture& fixture,
+                             const ToolConfig& config, const BoltPatternGeometry& g,
+                             const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+
+    const float hw = g.width / 2.0F;
+    const float hh = g.height / 2.0F;
+    const std::vector<cv::Point2f> quad{
+        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, hh)),
+        toImg(fixture, g.center + cv::Point2f(-hw, hh))};
+    for (std::size_t i = 0; i < quad.size(); ++i) {
+        result.overlaySegments.push_back({quad[i], quad[(i + 1) % quad.size()]});
+    }
+
+    std::vector<cv::Point> quadInt;
+    for (const auto& p : quad) {
+        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
+    }
+    const cv::Rect bounds = cv::boundingRect(quadInt) & cv::Rect(0, 0, gray.cols, gray.rows);
+    if (bounds.area() < 100) {
+        result.detail = "La región cae fuera de la imagen";
+        return result;
+    }
+    cv::Mat regionMask = cv::Mat::zeros(bounds.size(), CV_8UC1);
+    std::vector<cv::Point> quadLocal;
+    for (const auto& p : quadInt) {
+        quadLocal.emplace_back(p.x - bounds.x, p.y - bounds.y);
+    }
+    cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
+
+    cv::Mat binary;
+    cv::threshold(gray(bounds), binary, 0.0, 255.0,
+                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
+    cv::bitwise_and(binary, regionMask, binary);
+
+    std::vector<std::vector<cv::Point>> contours;
+    std::vector<cv::Vec4i> hierarchy;
+    cv::findContours(binary, contours, hierarchy, cv::RETR_CCOMP, cv::CHAIN_APPROX_NONE);
+    int flange = -1;
+    double flangeArea = 0.0;
+    for (int i = 0; i < static_cast<int>(contours.size()); ++i) {
+        if (hierarchy[static_cast<std::size_t>(i)][3] >= 0) {
+            continue;
+        }
+        const double area = cv::contourArea(contours[static_cast<std::size_t>(i)]);
+        if (area > flangeArea) {
+            flangeArea = area;
+            flange = i;
+        }
+    }
+    if (flange < 0) {
+        result.detail = "No se ve ninguna pieza dentro del recuadro";
+        return result;
+    }
+
+    // Los agujeros son los hijos de la brida. Se descartan las motas: el ruido
+    // de la binarización dejaría "agujeros" de tres píxeles que arruinarían
+    // tanto el primitivo como el reparto angular.
+    constexpr double kMinHoleArea = 40.0;
+    const cv::Point2f offset(static_cast<float>(bounds.x), static_cast<float>(bounds.y));
+    std::vector<cv::Point2f> centres;
+    for (int i = hierarchy[static_cast<std::size_t>(flange)][2]; i >= 0;
+         i = hierarchy[static_cast<std::size_t>(i)][0]) {
+        const auto& hole = contours[static_cast<std::size_t>(i)];
+        if (cv::contourArea(hole) < kMinHoleArea) {
+            continue;
+        }
+        std::vector<cv::Point2f> points;
+        points.reserve(hole.size());
+        for (const auto& p : hole) {
+            points.emplace_back(cv::Point2f(p) + offset);
+        }
+        const vision::CircleFit fit = vision::fitCircleRobust(points);
+        centres.push_back(fit.valid ? fit.center : [&points] {
+            cv::Point2f sum(0.0F, 0.0F);
+            for (const auto& p : points) {
+                sum += p;
+            }
+            return sum / static_cast<float>(points.size());
+        }());
+    }
+
+    const int found = static_cast<int>(centres.size());
+    if (g.expectedHoles > 0 && found != g.expectedHoles) {
+        // Que falte (o sobre) un agujero ES el defecto: no se sigue midiendo un
+        // reparto angular que ya no tiene sentido.
+        result.measured = found;
+        result.detail = "se esperaban " + std::to_string(g.expectedHoles) +
+                        " agujeros y se ven " + std::to_string(found);
+        return result;
+    }
+    if (found < 3) {
+        result.detail = "hacen falta al menos 3 agujeros para ajustar el círculo "
+                        "primitivo y se ven " + std::to_string(found);
+        return result;
+    }
+
+    const vision::CircleFit pitch = vision::fitCircleRobust(centres);
+    if (!pitch.valid) {
+        result.detail = "no se pudo ajustar el círculo primitivo a los centros";
+        return result;
+    }
+
+    // Reparto ideal: los agujeros ordenados por ángulo, con el paso nominal
+    // 360/n, y la FASE que mejor encaja con lo medido. Sin ajustar la fase, una
+    // brida perfecta pero girada saldría toda fuera de tolerancia.
+    struct Hole {
+        double angle = 0.0;
+        cv::Point2f centre;
+    };
+    std::vector<Hole> holes;
+    holes.reserve(centres.size());
+    for (const auto& c : centres) {
+        holes.push_back({std::atan2(static_cast<double>(c.y) - pitch.center.y,
+                                    static_cast<double>(c.x) - pitch.center.x),
+                         c});
+    }
+    std::sort(holes.begin(), holes.end(),
+              [](const Hole& a, const Hole& b) { return a.angle < b.angle; });
+
+    const double step = 2.0 * kPi / found;
+    // Media circular de los restos: es la forma correcta de promediar ángulos.
+    // Con la media aritmética, un resto de 359° y otro de 1° darían 180°.
+    double sumSin = 0.0;
+    double sumCos = 0.0;
+    for (int k = 0; k < found; ++k) {
+        const double residual = holes[static_cast<std::size_t>(k)].angle - k * step;
+        sumSin += std::sin(residual);
+        sumCos += std::cos(residual);
+    }
+    const double phase = std::atan2(sumSin, sumCos);
+
+    double worst = 0.0;
+    double worstAngleDeg = 0.0;
+    double worstStep = 0.0;
+    for (int k = 0; k < found; ++k) {
+        const double ideal = phase + k * step;
+        const cv::Point2f target(
+            static_cast<float>(pitch.center.x + pitch.radius * std::cos(ideal)),
+            static_cast<float>(pitch.center.y + pitch.radius * std::sin(ideal)));
+        const double deviation = cv::norm(holes[static_cast<std::size_t>(k)].centre - target);
+        if (deviation > worst) {
+            worst = deviation;
+            // Se guarda su POSICIÓN ANGULAR y no su índice. Un "agujero nº 5"
+            // no le sirve de nada al operador: el orden es el que sale del
+            // barrido angular, y en la pieza no hay ningún número escrito. Un
+            // ángulo sí se localiza mirando la brida.
+            worstAngleDeg = holes[static_cast<std::size_t>(k)].angle * 180.0 / kPi;
+            if (worstAngleDeg < 0.0) {
+                worstAngleDeg += 360.0;
+            }
+        }
+        // Paso angular real entre este agujero y el siguiente.
+        const int next = (k + 1) % found;
+        double gap = holes[static_cast<std::size_t>(next)].angle -
+                     holes[static_cast<std::size_t>(k)].angle;
+        while (gap <= 0.0) {
+            gap += 2.0 * kPi;
+        }
+        worstStep = std::max(worstStep, std::abs(gap - step) * 180.0 / kPi);
+        result.overlayPoints.push_back(holes[static_cast<std::size_t>(k)].centre);
+        result.overlaySegments.push_back({target, holes[static_cast<std::size_t>(k)].centre});
+    }
+
+    // Como en la posición verdadera, la cota es un DIÁMETRO de zona.
+    result.measured = 2.0 * worst;
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = std::to_string(found) + " agujeros · Ø primitivo=" +
+                    fmtLen(2.0 * pitch.radius, fmt) + " · paso " +
+                    fmt2(360.0 / found) + "° (desvío máx " + fmt2(worstStep) + "°) · peor " +
+                    "agujero a " + fmt2(worstAngleDeg) + "°, Ø" +
+                    fmtLen(result.measured, fmt) + " fuera de su sitio";
+
+    // El primitivo como referencia: es el datum natural de una brida.
+    result.derived.kind = DerivedKind::Circle;
+    result.derived.point = vision::toPieceCoords(fixture, pitch.center);
+    result.derived.radius = pitch.radius;
+    return result;
+}
+
 // Desviación de centros (G5): lo que NO es concentricidad.
 //
 // La concentricidad normativa se retiró de ASME Y14.5-2018 por inverificable de
@@ -2975,6 +3167,10 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Region:
                 return ResultT::ok(runRegion(gray, fixture, config,
                                              std::get<RegionGeometry>(geometry.value()), fmt));
+            case ToolType::BoltPattern:
+                return ResultT::ok(runBoltPattern(
+                    gray, fixture, config, std::get<BoltPatternGeometry>(geometry.value()),
+                    fmt));
             case ToolType::CentreOffset: {
                 static const DerivedElements kNone;
                 return ResultT::ok(runCentreOffset(

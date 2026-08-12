@@ -48,6 +48,7 @@ QColor toolColor(ToolType type) {
         case ToolType::Roundness: return {255, 190, 90};
         case ToolType::Orientation: return {200, 140, 255};
         case ToolType::CentreOffset: return {255, 140, 200};
+        case ToolType::BoltPattern: return {160, 255, 200};
         case ToolType::Blob: return {255, 105, 180};
         case ToolType::Region: return {255, 150, 200};
         case ToolType::Symmetry: return {200, 160, 255};
@@ -1036,6 +1037,14 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         case ToolType::ConstructedLine:
             geometry = ConstructedLineGeometry{LineConstruction::ThroughTwoPoints, a};
             break;
+        case ToolType::BoltPattern: {
+            BoltPatternGeometry g;
+            g.center = (a + b) / 2.0F;
+            g.width = std::max(40.0F, std::abs(b.x - a.x));
+            g.height = std::max(40.0F, std::abs(b.y - a.y));
+            geometry = g;
+            break;
+        }
         case ToolType::Clearance: {
             ClearanceGeometry g;
             g.center = (a + b) / 2.0F;
@@ -1244,7 +1253,8 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                                  std::is_same_v<T, RegionGeometry> ||
                                  std::is_same_v<T, SymmetryGeometry> ||
                                  std::is_same_v<T, PolygonGeometry> ||
-                                 std::is_same_v<T, ClearanceGeometry>) {
+                                 std::is_same_v<T, ClearanceGeometry> ||
+                                 std::is_same_v<T, BoltPatternGeometry>) {
                 const float hw = g.width / 2.0F;
                 const float hh = g.height / 2.0F;
                 QPolygonF quad;

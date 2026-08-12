@@ -360,6 +360,22 @@ struct CentreOffsetGeometry {
     cv::Point2f anchor;
 };
 
+// Patrón de agujeros (G6): la cota de una brida. Diámetro del círculo
+// primitivo, paso angular y desviación de cada agujero respecto a su sitio.
+//
+// No trae algoritmo nuevo: los agujeros salen de la jerarquía de contornos, el
+// centro de cada uno del ajuste de círculo que ya existe, y el primitivo de
+// ajustar un círculo a esos centros.
+struct BoltPatternGeometry {
+    cv::Point2f center;  // recuadro que abarca la brida entera
+    float width = 300.0F;
+    float height = 300.0F;
+    // Cuántos agujeros debería haber. 0 = no comprobar el recuento y medir los
+    // que aparezcan; con un número puesto, que falte uno **es** el defecto.
+    int expectedHoles = 0;
+    bool darkPiece = true;
+};
+
 [[nodiscard]] const std::array<RegionMeasure, 6>& allRegionMeasures();
 [[nodiscard]] const char* regionMeasureLabel(RegionMeasure measure);
 
@@ -372,7 +388,8 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
                                   RegionGeometry, SymmetryGeometry, PolygonGeometry,
                                   EdgeDefectsGeometry, ClearanceGeometry,
                                   StraightnessGeometry, RoundnessGeometry,
-                                  OrientationGeometry, CentreOffsetGeometry>;
+                                  OrientationGeometry, CentreOffsetGeometry,
+                                  BoltPatternGeometry>;
 
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
@@ -403,7 +420,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 26>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 27>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que

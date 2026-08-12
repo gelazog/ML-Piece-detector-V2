@@ -830,7 +830,21 @@ tiene que estar accesible desde la familia.
   devuelve y su descripción contiene la advertencia (test sobre el texto, como
   el de la ronda anterior).
 
-- [ ] **G6 — Patrón de agujeros (bolt circle).** Ø del círculo primitivo, paso
+- [x] **G6 — Patrón de agujeros (bolt circle).** *(Cero algoritmo nuevo, como
+  decía el plan: agujeros de la jerarquía de contornos, centro de cada uno con
+  el ajuste de círculo que ya estaba, y primitivo ajustando otro círculo a esos
+  centros. Medido sobre una brida de 6 agujeros en un primitivo de Ø280: sale
+  279,7 y paso 60,00°. Con un agujero movido 9 px, la desviación salta de 0,3 a
+  13,8 px de diámetro de zona y el resto sigue en su sitio.
+  Dos decisiones que no estaban en el plan. La fase del reparto se ajusta con la
+  MEDIA CIRCULAR de los restos —con la aritmética, un resto de 359° y otro de 1°
+  darían 180°—, y sin ajustarla una brida perfecta pero girada saldría entera
+  fuera de tolerancia; hay un test que la gira 0, 7, 23 y 41° y no cambia nada.
+  Y el peor agujero se identifica por su ÁNGULO y no por un índice: el orden es
+  el del barrido angular y en la pieza no hay ningún número escrito, así que
+  «el nº 5» no le sirve de nada a quien está mirando la brida. Lo vi porque el
+  test desplazaba el índice 2 y la herramienta decía «nº 5» — las dos cosas
+  correctas y la respuesta inútil.)* Ø del círculo primitivo, paso
   angular y **posición verdadera de cada agujero** respecto al marco. Es la
   cota de una brida y se compone de piezas que ya existen: los agujeros salen
   de la jerarquía de `findContours` (ya está en `findHoles`), el centro de cada

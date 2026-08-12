@@ -263,6 +263,19 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      **0,82** (el valor exacto de un cuadrado es 0,785 — la diferencia es el
      sesgo conocido de medir un borde recto sobre una rejilla de píxeles). Una
      mota de ruido **no** cuenta como agujero.
+   - *Patrón de agujeros*: la cota de una **brida**. Arrastra un recuadro que
+     abarque la pieza entera: encuentra los agujeros, ajusta el **círculo
+     primitivo** y mide cuánto se sale cada uno de su sitio. La medida es la
+     desviación del **peor** agujero en diámetro de zona, y el detalle dice **a
+     qué ángulo está** — no un número de agujero, que en la pieza no está
+     escrito en ninguna parte. Con *Agujeros esperados* puesto, que falte uno es
+     el defecto y lo dice en vez de medir un reparto que ya no significa nada.
+
+     La referencia es el **propio patrón**: su primitivo ajustado y su reparto
+     angular. Girar la brida entera no cambia nada, que es lo que se quiere
+     aquí; para medir contra un datum de fuera, usa *Posición verdadera* en el
+     agujero que te interese. El primitivo se ofrece como referencia para otras
+     herramientas.
    - *Desviación de centros*: la **distancia entre los centros** de dos
      elementos circulares — «¿están estos dos agujeros centrados uno con otro?».
      Elige los dos en *Referencia* y *2ª referencia*; vale también un punto

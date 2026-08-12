@@ -37,12 +37,13 @@ const char* toolTypeName(ToolType type) {
         case ToolType::Roundness: return "roundness";
         case ToolType::Orientation: return "orientation";
         case ToolType::CentreOffset: return "centre_offset";
+        case ToolType::BoltPattern: return "bolt_pattern";
     }
     return "unknown";
 }
 
-const std::array<ToolType, 26>& allToolTypes() {
-    static const std::array<ToolType, 26> kTypes{
+const std::array<ToolType, 27>& allToolTypes() {
+    static const std::array<ToolType, 27> kTypes{
         ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine, ToolType::EdgeFlaw,
         ToolType::Blob,     ToolType::Ruler,    ToolType::LineToLine,  ToolType::Angle,
         ToolType::PolyBlob, ToolType::Position, ToolType::Arc,         ToolType::Shaft,
@@ -50,7 +51,7 @@ const std::array<ToolType, 26>& allToolTypes() {
         ToolType::ConstructedLine, ToolType::MedianAxis, ToolType::Region,
         ToolType::Symmetry, ToolType::Polygon, ToolType::EdgeDefects,
         ToolType::Clearance, ToolType::Straightness, ToolType::Roundness,
-        ToolType::Orientation, ToolType::CentreOffset};
+        ToolType::Orientation, ToolType::CentreOffset, ToolType::BoltPattern};
     return kTypes;
 }
 
@@ -97,6 +98,7 @@ ToolCategory categoryOf(ToolType type) {
         case ToolType::Roundness:
         case ToolType::Orientation:
         case ToolType::CentreOffset:
+        case ToolType::BoltPattern:
             return ToolCategory::Gdt;
         // No miden: se calculan a partir de otras y existen para ser el datum
         // contra el que miden las de GD&T.
@@ -317,6 +319,7 @@ const char* toolTypeLabel(ToolType type) {
         case ToolType::Roundness: return "Redondez (zona mínima)";
         case ToolType::Orientation: return "Orientación";
         case ToolType::CentreOffset: return "Desviación de centros";
+        case ToolType::BoltPattern: return "Patrón de agujeros";
     }
     return "?";
 }
@@ -516,6 +519,17 @@ const char* toolTypeDescription(ToolType type) {
                    "Elige los dos círculos en Referencia y 2ª referencia. Vale también\n"
                    "un punto construido. Los dos tienen que verse DE FRENTE: el centro\n"
                    "de un cilindro visto de perfil no está donde parece.";
+        case ToolType::BoltPattern:
+            return "Patrón de agujeros — la cota de una brida. Arrastra un recuadro\n"
+                   "que abarque la pieza entera: se encuentran los agujeros, se ajusta\n"
+                   "el círculo primitivo y se mide cuánto se sale cada uno de su sitio.\n"
+                   "La medida es la desviación del PEOR agujero, en diámetro de zona, y\n"
+                   "el detalle dice cuál es. Con Agujeros esperados puesto, que falte\n"
+                   "uno es el defecto y se dice.\n"
+                   "La referencia es el propio patrón: su círculo primitivo ajustado y\n"
+                   "su reparto angular. Girar la brida entera no cambia nada, que es lo\n"
+                   "que se quiere aquí. Para medir contra un datum de fuera, usa\n"
+                   "Posición verdadera en el agujero que te interese.";
     }
     return "";
 }
@@ -541,6 +555,7 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
             toleranceMin = measured;
             toleranceMax = measured;
             return;
+        case ToolType::BoltPattern:
         case ToolType::CentreOffset:
             // Una desviación: la pieza buena define el piso y el techo va
             // holgado, como el resto de las desviaciones.
@@ -719,6 +734,8 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::Orientation;
             } else if constexpr (std::is_same_v<T, CentreOffsetGeometry>) {
                 return ToolType::CentreOffset;
+            } else if constexpr (std::is_same_v<T, BoltPatternGeometry>) {
+                return ToolType::BoltPattern;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -747,6 +764,7 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                                  std::is_same_v<T, RoundnessGeometry> ||
                                  std::is_same_v<T, BlobGeometry> ||
                                  std::is_same_v<T, RegionGeometry> ||
+                                 std::is_same_v<T, BoltPatternGeometry> ||
                                  std::is_same_v<T, SymmetryGeometry> ||
                                  std::is_same_v<T, PolygonGeometry> ||
                                  std::is_same_v<T, ClearanceGeometry>) {
@@ -1023,6 +1041,12 @@ std::string toJson(const ToolGeometry& geometry) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "cx" << g.center.x << "cy" << g.center.y << "rin"
                        << g.innerRadius << "rout" << g.outerRadius << "rays" << g.rayCount;
+                });
+            } else if constexpr (std::is_same_v<T, BoltPatternGeometry>) {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "cx" << g.center.x << "cy" << g.center.y << "w" << g.width << "h"
+                       << g.height << "holes" << g.expectedHoles << "dark"
+                       << (g.darkPiece ? 1 : 0);
                 });
             } else if constexpr (std::is_same_v<T, CentreOffsetGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
@@ -1345,6 +1369,19 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.innerRadius = static_cast<float>(rin.value());
                 g.outerRadius = static_cast<float>(rout.value());
                 g.rayCount = static_cast<int>(reader.numberOr("rays", 1440.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::BoltPattern: {
+                BoltPatternGeometry g;
+                auto cx = f("cx"), cy = f("cy"), w = f("w"), h = f("h");
+                for (const auto* v : {&cx, &cy, &w, &h}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
+                g.width = static_cast<float>(w.value());
+                g.height = static_cast<float>(h.value());
+                g.expectedHoles = static_cast<int>(reader.numberOr("holes", 0.0));
+                g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
                 return ResultT::ok(g);
             }
             case ToolType::CentreOffset: {

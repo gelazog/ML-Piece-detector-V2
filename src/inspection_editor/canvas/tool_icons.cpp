@@ -112,6 +112,23 @@ QIcon toolIcon(ToolType type) {
                 p.setPen(dashed);
                 p.drawLine(14, 11, 14, 19);
             });
+        case ToolType::BoltPattern:
+            return makeIcon([](QPainter& p, const QColor& c) {
+                // Una brida: el circulo primitivo a trazos y seis agujeros
+                // repartidos encima.
+                QPen pitch = p.pen();
+                pitch.setStyle(Qt::DashLine);
+                pitch.setWidthF(1.1);
+                p.setPen(pitch);
+                p.drawEllipse(QPointF(14, 14), 9.0, 9.0);
+                p.setPen(Qt::NoPen);
+                p.setBrush(c);
+                for (int k = 0; k < 6; ++k) {
+                    const double a = k * 3.14159265358979323846 / 3.0;
+                    p.drawEllipse(QPointF(14 + 9 * std::cos(a), 14 + 9 * std::sin(a)), 2.2,
+                                  2.2);
+                }
+            });
         case ToolType::CentreOffset:
             return makeIcon([](QPainter& p, const QColor& c) {
                 // Dos circulos descentrados y la cota entre sus centros.

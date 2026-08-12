@@ -793,6 +793,9 @@ ToolConfig makeToolAt(int index, float x, float y) {
         case ToolType::CentreOffset:
             geometry = CentreOffsetGeometry{{x, y}};
             break;
+        case ToolType::BoltPattern:
+            geometry = BoltPatternGeometry{{x, y}, 60.0F, 60.0F, 0, true};
+            break;
         case ToolType::ConstructedLine:
             geometry = ConstructedLineGeometry{LineConstruction::ThroughTwoPoints, {x, y}};
             break;
@@ -4753,4 +4756,132 @@ TEST(CentreOffset, AConstructedPointAlsoWorksAsOneOfTheTwo) {
     std::printf("  punto medio contra tercero -> %s\n", result.detail.c_str());
     // El medio de (120;200) y (280;200) es (200;200); hasta (200;300) hay 100.
     EXPECT_NEAR(result.measured, 100.0, 3.0) << result.detail;
+}
+
+// ---------------------------------------------------------------------------
+// Patrón de agujeros (G6)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Brida sintética: disco oscuro con `count` agujeros repartidos en un círculo
+// primitivo de radio `pitchRadius`. `nudge` desplaza el agujero `nudgeIndex`
+// radialmente, para fabricar un defecto conocido.
+cv::Mat flange(int count, double pitchRadius, double turnDeg = 0.0, int nudgeIndex = -1,
+               cv::Point2f nudge = {0.0F, 0.0F}) {
+    cv::Mat gray(500, 500, CV_8UC1, cv::Scalar(230));
+    cv::circle(gray, {250, 250}, 200, cv::Scalar(30), cv::FILLED);
+    for (int k = 0; k < count; ++k) {
+        const double a = turnDeg * CV_PI / 180.0 + 2.0 * CV_PI * k / count;
+        cv::Point2f centre(static_cast<float>(250.0 + pitchRadius * std::cos(a)),
+                           static_cast<float>(250.0 + pitchRadius * std::sin(a)));
+        if (k == nudgeIndex) {
+            centre += nudge;
+        }
+        cv::circle(gray, cv::Point(cvRound(centre.x), cvRound(centre.y)), 22,
+                   cv::Scalar(230), cv::FILLED);
+    }
+    return gray;
+}
+
+ToolConfig boltPatternOver(int expected = 0) {
+    ToolConfig config;
+    config.type = ToolType::BoltPattern;
+    config.name = "patron";
+    config.geometryJson = toJson(
+        ToolGeometry(BoltPatternGeometry{{250.0F, 250.0F}, 460.0F, 460.0F, expected, true}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+double numberAfterIn(const std::string& text, const std::string& key) {
+    const auto at = text.find(key);
+    return at == std::string::npos ? -1.0 : std::atof(text.c_str() + at + key.size());
+}
+
+}  // namespace
+
+TEST(BoltPattern, ASixHoleFlangeGivesItsPitchDiameterAndStep) {
+    const auto result = runTool(flange(6, 140.0), kIdentity, boltPatternOver());
+    ASSERT_TRUE(result.isOk()) << result.error().message;
+    const std::string& detail = result.value().detail;
+    std::printf("  %s\n", detail.c_str());
+    EXPECT_NE(detail.find("6 agujeros"), std::string::npos) << detail;
+    EXPECT_NEAR(numberAfterIn(detail, "Ø primitivo="), 280.0, 3.0) << detail;
+    EXPECT_NEAR(numberAfterIn(detail, "paso "), 60.0, 0.1) << detail;
+    // Una brida perfecta: todos los agujeros en su sitio.
+    EXPECT_LT(result.value().measured, 3.0) << detail;
+}
+
+TEST(BoltPattern, TurningTheWholeFlangeChangesNothing) {
+    // La referencia es el propio patrón, así que girar la brida entera no puede
+    // sacar de tolerancia unos agujeros que están donde deben.
+    for (const double turn : {0.0, 7.0, 23.0, 41.0}) {
+        const auto result = runTool(flange(6, 140.0, turn), kIdentity, boltPatternOver());
+        ASSERT_TRUE(result.isOk());
+        std::printf("  girada %4.0f° -> peor agujero a Ø%.2f\n", turn,
+                    result.value().measured);
+        EXPECT_LT(result.value().measured, 3.0) << result.value().detail;
+    }
+}
+
+TEST(BoltPattern, OneDisplacedHoleIsTheOneItNames) {
+    // El defecto que se busca: un agujero fuera de sitio. La medida es su
+    // desviación en diámetro de zona (2x) y el detalle dice CUÁL es.
+    const auto result = runTool(flange(6, 140.0, 0.0, 2, {9.0F, 0.0F}), kIdentity,
+                                boltPatternOver());
+    ASSERT_TRUE(result.isOk());
+    const std::string& detail = result.value().detail;
+    std::printf("  %s\n", detail.c_str());
+    // 9 px de desplazamiento -> Ø de zona ~18. El ajuste del primitivo absorbe
+    // una parte, así que se admite holgura.
+    EXPECT_GT(result.value().measured, 12.0) << detail;
+    // Y dice DÓNDE está, con un ángulo que se puede localizar mirando la brida.
+    // El agujero tocado es el tercero de seis empezando en 0°, o sea el de 120°.
+    EXPECT_NE(detail.find("peor agujero a "), std::string::npos) << detail;
+    const double angle = numberAfterIn(detail, "peor agujero a ");
+    EXPECT_NEAR(angle, 120.0, 6.0) << detail;
+
+    // Y en una brida sana ese número es pequeño: la diferencia entre las dos es
+    // lo que hace útil la herramienta.
+    const auto healthy = runTool(flange(6, 140.0), kIdentity, boltPatternOver());
+    ASSERT_TRUE(healthy.isOk());
+    EXPECT_GT(result.value().measured, healthy.value().measured * 4.0)
+        << "sana " << healthy.value().measured << " vs tocada "
+        << result.value().measured;
+}
+
+TEST(BoltPattern, AMissingHoleIsTheDefectWhenTheCountIsDeclared) {
+    // Con el recuento declarado, que falte un agujero ES el defecto y no se
+    // sigue midiendo un reparto angular que ya no significa nada.
+    const auto result = runTool(flange(5, 140.0), kIdentity, boltPatternOver(6));
+    ASSERT_TRUE(result.isOk());
+    std::printf("  %s\n", result.value().detail.c_str());
+    EXPECT_FALSE(result.value().ok);
+    EXPECT_NE(result.value().detail.find("se esperaban 6"), std::string::npos)
+        << result.value().detail;
+
+    // Con el recuento correcto, mide normal.
+    const auto right = runTool(flange(6, 140.0), kIdentity, boltPatternOver(6));
+    ASSERT_TRUE(right.isOk());
+    EXPECT_TRUE(right.value().ok) << right.value().detail;
+}
+
+TEST(BoltPattern, ItNeedsThreeHolesToFitAPitchCircle) {
+    const auto result = runTool(flange(2, 140.0), kIdentity, boltPatternOver());
+    ASSERT_TRUE(result.isOk());
+    EXPECT_FALSE(result.value().ok);
+    EXPECT_NE(result.value().detail.find("al menos 3"), std::string::npos)
+        << result.value().detail;
+}
+
+TEST(BoltPattern, ThePitchCircleIsOfferedAsADatum) {
+    // El primitivo es el datum natural de una brida: con él se puede medir la
+    // desviación de cualquier otra cosa respecto al patrón.
+    const auto result = runTool(flange(6, 140.0), kIdentity, boltPatternOver());
+    ASSERT_TRUE(result.isOk());
+    ASSERT_TRUE(result.value().derived.valid()) << result.value().detail;
+    EXPECT_EQ(result.value().derived.kind, DerivedKind::Circle);
+    EXPECT_NEAR(result.value().derived.radius, 140.0, 2.0);
 }
