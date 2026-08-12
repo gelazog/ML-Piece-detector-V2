@@ -174,8 +174,9 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
 
 4. **Dibujar sobre el video en vivo**: con la pieza detectada, elige una
    herramienta en la fila **Dibujar**, agrupada por **familias** (Figuras
-   básicas · Medición en línea · GD&T · Máx./mín. y torneadas): cada botón abre
-   su familia y cada herramienta explica en su tooltip qué mide y cómo trazarla.
+   básicas · Medición en línea · Construcciones · GD&T · Máx./mín. y
+   torneadas): cada botón abre su familia y cada herramienta explica en su
+   tooltip qué mide y cómo trazarla.
    Con el teclado, **Ctrl+1…5** elige familia y **1…9** la herramienta dentro.
    En el editor de plantilla la misma paleta se muestra como acordeón y dibuja directamente sobre el video arrastrando el
    mouse — en tiempo real y anclado a la pieza: si la mueves o la giras, las
@@ -183,6 +184,33 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    se auto-sugiere sus tolerancias** (±10 % para distancias, conteo exacto
    para blobs). **Mover/Elegir** selecciona y arrastra; **Borrar
    herramienta** elimina la seleccionada.
+   **Las cinco familias de un vistazo** (32 herramientas). La lista detallada
+   viene después; esto es para saber dónde mirar.
+
+   | Familia | Herramientas | Para qué |
+   |---|---|---|
+   | **Figuras básicas** (7) | Borde liso · Blob · Blob poligonal · Región · Simetría · Lados · Rebabas y mellas | La forma y lo que hay dentro de una zona: contar, describir, buscar defectos de borde |
+   | **Medición en línea** (8) | Caliper · Círculo · Punto-Línea · Regla · Línea-Línea · Ángulo · Arco · Holgura | Las cotas de toda la vida: distancias, diámetros, radios y ángulos |
+   | **Construcciones** (3) | Punto construido · Recta construida · Eje medio | No miden: **fabrican** referencias (una intersección, una bisectriz, un eje) para que otras midan contra ellas |
+   | **GD&T** (7) | Posición · Rectitud · Redondez · Orientación · Desviación de centros · Patrón de agujeros · Perfil de línea | Tolerancias geométricas, siempre contra un marco de referencia declarado |
+   | **Máx./mín. y torneadas** (7) | Eje / Diámetro · Rosca · Engranaje · Máx./mín. · Chaflán · Radio de acuerdo · Ranura | Piezas de torno y medidas que no dependen de acertar la dirección del trazo |
+
+   **Lo que una silueta no puede medir.** Conviene saberlo antes de prometerle
+   nada a nadie: no es que falte programarlo, es que **la información no está
+   en la imagen**. La app no ofrece ninguna de estas medidas, y donde algo se
+   le parece lo dice en el detalle en vez de dar un número que aparenta serlo.
+
+   | No se puede | Por qué | Lo que sí hace la app |
+   |---|---|---|
+   | **Profundidad o altura (Z)** | Una cámara 2D proyecta; la coordenada perpendicular al plano se pierde. Un agujero ciego y uno pasante dan la misma silueta | Nada: se dice, no se estima. Haría falta cámara de profundidad o estéreo |
+   | **Rugosidad, dureza, material** | No son geometría del contorno | Nada. La *Apariencia* detecta que algo cambió, pero no mide Ra |
+   | **Cilindricidad, alabeo, planitud** | Necesitan varias secciones o un plano fuera de la imagen | *Rectitud* y *Redondez* por zona mínima, que son sus equivalentes 2D, y se llaman así |
+   | **Concentricidad (ASME Y14.5)** | Exige el eje real de revolución, que una foto no da | *Desviación de centros*, que es otra cosa y por eso tiene otro nombre |
+   | **Ø primitivo real de una rosca (d2)** | Se mide con el método de los tres alambres, no ópticamente | Paso, Ø exterior y Ø de fondo; y el **sesgo de hélice** del ángulo de flanco, cuantificado |
+   | **Cotas de una pieza inclinada** | Fuera del plano de calibración la escala cambia con la altura | La calibración por tablero corrige la perspectiva **del plano del tablero**; apoya la pieza plana |
+
+   La lista completa, herramienta por herramienta:
+
    - *Caliper*: línea que cruce los dos bordes a medir → distancia entre ellos.
    - *Círculo*: arrastra del centro al borde → diámetro y redondez.
    - *Punto-Línea*: línea de referencia → distancia perpendicular del borde.

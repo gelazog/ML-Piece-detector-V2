@@ -441,27 +441,76 @@ distinguen.
 
 ## 5. Herramientas de medición
 
-Catorce herramientas, todas ancladas al fixture. El motor común
+**32 herramientas**, todas ancladas al fixture. El motor común
 (`tool_executor.cpp`) recibe imagen + fixture + configuración y devuelve un
 resultado con la medida, el veredicto y los puntos para dibujarla.
 
+La tabla va **por familias**, en el mismo orden que `allToolCategories()`, para
+que se lea igual aquí que en la paleta.
+
 | Herramienta | Qué mide | Técnica |
 |---|---|---|
-| Caliper | Distancia entre dos bordes | Perfil de intensidad promediado en banda + gradiente + refinamiento subpíxel parabólico; empareja bordes de **polaridad opuesta** |
-| Círculo | Diámetro y redondez | Rayos radiales buscando el borde + ajuste de círculo por mínimos cuadrados |
-| Punto-Línea | Distancia perpendicular de un borde a una recta | Escaneo perpendicular + proyección sobre la recta |
+| **— Figuras básicas —** | | |
 | Borde liso | Desviación máxima de un borde que debería ser recto | Ajuste de recta + máxima distancia de los puntos detectados |
 | Blob | Conteo de manchas en un rectángulo | Umbral por polaridad + contornos externos filtrados por área mínima |
 | Blob poligonal | Igual, en una región de forma libre | Máscara poligonal + los mismos contornos externos |
+| Región | Área, perímetro, solidez, circularidad, relación de aspecto o agujeros | Contorno mayor dentro del recuadro + momentos y casco convexo; el perímetro por cadena **Vossepoel–Smeulders**, no `arcLength` |
+| Simetría | Grado de simetría de la silueta, de 0 a 1 | Busca el **mejor** eje de simetría y compara la silueta con su reflejo. No es la simetría de GD&T, que se retiró de la norma en 2018 |
+| Lados | Cuenta los lados de un perfil poligonal y mide cada uno y sus ángulos | Simplificación del contorno con **epsilon en milésimas del perímetro** (no en px, para que el recuento no cambie al acercar la cámara). Si el recuento no aguanta al doblar y partir ese valor, la figura no es un polígono claro y lo dice |
+| Rebabas y mellas | Defectos de borde, con su tamaño y dónde están | Barrido perpendicular al contorno + rachas contiguas fuera de banda (una rebaba más ancha que la ventana también cuenta) |
+| **— Medición en línea —** | | |
+| Caliper | Distancia entre dos bordes | Perfil de intensidad promediado en banda + gradiente + refinamiento subpíxel parabólico; empareja bordes de **polaridad opuesta** |
+| Círculo | Diámetro y redondez | Rayos radiales buscando el borde + ajuste de círculo por mínimos cuadrados |
+| Punto-Línea | Distancia perpendicular de un borde a una recta | Escaneo perpendicular + proyección sobre la recta |
 | Regla | Distancia directa entre dos puntos | Geometría pura (no busca bordes) |
 | Línea-Línea | Ángulo entre dos rectas | Producto escalar de direcciones |
 | Ángulo | Ángulo interior de una esquina | Ángulo entre dos vectores desde el vértice |
-| Posición | Desviación de un rasgo respecto al cero del tablero | Lectura en el sistema del tablero (radial, X o Y) |
 | Arco | Radio de una esquina o un redondeo | Círculo por tres puntos para situar el sector + barrido radial acotado a él + ajuste Taubin robusto |
+| Holgura | La separación **más corta** entre dos figuras, y dónde está | Las dos figuras mayores del recuadro + distancia mínima entre contornos. Si solo se ve una, puede que se estén tocando, y se dice: cuánto solapan no está en la silueta |
+| **— Construcciones —** (no miden: fabrican referencias) | | |
+| Punto construido | Una intersección, un punto medio o un centro | Geometría sobre elementos que dan otras herramientas (`DerivedElements`) |
+| Recta construida | Una bisectriz, una perpendicular o una paralela | Igual; la dirección se canonicaliza para que no dependa de cómo se trazó |
+| Eje medio | La línea que va por el centro de una pieza alargada, y su rectitud | Punto medio entre los dos bordes **reales** corte a corte, no la línea que trazó el operador; avisa de la desalineación entre tramos |
+| **— GD&T —** (siempre contra un marco de referencia declarado) | | |
+| Posición | Desviación de un rasgo respecto al cero del tablero (radial, X o Y) o **posición verdadera** contra un marco de referencia | Lectura en el sistema del tablero; con datums declarados, el diámetro de la zona `2·√(dx²+dy²)` en ese marco, que es como lo acota el plano |
+| Rectitud | Rectitud por **zona mínima** | `minimumZoneBand`: casco convexo + calípers giratorios (la banda más estrecha, no la de área mínima) |
+| Redondez | Redondez por **zona mínima** | `minimumZoneCircle`: Nelder-Mead sembrado con Taubin (MZC, no mínimos cuadrados) |
+| Orientación | Paralelismo/perpendicularidad/angularidad contra un datum | Ancho de banda, que es una **distancia** y no un ángulo — como lo define la norma |
+| Desviación de centros | Cuánto se desplazan dos centros entre sí | Distancia entre los dos centros ajustados. **No es concentricidad**, y por eso no se llama así |
+| Patrón de agujeros | Si un patrón de agujeros está donde toca | Ajuste del patrón nominal + el peor agujero identificado **por su posición angular**, no por un índice |
+| Perfil de línea | Desviación de un borde respecto a un perfil nominal | Perfil nominal capturado del contorno de la pieza patrón, en coordenadas de pieza; comparación punto a punto **sin ICP** (el fixture ya alinea) |
+| **— Máx./mín. y torneadas —** | | |
 | Eje / Diámetro | Diámetro, conicidad y rectitud de una pieza de torno | Perfil axial a los dos lados + ajuste robusto de recta a cada borde; el diámetro es la separación entre las dos rectas |
-| Ranura | Ancho, profundidad y Ø de fondo de una entalla | El mismo perfil axial que el Eje pero **sin ajustar recta**: la ranura es justo donde el borde se sale de esa recta. Mínimo local del perfil crudo + cruce con el nivel de media profundidad en cada flanco. El ancho sale de **contar cortes**, así que se rechaza si la ranura no abarca al menos tres |
 | Rosca | Paso, Ø exterior, Ø de fondo y ángulo de flanco (con el sesgo de hélice cuantificado) | Perfil axial a los dos lados + periodo por autocorrelación (el paso) + plegado síncrono por ese periodo y ajuste de recta a los flancos |
 | Engranaje | Dientes, Ø de cabeza y raíz, módulo, Ø primitivo, excentricidad | Perfil radial + periodo circular (los dientes) + ajuste de círculo a las puntas (la excentricidad) |
+| Máx./mín. | Anchura mínima y diámetro máximo, **en cualquier dirección** | Casco convexo + calípers giratorios; las dos se dan siempre con su dirección |
+| Chaflán | Ángulo del bisel y sus **dos catetos** | `decomposeContour` + ajuste de tres rectas e intersección para construir la **esquina virtual**, que es de donde acota el plano |
+| Radio de acuerdo | Radio del redondeo **y si empalma tangente** | Arco de `decomposeContour` + ángulo entre su tangente en cada extremo y la recta vecina |
+| Ranura | Ancho, profundidad y Ø de fondo de una entalla | El mismo perfil axial que el Eje pero **sin ajustar recta**: la ranura es justo donde el borde se sale de esa recta. Mínimo local del perfil crudo + cruce con el nivel de media profundidad en cada flanco. El ancho sale de **contar cortes**, así que se rechaza si la ranura no abarca al menos tres |
+
+### Por qué zona mínima y no mínimos cuadrados en GD&T
+
+Rectitud y Redondez podrían salir de un ajuste por mínimos cuadrados, que es lo
+que ya hace el Círculo, y sería más corto de escribir. No se hace, y la razón no
+es estética: **la norma define otra cosa**. Una tolerancia de forma es el ancho
+de la **zona más estrecha que contiene todos los puntos**, no la dispersión
+alrededor del elemento mejor ajustado. Mínimos cuadrados minimiza la suma de
+cuadrados; la zona mínima minimiza el máximo. Son problemas distintos y dan
+números distintos, y el de mínimos cuadrados sale **siempre igual o mayor** —
+o sea que rechazaría piezas buenas.
+
+Con la misma lógica se descartó `cv::minAreaRect` para la rectitud: minimiza el
+**área** del rectángulo, no su **ancho**. Sobre un triángulo el rectángulo de
+área mínima sale un 41 % más ancho que la banda de ancho mínimo, y sobre un
+equilátero su diagonal se pasa un 32 % del diámetro real. Es una función que
+existe y que casi encaja, que es exactamente el tipo de atajo que hay que
+escribir por qué no se tomó.
+
+De ahí `minimumZoneBand` (casco convexo + calípers giratorios) y
+`minimumZoneCircle` (Nelder-Mead sembrado con Taubin) en `vision/fitting.*`. El
+invariante que los guarda es barato y fuerte: **la zona mínima nunca puede dar
+más que su equivalente por mínimos cuadrados**. Si un día lo diera, hay un error
+de implementación, y el test lo dice.
 
 ### Referencias entre herramientas
 
@@ -534,12 +583,19 @@ la herramienta dentro) y se generan de las propias familias. La tabla escrita a
 mano que había se quedó corta: con catorce herramientas y diez dígitos, Arco,
 Eje, Rosca y Engranaje **no tenían tecla**.
 
-**Familias de herramientas** (`ToolCategory`). Cinco: *Figuras básicas* (3),
-*Medición en línea* (7), *Construcciones* (2), *GD&T* (1) y *Máximos,
-mínimos y torneadas* (3). Son un **dato**, no el orden en que se pintan los
-botones, y viven junto a `allToolTypes()` por la misma razón: con la agrupación
-escrita en cada superficie de interfaz, la fila de la vista en vivo y la columna
-del editor acabarían agrupando distinto.
+**Familias de herramientas** (`ToolCategory`). Cinco: *Figuras básicas*,
+*Medición en línea*, *Construcciones*, *GD&T* y *Máximos, mínimos y torneadas*.
+Son un **dato**, no el orden en que se pintan los botones, y viven junto a
+`allToolTypes()` por la misma razón: con la agrupación escrita en cada
+superficie de interfaz, la fila de la vista en vivo y la columna del editor
+acabarían agrupando distinto.
+
+Aquí había un recuento herramienta por herramienta —«(3), (7), (2), (1),
+(3)»— que quedó obsoleto en cuanto entraron las rondas siguientes y llegó a
+estar a la mitad del número real. Se ha quitado a propósito: **el recuento vive
+en `toolsInCategory()`**, y un número escrito a mano en un documento no tiene
+quién lo desmienta. Lo que sí se escribe aquí es la regla, porque la regla no
+caduca.
 
 Un barrido exige que las familias sean una **partición**: cada herramienta en
 una y solo una, y las cinco juntas reconstruyen exactamente `allToolTypes()`.

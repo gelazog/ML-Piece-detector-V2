@@ -1021,7 +1021,28 @@ tiene que estar accesible desde la familia.
 
 ### D — Cierre
 
-- [ ] **D1 — Documentación.** README (el apartado Configurar, las cinco
+- [x] **D1 — Documentación.** *(Lo que faltaba de verdad no era prosa nueva
+  sino números que habían caducado: ARQUITECTURA decía «catorce herramientas»
+  con 32 en el código, y los recuentos por familia —(3),(7),(2),(1),(3)— iban
+  por menos de la mitad. El README listaba CUATRO familias de cinco: se había
+  quedado fuera Construcciones.
+  Los recuentos por familia se han quitado de ARQUITECTURA en vez de
+  corregirlos: viven en `toolsInCategory()` y un número escrito a mano en un
+  documento no tiene quién lo desmienta. La tabla de herramientas sí se ha
+  ampliado a las 32, por familias, y comprobada contra `allToolTypes()` para
+  que no falte ni sobre ninguna.
+  Cuatro filas las escribí de memoria y el código las desmintió —Simetría da un
+  grado 0-1 y no una distancia máxima, Lados usa epsilon en milésimas del
+  perímetro, Holgura mide entre las dos figuras mayores del recuadro, Eje medio
+  promedia los bordes reales y no el trazo—, así que están reescritas contra la
+  descripción real de cada herramienta.
+  Nuevo en ARQUITECTURA: por qué zona mínima y no mínimos cuadrados en GD&T,
+  con el descarte de `cv::minAreaRect` y su 41 %. Los elementos derivados y el
+  ROI automático ya estaban cubiertos de rondas anteriores.
+  Nuevo en el README: las cinco familias en tabla y **«Lo que una silueta no
+  puede medir»**, que es la que evita prometer lo que no hay: profundidad,
+  rugosidad, cilindricidad, concentricidad de la norma, Ø primitivo de rosca y
+  cotas de una pieza inclinada.)* README (el apartado Configurar, las cinco
   familias con su tabla de herramientas, y la tabla de "lo que una silueta no
   puede medir" bien visible) y ARQUITECTURA (sección nueva: elementos derivados
   y referencias entre herramientas; por qué zona mínima y no mínimos cuadrados
