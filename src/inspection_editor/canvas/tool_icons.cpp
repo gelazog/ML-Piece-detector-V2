@@ -133,6 +133,24 @@ QIcon toolIcon(ToolType type) {
                        << QPointF(25, 22);
                 p.drawPolyline(actual);
             });
+        case ToolType::Chamfer:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // Una esquina achaflanada, con la esquina viva a trazos detras:
+                // los catetos se miden desde ahi.
+                QPen ghost = p.pen();
+                ghost.setStyle(Qt::DashLine);
+                ghost.setWidthF(1.1);
+                p.setPen(ghost);
+                p.drawLine(20, 6, 24, 6);
+                p.drawLine(24, 6, 24, 10);
+                QPen real = p.pen();
+                real.setStyle(Qt::SolidLine);
+                real.setWidthF(2.0);
+                p.setPen(real);
+                p.drawLine(4, 6, 20, 6);
+                p.drawLine(20, 6, 24, 10);   // el bisel
+                p.drawLine(24, 10, 24, 24);
+            });
         case ToolType::Extremes:
             return makeIcon([](QPainter& p, const QColor&) {
                 // Una silueta con su cota mas larga y su banda mas estrecha.

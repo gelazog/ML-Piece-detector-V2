@@ -40,12 +40,13 @@ const char* toolTypeName(ToolType type) {
         case ToolType::BoltPattern: return "bolt_pattern";
         case ToolType::Profile: return "profile";
         case ToolType::Extremes: return "extremes";
+        case ToolType::Chamfer: return "chamfer";
     }
     return "unknown";
 }
 
-const std::array<ToolType, 29>& allToolTypes() {
-    static const std::array<ToolType, 29> kTypes{
+const std::array<ToolType, 30>& allToolTypes() {
+    static const std::array<ToolType, 30> kTypes{
         ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine, ToolType::EdgeFlaw,
         ToolType::Blob,     ToolType::Ruler,    ToolType::LineToLine,  ToolType::Angle,
         ToolType::PolyBlob, ToolType::Position, ToolType::Arc,         ToolType::Shaft,
@@ -54,7 +55,7 @@ const std::array<ToolType, 29>& allToolTypes() {
         ToolType::Symmetry, ToolType::Polygon, ToolType::EdgeDefects,
         ToolType::Clearance, ToolType::Straightness, ToolType::Roundness,
         ToolType::Orientation, ToolType::CentreOffset, ToolType::BoltPattern,
-        ToolType::Profile, ToolType::Extremes};
+        ToolType::Profile, ToolType::Extremes, ToolType::Chamfer};
     return kTypes;
 }
 
@@ -116,6 +117,7 @@ ToolCategory categoryOf(ToolType type) {
         case ToolType::Thread:
         case ToolType::Gear:
         case ToolType::Extremes:
+        case ToolType::Chamfer:
             return ToolCategory::TurnedAndExtremes;
     }
     return ToolCategory::InLine;
@@ -202,6 +204,21 @@ ToolReferences referencesFromParams(const std::string& paramsJson) {
         // medir; reventar aquí tumbaría la carga de la plantilla entera.
         return {};
     }
+}
+
+const std::array<ChamferMeasure, 3>& allChamferMeasures() {
+    static const std::array<ChamferMeasure, 3> kMeasures{
+        ChamferMeasure::Angle, ChamferMeasure::LegLong, ChamferMeasure::LegShort};
+    return kMeasures;
+}
+
+const char* chamferMeasureLabel(ChamferMeasure measure) {
+    switch (measure) {
+        case ChamferMeasure::Angle: return "Ángulo";
+        case ChamferMeasure::LegLong: return "Cateto mayor";
+        case ChamferMeasure::LegShort: return "Cateto menor";
+    }
+    return "?";
 }
 
 const std::array<ExtremeMeasure, 2>& allExtremeMeasures() {
@@ -341,6 +358,7 @@ const char* toolTypeLabel(ToolType type) {
         case ToolType::BoltPattern: return "Patrón de agujeros";
         case ToolType::Profile: return "Perfil de línea";
         case ToolType::Extremes: return "Máx./mín.";
+        case ToolType::Chamfer: return "Chaflán";
     }
     return "?";
 }
@@ -573,6 +591,18 @@ const char* toolTypeDescription(ToolType type) {
                    "Las dos se dan siempre en el detalle, con su dirección. No salen de\n"
                    "minAreaRect: ese minimiza el ÁREA, y ni su lado corto es la anchura\n"
                    "mínima ni su diagonal es el diámetro.";
+        case ToolType::Chamfer:
+            return "Chaflán — el ángulo del bisel y sus dos catetos, que es como lo\n"
+                   "escribe un plano: «1 × 45°». Arrastra un recuadro que abarque la\n"
+                   "esquina achaflanada CON un trozo de las dos caras a los lados: se\n"
+                   "ajustan las tres rectas y se cortan entre sí.\n"
+                   "Los catetos se miden desde la ESQUINA VIRTUAL —donde se cortarían\n"
+                   "las dos caras si no hubiera chaflán—, que es de donde los mide el\n"
+                   "plano. Ahí no hay ningún punto de la pieza: hay que construirla.\n"
+                   "Elige en Medida cuál de los tres números lleva la tolerancia; los\n"
+                   "tres se dan siempre en el detalle, junto con el ángulo del bisel\n"
+                   "con CADA cara — el plano acota desde una de las dos y hay que poder\n"
+                   "comparar con la que sea.";
     }
     return "";
 }
@@ -657,6 +687,7 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
             toleranceMin = 0.0;
             toleranceMax = 1e9;
             return;
+        case ToolType::Chamfer:
         case ToolType::LineToLine:
         case ToolType::Angle: {
             // Ángulo en grados: banda de ±2° alrededor del valor de la pieza buena.
@@ -785,6 +816,8 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::Profile;
             } else if constexpr (std::is_same_v<T, ExtremesGeometry>) {
                 return ToolType::Extremes;
+            } else if constexpr (std::is_same_v<T, ChamferGeometry>) {
+                return ToolType::Chamfer;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -815,6 +848,7 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                                  std::is_same_v<T, RegionGeometry> ||
                                  std::is_same_v<T, BoltPatternGeometry> ||
                                  std::is_same_v<T, ExtremesGeometry> ||
+                                 std::is_same_v<T, ChamferGeometry> ||
                                  std::is_same_v<T, SymmetryGeometry> ||
                                  std::is_same_v<T, PolygonGeometry> ||
                                  std::is_same_v<T, ClearanceGeometry>) {
@@ -1095,6 +1129,12 @@ std::string toJson(const ToolGeometry& geometry) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "cx" << g.center.x << "cy" << g.center.y << "rin"
                        << g.innerRadius << "rout" << g.outerRadius << "rays" << g.rayCount;
+                });
+            } else if constexpr (std::is_same_v<T, ChamferGeometry>) {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "cx" << g.center.x << "cy" << g.center.y << "w" << g.width << "h"
+                       << g.height << "mode" << static_cast<int>(g.measure) << "dark"
+                       << (g.darkPiece ? 1 : 0);
                 });
             } else if constexpr (std::is_same_v<T, ExtremesGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
@@ -1438,6 +1478,21 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.innerRadius = static_cast<float>(rin.value());
                 g.outerRadius = static_cast<float>(rout.value());
                 g.rayCount = static_cast<int>(reader.numberOr("rays", 1440.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::Chamfer: {
+                ChamferGeometry g;
+                auto cx = f("cx"), cy = f("cy"), w = f("w"), h = f("h");
+                for (const auto* v : {&cx, &cy, &w, &h}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
+                g.width = static_cast<float>(w.value());
+                g.height = static_cast<float>(h.value());
+                g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
+                const auto measure = readConstruction(reader, allChamferMeasures());
+                if (!measure.isOk()) return ResultT::err(measure.error().message);
+                g.measure = measure.value();
                 return ResultT::ok(g);
             }
             case ToolType::Extremes: {

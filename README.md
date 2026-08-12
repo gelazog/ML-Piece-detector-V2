@@ -263,6 +263,21 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      **0,82** (el valor exacto de un cuadrado es 0,785 — la diferencia es el
      sesgo conocido de medir un borde recto sobre una rejilla de píxeles). Una
      mota de ruido **no** cuenta como agujero.
+   - *Chaflán*: el **ángulo del bisel y sus dos catetos**, que es como lo escribe
+     un plano: «1 × 45°». Arrastra un recuadro que abarque la esquina
+     achaflanada **con un trozo de las dos caras**; el recuadro *selecciona* qué
+     tramos del borde se miran, no recorta la pieza.
+
+     Los catetos se miden desde la **esquina virtual** —donde se cortarían las
+     dos caras si no hubiera bisel—, que es de donde los acota el plano. Ahí no
+     hay ningún punto de la pieza: hay que construirla, y por eso hace falta ver
+     las dos caras. Se dan ordenados por tamaño (mayor y menor) y **cada uno con
+     el ángulo del bisel respecto a su cara**, porque el plano acota desde una de
+     las dos y tienes que poder comparar con la que sea.
+
+     Si no encuentra tres tramos rectos te dice cuántos vio dentro del recuadro,
+     cuántos quedaron fuera y cuántos salieron curvos — las dos razones distintas
+     por las que un encuadre falla.
    - *Máx./mín.*: la medida **más grande y más pequeña de la pieza en cualquier
      dirección**, no en la que acertaras a trazar. Arrastra un recuadro sobre la
      pieza y elige en *Medida* cuál vigilar: **anchura mínima** (la banda más

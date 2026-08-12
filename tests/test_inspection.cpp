@@ -800,6 +800,9 @@ ToolConfig makeToolAt(int index, float x, float y) {
             geometry =
                 ExtremesGeometry{{x, y}, 60.0F, 60.0F, ExtremeMeasure::MinWidth, true};
             break;
+        case ToolType::Chamfer:
+            geometry = ChamferGeometry{{x, y}, 60.0F, 60.0F, ChamferMeasure::Angle, true};
+            break;
         case ToolType::Profile: {
             ProfileGeometry profile;
             for (int k = 0; k < 24; ++k) {
@@ -5116,4 +5119,129 @@ TEST(Extremes, AnEmptyRegionSaysSoInsteadOfMeasuringNothing) {
     EXPECT_FALSE(result.value().ok);
     EXPECT_NE(result.value().detail.find("figura"), std::string::npos)
         << result.value().detail;
+}
+
+// ---------------------------------------------------------------------------
+// Chaflán (M2)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Bloque oscuro con la esquina superior derecha achaflanada. La esquina viva
+// estaría en (cornerX, cornerY); el bisel corta `legX` sobre la cara de arriba
+// y `legY` sobre la de la derecha.
+cv::Mat chamferedCorner(double legX, double legY) {
+    const int cornerX = 320;
+    const int cornerY = 140;
+    cv::Mat gray(400, 500, CV_8UC1, cv::Scalar(230));
+    std::vector<cv::Point> poly{
+        {60, cornerY},
+        {static_cast<int>(std::lround(cornerX - legX)), cornerY},
+        {cornerX, static_cast<int>(std::lround(cornerY + legY))},
+        {cornerX, 360},
+        {60, 360}};
+    cv::fillPoly(gray, std::vector<std::vector<cv::Point>>{poly}, cv::Scalar(30));
+    return gray;
+}
+
+ToolConfig chamferOver(ChamferMeasure measure) {
+    ToolConfig config;
+    config.type = ToolType::Chamfer;
+    config.name = "chaflan";
+    config.geometryJson = toJson(
+        ToolGeometry(ChamferGeometry{{250.0F, 200.0F}, 320.0F, 260.0F, measure, true}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+}  // namespace
+
+TEST(Chamfer, TheTwoAnglesAreTheOnesItWasDrawnWith) {
+    // Un chaflán no tiene UN ángulo: tiene uno con cada cara, y el plano acota
+    // desde una de las dos. Con las caras a 0° y 90°, si el bisel corta legX y
+    // legY, los dos ángulos son atan(legY/legX) y su complementario.
+    struct Case {
+        double legX;
+        double legY;
+        double fromHorizontal;
+    };
+    const std::vector<Case> cases{
+        {60.0, 60.0, 45.0},
+        {60.0, 60.0 * 0.57735, 30.0},
+        {60.0, 60.0 * 1.73205, 60.0},
+    };
+    for (const auto& c : cases) {
+        const auto result = runTool(chamferedCorner(c.legX, c.legY), kIdentity,
+                                    chamferOver(ChamferMeasure::Angle));
+        ASSERT_TRUE(result.isOk()) << result.error().message;
+        const std::string& detail = result.value().detail;
+        std::printf("  dibujado %4.0f° -> %s\n", c.fromHorizontal, detail.c_str());
+
+        // Los dos ángulos publicados tienen que ser el dibujado y su
+        // complementario, en el orden que sea.
+        const double a = numberAfterIn(detail, " a ");
+        const double b = numberAfterIn(detail, "° · cateto menor ");
+        (void)b;
+        const double other = 90.0 - c.fromHorizontal;
+        const bool matches = std::abs(a - c.fromHorizontal) < 2.0 ||
+                             std::abs(a - other) < 2.0;
+        EXPECT_TRUE(matches) << "ninguno de los dos ángulos es el dibujado: " << detail;
+        EXPECT_TRUE(result.value().measuredIsAngle);
+    }
+}
+
+TEST(Chamfer, TheLegsAreMeasuredFromTheVirtualCorner) {
+    // El punto que no existe en la pieza: donde se cortarían las dos caras si no
+    // hubiera bisel. Medir desde donde EMPIEZA el bisel daría otra cosa, y el
+    // plano acota desde la esquina viva.
+    const auto legLong = runTool(chamferedCorner(60.0, 60.0), kIdentity,
+                                 chamferOver(ChamferMeasure::LegLong));
+    ASSERT_TRUE(legLong.isOk());
+    std::printf("  simétrico: %s\n", legLong.value().detail.c_str());
+    EXPECT_NEAR(legLong.value().measured, 60.0, 3.0) << legLong.value().detail;
+}
+
+TEST(Chamfer, AnAsymmetricChamferOrdersItsLegsBySizeAndNotByContourOrder) {
+    // Fallo real que cazó este test: «cara A» y «cara B» eran las que
+    // `findContours` recorriera primero, así que con un chaflán asimétrico los
+    // catetos salían intercambiados. Ahora se ordenan por tamaño y el mayor es
+    // siempre el mayor.
+    const auto longLeg = runTool(chamferedCorner(80.0, 30.0), kIdentity,
+                                 chamferOver(ChamferMeasure::LegLong));
+    const auto shortLeg = runTool(chamferedCorner(80.0, 30.0), kIdentity,
+                                  chamferOver(ChamferMeasure::LegShort));
+    ASSERT_TRUE(longLeg.isOk());
+    ASSERT_TRUE(shortLeg.isOk());
+    std::printf("  asimétrico: %s\n", longLeg.value().detail.c_str());
+    EXPECT_NEAR(longLeg.value().measured, 80.0, 4.0) << longLeg.value().detail;
+    EXPECT_NEAR(shortLeg.value().measured, 30.0, 4.0) << shortLeg.value().detail;
+    EXPECT_GT(longLeg.value().measured, shortLeg.value().measured);
+}
+
+TEST(Chamfer, TheThreeNumbersAreAlwaysInTheDetail) {
+    // Cuál lleva la tolerancia se elige, pero los tres se ven siempre: un plano
+    // escribe «1 × 45°» y el operador necesita comprobar los dos.
+    const auto result = runTool(chamferedCorner(60.0, 60.0), kIdentity,
+                                chamferOver(ChamferMeasure::Angle));
+    ASSERT_TRUE(result.isOk());
+    const std::string& detail = result.value().detail;
+    EXPECT_NE(detail.find("cateto mayor"), std::string::npos) << detail;
+    EXPECT_NE(detail.find("cateto menor"), std::string::npos) << detail;
+    // Y se dibujan la esquina virtual y los dos extremos del bisel.
+    EXPECT_GE(result.value().overlayPoints.size(), 3U);
+}
+
+TEST(Chamfer, WithoutThreeStraightRunsItSaysSo) {
+    // Un recuadro que solo coge una cara no tiene chaflán que medir, y decir un
+    // ángulo ahí sería inventarlo.
+    cv::Mat gray(400, 500, CV_8UC1, cv::Scalar(230));
+    cv::rectangle(gray, cv::Rect(60, 140, 260, 220), cv::Scalar(30), cv::FILLED);
+    ToolConfig tool = chamferOver(ChamferMeasure::Angle);
+    tool.geometryJson = toJson(ToolGeometry(
+        ChamferGeometry{{150.0F, 145.0F}, 60.0F, 30.0F, ChamferMeasure::Angle, true}));
+    const auto result = runTool(gray, kIdentity, tool);
+    ASSERT_TRUE(result.isOk());
+    EXPECT_FALSE(result.value().ok);
+    std::printf("  sin chaflán -> %s\n", result.value().detail.c_str());
 }

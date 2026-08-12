@@ -407,6 +407,36 @@ struct ExtremesGeometry {
     bool darkPiece = true;
 };
 
+// Chaflán (M2): el ángulo y los dos catetos. Después del diámetro, la cota más
+// pedida en pieza mecanizada — un plano la escribe «1 × 45°».
+//
+// Los catetos se miden desde la ESQUINA VIRTUAL, que es donde se cortarían las
+// dos caras si no hubiera chaflán. No hay ningún punto de la pieza ahí, y por
+// eso hay que construirla: medir desde donde empieza el bisel daría otra cosa.
+// Cuál de los tres números lleva la tolerancia.
+//
+// «Mayor» y «menor» y no «A» y «B» a propósito: cuál cara viene primero depende
+// del sentido en que `findContours` recorra el borde, que es un detalle interno
+// y no algo que el operador pueda predecir. Con un chaflán asimétrico eso hacía
+// que los dos catetos salieran intercambiados según la pieza. Ordenarlos por
+// tamaño los deja siempre en el mismo sitio.
+enum class ChamferMeasure {
+    Angle,     // ángulo del bisel con la cara del cateto MAYOR
+    LegLong,   // cateto mayor
+    LegShort,  // cateto menor
+};
+
+struct ChamferGeometry {
+    cv::Point2f center;  // recuadro que abarca la esquina achaflanada
+    float width = 120.0F;
+    float height = 120.0F;
+    ChamferMeasure measure = ChamferMeasure::Angle;
+    bool darkPiece = true;
+};
+
+[[nodiscard]] const std::array<ChamferMeasure, 3>& allChamferMeasures();
+[[nodiscard]] const char* chamferMeasureLabel(ChamferMeasure measure);
+
 [[nodiscard]] const std::array<ExtremeMeasure, 2>& allExtremeMeasures();
 [[nodiscard]] const char* extremeMeasureLabel(ExtremeMeasure measure);
 
@@ -424,7 +454,7 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
                                   StraightnessGeometry, RoundnessGeometry,
                                   OrientationGeometry, CentreOffsetGeometry,
                                   BoltPatternGeometry, ProfileGeometry,
-                                  ExtremesGeometry>;
+                                  ExtremesGeometry, ChamferGeometry>;
 
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
@@ -455,7 +485,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 29>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 30>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que

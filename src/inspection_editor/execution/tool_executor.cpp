@@ -1669,6 +1669,243 @@ ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& confi
     return result;
 }
 
+// Chaflán (M2): el ángulo del bisel y sus dos catetos.
+//
+// Cero algoritmo nuevo: `decomposeContour` ya separa el contorno en rectas y
+// arcos, `fitLineTotal` ya ajusta una recta y `intersectLines` ya las corta.
+// Lo único que hay aquí es elegir bien las TRES rectas y saber desde dónde se
+// miden los catetos.
+ToolRunResult runChamfer(const cv::Mat& gray, const Fixture& fixture,
+                         const ToolConfig& config, const ChamferGeometry& g,
+                         const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+
+    const float hw = g.width / 2.0F;
+    const float hh = g.height / 2.0F;
+    const std::vector<cv::Point2f> quad{
+        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, hh)),
+        toImg(fixture, g.center + cv::Point2f(-hw, hh))};
+    for (std::size_t i = 0; i < quad.size(); ++i) {
+        result.overlaySegments.push_back({quad[i], quad[(i + 1) % quad.size()]});
+    }
+
+    std::vector<cv::Point> quadInt;
+    for (const auto& p : quad) {
+        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
+    }
+    const cv::Rect selection = cv::boundingRect(quadInt);
+    // El recuadro SELECCIONA qué tramos del borde se miran; NO recorta la pieza.
+    //
+    // Recortarla era el primer intento y estaba mal: los cortes del propio
+    // recuadro se convertían en tramos rectos del contorno, se colaban como
+    // "caras" y el chaflán salía medido contra un borde que no existe en la
+    // pieza. Por eso se binariza una zona HOLGADA alrededor y luego se filtran
+    // los tramos por si caen dentro del recuadro que dibujó el operador.
+    cv::Rect bounds = selection;
+    bounds -= cv::Point(selection.width / 2, selection.height / 2);
+    bounds += cv::Size(selection.width, selection.height);
+    bounds &= cv::Rect(0, 0, gray.cols, gray.rows);
+    if (bounds.area() < 100) {
+        result.detail = "La región cae fuera de la imagen";
+        return result;
+    }
+
+    cv::Mat binary;
+    cv::threshold(gray(bounds), binary, 0.0, 255.0,
+                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
+
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+    if (contours.empty()) {
+        result.detail = "No se ve ningún borde dentro del recuadro";
+        return result;
+    }
+    const auto& outer = *std::max_element(
+        contours.begin(), contours.end(), [](const auto& a, const auto& b) {
+            return cv::contourArea(a) < cv::contourArea(b);
+        });
+
+    // Descomposición con el listón del ARCO más alto de lo normal, y por un
+    // motivo concreto: el bisel de un chaflán es un tramo RECTO y corto, y en
+    // esa longitud una circunferencia de radio grande lo explica un pelo mejor
+    // por el dentado de la rasterización. Con el umbral por defecto (15° de
+    // barrido) un bisel de 68 px salía clasificado como arco y la herramienta
+    // decía no ver tres tramos rectos. Un acuerdo de verdad barre mucho más que
+    // 45°, así que subirlo aquí no confunde un chaflán con un redondeo — al
+    // contrario, es lo que los separa.
+    vision::DecomposeOptions options;
+    options.minArcSweepDeg = 45.0;
+    const auto primitives = vision::decomposeContour(outer, options);
+    // Solo los tramos RECTOS, con longitud apreciable y que caigan DENTRO del
+    // recuadro: en las esquinas salen trocitos de dos o tres puntos que no
+    // representan ningún lado, y fuera del recuadro está el resto de la pieza.
+    struct Straight {
+        cv::Point2f start;
+        cv::Point2f end;
+        double length = 0.0;
+    };
+    const cv::Rect2f selectionLocal(
+        static_cast<float>(selection.x - bounds.x), static_cast<float>(selection.y - bounds.y),
+        static_cast<float>(selection.width), static_cast<float>(selection.height));
+    std::vector<Straight> sides;
+    int straightOutside = 0;
+    int curved = 0;
+    for (const auto& p : primitives) {
+        if (p.kind != vision::PrimitiveKind::Line || p.length < 8.0) {
+            if (p.length >= 8.0) {
+                ++curved;
+            }
+            continue;
+        }
+        if (!selectionLocal.contains(p.mid)) {
+            ++straightOutside;
+            continue;
+        }
+        sides.push_back({p.start, p.end, p.length});
+    }
+    if (sides.size() < 3) {
+        // Se dice CUÁNTOS quedaron fuera del recuadro y cuántos salieron
+        // curvos: son las dos razones por las que un encuadre falla, y sin
+        // distinguirlas el operador no sabe si agrandar el recuadro o si lo que
+        // tiene delante es un redondeo y no un chaflán.
+        result.detail = "Hacen falta tres tramos rectos (cara, bisel, cara) y se ven " +
+                        std::to_string(sides.size()) + " dentro del recuadro (" +
+                        std::to_string(straightOutside) + " rectos fuera, " +
+                        std::to_string(curved) + " curvos): agranda el recuadro para " +
+                        "coger un trozo de las dos caras";
+        return result;
+    }
+
+    // El bisel es el tramo corto que tiene una cara larga a cada lado. Pero no
+    // basta con eso: `decomposeContour` puede partir una cara larga en dos
+    // trozos casi alineados, y esa terna «cara, trocito, cara» puntúa igual de
+    // bien. Como las dos caras entonces son casi paralelas, su esquina virtual
+    // cae a decenas de miles de píxeles — así salió un cateto de 75 000 px
+    // antes de exigir esto.
+    //
+    // Se pide, además de que el del medio sea el corto, que las DOS CARAS
+    // FORMEN ESQUINA DE VERDAD: al menos 15° entre ellas. Un chaflán en una
+    // esquina más abierta que 165° no es un chaflán.
+    constexpr double kMinCornerDeg = 15.0;
+    const auto directionOf = [](const Straight& side) {
+        const cv::Point2f delta = side.end - side.start;
+        const double length = cv::norm(delta);
+        return length > 1e-9 ? delta / static_cast<float>(length) : cv::Point2f(1.0F, 0.0F);
+    };
+    const auto angleOf = [](const cv::Point2f& a, const cv::Point2f& b) {
+        const double dot =
+            std::abs(static_cast<double>(a.x) * b.x + static_cast<double>(a.y) * b.y);
+        const double cross =
+            std::abs(static_cast<double>(a.x) * b.y - static_cast<double>(a.y) * b.x);
+        return std::atan2(cross, dot) * 180.0 / kPi;
+    };
+
+    std::size_t best = sides.size();
+    double bestScore = -1.0;
+    for (std::size_t i = 1; i + 1 < sides.size(); ++i) {
+        const double corner =
+            angleOf(directionOf(sides[i - 1]), directionOf(sides[i + 1]));
+        if (corner < kMinCornerDeg) {
+            continue;  // las dos "caras" son la misma partida en dos
+        }
+        const double score = std::min(sides[i - 1].length, sides[i + 1].length) /
+                             std::max(sides[i].length, 1e-6);
+        if (score > bestScore) {
+            bestScore = score;
+            best = i;
+        }
+    }
+    if (best >= sides.size()) {
+        result.detail = "No se encontró un bisel entre dos caras que formen esquina: "
+                        "encuadra la esquina achaflanada con un trozo de las dos caras";
+        return result;
+    }
+    const Straight& faceA = sides[best - 1];
+    const Straight& bevel = sides[best];
+    const Straight& faceB = sides[best + 1];
+
+    const auto asLine = [](const Straight& side) {
+        DerivedElement line;
+        line.kind = DerivedKind::Line;
+        line.point = side.start;
+        const cv::Point2f delta = side.end - side.start;
+        const double length = cv::norm(delta);
+        line.direction = length > 1e-9 ? delta / static_cast<float>(length)
+                                       : cv::Point2f(1.0F, 0.0F);
+        return line;
+    };
+    const DerivedElement lineA = asLine(faceA);
+    const DerivedElement lineBevel = asLine(bevel);
+    const DerivedElement lineB = asLine(faceB);
+
+    const auto cornerVirtual = intersectLines(lineA, lineB);
+    const auto startBevel = intersectLines(lineA, lineBevel);
+    const auto endBevel = intersectLines(lineBevel, lineB);
+    if (!cornerVirtual.has_value() || !startBevel.has_value() || !endBevel.has_value()) {
+        result.detail = "Las tres rectas no se cortan: alguna sale paralela a otra";
+        return result;
+    }
+    // La esquina virtual tiene que caer CERCA del bisel. Si sale a diez veces su
+    // largo, lo que se han cortado no son las dos caras de un chaflán, y los
+    // catetos que saldrían de ahí serían números enormes con pinta de medida.
+    const cv::Point2f bevelMid = (bevel.start + bevel.end) * 0.5F;
+    if (cv::norm(*cornerVirtual - bevelMid) > 10.0 * std::max(bevel.length, 1.0)) {
+        result.detail = "La esquina virtual sale demasiado lejos del bisel: las dos caras "
+                        "encuadradas son casi paralelas y no forman un chaflán";
+        return result;
+    }
+
+    const auto angleBetween = [](const cv::Point2f& a, const cv::Point2f& b) {
+        const double dot = std::abs(static_cast<double>(a.x) * b.x + static_cast<double>(a.y) * b.y);
+        const double cross =
+            std::abs(static_cast<double>(a.x) * b.y - static_cast<double>(a.y) * b.x);
+        return std::atan2(cross, dot) * 180.0 / kPi;
+    };
+    // Los catetos se miden desde la ESQUINA VIRTUAL, que es de donde los mide el
+    // plano. No hay ningún punto de la pieza ahí: hay que construirla cortando
+    // las dos caras, y por eso el recuadro tiene que abarcar un trozo de ambas.
+    const double legFirst = cv::norm(*startBevel - *cornerVirtual);
+    const double legSecond = cv::norm(*endBevel - *cornerVirtual);
+    const double angleFirst = angleBetween(lineA.direction, lineBevel.direction);
+    const double angleSecond = angleBetween(lineB.direction, lineBevel.direction);
+
+    // Se ordenan por TAMAÑO y no por el orden en que aparecieron. Cuál cara
+    // recorre antes `findContours` es un detalle interno que el operador no
+    // puede predecir, y con un chaflán asimétrico hacía que los dos catetos
+    // salieran intercambiados de una pieza a otra.
+    const bool firstIsLonger = legFirst >= legSecond;
+    const double legLong = firstIsLonger ? legFirst : legSecond;
+    const double legShort = firstIsLonger ? legSecond : legFirst;
+    // El ángulo va emparejado con SU cara: el del cateto mayor es el que forma
+    // el bisel con la cara sobre la que se mide ese cateto.
+    const double angleLong = firstIsLonger ? angleFirst : angleSecond;
+    const double angleShort = firstIsLonger ? angleSecond : angleFirst;
+
+    switch (g.measure) {
+        case ChamferMeasure::Angle:
+            result.measured = angleLong;
+            result.measuredIsAngle = true;
+            break;
+        case ChamferMeasure::LegLong: result.measured = legLong; break;
+        case ChamferMeasure::LegShort: result.measured = legShort; break;
+    }
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = std::string(chamferMeasureLabel(g.measure)) + " · cateto mayor " +
+                    fmtLen(legLong, fmt) + " a " + fmt2(angleLong) + "° · cateto menor " +
+                    fmtLen(legShort, fmt) + " a " + fmt2(angleShort) + "°";
+
+    const cv::Point2f offset(static_cast<float>(bounds.x), static_cast<float>(bounds.y));
+    result.overlayPoints.push_back(*cornerVirtual + offset);
+    result.overlayPoints.push_back(*startBevel + offset);
+    result.overlayPoints.push_back(*endBevel + offset);
+    result.overlaySegments.push_back({*startBevel + offset, *endBevel + offset});
+    result.overlaySegments.push_back({*cornerVirtual + offset, *startBevel + offset});
+    result.overlaySegments.push_back({*cornerVirtual + offset, *endBevel + offset});
+    return result;
+}
+
 // Anchura mínima y diámetro máximo de la silueta (M1).
 //
 // «Lo de máx y mín»: la medida más grande y la más pequeña de la pieza EN
@@ -3360,6 +3597,10 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Region:
                 return ResultT::ok(runRegion(gray, fixture, config,
                                              std::get<RegionGeometry>(geometry.value()), fmt));
+            case ToolType::Chamfer:
+                return ResultT::ok(runChamfer(
+                    gray, fixture, config, std::get<ChamferGeometry>(geometry.value()),
+                    fmt));
             case ToolType::Extremes:
                 return ResultT::ok(runExtremes(
                     gray, fixture, config, std::get<ExtremesGeometry>(geometry.value()),

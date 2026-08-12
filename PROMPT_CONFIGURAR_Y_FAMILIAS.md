@@ -915,7 +915,26 @@ tiene que estar accesible desde la familia.
   el lado corto de `minAreaRect` **difiere** en una figura donde difiere (por
   eso hay implementación propia).
 
-- [ ] **M2 — Chaflán.** Ángulo del chaflán y sus **dos catetos**: después del
+- [x] **M2 — Chaflán.** *(«Reutiliza íntegramente Línea-Línea», decía el plan, y
+  el álgebra sí; lo que costó fue todo lo demás, y salió de tests que fallaban.
+  Tres cosas.
+  Primera: el recuadro RECORTABA la pieza, así que los cortes del propio
+  recuadro se convertían en tramos rectos y el chaflán se medía contra un borde
+  que no existe. Ahora el recuadro SELECCIONA qué tramos se miran y no corta
+  nada.
+  Segunda: «cara A» y «cara B» eran las que `findContours` recorriera primero,
+  detalle interno que el operador no puede predecir — con un chaflán asimétrico
+  los catetos salían intercambiados. Se ordenan por tamaño, y cada uno va con el
+  ángulo del bisel respecto a SU cara, porque un chaflán no tiene un ángulo sino
+  uno con cada cara y el plano acota desde una de las dos.
+  Tercera: `decomposeContour` clasificaba como ARCO un bisel recto de 68 px —en
+  esa longitud una circunferencia grande lo explica un pelo mejor por el dentado
+  de la rasterización— y la herramienta decía no ver tres rectas. Se le sube el
+  listón del arco a 45° de barrido con las opciones que ya existían: un acuerdo
+  de verdad barre mucho más, así que eso no confunde un chaflán con un redondeo,
+  es lo que los separa.
+  Medido: 44,93°, 30,34° y 59,68° sobre chaflanes dibujados de 45, 30 y 60; y un
+  asimétrico de 80×30 da 77,5 y 29,2 con 20,58°.)* Ángulo del chaflán y sus **dos catetos**: después del
   diámetro, la cota más pedida en pieza mecanizada.
   Algoritmo: segmentar el contorno por curvatura (ya existe
   `decomposeContour`), ajustar recta robusta al tramo del chaflán y a las dos

@@ -75,6 +75,9 @@ inline ToolGeometry sampleGeometry(ToolType type) {
             }
             return profile;
         }
+        case ToolType::Chamfer:
+            return ChamferGeometry{{0.0F, 0.0F}, 120.0F, 120.0F,
+                                   ChamferMeasure::Angle, true};
         case ToolType::Extremes:
             return ExtremesGeometry{{0.0F, 0.0F}, 240.0F, 240.0F,
                                     ExtremeMeasure::MinWidth, true};
