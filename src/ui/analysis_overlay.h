@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "inspection_editor/execution/tool_executor.h"
+#include "vision/pipeline.h"
 
 namespace pci::ui {
 
@@ -30,6 +31,11 @@ struct AnalysisOverlay {
     QImage normalized;
     // Medición en vivo de las herramientas dibujadas sobre este frame.
     std::vector<inspection::ToolRunResult> toolResults;
+    // Reparto del tiempo de este análisis (R2). Solo se rellena si el operador
+    // encendió el desglose en la pestaña de Rendimiento: apagado no se llama al
+    // reloj ni una vez, porque esto corre en cada frame.
+    vision::StageTimings timings;
+    bool timed = false;
     // Escala derivada del marcador ArUco en este frame (0 = no detectado).
     double liveMmPerPixel = 0.0;
     // Calidad de esa escala (0..1): 1.0 = cámara perpendicular al plano; baja

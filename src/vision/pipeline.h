@@ -30,10 +30,40 @@ struct PipelineConfig {
     int expectedPieces = 1;
 };
 
+// Reparto del tiempo de un análisis, en milisegundos (R2).
+//
+// Existe porque los tiempos que hay documentados se midieron una vez con un
+// programa suelto: sirvió para decidir entonces, y no sirve para saber si hoy
+// sigue siendo verdad en otra máquina, con otra resolución y con herramientas
+// dibujadas. Optimizar sin esto es optimizar a ciegas, que es como se llegó a
+// implementar y retirar la escala de trabajo adaptativa.
+//
+// `tools` no lo rellena `analyzeFrame` —`runTools` corre más arriba, sobre el
+// resultado— pero vive aquí para que el reparto que ve el operador sea el del
+// frame entero y no el de un trozo.
+struct StageTimings {
+    double segment = 0.0;
+    double contour = 0.0;
+    double fixture = 0.0;
+    double normalize = 0.0;
+    double tools = 0.0;
+    double total = 0.0;
+
+    [[nodiscard]] double stagesSum() const {
+        return segment + contour + fixture + normalize + tools;
+    }
+};
+
 // Punto de entrada único del módulo: segmentación -> contorno mayor ->
 // fixture -> recorte normalizado. Todos los fallos regresan como Result.
+//
+// `timings` opcional: si es nulo NO se llama al reloj ni una vez. Un cronómetro
+// por etapa que corriera siempre sería pagar en el sitio más caliente del
+// programa para que nadie lo mire; así el desglose se enciende desde la pestaña
+// de Rendimiento y, apagado, cuesta una comparación con nulo por etapa.
 core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image,
-                                         const PipelineConfig& config = {});
+                                         const PipelineConfig& config = {},
+                                         StageTimings* timings = nullptr);
 
 // Todas las piezas de la imagen, **ordenadas de mayor a menor**.
 //

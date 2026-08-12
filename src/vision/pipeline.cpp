@@ -1,5 +1,7 @@
 #include "vision/pipeline.h"
 
+#include <chrono>
+
 #include <opencv2/imgproc.hpp>
 
 #include <utility>
@@ -114,10 +116,27 @@ core::Result<std::vector<PieceAnalysis>> analyzeFrames(const cv::Mat& image,
     return core::Result<std::vector<PieceAnalysis>>::ok(std::move(pieces));
 }
 
-core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image, const PipelineConfig& config) {
+core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image, const PipelineConfig& config,
+                                         StageTimings* timings) {
     if (image.empty()) {
         return core::Result<PieceAnalysis>::err("Imagen vacía");
     }
+
+    // El cronómetro solo existe si alguien lo pidió. `mark` devuelve los ms
+    // transcurridos y reinicia, de forma que las etapas se reparten el total
+    // sin huecos ni solapes — que es lo que permite comprobar que la suma
+    // cuadra, y un desglose cuya suma no cuadra está mintiendo.
+    using Clock = std::chrono::steady_clock;
+    const auto started = Clock::now();
+    auto last = started;
+    const auto mark = [&last](double* into) {
+        if (into == nullptr) {
+            return;
+        }
+        const auto now = Clock::now();
+        *into = std::chrono::duration<double, std::milli>(now - last).count();
+        last = now;
+    };
 
     // Zona de detección: todo el pipeline trabaja sobre el recorte y al final
     // los resultados se llevan a coordenadas de la imagen completa.
@@ -130,12 +149,14 @@ core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image, const PipelineCon
     if (!mask.isOk()) {
         return core::Result<PieceAnalysis>::err(mask.error().message);
     }
+    mark(timings != nullptr ? &timings->segment : nullptr);
 
     auto contour =
         findLargestContour(mask.value(), config.minAreaFraction, config.maxAreaFraction);
     if (!contour.isOk()) {
         return core::Result<PieceAnalysis>::err(contour.error().message);
     }
+    mark(timings != nullptr ? &timings->contour : nullptr);
 
     // Máscara reconstruida solo con el contorno mayor: los blobs de ruido que
     // sobrevivieron a la morfología no deben sesgar el fixture ni el recorte.
@@ -147,12 +168,14 @@ core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image, const PipelineCon
     if (!fixture.isOk()) {
         return core::Result<PieceAnalysis>::err(fixture.error().message);
     }
+    mark(timings != nullptr ? &timings->fixture : nullptr);
 
     auto normalized =
         normalizePiece(working, cleanMask, fixture.value(), config.canonicalSize);
     if (!normalized.isOk()) {
         return core::Result<PieceAnalysis>::err(normalized.error().message);
     }
+    mark(timings != nullptr ? &timings->normalize : nullptr);
 
     PieceAnalysis analysis;
     analysis.contour = std::move(contour.value());
@@ -176,6 +199,14 @@ core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image, const PipelineCon
         analysis.mask = std::move(cleanMask);
     }
 
+    if (timings != nullptr) {
+        // El total se mide de punta a punta, NO sumando las etapas. Así, si
+        // alguna vez el desglose deja de cuadrar con el total, la diferencia
+        // aparece en vez de esconderse: es el trozo de trabajo que nadie está
+        // atribuyendo a nada.
+        timings->total =
+            std::chrono::duration<double, std::milli>(Clock::now() - started).count();
+    }
     return core::Result<PieceAnalysis>::ok(std::move(analysis));
 }
 

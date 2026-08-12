@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "ui/rate_readout.h"
+#include "vision/stage_stats.h"
 #include "camera/camera_controller.h"
 #include "camera/camera_info.h"
 #include "domain/calibration.h"
@@ -273,6 +274,11 @@ private:
     // frames que se quedan por el camino. Los de captura los cuenta el hilo de
     // la cámara; estos solo se pueden contar aquí, que es donde se descartan.
     FrameAccounting frames_;
+    // Desglose de tiempos por etapa (R2). Apagado por defecto: corre en el
+    // camino más caliente del programa y nadie lo mira si no ha abierto la
+    // pestaña de Rendimiento a propósito.
+    bool measureStages_ = false;
+    vision::StageStats stageStats_;
     double lastCaptureFps_ = 0.0;
 
     QLabel* statsLabel_ = nullptr;

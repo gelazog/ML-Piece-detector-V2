@@ -20,6 +20,7 @@
 #include "vision/plane_scale.h"
 #include "vision/orientation_anchor.h"
 #include "vision/pipeline.h"
+#include "vision/stage_stats.h"
 #include "vision/position_fixture.h"
 #include "vision/quality_metrics.h"
 #include "vision/segmentation.h"
@@ -2097,4 +2098,126 @@ TEST(MaximumSpan, ItIsNotTheDiagonalOfMinAreaRect) {
                            cv::norm(triangle[i] - triangle[(i + 1) % triangle.size()]));
     }
     EXPECT_NEAR(span.length, longest, 1e-3);
+}
+
+// ---------------------------------------------------------------------------
+// Desglose de tiempos por etapa (R2)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+cv::Mat sceneWithAPiece() {
+    cv::Mat image(600, 800, CV_8UC3, cv::Scalar(220, 220, 220));
+    cv::rectangle(image, cv::Rect(240, 180, 300, 220), cv::Scalar(40, 40, 40), cv::FILLED);
+    return image;
+}
+
+}  // namespace
+
+TEST(StageTimings, MeasuringDoesNotChangeWhatIsMeasured) {
+    // Lo primero que hay que descartar de un medidor: que altere el resultado.
+    // Si cronometrar obligara a copiar algo o a tomar otro camino, el desglose
+    // describiria un analisis que no es el que corre en produccion.
+    const cv::Mat scene = sceneWithAPiece();
+    const auto plain = pci::vision::analyzeFrame(scene);
+    ASSERT_TRUE(plain.isOk()) << plain.error().message;
+
+    pci::vision::StageTimings timings;
+    const auto timed = pci::vision::analyzeFrame(scene, {}, &timings);
+    ASSERT_TRUE(timed.isOk()) << timed.error().message;
+
+    EXPECT_EQ(plain.value().contour.points.size(), timed.value().contour.points.size());
+    EXPECT_FLOAT_EQ(plain.value().fixture.origin.x, timed.value().fixture.origin.x);
+    EXPECT_FLOAT_EQ(plain.value().fixture.origin.y, timed.value().fixture.origin.y);
+    EXPECT_FLOAT_EQ(plain.value().fixture.angleDeg, timed.value().fixture.angleDeg);
+    // El recorte canonico, pixel a pixel: es la salida mas facil de estropear.
+    ASSERT_EQ(plain.value().normalized.size(), timed.value().normalized.size());
+    cv::Mat difference;
+    cv::absdiff(plain.value().normalized, timed.value().normalized, difference);
+    EXPECT_EQ(cv::countNonZero(difference.reshape(1)), 0)
+        << "cronometrar cambio el recorte canonico";
+}
+
+TEST(StageTimings, TheStagesAddUpToTheTotal) {
+    // El total se mide de punta a punta y las etapas por separado, asi que la
+    // suma tiene que cuadrar. Si no cuadrara habria trabajo real que el
+    // desglose no atribuye a nadie, y entonces enseñaria el sitio equivocado
+    // para apretar — que es exactamente lo que un medidor no puede hacer.
+    pci::vision::StageTimings timings;
+    const auto result = pci::vision::analyzeFrame(sceneWithAPiece(), {}, &timings);
+    ASSERT_TRUE(result.isOk());
+
+    EXPECT_GT(timings.total, 0.0);
+    for (const double stage :
+         {timings.segment, timings.contour, timings.fixture, timings.normalize}) {
+        EXPECT_GE(stage, 0.0);
+    }
+    const double unaccounted = timings.total - timings.stagesSum();
+    std::printf("  total %.2f ms = segmentar %.2f + contorno %.2f + fixture %.2f + "
+                "normalizar %.2f (sin atribuir %.2f)\n",
+                timings.total, timings.segment, timings.contour, timings.fixture,
+                timings.normalize, unaccounted);
+    // El hueco es el trabajo entre etapas (rellenar la mascara limpia, mover al
+    // marco completo). Que sea pequeño es lo que hace util el reparto.
+    EXPECT_GE(unaccounted, -0.001) << "las etapas no pueden sumar mas que el total";
+    EXPECT_LT(unaccounted, timings.total * 0.5)
+        << "la mitad del tiempo esta fuera de las etapas medidas: el desglose no sirve";
+}
+
+TEST(StageTimings, WithoutAskingForThemNothingIsWritten) {
+    // El desglose apagado no cuesta ni una llamada al reloj, y la unica forma
+    // de comprobarlo desde fuera es que no toque nada: `analyzeFrame` sin
+    // puntero no puede rellenar una estructura que no ha recibido.
+    pci::vision::StageTimings untouched;
+    const auto result = pci::vision::analyzeFrame(sceneWithAPiece());
+    ASSERT_TRUE(result.isOk());
+    EXPECT_DOUBLE_EQ(untouched.total, 0.0);
+    EXPECT_DOUBLE_EQ(untouched.stagesSum(), 0.0);
+}
+
+TEST(StageStats, TheMeanIsOverTheLastNAndNotOverEverything) {
+    // Ventana deslizante: lo que se enseña tiene que ser lo que esta pasando
+    // AHORA. Con la media de toda la sesion, un arranque lento seguiria
+    // tirando del numero media hora despues.
+    pci::vision::StageStats stats;
+    EXPECT_EQ(stats.count(), 0U);
+    EXPECT_DOUBLE_EQ(stats.mean().total, 0.0);
+
+    // Primero 30 muestras caras, luego 30 baratas: la media tiene que acabar
+    // valiendo lo barato, sin rastro de lo otro.
+    for (int i = 0; i < 30; ++i) {
+        pci::vision::StageTimings slow;
+        slow.segment = 20.0;
+        slow.total = 20.0;
+        stats.add(slow);
+    }
+    EXPECT_NEAR(stats.mean().segment, 20.0, 1e-9);
+
+    for (int i = 0; i < 30; ++i) {
+        pci::vision::StageTimings fast;
+        fast.segment = 2.0;
+        fast.total = 2.0;
+        stats.add(fast);
+    }
+    EXPECT_NEAR(stats.mean().segment, 2.0, 1e-9) << "la ventana no se desliza";
+    EXPECT_EQ(stats.count(), pci::vision::StageStats::kWindow);
+
+    stats.clear();
+    EXPECT_EQ(stats.count(), 0U);
+    EXPECT_DOUBLE_EQ(stats.mean().segment, 0.0);
+}
+
+TEST(StageStats, ItReportsWhatItCannotAttribute) {
+    // El hueco entre el total y la suma de etapas se enseña a proposito: si
+    // crece, hay trabajo real fuera de lo medido y el reparto esta engañando.
+    pci::vision::StageStats stats;
+    pci::vision::StageTimings sample;
+    sample.segment = 4.0;
+    sample.contour = 1.0;
+    sample.fixture = 2.0;
+    sample.normalize = 3.0;
+    sample.tools = 5.0;
+    sample.total = 20.0;  // 5 ms que no son de ninguna etapa
+    stats.add(sample);
+    EXPECT_NEAR(stats.unaccounted(), 5.0, 1e-9);
 }

@@ -3,7 +3,9 @@
 #include <QWidget>
 
 #include "vision/auto_roi.h"
+#include "vision/stage_stats.h"
 
+class QCheckBox;
 class QLabel;
 class QRadioButton;
 
@@ -37,14 +39,22 @@ public:
     void setZoneStatus(const cv::Rect& activeZone, const cv::Size& frameSize,
                        vision::AutoRoiGiveUp lastGiveUp);
 
+    // Reparto de tiempos medido (R2), o nada si el desglose está apagado.
+    void setStageStats(const vision::StageStats& stats);
+
 signals:
     void modeChanged(pci::vision::WorkingZoneMode mode);
+    // El operador ha encendido o apagado el desglose. Apagado no se llama al
+    // reloj ni una vez: esto corre en cada frame.
+    void stageMeasurementToggled(bool enabled);
 
 private:
     QRadioButton* off_ = nullptr;
     QRadioButton* automatic_ = nullptr;
     QRadioButton* fixed_ = nullptr;
     QLabel* status_ = nullptr;
+    QCheckBox* measureStages_ = nullptr;
+    QLabel* stageBreakdown_ = nullptr;
 };
 
 }  // namespace pci::ui

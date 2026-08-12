@@ -84,7 +84,8 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                              std::optional<vision::Fixture> previousFixture,
                              double mmPerPixel, inspection::LengthUnit unit,
                              bool freezePose, double arucoMarkerMm,
-                             vision::BoardConfig boardConfig, bool countPieces) {
+                             vision::BoardConfig boardConfig, bool countPieces,
+                             bool measureStages) {
     AnalysisOverlay overlay;
     overlay.frameSize = frame.size();
 
@@ -147,7 +148,9 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                 analysis = core::Result<vision::PieceAnalysis>::err(all.error().message);
             }
         } else {
-            analysis = vision::analyzeFrame(image, pipeline);
+            analysis = vision::analyzeFrame(image, pipeline,
+                                            measureStages ? &overlay.timings : nullptr);
+            overlay.timed = measureStages;
         }
         // A partir de aquí el frame se ha segmentado, haya pieza o no.
         overlay.analysed = true;
@@ -217,9 +220,20 @@ AnalysisOverlay buildOverlay(const QImage& frame,
             const vision::BoardFrame board =
                 vision::resolveBoardFrame(boardConfig, analysis.value().fixture, true,
                                           cv::Size(image.cols, image.rows), &bounds);
+            const auto toolsStarted = std::chrono::steady_clock::now();
             overlay.toolResults = inspection::runTools(
                 image, analysis.value().fixture, tools, mmPerPixel, unit, imageToMm, &board,
                 overlay.liveMmPerPixel > 0.0 ? overlay.liveScaleQuality : -1.0);
+            if (measureStages) {
+                // Se suma al total para que el reparto sea el del frame entero:
+                // `analyzeFrame` ya terminó cuando esto empieza, así que su
+                // total no lo incluye.
+                overlay.timings.tools =
+                    std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - toolsStarted)
+                        .count();
+                overlay.timings.total += overlay.timings.tools;
+            }
         }
     } catch (const std::exception& e) {
         overlay.valid = false;
@@ -1509,6 +1523,9 @@ void MainWindow::onFrame(const QImage& frame) {
 void MainWindow::onAnalysisFinished() {
     const AnalysisOverlay overlay = analysisWatcher_.result();
     frames_.analysisFinished();
+    if (overlay.timed) {
+        stageStats_.add(overlay.timings);
+    }
     // Zona de trabajo automática (C3): el seguimiento se alimenta SIEMPRE, esté
     // o no abierto el panel, porque es lo que decide el recorte del próximo
     // frame. Si el modo no es automático, el tracker se mantiene en reposo.
@@ -1536,6 +1553,7 @@ void MainWindow::onAnalysisFinished() {
                                 cv::Size(overlay.frameSize.width(),
                                          overlay.frameSize.height()),
                                 autoRoi_.lastGiveUp());
+            page->setStageStats(stageStats_);
         }
     }
 
@@ -1646,9 +1664,9 @@ void MainWindow::maybeStartAnalysis() {
         [frame, anchor, offset = currentOrientationOffset_, configs = std::move(configs),
          pipeline = working, previous = liveFixture_,
          mm = calibration_.mmPerPixel, unit = currentUnit(), freeze, markerMm,
-         board = boardConfig_, countPieces] {
+         board = boardConfig_, countPieces, measureStages = measureStages_] {
             return buildOverlay(frame, anchor, offset, configs, pipeline, previous, mm, unit,
-                                freeze, markerMm, board, countPieces);
+                                freeze, markerMm, board, countPieces, measureStages);
         }));
 }
 
@@ -2778,6 +2796,14 @@ void MainWindow::onConfigureClicked() {
     if (auto* performance = dialog->performancePage(); performance != nullptr) {
         connect(performance, &PerformancePage::modeChanged, this,
                 &MainWindow::setWorkingZoneMode);
+        connect(performance, &PerformancePage::stageMeasurementToggled, this,
+                [this](bool enabled) {
+                    // La ventana anterior se tira al encender: lo que se mide
+                    // ahora es lo que está pasando ahora, y arrastrar muestras
+                    // de una sesión anterior daría un reparto de otra escena.
+                    measureStages_ = enabled;
+                    stageStats_.clear();
+                });
     }
     connect(dialog, &ConfigureDialog::applied, this, [this, dialog] {
         applyDetectionPage(dialog->detectionPage());

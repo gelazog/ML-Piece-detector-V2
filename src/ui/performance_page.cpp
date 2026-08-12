@@ -1,6 +1,9 @@
 #include "ui/performance_page.h"
 
 #include <QButtonGroup>
+#include <QCheckBox>
+#include <QGroupBox>
+#include <array>
 #include <QLabel>
 #include <QRadioButton>
 #include <QVBoxLayout>
@@ -53,6 +56,35 @@ PerformancePage::PerformancePage(vision::WorkingZoneMode mode, bool hasFixedZone
     status_ = new QLabel(tr("Procesando la imagen entera."), this);
     status_->setWordWrap(true);
     root->addWidget(status_);
+
+    // --- Dónde se va el tiempo (R2) ---
+    //
+    // Los tiempos que hay documentados se midieron una vez con un programa
+    // suelto. Sirvió para decidir entonces y no sirve para saber si hoy sigue
+    // siendo verdad en otra máquina, con otra resolución y con herramientas
+    // dibujadas — que es justo cuando alguien abre esta pestaña.
+    auto* timingBox = new QGroupBox(tr("Dónde se va el tiempo"), this);
+    auto* timingLayout = new QVBoxLayout(timingBox);
+    measureStages_ = new QCheckBox(tr("Medir el reparto por etapas"), timingBox);
+    measureStages_->setToolTip(
+        tr("Cronometra cada etapa del análisis. Va apagado por defecto porque "
+           "esto corre en CADA frame: apagado no cuesta ni una llamada al reloj. "
+           "Enciéndelo solo mientras miras, y apágalo al terminar."));
+    timingLayout->addWidget(measureStages_);
+
+    stageBreakdown_ = new QLabel(tr("Sin medir."), timingBox);
+    stageBreakdown_->setWordWrap(true);
+    stageBreakdown_->setTextFormat(Qt::PlainText);
+    timingLayout->addWidget(stageBreakdown_);
+    root->addWidget(timingBox);
+
+    connect(measureStages_, &QCheckBox::toggled, this, [this](bool on) {
+        if (!on) {
+            stageBreakdown_->setText(tr("Sin medir."));
+        }
+        emit stageMeasurementToggled(on);
+    });
+
     root->addStretch(1);
 
     // `this->` a proposito: el parametro del constructor se llama igual que
@@ -91,6 +123,42 @@ vision::WorkingZoneMode PerformancePage::mode() const {
         return vision::WorkingZoneMode::Fixed;
     }
     return vision::WorkingZoneMode::Off;
+}
+
+void PerformancePage::setStageStats(const vision::StageStats& stats) {
+    if (stageBreakdown_ == nullptr || measureStages_ == nullptr ||
+        !measureStages_->isChecked()) {
+        return;
+    }
+    if (stats.count() == 0) {
+        stageBreakdown_->setText(tr("Midiendo…"));
+        return;
+    }
+    const vision::StageTimings mean = stats.mean();
+    const auto share = [&mean](double stage) {
+        return mean.total > 0.0 ? stage / mean.total * 100.0 : 0.0;
+    };
+    // Se dan los ms Y el porcentaje: el porcentaje dice dónde apretar y los ms
+    // dicen si merece la pena apretar en algún sitio.
+    QString text = tr("Media de %1 análisis · total %2 ms\n")
+                       .arg(stats.count())
+                       .arg(mean.total, 0, 'f', 2);
+    const std::array<std::pair<QString, double>, 5> rows{
+        {{tr("segmentar"), mean.segment},
+         {tr("contorno"), mean.contour},
+         {tr("fixture"), mean.fixture},
+         {tr("normalizar"), mean.normalize},
+         {tr("herramientas"), mean.tools}}};
+    for (const auto& [name, value] : rows) {
+        text += QStringLiteral("  %1 %2 ms (%3 %)\n")
+                    .arg(name, -14)
+                    .arg(value, 0, 'f', 2)
+                    .arg(share(value), 0, 'f', 0);
+    }
+    // El hueco se enseña a propósito: si crece, hay trabajo real fuera de las
+    // etapas medidas y el reparto estaría señalando el sitio equivocado.
+    text += tr("  sin atribuir  %1 ms").arg(stats.unaccounted(), 0, 'f', 2);
+    stageBreakdown_->setText(text);
 }
 
 void PerformancePage::setZoneStatus(const cv::Rect& activeZone, const cv::Size& frameSize,
