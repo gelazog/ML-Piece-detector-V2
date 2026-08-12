@@ -96,6 +96,17 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    frames y las medidas bailan. Los valores que toques se guardan y se
    reaplican la próxima vez que inicies la cámara.
 
+   **Dónde se va el tiempo** (pestaña *Rendimiento* de *Configurar*): marca
+   *Medir el reparto por etapas* y verás en qué se va cada análisis —segmentar,
+   contorno, fixture, normalizar y herramientas— en milisegundos y en
+   porcentaje, promediado sobre los últimos 30. Va **apagado por defecto** y no
+   por prudencia: esto corre en cada frame, y apagado no cuesta ni una llamada
+   al reloj. Enciéndelo mientras miras y apágalo al terminar.
+
+   La última línea, *sin atribuir*, es el tiempo que el desglose no reparte
+   entre las etapas. Debería ser pequeña; si crece, es que hay trabajo real
+   fuera de lo que se está midiendo y el reparto ya no dice dónde apretar.
+
    **Zona de trabajo** (pestaña *Rendimiento* de *Configurar*): dónde busca el
    programa la pieza en cada imagen. Si la pieza ocupa una esquina, mirar la
    imagen entera es tirar el resto del trabajo — medido sobre 1280×720 con una

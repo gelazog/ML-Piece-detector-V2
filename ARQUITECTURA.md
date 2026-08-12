@@ -358,6 +358,44 @@ llega o se mide o se descarta**: si esa suma no cuadra, el número que ve el
 operador miente, y un indicador de rendimiento que miente es peor que no
 tenerlo.
 
+### El desglose de tiempos que la propia app puede dar
+
+Los tiempos de la sección siguiente se midieron una vez, con un programa suelto.
+Sirvieron para decidir entonces y no dicen si hoy sigue siendo verdad en otra
+máquina, con otra resolución y con veinte herramientas dibujadas — que es justo
+cuando alguien se pregunta dónde apretar.
+
+`analyzeFrame` acepta un `StageTimings*` opcional. **Con puntero nulo no se
+llama al reloj ni una vez**, y eso es lo que permite dejarlo apagado por defecto
+en el camino más caliente del programa: un cronómetro por etapa que corriera
+siempre sería pagar en cada frame para que nadie lo mire. Se enciende desde la
+pestaña *Rendimiento* y se apaga al terminar.
+
+`runTools` se cronometra aparte, en `buildOverlay`, porque corre **fuera** de
+`analyzeFrame` —sobre su resultado— y en una plantilla real puede ser el mayor
+coste de los cinco.
+
+Tres propiedades que el desglose tiene que cumplir, y que los tests exigen:
+
+- **Cronometrar no cambia lo medido.** Si tomar tiempos obligara a copiar algo o
+  a tomar otra rama, el reparto describiría un análisis que no es el que corre
+  en producción. Se compara el recorte canónico **píxel a píxel** entre la
+  llamada con reloj y la llamada sin él.
+- **Las etapas suman el total.** El total se mide de punta a punta y las etapas
+  por separado, a propósito: así, lo que no cuadre aparece.
+- **El hueco se enseña.** `unaccounted()` es el tiempo que el desglose no
+  atribuye a nadie —trabajo entre etapas: rellenar la máscara limpia, llevar los
+  resultados al marco completo—. Si crece, hay trabajo real fuera de lo medido y
+  el reparto estaría señalando el sitio equivocado. Esconderlo convertiría el
+  medidor en un adorno.
+
+Media móvil de las últimas 30 ejecuciones (`StageStats`), con ventana fija y sin
+reservar memoria: esto lo alimenta el camino más caliente, y un contenedor que
+crece es exactamente el coste que un medidor de rendimiento no puede
+introducir. Media y no último valor porque el coste de un frame varía con lo que
+haya en la imagen, y quien abre la pestaña quiere el comportamiento, no una
+muestra.
+
 ### Dónde se va el tiempo de un análisis (y por qué no hay escala adaptativa)
 
 Se planificó una «escala de trabajo adaptativa»: segmentar una copia reducida

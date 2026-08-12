@@ -203,7 +203,18 @@ tres números se deja de leer.
 Verificación: `FpsCounter` ya es testeable con reloj inyectado. Un escenario con
 captura rápida y análisis lento tiene que dar la cuenta de descartes exacta.
 
-### - [ ] R2 — Cronometrar las etapas dentro de la app, no en un banco aparte
+### - [x] R2 — Cronometrar las etapas dentro de la app, no en un banco aparte
+
+*(El «apagado no cuesta nada» sale de un `StageTimings*` opcional: con puntero
+nulo no hay ni una llamada al reloj. Lo que costó pensar fue qué exigirle al
+desglose para que no sea un adorno, y quedaron tres pruebas: que cronometrar no
+cambie el resultado —recorte canónico comparado píxel a píxel—, que las etapas
+sumen el total, y que el hueco sin atribuir se ENSEÑE en vez de esconderse,
+porque si crece el reparto está señalando el sitio equivocado.
+Medido en la suite sobre 800×600: total 3,53 ms = 1,60 segmentar + 0,44
+contorno + 0,53 fixture + 0,96 normalizar, sin atribuir 0,00. `runTools` se
+cronometra aparte porque corre fuera de `analyzeFrame` y en una plantilla real
+puede ser el mayor coste — que es justo lo que R3 va a medir.)*
 
 Los 23,1 ms de `ARQUITECTURA.md` se midieron con un programa suelto. Eso vale
 una vez; lo que hace falta para no volver a optimizar a ciegas es que la propia
