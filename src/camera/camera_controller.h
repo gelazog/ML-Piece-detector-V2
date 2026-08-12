@@ -45,6 +45,15 @@ public:
     void requestResolutionProbe();
     void requestResolution(const CameraResolution& resolution);
 
+    // Elegir la exposición MIDIENDO los fps de cada candidata (C1). Va aquí y
+    // no en la UI porque hay que leer frames entre cambio y cambio, y de eso
+    // solo puede el hilo de captura.
+    //
+    // Se pide una vez, al abrir una cámara que el operador no ha configurado.
+    // Cuesta segundo y medio largo, que es el precio de no adivinar: sobre esta
+    // misma cámara, adivinar salió 3,7x más lento.
+    void requestExposureSweep(double minExposure, double maxExposure);
+
 signals:
     void frameReady(const QImage& frame);
     // Estado de los controles leído al abrir la cámara: qué soporta y con qué
@@ -53,6 +62,14 @@ signals:
     // Resoluciones que la cámara acepta de verdad, y la que está usando ahora.
     void resolutionsProbed(const std::vector<pci::camera::CameraResolution>& available,
                            const pci::camera::CameraResolution& current);
+    // Exposición elegida por el barrido, con la tabla de lo que se midió, para
+    // que quede en el log lo que se probó y no solo lo que salió.
+    void exposureChosen(double exposure,
+                        const std::vector<pci::camera::ExposureFpsSample>& sweep);
+    // El perfil se probó y NO compensaba: la cámara se queda en automático y
+    // el operador tiene que saberlo, porque significa que sus medidas no son
+    // repetibles hasta que haya más luz.
+    void profileRejected(const QString& reason);
     void statsUpdated(double fps, int width, int height);
     void cameraError(const QString& message);
     void stopped();
@@ -70,9 +87,15 @@ private:
     std::vector<CameraControlValue> pendingControls_;
     std::optional<CameraResolution> pendingResolution_;
     bool resolutionProbePending_ = false;
+    void drainExposureSweep(cv::VideoCapture& capture);
+
+    bool exposureSweepPending_ = false;
+    double exposureSweepMin_ = 0.0;
+    double exposureSweepMax_ = 0.0;
 };
 
 }  // namespace pci::camera
 
 // La lista de controles cruza de hilo por una conexión encolada.
 Q_DECLARE_METATYPE(std::vector<pci::camera::CameraControlState>)
+Q_DECLARE_METATYPE(std::vector<pci::camera::ExposureFpsSample>)

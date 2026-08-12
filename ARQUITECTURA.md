@@ -101,6 +101,55 @@ fallos silenciosos:
   no al pedir el cambio: la cámara puede dar una resolución distinta de la
   solicitada, y así también se cubre que la cambie ella sola.
 
+### El perfil de medición de la cámara, y por qué se prueba antes de creérselo
+
+Una webcam viene ajustada para que una cara se vea bien: automático todo, que la
+imagen se adapte sola. Para medir, «que se adapte sola» es exactamente el
+defecto — significa que **el borde de la pieza se mueve cuando cambia la luz de
+la nave**. De ahí un perfil de arranque para cámaras que el operador no ha
+configurado nunca (`measurementDefaults`).
+
+Lo interesante no es el perfil: es cuántas veces lo desmintió la cámara real.
+
+**Intento 1 — «congelar cada control donde ya está».** Suena inmejorable:
+repetibilidad sin cambiarle la imagen a nadie. Medido: la captura pasó de
+**29,7 a 8,0 fps**. Con el automático puesto, `get(CAP_PROP_EXPOSURE)` devuelve
+el nominal —el más largo del rango— mientras el sensor usa exposiciones cortas
+de verdad. **El valor reportado bajo automático miente**, igual que miente el
+del propio interruptor, que devuelve −1 pase lo que pase.
+
+**Intento 2 — «apagar el automático y elegir la exposición midiendo».** Los fps
+no bajan poco a poco con la exposición: son planos —30,2 a 30,3— desde −11 hasta
+−5 y se desploman solo en el extremo largo (−4 da 16,0 y −3 da 8,0), porque el
+tiempo de integración pasa a ser mayor que el periodo del frame. La regla que
+sale de esa forma es **la exposición más larga que todavía da la velocidad
+máxima**: toda la luz que no cuesta fps. Medido: escribir *solo*
+`auto_exposure = 0`, sin elegir valor, dejó la cámara en **8,0 fps** — al quitar
+el automático se cae a su manual, que era el más largo. De ahí una regla que
+vale para toda esta capa: **no se apaga un automático que no se pueda
+sustituir**.
+
+**Intento 3 — el que quedó.** Con la exposición elegida por medida, la cámara
+daba 30,0 fps... y **el 21 % del contraste**. En automático la cámara gobierna
+también la GANANCIA, y en esta máquina `gain` sale no ajustable: ese refuerzo se
+pierde y no hay con qué reponerlo. O sea que el perfil compraba repetibilidad a
+cambio de una imagen mucho peor, por un 0 % de velocidad.
+
+Así que el perfil **se prueba y se juzga** (`judgeProfile`): se mide qué da la
+cámara en automático sobre esa escena, se aplica, se vuelve a medir, y si no se
+lo ha ganado se vuelve al automático **diciendo por qué**. Perder contraste está
+bien si a cambio hay velocidad de verdad —los 3,8× del caso lento sí lo valen, y
+esa imagen más oscura se arregla con una lámpara—; por un 3 % no. Una estación
+que mide repetible pero no ve la pieza no mide nada.
+
+El experimento entero cuesta **3,2 s** y solo corre en cámaras sin configurar.
+Se repite en cada arranque a propósito: si alguien añade luz, la respuesta
+cambia sola y el perfil pasa a aceptarse.
+
+La moraleja, que es lo que hay que llevarse: **de una cámara no se cree lo que
+dice, se mide lo que hace**. Las tres versiones tenían tests verdes; las tres
+veces fue la cámara real la que dijo que no.
+
 ### Asistente de enfoque
 
 `vision::sharpnessOf(imagen, roi)` es la varianza del Laplaciano de una región.

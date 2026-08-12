@@ -75,75 +75,71 @@ está pasando (`I`).
 
 ## Bloque C — La cámara: qué valores por defecto y por qué
 
-### - [ ] C1 — Un perfil de arranque para medir, no para videollamada
+### - [x] C1 — Un perfil de arranque para medir, no para videollamada
 
-Los valores que trae una webcam están pensados para que una cara se vea bien:
-automático todo, que la imagen se adapte sola. Para medir, «que se adapte sola»
-es exactamente el defecto — significa que **el borde de la pieza se mueve
-cuando cambia la luz de la nave**.
+Una webcam viene ajustada para que una cara se vea bien: automático todo, que la
+imagen se adapte sola. Para medir, «que se adapte sola» es exactamente el
+defecto — significa que **el borde de la pieza se mueve cuando cambia la luz de
+la nave**.
 
-Añadir a `camera/camera_controls.{h,cpp}` un perfil declarado:
+*(Cerrado, y la cámara real desmintió el diseño **dos veces** antes de dejarlo
+en pie. Lo escribo entero porque el camino vale más que el destino:*
 
-```cpp
-// Los valores con los que se abre una cámara que no se ha configurado nunca.
-// No son "los buenos": son los que hacen que dos medidas de la misma pieza
-// den lo mismo, que es otra cosa y es la que importa aquí.
-struct MeasurementDefaults { CameraProperty property; double value; };
-[[nodiscard]] const std::vector<MeasurementDefaults>& measurementDefaults();
-```
+*1) **«Congelar cada control donde ya está.»** Suena inmejorable: repetibilidad
+sin cambiarle la imagen a nadie. Medido: **29,7 -> 8,0 fps**. Con el automático
+puesto, `get(CAP_PROP_EXPOSURE)` devuelve el nominal —el más largo del rango—
+mientras el sensor usa exposiciones cortas de verdad. El valor reportado bajo
+automático miente, igual que el del propio interruptor, que devuelve −1 pase lo
+que pase.*
 
-Qué lleva y el porqué de cada uno, que es lo que hay que dejar escrito:
+*2) **«Apagar el automático y elegir la exposición midiendo.»** Escribir solo
+`auto_exposure = 0`, sin elegir valor, dejó la cámara en **8,0 fps**: al quitarle
+el automático se cae a su manual, que era el más largo. De ahí una regla que
+vale para toda la capa — **no se apaga un automático que no se pueda
+sustituir**.*
 
-| Ajuste | Valor | Por qué |
-| --- | --- | --- |
-| `AutoFocus` | apagado | Un reenfoque **cambia la magnificación**. Con la escala calibrada, eso cambia todas las cotas a la vez y no lo delata nada en pantalla. Es el ajuste más peligroso de los siete. |
-| `AutoExposure` | apagado | La exposición automática mueve el umbral aparente del borde: la misma pieza sale más gorda o más fina según la luz. Además cuesta los 3,8× medidos arriba. |
-| `Exposure` | el más corto que deje la imagen usable (ver `C3`) | Fija la geometría y sube los fps. |
-| `Gain` | bajo | La ganancia alta mete ruido en el borde, que es donde se mide. Antes de subir ganancia hay que subir luz. |
+*3) **La que quedó.** La exposición se elige por medida: la más larga que
+todavía da la velocidad máxima, porque los fps son planos (30,2-30,3 de −11 a
+−5) y se caen por un acantilado (−4 da 16,0, −3 da 8,0), no poco a poco. Y
+encima el perfil **se juzga a sí mismo**: en esta máquina daba 30,0 fps y el
+**21 % del contraste**, porque en automático la cámara gobierna también la
+GANANCIA y aquí `gain` no es ajustable. Así que se descarta solo, vuelve a
+automático y dice que con más luz sí compensaría.*
 
-Aplicarlos **solo en la primera apertura de esa cámara**, nunca encima de lo
-que el operador haya guardado: `propertyKey()` ya da la clave estable, así que
-«no hay valor guardado» es la condición.
+*Las tres versiones tenían tests verdes. Las tres veces lo dijo la cámara.)*
 
-Verificación:
-- Una cámara sin ajustes guardados recibe los del perfil; una con ajustes
-  guardados **no** los recibe (el perfil no pisa al operador nunca).
-- Un ajuste que la cámara declara no ajustable (`supported == false` tras
-  `probeControls`) se salta sin ruido y queda en el log.
-- El perfil es un `switch` sin `default` sobre `CameraProperty`: una propiedad
-  nueva **rompe la compilación** hasta que alguien decida su valor de arranque.
+Lo que quedó implementado:
 
-### - [ ] C2 — Apagar el automático de verdad, y no fiarse de que lo diga
+| Pieza | Qué hace |
+| --- | --- |
+| `measurementDefaults(probed, saved)` | Apaga los automáticos **que se pueden sustituir**, y solo los que el operador no haya tocado. Hoy eso es el autofoco. |
+| `exposureCandidates(min, max)` | Las exposiciones que vale la pena probar dentro del rango medido, de la más larga a la más corta. |
+| `chooseExposure(sweep)` | La más larga que aún da la velocidad máxima, con un 5 % de margen para el ruido de medida. |
+| `judgeProfile(antes, después)` | Si el cambio se lo ha ganado. Si no, se deshace **diciendo por qué**. |
 
-Detalle medido que va a morder a quien lo implemente: `set(CAP_PROP_AUTO_EXPOSURE, x)`
-devolvió `true` con 0.25, 0.0 y 1.0, y `get()` devolvió **−1,000 en los tres
-casos** — o sea que la cámara acepta la escritura y luego no informa del estado.
-Lo que apagó el automático de hecho fue **escribir `CAP_PROP_EXPOSURE`**.
+El experimento entero cuesta **3,2 s** y solo corre en cámaras sin configurar.
+Se repite en cada arranque a propósito: si alguien enciende una lámpara, la
+respuesta cambia sola.
 
-De ahí la regla: **no se comprueba leyendo la propiedad, se comprueba
-midiendo el efecto.** Tras aplicar el perfil, medir los fps unos segundos y
-compararlos con los de antes. Si no suben y el brillo no cambia, el automático
-sigue puesto y hay que decirlo en vez de dar por hecho que se apagó.
+### - [x] C2 — Apagar el automático de verdad, y no fiarse de que lo diga
 
-Verificación: un doble de cámara que acepta las escrituras y las ignora tiene
-que acabar con el aviso puesto, no con un «configurado correctamente».
+*(Absorbido por C1, y no por comodidad: el diseño lo forzó. La regla que este
+ítem pedía —«no se comprueba leyendo la propiedad, se comprueba midiendo el
+efecto»— es exactamente lo que hace `judgeProfile`, y sin ella C1 no podía
+cerrarse, porque las dos primeras versiones fallaron justo por creerse lo que
+la cámara decía. Un ítem que resulta ser inseparable de otro se cierra con el
+otro; dejarlo abierto para poder tacharlo dos veces sería contabilidad.)*
 
-### - [ ] C3 — Exposición corta necesita luz, y el programa lo tiene que decir
+### - [x] C3 — Exposición corta necesita luz, y el programa lo tiene que decir
 
-Con exposición −6 esta cámara dio 30,5 fps y **brillo medio 2,8 sobre 255**. Una
-imagen así no se segmenta: bajar la exposición sin luz cambia el problema de
-sitio en vez de resolverlo.
-
-Al aplicar el perfil, buscar la exposición **más corta que deje la imagen
-utilizable** en vez de fijar un número a ciegas: subir desde la más corta hasta
-que el histograma tenga recorrido suficiente para que Otsu separe, y parar ahí.
-Y si ni con la más larga hay contraste, decir lo que pasa —«no hay luz
-suficiente: sube la iluminación»— en vez de dejar 8 fps y un borde inventado.
-
-Verificación: sobre imágenes sintéticas con tres niveles de iluminación, la
-búsqueda elige la exposición más corta que aún separa, y en el caso oscuro se
-rinde con motivo. La regla se extrae a función pura (como se hizo con
-`effectiveWorkingZone`), porque el bucle de cámara no tiene banco de pruebas.
+*(También absorbido, y por la misma razón. La contrapartida que este ítem
+anticipaba resultó ser **más grave de lo previsto**: no es que una exposición
+corta oscurezca la imagen, es que apagar el automático pierde además la
+ganancia automática, y si `gain` no es ajustable —el caso de esta máquina— no
+hay con qué reponerla. Por eso el aviso no podía ser un mensaje al final: tenía
+que ser un veredicto capaz de DESHACER el perfil. Lo que este ítem pedía decir
+—«no hay luz suficiente, sube la iluminación»— es el texto que emite
+`profileRejected`.)*
 
 ### - [ ] C4 — «Restaurar los valores de medición» y el aviso que falta
 

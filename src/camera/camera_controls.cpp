@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 namespace pci::camera {
 
@@ -218,6 +219,131 @@ void coalesceControls(std::vector<CameraControlValue>& pending,
             pending.push_back(control);
         }
     }
+}
+
+bool isAutomaticOf(CameraProperty automatic, CameraProperty manual) {
+    return (automatic == CameraProperty::AutoExposure &&
+            manual == CameraProperty::Exposure) ||
+           (automatic == CameraProperty::AutoFocus && manual == CameraProperty::Focus);
+}
+
+std::vector<CameraControlValue> measurementDefaults(
+    const std::vector<CameraControlState>& probed,
+    const std::vector<CameraControlValue>& saved) {
+    const auto wasSavedByOperator = [&saved](CameraProperty property) {
+        return std::any_of(saved.begin(), saved.end(), [property](const auto& value) {
+            return value.property == property;
+        });
+    };
+    std::vector<CameraControlValue> defaults;
+    for (const auto& state : probed) {
+        if (!state.supported || !isToggle(state.property)) {
+            continue;
+        }
+        // La exposicion automatica NO se decide aqui. Apagarla puede salir
+        // cara —en automatico la camara gobierna tambien la ganancia, y si la
+        // ganancia no es ajustable ese refuerzo se pierde sin repuesto—, y si
+        // compensa o no depende de la luz que haya en esa nave. Eso lo mide el
+        // barrido de exposicion, con la imagen delante. Aqui solo esta lo que
+        // no tiene nada que sopesar: el autofoco, que cambia la magnificacion
+        // y por tanto TODAS las cotas a la vez.
+        if (state.property == CameraProperty::AutoExposure) {
+            continue;
+        }
+        // NO SE APAGA UN AUTOMATICO QUE NO SE PUEDA SUSTITUIR. Medido en la
+        // camara de esta maquina y contundente: escribir solo
+        // `auto_exposure = 0` la dejo en 8,0 fps viniendo de 29,7, porque al
+        // quitarle el automatico la camara se cae a su valor manual — que era
+        // el mas largo del rango. Apagar el automatico sin poder elegir el
+        // valor no es neutral: es elegir el peor.
+        const bool canReplaceIt =
+            std::any_of(probed.begin(), probed.end(), [&state](const auto& manual) {
+                return isAutomaticOf(state.property, manual.property) && manual.supported;
+            });
+        if (!canReplaceIt) {
+            continue;
+        }
+        // Y si el operador lo dejo puesto a proposito, se respeta: el perfil es
+        // para una camara sin configurar, no una opinion que se impone cada
+        // arranque.
+        if (!wasSavedByOperator(state.property)) {
+            defaults.push_back({state.property, 0.0});
+        }
+
+    }
+    return defaults;
+}
+
+std::vector<double> exposureCandidates(double min, double max) {
+    std::vector<double> candidates;
+    if (!(max > min)) {
+        return candidates;
+    }
+    // De la más larga a la más corta. La escala de la exposición depende del
+    // backend —en DirectShow va en log2 de segundos, así que un paso entero
+    // DUPLICA el tiempo— y por eso se recorre el rango medido en pasos
+    // uniformes en vez de en unidades absolutas que no significarían lo mismo
+    // en otra cámara.
+    constexpr int kSteps = 8;
+    for (int i = 0; i <= kSteps; ++i) {
+        candidates.push_back(max - (max - min) * i / kSteps);
+    }
+    candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+    return candidates;
+}
+
+std::optional<double> chooseExposure(const std::vector<ExposureFpsSample>& sweep,
+                                     double tolerance) {
+    double best = 0.0;
+    for (const auto& sample : sweep) {
+        best = std::max(best, sample.fps);
+    }
+    if (best <= 0.0) {
+        return std::nullopt;
+    }
+    const double floorFps = best * (1.0 - std::clamp(tolerance, 0.0, 1.0));
+
+    std::optional<double> chosen;
+    for (const auto& sample : sweep) {
+        if (sample.fps + 1e-9 < floorFps) {
+            continue;
+        }
+        // La más LARGA de las que aguantan la velocidad: más luz por el mismo
+        // precio. Una exposición más corta solo serviría para congelar
+        // movimiento, y una pieza sobre una mesa no se mueve.
+        if (!chosen.has_value() || sample.exposure > *chosen) {
+            chosen = sample.exposure;
+        }
+    }
+    return chosen;
+}
+
+ProfileVerdict judgeProfile(double fpsBefore, double contrastBefore, double fpsAfter,
+                            double contrastAfter) {
+    ProfileVerdict verdict;
+    if (fpsBefore <= 0.0 || contrastBefore <= 0.0) {
+        return verdict;  // sin referencia no se puede juzgar: se deja lo hecho
+    }
+    const double speedGain = fpsAfter / fpsBefore;
+    const double contrastKept = contrastAfter / contrastBefore;
+
+    // Perder contraste es aceptable si a cambio se gana velocidad de verdad. Un
+    // 3 % no es velocidad de verdad; 3,8x sí lo es, y ahí la imagen mas oscura
+    // se compensa con luz, que es lo que toca en una estacion de inspeccion.
+    constexpr double kRealSpeedGain = 1.25;
+    constexpr double kContrastFloor = 0.6;
+    if (contrastKept >= kContrastFloor || speedGain >= kRealSpeedGain) {
+        return verdict;
+    }
+    verdict.keep = false;
+    verdict.reason =
+        "fijar la exposicion dejo la imagen con el " +
+        std::to_string(static_cast<int>(contrastKept * 100.0)) +
+        "% del contraste y solo subio los fps un " +
+        std::to_string(static_cast<int>((speedGain - 1.0) * 100.0)) +
+        "%: no compensa. Con mas luz sobre la pieza si compensaria, porque "
+        "entonces la exposicion fija no oscurece nada";
+    return verdict;
 }
 
 std::vector<CameraControlState> probeControls(cv::VideoCapture& capture) {

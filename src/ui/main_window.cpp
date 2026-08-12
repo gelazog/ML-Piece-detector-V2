@@ -522,6 +522,14 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             &MainWindow::onControlsProbed);
     connect(&controller_, &camera::CameraController::resolutionsProbed, this,
             &MainWindow::onResolutionsProbed);
+    connect(&controller_, &camera::CameraController::exposureChosen, this,
+            [](double exposure, const std::vector<camera::ExposureFpsSample>& sweep) {
+                // Se deja en el log lo que se PROBÓ y no solo lo que salió: si
+                // algún día una cámara elige mal, la tabla dice por qué.
+                core::logInfo("Exposición elegida por medida: " +
+                              std::to_string(exposure) + " (de " +
+                              std::to_string(sweep.size()) + " probadas)");
+            });
 
     connect(toolPalette_, &inspection::ToolPalette::toolChosen, this,
             &MainWindow::onToolModeChanged);
@@ -2473,6 +2481,40 @@ void MainWindow::onControlsProbed(const std::vector<camera::CameraControlState>&
     if (!anySupported) {
         core::logInfo("La cámara no expone ningún control ajustable");
     }
+
+    // Perfil de medición (C1). Va aquí y no antes de abrir porque depende del
+    // SONDEO: qué controles acepta esta cámara y en qué valor los tiene. Antes
+    // de sondear no se sabe ni una cosa ni la otra.
+    //
+    // No se persiste a propósito. Guardarlo lo convertiría en «lo que el
+    // operador eligió» y a partir de ahí el perfil no volvería a aplicarse ni
+    // se distinguiría de un ajuste suyo. Así, `cam_*` en Settings sigue
+    // significando exactamente lo que significaba: lo que el operador tocó.
+    const auto defaults = camera::measurementDefaults(controls, savedCameraControls_);
+    if (!defaults.empty()) {
+        for (const auto& value : defaults) {
+            core::logInfo(std::string("Perfil de medición: ") +
+                          std::string(camera::propertyKey(value.property)) + " = " +
+                          std::to_string(value.value));
+        }
+        controller_.requestControls(defaults);
+    }
+
+    // Y la exposición se ELIGE midiendo, que es la parte que no se puede hacer
+    // desde aquí: hay que leer frames entre cambio y cambio. Solo en una cámara
+    // que el operador no haya configurado — si la tocó, manda él.
+    const bool operatorSetExposure =
+        std::any_of(savedCameraControls_.begin(), savedCameraControls_.end(),
+                    [](const camera::CameraControlValue& value) {
+                        return value.property == camera::CameraProperty::Exposure;
+                    });
+    for (const auto& state : controls) {
+        if (state.property == camera::CameraProperty::Exposure && state.supported &&
+            !operatorSetExposure) {
+            controller_.requestExposureSweep(state.min, state.max);
+        }
+    }
+
     // «Configurar» no se deshabilita nunca: aunque la cámara no exponga nada,
     // ahí siguen estando la detección, la escala y las preferencias. La página
     // de cámara es la que dice que no hay nada que ajustar.

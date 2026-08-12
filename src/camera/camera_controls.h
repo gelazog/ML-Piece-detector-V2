@@ -4,6 +4,8 @@
 
 #include <opencv2/videoio.hpp>
 
+#include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -100,6 +102,91 @@ struct CameraResolution {
 
 // Resolución con la que está trabajando la cámara ahora mismo.
 [[nodiscard]] CameraResolution currentResolution(cv::VideoCapture& capture);
+
+// Los valores con los que se abre una cámara que el operador no ha configurado
+// nunca. No son «los buenos»: son los que hacen que dos medidas de la misma
+// pieza den lo mismo, que es otra cosa y es la que importa en una estación de
+// inspección.
+//
+// Esto apaga los AUTOMÁTICOS y nada más. El valor de exposición no sale de
+// aquí: sale de `chooseExposure`, y la razón está medida.
+//
+// El primer intento fue «congelar cada control manual donde la cámara ya lo
+// tiene», que suena inmejorable —repetibilidad sin cambiar la imagen— y sobre
+// la cámara real hizo la captura **3,7× más lenta**: 30,1 fps antes, 8,0 fps
+// después. La causa es que con el automático puesto, `get(CAP_PROP_EXPOSURE)`
+// devuelve el nominal (−3, el más largo del rango) mientras el sensor está
+// usando exposiciones cortas de verdad. **El valor reportado bajo automático
+// miente**, igual que miente el del propio interruptor —que devuelve −1 pase
+// lo que pase—, así que congelarlo no congela nada: escribe otra cosa.
+//
+// La moraleja, que vale para toda esta capa: de una cámara no se cree lo que
+// dice, se mide lo que hace.
+//
+// `probed` es lo que dijo `probeControls` y `saved` lo que el operador guardó.
+// Un control que el operador tocó alguna vez NO se toca: sus ajustes mandan
+// sobre el perfil, siempre.
+[[nodiscard]] std::vector<CameraControlValue> measurementDefaults(
+    const std::vector<CameraControlState>& probed,
+    const std::vector<CameraControlValue>& saved);
+
+// El automático que corresponde a un control manual, si lo tiene. Es lo que
+// empareja Exposure con AutoExposure y Focus con AutoFocus.
+[[nodiscard]] bool isAutomaticOf(CameraProperty automatic, CameraProperty manual);
+
+// Una exposición probada y los fps que dio.
+struct ExposureFpsSample {
+    double exposure = 0.0;
+    double fps = 0.0;
+};
+
+// La exposición que se deja puesta: **la más larga que todavía da la velocidad
+// máxima**. O sea, toda la luz que no cuesta fps.
+//
+// Sale de medir el rango entero en la cámara real. Los fps NO bajan poco a poco
+// con la exposición: se mantienen planos —30,2 a 30,3— desde −11 hasta −5, y
+// solo se desploman en el extremo largo (−4 da 16,0 y −3 da 8,0), porque el
+// tiempo de integración pasa a ser mayor que el periodo del frame. Con esa
+// forma, «la más corta» tiraría luz a cambio de nada y «la que trae» puede
+// costar 3,7×: el punto bueno es el codo.
+//
+// `tolerance` es cuánta velocidad se acepta perder respecto a la mejor
+// observada (0,05 = un 5 %). No es cero porque dos medidas de fps sobre una
+// cámara real nunca salen idénticas, y exigir igualdad exacta elegiría siempre
+// la más corta por ruido de medida.
+//
+// Devuelve `std::nullopt` si el barrido no permite decidir (vacío, o ninguna
+// muestra con fps utilizable): entonces no se toca la exposición, que es mejor
+// que elegirla a ciegas.
+[[nodiscard]] std::optional<double> chooseExposure(
+    const std::vector<ExposureFpsSample>& sweep, double tolerance = 0.05);
+
+// Las exposiciones que vale la pena probar dentro de un rango medido, de la más
+// larga a la más corta. En ese orden porque el barrido puede pararse en cuanto
+// encuentra el codo, y el codo está por el lado largo.
+[[nodiscard]] std::vector<double> exposureCandidates(double min, double max);
+
+// Qué hacer con el resultado del perfil, comparando la imagen que había ANTES
+// (en automático) con la que hay DESPUÉS de fijar los ajustes.
+//
+// Existe porque la ganancia obtenida puede no pagar lo que cuesta, y eso solo
+// se sabe con las dos medidas delante. Medido en la cámara de esta máquina: al
+// apagar el automático los fps subieron de 29,7 a 30,5 —un 3 %, nada— y el
+// contraste de la imagen se hundió, porque en automático la cámara gobierna
+// también la GANANCIA y aquí `gain` sale no ajustable, así que ese refuerzo se
+// pierde y no hay con qué reponerlo.
+//
+// Cambiar una imagen buena por un 3 % de velocidad es un mal negocio, y hacerlo
+// en silencio es peor. La regla: **el perfil se queda solo si se lo gana**.
+struct ProfileVerdict {
+    bool keep = true;
+    std::string reason;  // vacío si se queda sin peros
+};
+
+// `contrast` es la desviación típica de la imagen, que es la medida directa de
+// «¿se puede separar la pieza del fondo aquí?». `fps` habla por sí solo.
+[[nodiscard]] ProfileVerdict judgeProfile(double fpsBefore, double contrastBefore,
+                                          double fpsAfter, double contrastAfter);
 
 // Mezcla peticiones nuevas en la cola pendiente dejando SOLO el último valor de
 // cada propiedad. Arrastrar un deslizador genera decenas de valores por segundo

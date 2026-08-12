@@ -4,6 +4,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 #include <opencv2/core.hpp>
@@ -222,4 +224,226 @@ TEST(CameraControls, ResolutionValidityAndEquality) {
     EXPECT_TRUE((CameraResolution{640, 480}).valid());
     EXPECT_TRUE((CameraResolution{640, 480}) == (CameraResolution{640, 480}));
     EXPECT_FALSE((CameraResolution{640, 480}) == (CameraResolution{640, 481}));
+}
+
+// ---------------------------------------------------------------------------
+// Perfil de medicion de la camara (C1)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+using pci::camera::CameraControlState;
+using pci::camera::CameraControlValue;
+using pci::camera::CameraProperty;
+using pci::camera::measurementDefaults;
+
+CameraControlState probed(CameraProperty property, bool supported, double value,
+                          double min = 0.0, double max = 1.0) {
+    CameraControlState state;
+    state.property = property;
+    state.supported = supported;
+    state.value = value;
+    state.min = min;
+    state.max = max;
+    return state;
+}
+
+std::optional<double> appliedTo(const std::vector<CameraControlValue>& values,
+                                CameraProperty property) {
+    for (const auto& value : values) {
+        if (value.property == property) {
+            return value.value;
+        }
+    }
+    return std::nullopt;
+}
+
+// Lo que sondeo una camara tipica de portatil: exposicion ajustable en [-11,-3]
+// y los dos interruptores presentes. Son los numeros medidos de verdad sobre la
+// camara de esta maquina, no inventados.
+std::vector<CameraControlState> typicalWebcam() {
+    return {probed(CameraProperty::Brightness, false, 91.0, 91.0, 91.0),
+            probed(CameraProperty::Contrast, false, 28.0, 28.0, 28.0),
+            probed(CameraProperty::Gain, false, -1.0, -1.0, -1.0),
+            probed(CameraProperty::Exposure, true, -7.0, -11.0, -3.0),
+            probed(CameraProperty::AutoExposure, true, 0.0),
+            probed(CameraProperty::Focus, true, 35.0, 0.0, 250.0),
+            probed(CameraProperty::AutoFocus, true, 1.0)};
+}
+
+}  // namespace
+
+TEST(MeasurementProfile, TurnsOffTheAutomaticsAndTouchesNothingElse) {
+    // El perfil apaga los automaticos y ya. El valor de exposicion NO sale de
+    // aqui: sale de `chooseExposure`, que lo elige midiendo.
+    const auto defaults = measurementDefaults(typicalWebcam(), {});
+
+    EXPECT_EQ(appliedTo(defaults, CameraProperty::AutoFocus), 0.0);
+    // La exposicion automatica NO sale de aqui: apagarla puede costar mas de lo
+    // que da, y eso solo se sabe con la imagen delante. Lo decide el barrido.
+    EXPECT_FALSE(appliedTo(defaults, CameraProperty::AutoExposure).has_value());
+
+    // Y nada mas. Que aqui NO aparezca la exposicion es el punto del test, no un
+    // olvido: la primera version la ponia, congelandola en el valor que la
+    // camara reportaba, y sobre la camara real eso hizo la captura 3,7 veces
+    // mas lenta. Con el automatico puesto, el valor reportado no es el que el
+    // sensor usa.
+    EXPECT_FALSE(appliedTo(defaults, CameraProperty::Exposure).has_value());
+    EXPECT_FALSE(appliedTo(defaults, CameraProperty::Focus).has_value());
+    EXPECT_FALSE(appliedTo(defaults, CameraProperty::Brightness).has_value());
+    EXPECT_FALSE(appliedTo(defaults, CameraProperty::Contrast).has_value());
+    EXPECT_FALSE(appliedTo(defaults, CameraProperty::Gain).has_value());
+}
+
+TEST(MeasurementProfile, WhatTheOperatorSavedAlwaysWins) {
+    // El perfil es para una camara sin configurar, no una opinion que se impone
+    // en cada arranque. Si alguien dejo el autofoco puesto a proposito —una
+    // estacion sin calibrar donde es comodo— no se le quita cada vez que abre.
+    const std::vector<CameraControlValue> saved{{CameraProperty::AutoFocus, 1.0}};
+    EXPECT_TRUE(measurementDefaults(typicalWebcam(), saved).empty());
+
+    // Y lo contrario: haber tocado OTRA cosa no le quita el autofoco al perfil.
+    // Respetar un ajuste no es rendirse con los demas.
+    const std::vector<CameraControlValue> elsewhere{{CameraProperty::Brightness, 120.0}};
+    EXPECT_EQ(appliedTo(measurementDefaults(typicalWebcam(), elsewhere),
+                        CameraProperty::AutoFocus),
+              0.0);
+}
+
+TEST(MeasurementProfile, ItDoesNotTurnOffAnAutomaticItCannotReplace) {
+    // Medido, y contundente: escribir solo `auto_exposure = 0` dejo la camara
+    // en 8,0 fps viniendo de 29,7. Al quitarle el automatico se cae a su valor
+    // manual, que era el mas largo del rango. Apagar un automatico sin poder
+    // elegir el valor no es neutral: es elegir el peor.
+    std::vector<CameraControlState> noManualExposure = typicalWebcam();
+    for (auto& state : noManualExposure) {
+        if (state.property == CameraProperty::Exposure) {
+            state.supported = false;  // la camara no deja fijarla
+        }
+    }
+    const auto defaults = measurementDefaults(noManualExposure, {});
+    EXPECT_FALSE(appliedTo(defaults, CameraProperty::AutoExposure).has_value());
+    // El autofoco si se apaga: su manual esta disponible.
+    EXPECT_EQ(appliedTo(defaults, CameraProperty::AutoFocus), 0.0);
+
+    // Y el caso simetrico, que es el que prueba la regla de verdad: sin foco
+    // manual, el autofoco tampoco se toca.
+    std::vector<CameraControlState> noManualFocus = typicalWebcam();
+    for (auto& state : noManualFocus) {
+        if (state.property == CameraProperty::Focus) {
+            state.supported = false;
+        }
+    }
+    EXPECT_FALSE(appliedTo(measurementDefaults(noManualFocus, {}),
+                           CameraProperty::AutoFocus)
+                     .has_value())
+        << "apago el autofoco sin tener con que sustituirlo";
+}
+
+TEST(MeasurementProfile, ACameraThatDoesNotLetYouChangeAnythingGetsNothing) {
+    // Medido en la camara de esta maquina: ganancia, foco y autofoco salieron
+    // NO ajustables (las tres escrituras del sondeo rechazadas). Escribirles de
+    // todas formas no arregla nada y ensucia el log de cada arranque.
+    std::vector<CameraControlState> deaf;
+    for (const auto property : pci::camera::allCameraProperties()) {
+        deaf.push_back(probed(property, false, 0.0));
+    }
+    EXPECT_TRUE(measurementDefaults(deaf, {}).empty());
+}
+
+TEST(ExposureChoice, PicksTheLongestExposureThatStillRunsAtFullSpeed) {
+    // Los fps MEDIDOS en la camara de esta maquina, uno por uno. No es un
+    // ejemplo inventado: es la forma real de la curva, y esa forma es la que
+    // justifica la regla.
+    //
+    // Fijate en que NO baja poco a poco: es plana y luego se cae por un
+    // acantilado. Con esa forma, "la mas corta" tiraria luz a cambio de nada.
+    const std::vector<pci::camera::ExposureFpsSample> measured{
+        {-3.0, 8.0},   {-4.0, 16.0},  {-5.0, 30.3},  {-6.0, 30.5},
+        {-7.0, 30.2},  {-8.0, 30.3},  {-9.0, 30.3},  {-11.0, 30.2}};
+    const auto chosen = pci::camera::chooseExposure(measured);
+    ASSERT_TRUE(chosen.has_value());
+    // −5 es el codo: toda la luz que no cuesta velocidad.
+    EXPECT_DOUBLE_EQ(*chosen, -5.0);
+}
+
+TEST(ExposureChoice, NoiseInTheFpsMeasurementDoesNotPushItToTheShortestOne) {
+    // Dos medidas de fps sobre una camara real nunca salen identicas. Si la
+    // regla exigiera el maximo exacto, el ruido elegiria casi siempre la mas
+    // corta y se tiraria luz por nada. Aqui la mejor es la mas corta por 0,3
+    // fps de ruido, y aun asi gana la larga.
+    const std::vector<pci::camera::ExposureFpsSample> noisy{
+        {-5.0, 30.0}, {-6.0, 30.1}, {-7.0, 30.3}, {-8.0, 29.9}};
+    const auto chosen = pci::camera::chooseExposure(noisy);
+    ASSERT_TRUE(chosen.has_value());
+    EXPECT_DOUBLE_EQ(*chosen, -5.0);
+}
+
+TEST(ExposureChoice, ItGivesUpInsteadOfGuessingWhenThereIsNothingToDecideWith) {
+    // Sin barrido no hay decision, y no tocar la exposicion es mejor que
+    // elegirla a ciegas: a ciegas fue exactamente como se perdieron los 3,7x.
+    EXPECT_FALSE(pci::camera::chooseExposure({}).has_value());
+    EXPECT_FALSE(pci::camera::chooseExposure({{-5.0, 0.0}, {-7.0, 0.0}}).has_value());
+}
+
+TEST(ExposureChoice, TheCandidatesCoverTheMeasuredRangeFromLongToShort) {
+    // De la mas larga a la mas corta, porque el barrido se puede parar en
+    // cuanto encuentra el codo y el codo esta por el lado largo.
+    const auto candidates = pci::camera::exposureCandidates(-11.0, -3.0);
+    ASSERT_FALSE(candidates.empty());
+    EXPECT_DOUBLE_EQ(candidates.front(), -3.0);
+    EXPECT_DOUBLE_EQ(candidates.back(), -11.0);
+    EXPECT_TRUE(std::is_sorted(candidates.begin(), candidates.end(), std::greater<>()));
+    // Un rango degenerado no genera candidatos que no significan nada.
+    EXPECT_TRUE(pci::camera::exposureCandidates(-1.0, -1.0).empty());
+}
+
+TEST(ExposureChoice, AFlatCameraKeepsTheLongestExposure) {
+    // Si los fps no dependen de la exposicion —camara que ya va al maximo—, la
+    // regla se queda con la mas larga, que es toda la luz disponible. Es el
+    // caso de una camara industrial con obturador rapido, y no hay motivo para
+    // acortarle nada.
+    const std::vector<pci::camera::ExposureFpsSample> flat{
+        {-3.0, 60.0}, {-5.0, 60.0}, {-9.0, 60.0}};
+    const auto chosen = pci::camera::chooseExposure(flat);
+    ASSERT_TRUE(chosen.has_value());
+    EXPECT_DOUBLE_EQ(*chosen, -3.0);
+}
+
+TEST(ProfileVerdict, ThreePercentMoreSpeedDoesNotPayForLosingTheImage) {
+    // El caso medido en la camara de esta maquina, numero por numero: apagar el
+    // automatico subio los fps de 29,7 a 30,5 —un 3 %— y hundio el contraste,
+    // porque en automatico la camara gobierna tambien la GANANCIA y aqui la
+    // ganancia no es ajustable, asi que ese refuerzo se pierde sin repuesto.
+    //
+    // Cambiar una imagen buena por un 3 % es un mal negocio. Hacerlo en
+    // silencio es peor: el operador acabaria con una estacion que no ve la
+    // pieza y sin saber por que.
+    const auto verdict = pci::camera::judgeProfile(29.7, 46.0, 30.5, 12.0);
+    EXPECT_FALSE(verdict.keep);
+    EXPECT_FALSE(verdict.reason.empty());
+    // Y dice que hacer, que es lo unico accionable: mas luz.
+    EXPECT_NE(verdict.reason.find("luz"), std::string::npos) << verdict.reason;
+}
+
+TEST(ProfileVerdict, RealSpeedIsWorthADarkerImage) {
+    // El otro caso medido: una camara que arranca con la exposicion larga da
+    // 8,0 fps, y fijarla da 30,5 — 3,8x. Ahi la imagen mas oscura si se
+    // compensa con luz, y renunciar a 3,8x por no querer encender una lampara
+    // seria la decision equivocada.
+    const auto verdict = pci::camera::judgeProfile(8.0, 46.0, 30.5, 12.0);
+    EXPECT_TRUE(verdict.keep) << verdict.reason;
+}
+
+TEST(ProfileVerdict, KeepingTheImageIsEnoughOnItsOwn) {
+    // Si el contraste aguanta, no hace falta justificar nada mas: la
+    // repetibilidad es la razon de ser del perfil y sale gratis.
+    EXPECT_TRUE(pci::camera::judgeProfile(29.7, 46.0, 29.8, 44.0).keep);
+}
+
+TEST(ProfileVerdict, WithoutAReferenceItDoesNotSecondGuessItself) {
+    // Sin medida previa no hay comparacion posible, y deshacer lo hecho por si
+    // acaso seria tan arbitrario como mantenerlo por si acaso.
+    EXPECT_TRUE(pci::camera::judgeProfile(0.0, 46.0, 30.0, 5.0).keep);
+    EXPECT_TRUE(pci::camera::judgeProfile(29.7, 0.0, 30.0, 5.0).keep);
 }
