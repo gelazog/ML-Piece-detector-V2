@@ -233,6 +233,23 @@ struct SymmetryGeometry {
     bool darkPiece = true;
 };
 
+// Lados de un perfil poligonal (F3): cuántos, cuánto miden y qué ángulo
+// forman. El caso de uso obvio es el hexágono de una tuerca.
+//
+// Todo lo decide `epsilon`, la tolerancia con la que se simplifica el contorno,
+// y por eso se guarda como **fracción del perímetro** y no en píxeles: en
+// píxeles, la misma pieza vista desde más lejos daría otro número de lados, y
+// una plantilla dejaría de valer al cambiar la distancia o la resolución.
+struct PolygonGeometry {
+    cv::Point2f center;  // rectángulo alineado a los ejes de la pieza
+    float width = 160.0F;
+    float height = 120.0F;
+    // Fracción del perímetro. 0,02 (2 %) va bien de 3 a 10 lados; subirlo
+    // simplifica más (menos lados) y bajarlo conserva detalle (más lados).
+    float epsilonFraction = 0.02F;
+    bool darkPiece = true;
+};
+
 [[nodiscard]] const std::array<RegionMeasure, 6>& allRegionMeasures();
 [[nodiscard]] const char* regionMeasureLabel(RegionMeasure measure);
 
@@ -242,7 +259,7 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
                                   PositionGeometry, ArcGeometry, ShaftGeometry,
                                   ThreadGeometry, GearGeometry, ConstructedPointGeometry,
                                   ConstructedLineGeometry, MedianAxisGeometry,
-                                  RegionGeometry, SymmetryGeometry>;
+                                  RegionGeometry, SymmetryGeometry, PolygonGeometry>;
 
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
@@ -273,7 +290,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 19>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 20>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que

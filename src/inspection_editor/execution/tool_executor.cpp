@@ -1557,6 +1557,137 @@ ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& confi
     return result;
 }
 
+// Lados de un perfil poligonal (F3).
+//
+// `approxPolyDP` hace el trabajo; lo que hay que hacer bien es DECIDIR SI EL
+// NÚMERO QUE DEVUELVE SIGNIFICA ALGO. Sobre un polígono de verdad el recuento
+// aguanta aunque se cambie la tolerancia; sobre una curva, cada tolerancia da
+// un número distinto. Esa estabilidad es el criterio: se aproxima con epsilon,
+// con la mitad y con el doble, y solo se da el recuento si los tres coinciden.
+// Es también la razón por la que el plan pedía "un círculo no se da por
+// polígono" — y sale gratis, sin ningún umbral de curvatura inventado.
+ToolRunResult runPolygon(const cv::Mat& gray, const Fixture& fixture,
+                         const ToolConfig& config, const PolygonGeometry& g,
+                         const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+
+    const float hw = g.width / 2.0F;
+    const float hh = g.height / 2.0F;
+    const std::vector<cv::Point2f> quad{
+        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, hh)),
+        toImg(fixture, g.center + cv::Point2f(-hw, hh))};
+    for (std::size_t i = 0; i < quad.size(); ++i) {
+        result.overlaySegments.push_back({quad[i], quad[(i + 1) % quad.size()]});
+    }
+
+    std::vector<cv::Point> quadInt;
+    quadInt.reserve(quad.size());
+    for (const auto& p : quad) {
+        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
+    }
+    const cv::Rect bounds = cv::boundingRect(quadInt) & cv::Rect(0, 0, gray.cols, gray.rows);
+    if (bounds.area() < 25) {
+        result.detail = "La región cae fuera de la imagen";
+        return result;
+    }
+
+    cv::Mat regionMask = cv::Mat::zeros(bounds.size(), CV_8UC1);
+    std::vector<cv::Point> quadLocal;
+    quadLocal.reserve(quadInt.size());
+    for (const auto& p : quadInt) {
+        quadLocal.emplace_back(p.x - bounds.x, p.y - bounds.y);
+    }
+    cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
+
+    cv::Mat binary;
+    cv::threshold(gray(bounds), binary, 0.0, 255.0,
+                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
+    cv::bitwise_and(binary, regionMask, binary);
+
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+    if (contours.empty()) {
+        result.detail = "No se ve ninguna figura dentro del recuadro";
+        return result;
+    }
+    const auto& outer = *std::max_element(
+        contours.begin(), contours.end(), [](const auto& a, const auto& b) {
+            return cv::contourArea(a) < cv::contourArea(b);
+        });
+    if (cv::contourArea(outer) < 25.0) {
+        result.detail = "No se ve ninguna figura dentro del recuadro";
+        return result;
+    }
+
+    const double perimeter = vision::digitalPerimeter(outer);
+    const double epsilon = std::max(1.0, static_cast<double>(g.epsilonFraction) * perimeter);
+    const auto sidesAt = [&outer](double eps) {
+        std::vector<cv::Point> approx;
+        cv::approxPolyDP(outer, approx, eps, true);
+        return approx;
+    };
+
+    const std::vector<cv::Point> approx = sidesAt(epsilon);
+    const int sides = static_cast<int>(approx.size());
+    if (sides < 3) {
+        result.detail = "Con este epsilon la figura se queda en " + std::to_string(sides) +
+                        " vértices: bájalo";
+        return result;
+    }
+
+    // La comprobación de estabilidad: mitad y doble del epsilon elegido.
+    const int sidesHalf = static_cast<int>(sidesAt(epsilon * 0.5).size());
+    const int sidesDouble = static_cast<int>(sidesAt(epsilon * 2.0).size());
+    result.measured = sides;
+    if (sidesHalf != sides || sidesDouble != sides) {
+        result.detail = "No es un polígono claro: " + std::to_string(sides) + " lados con " +
+                        "este epsilon, " + std::to_string(sidesHalf) + " con la mitad y " +
+                        std::to_string(sidesDouble) + " con el doble. Un recuento que " +
+                        "cambia con la tolerancia no dice nada de la pieza";
+        return result;
+    }
+
+    result.ok = withinTolerance(config, result.measured);
+
+    // Longitudes de los lados y ángulos interiores.
+    double shortest = 1e9;
+    double longest = 0.0;
+    double minAngle = 360.0;
+    double maxAngle = 0.0;
+    for (std::size_t i = 0; i < approx.size(); ++i) {
+        const cv::Point2f current(approx[i]);
+        const cv::Point2f next(approx[(i + 1) % approx.size()]);
+        const cv::Point2f previous(approx[(i + approx.size() - 1) % approx.size()]);
+        const double side = cv::norm(next - current);
+        shortest = std::min(shortest, side);
+        longest = std::max(longest, side);
+
+        const cv::Point2f toPrev = previous - current;
+        const cv::Point2f toNext = next - current;
+        const double lenA = cv::norm(toPrev);
+        const double lenB = cv::norm(toNext);
+        if (lenA > 1e-6 && lenB > 1e-6) {
+            const double cosine =
+                std::clamp((toPrev.dot(toNext)) / (lenA * lenB), -1.0, 1.0);
+            const double angle = std::acos(cosine) * 180.0 / kPi;
+            minAngle = std::min(minAngle, angle);
+            maxAngle = std::max(maxAngle, angle);
+        }
+        result.overlaySegments.push_back(
+            {current + cv::Point2f(static_cast<float>(bounds.x), static_cast<float>(bounds.y)),
+             next + cv::Point2f(static_cast<float>(bounds.x), static_cast<float>(bounds.y))});
+        result.overlayPoints.push_back(
+            current + cv::Point2f(static_cast<float>(bounds.x), static_cast<float>(bounds.y)));
+    }
+
+    result.detail = std::to_string(sides) + " lados · lado " + fmtLen(shortest, fmt) + " a " +
+                    fmtLen(longest, fmt) + " · ángulo interior " + fmt2(minAngle) + "° a " +
+                    fmt2(maxAngle) + "°";
+    return result;
+}
+
 // Simetría de la silueta (F2). Un DESCRIPTOR DE FORMA, no una tolerancia GD&T:
 // la simetría de la norma se retiró en ASME Y14.5-2018, y darla con ese nombre
 // sería vender como cota algo que ya no lo es.
@@ -2081,6 +2212,9 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Region:
                 return ResultT::ok(runRegion(gray, fixture, config,
                                              std::get<RegionGeometry>(geometry.value()), fmt));
+            case ToolType::Polygon:
+                return ResultT::ok(runPolygon(
+                    gray, fixture, config, std::get<PolygonGeometry>(geometry.value()), fmt));
             case ToolType::Symmetry:
                 return ResultT::ok(runSymmetry(
                     gray, fixture, config, std::get<SymmetryGeometry>(geometry.value()), fmt));

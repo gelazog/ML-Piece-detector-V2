@@ -177,6 +177,21 @@ QIcon toolIcon(ToolType type) {
                 p.drawEllipse(QPointF(12, 13), 2.0, 2.0);
                 p.drawEllipse(QPointF(18, 15), 1.6, 1.6);
             });
+        case ToolType::Polygon:
+            return makeIcon([](QPainter& p, const QColor& c) {
+                // Un hexagono -la tuerca- con sus vertices marcados.
+                QPolygonF hex;
+                for (int k = 0; k < 6; ++k) {
+                    const double a = k * 3.14159265358979323846 / 3.0;
+                    hex << QPointF(14 + 10 * std::cos(a), 14 + 10 * std::sin(a));
+                }
+                p.drawPolygon(hex);
+                p.setBrush(c);
+                p.setPen(Qt::NoPen);
+                for (const QPointF& v : hex) {
+                    p.drawEllipse(v, 1.7, 1.7);
+                }
+            });
         case ToolType::Symmetry:
             return makeIcon([](QPainter& p, const QColor&) {
                 // Dos mitades iguales enfrentadas y el eje de trazo y punto que

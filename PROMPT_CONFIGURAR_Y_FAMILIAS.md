@@ -608,7 +608,17 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
   claramente menos; recortarle una esquina a una pieza simétrica **baja** el
   grado de forma monótona con el tamaño del recorte.
 
-- [ ] **F3 — Lados y polígono.** Número de lados, longitud de cada uno y
+- [x] **F3 — Lados y polígono.** *(Lo que costó pensar no fue contar lados sino
+  decidir CUÁNDO ese número significa algo. El plan pedía que "un círculo no se
+  dé por polígono" y la solución salió gratis, sin ningún umbral de curvatura
+  inventado: sobre un polígono de verdad el recuento aguanta al cambiar la
+  tolerancia, y sobre una curva cada tolerancia da otro número. Se aproxima con
+  epsilon, con la mitad y con el doble, y solo se publica el recuento si los
+  tres coinciden; si no, se dice cuántos salen con cada uno. Un círculo da
+  8/12/8 y queda rechazado. Medido: hexágono de radio 140 → 6 lados, lado
+  139,8–140,0 px, ángulos 119,90–120,05°; octógono con ángulos de 135,00°
+  clavados; y el mismo hexágono a radios 50, 100 y 180 da 6 lados siempre, que
+  es el test que justifica el epsilon relativo.)* Número de lados, longitud de cada uno y
   ángulos interiores, con `approxPolyDP`. El caso de uso obvio es el hexágono
   de una tuerca o un perfil poligonal.
   **El parámetro que lo decide todo es `epsilon`**, y por eso se expresa como

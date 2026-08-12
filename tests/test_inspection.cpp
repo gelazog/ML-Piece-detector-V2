@@ -767,6 +767,9 @@ ToolConfig makeToolAt(int index, float x, float y) {
         case ToolType::Symmetry:
             geometry = SymmetryGeometry{{x, y}, 40.0F, 30.0F, true};
             break;
+        case ToolType::Polygon:
+            geometry = PolygonGeometry{{x, y}, 40.0F, 30.0F, 0.02F, true};
+            break;
         case ToolType::ConstructedPoint:
             geometry = ConstructedPointGeometry{PointConstruction::Midpoint, {x, y}};
             break;
@@ -3575,4 +3578,125 @@ TEST(Symmetry, TheSuggestedToleranceStaysInsideZeroToOne) {
     suggestTolerances(ToolType::Symmetry, 0.98, lo, hi);
     EXPECT_NEAR(lo, 0.93, 1e-9);
     EXPECT_DOUBLE_EQ(hi, 1.0) << "una simetría mayor que 1 no existe";
+}
+
+// ---------------------------------------------------------------------------
+// Lados y polígono (F3)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Polígono regular de `sides` lados y radio `radius`, centrado en el lienzo.
+cv::Mat regularPolygon(int sides, double radius, int canvas = 400) {
+    cv::Mat gray(canvas, canvas, CV_8UC1, cv::Scalar(230));
+    std::vector<cv::Point> poly;
+    poly.reserve(static_cast<std::size_t>(sides));
+    for (int k = 0; k < sides; ++k) {
+        const double angle = 2.0 * CV_PI * k / sides - CV_PI / 2.0;
+        poly.emplace_back(cv::Point(
+            static_cast<int>(std::lround(canvas / 2.0 + radius * std::cos(angle))),
+            static_cast<int>(std::lround(canvas / 2.0 + radius * std::sin(angle)))));
+    }
+    cv::fillPoly(gray, std::vector<std::vector<cv::Point>>{poly}, cv::Scalar(30));
+    return gray;
+}
+
+ToolConfig polygonOver(float epsilonFraction, float side = 360.0F, int canvas = 400) {
+    ToolConfig config;
+    config.type = ToolType::Polygon;
+    config.name = "lados";
+    const float centre = canvas / 2.0F;
+    config.geometryJson = toJson(ToolGeometry(
+        PolygonGeometry{{centre, centre}, side, side, epsilonFraction, true}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+}  // namespace
+
+TEST(Polygon, CountsThreeFourSixAndEightSidesOverAWideEpsilonRange) {
+    // El plan pedía "su número exacto en un rango amplio de epsilon": si solo
+    // acertara con un valor afinado, el parámetro sería una trampa.
+    for (const int sides : {3, 4, 6, 8}) {
+        const cv::Mat gray = regularPolygon(sides, 140.0);
+        for (const float epsilon : {0.01F, 0.02F, 0.04F}) {
+            const auto result = runTool(gray, kIdentity, polygonOver(epsilon));
+            ASSERT_TRUE(result.isOk()) << result.error().message;
+            EXPECT_EQ(static_cast<int>(result.value().measured), sides)
+                << sides << " lados con epsilon " << epsilon << ": "
+                << result.value().detail;
+        }
+        const auto result = runTool(gray, kIdentity, polygonOver(0.02F));
+        std::printf("  %d lados -> %s\n", sides, result.value().detail.c_str());
+    }
+}
+
+TEST(Polygon, TheSideCountDoesNotChangeWhenTheImageIsScaled) {
+    // ESTE es el test que justifica que epsilon sea una fracción del perímetro
+    // y no un número de píxeles. Con epsilon en píxeles, el mismo hexágono visto
+    // más de cerca o más de lejos daría recuentos distintos, y una plantilla
+    // dejaría de valer al mover la cámara.
+    for (const double radius : {50.0, 100.0, 180.0}) {
+        const int canvas = static_cast<int>(radius * 3);
+        const cv::Mat gray = regularPolygon(6, radius, canvas);
+        const auto result =
+            runTool(gray, kIdentity,
+                    polygonOver(0.02F, static_cast<float>(canvas) * 0.95F, canvas));
+        ASSERT_TRUE(result.isOk()) << result.error().message;
+        std::printf("  radio %3.0f -> %s\n", radius, result.value().detail.c_str());
+        EXPECT_EQ(static_cast<int>(result.value().measured), 6)
+            << "radio " << radius << ": " << result.value().detail;
+    }
+}
+
+TEST(Polygon, ACircleIsNotReportedAsAPolygon) {
+    // No hace falta ningún umbral de curvatura: sobre una curva, el recuento
+    // cambia al cambiar la tolerancia, y eso es lo que se comprueba.
+    cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(230));
+    cv::circle(gray, {200, 200}, 140, cv::Scalar(30), cv::FILLED);
+    const auto result = runTool(gray, kIdentity, polygonOver(0.02F));
+    ASSERT_TRUE(result.isOk());
+    std::printf("  círculo -> %s\n", result.value().detail.c_str());
+    EXPECT_FALSE(result.value().ok);
+    EXPECT_NE(result.value().detail.find("No es un polígono claro"), std::string::npos)
+        << result.value().detail;
+}
+
+TEST(Polygon, TheSidesAndAnglesOfARegularHexagonAreTheOnesItHas) {
+    // Un hexágono regular de radio R tiene lado R y ángulos interiores de 120°.
+    const double radius = 140.0;
+    const cv::Mat gray = regularPolygon(6, radius);
+    const auto result = runTool(gray, kIdentity, polygonOver(0.02F));
+    ASSERT_TRUE(result.isOk());
+    ASSERT_TRUE(result.value().ok) << result.value().detail;
+    const std::string& detail = result.value().detail;
+
+    // El detalle lleva el rango de lados y de ángulos; se comprueba que el
+    // ángulo mínimo y el máximo estén los dos cerca de 120°, que es lo que hace
+    // regular a un hexágono.
+    const auto at = detail.find("ángulo interior ");
+    ASSERT_NE(at, std::string::npos) << detail;
+    const double minAngle = std::atof(detail.c_str() + at + std::string("ángulo interior ").size());
+    EXPECT_NEAR(minAngle, 120.0, 4.0) << detail;
+    EXPECT_NE(detail.find("6 lados"), std::string::npos) << detail;
+}
+
+TEST(Polygon, AnEpsilonThatSwallowsTheShapeSaysSoInsteadOfCounting) {
+    const cv::Mat gray = regularPolygon(6, 140.0);
+    // Un epsilon enorme deja la figura en menos de tres vértices.
+    const auto result = runTool(gray, kIdentity, polygonOver(0.9F));
+    ASSERT_TRUE(result.isOk());
+    EXPECT_FALSE(result.value().ok);
+    EXPECT_NE(result.value().detail.find("bájalo"), std::string::npos)
+        << result.value().detail;
+}
+
+TEST(Polygon, AnEmptyRegionSaysSoInsteadOfCountingNothing) {
+    const cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(230));
+    const auto result = runTool(gray, kIdentity, polygonOver(0.02F));
+    ASSERT_TRUE(result.isOk());
+    EXPECT_FALSE(result.value().ok);
+    EXPECT_NE(result.value().detail.find("figura"), std::string::npos)
+        << result.value().detail;
 }

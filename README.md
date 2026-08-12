@@ -250,6 +250,16 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      **0,82** (el valor exacto de un cuadrado es 0,785 — la diferencia es el
      sesgo conocido de medir un borde recto sobre una rejilla de píxeles). Una
      mota de ruido **no** cuenta como agujero.
+   - *Lados*: cuenta los **lados** de un perfil poligonal y mide cada uno y sus
+     **ángulos interiores** — el hexágono de una tuerca es el caso típico.
+     Arrastra un rectángulo sobre la pieza. El campo *Epsilon* (en milésimas del
+     perímetro) decide cuánto se simplifica el contorno: súbelo si cuenta lados
+     de más, bájalo si se come alguno. Va en **fracción del perímetro y no en
+     píxeles** a propósito, para que el recuento no cambie al acercar la cámara
+     ni al subir la resolución — comprobado con el mismo hexágono a tres
+     tamaños. Si el recuento **no aguanta** al doblar y al partir ese valor, la
+     figura no es un polígono claro (un círculo, por ejemplo) y lo dice en vez
+     de dar un número que cambiaría solo.
    - *Simetría*: busca el mejor **eje de simetría** de la silueta y da un
      **grado de 0 a 1** (1 = perfectamente simétrica). Arrastra un rectángulo
      sobre la pieza. Sirve para lo que ninguna cota pilla: una pieza **montada

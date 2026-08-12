@@ -46,6 +46,7 @@ QColor toolColor(ToolType type) {
         case ToolType::Blob: return {255, 105, 180};
         case ToolType::Region: return {255, 150, 200};
         case ToolType::Symmetry: return {200, 160, 255};
+        case ToolType::Polygon: return {255, 200, 120};
         case ToolType::Ruler: return {255, 255, 120};
         case ToolType::LineToLine: return {120, 220, 220};
         case ToolType::Angle: return {255, 170, 60};
@@ -1009,6 +1010,14 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         case ToolType::ConstructedLine:
             geometry = ConstructedLineGeometry{LineConstruction::ThroughTwoPoints, a};
             break;
+        case ToolType::Polygon: {
+            PolygonGeometry g;
+            g.center = (a + b) / 2.0F;
+            g.width = std::max(20.0F, std::abs(b.x - a.x));
+            g.height = std::max(20.0F, std::abs(b.y - a.y));
+            geometry = g;
+            break;
+        }
         case ToolType::Symmetry: {
             SymmetryGeometry g;
             g.center = (a + b) / 2.0F;
@@ -1195,7 +1204,8 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 labelPos = (la + lb) / 2.0;
             } else if constexpr (std::is_same_v<T, BlobGeometry> ||
                                  std::is_same_v<T, RegionGeometry> ||
-                                 std::is_same_v<T, SymmetryGeometry>) {
+                                 std::is_same_v<T, SymmetryGeometry> ||
+                                 std::is_same_v<T, PolygonGeometry>) {
                 const float hw = g.width / 2.0F;
                 const float hh = g.height / 2.0F;
                 QPolygonF quad;
