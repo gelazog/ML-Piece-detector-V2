@@ -991,7 +991,20 @@ tiene que estar accesible desde la familia.
   ranura más estrecha que el muestreo axial **se declara no medible** en vez de
   devolver un número redondeado al paso.
 
-- [ ] **M5 — El sesgo del ángulo de flanco de la Rosca, dicho en voz alta.**
+- [x] **M5 — El sesgo del ángulo de flanco de la Rosca, dicho en voz alta.**
+  *(Lo que hace que este aviso valga para algo es el umbral, no el texto. Está
+  puesto en 1°, que es lo mejor que la propia medida resuelve, y las tres
+  roscas del test caen a los dos lados: paso grueso 5,4° avisa, M6×1 a escala
+  3,4° avisa, rosca fina 0,7° se calla. Comprobados los dos sentidos, porque un
+  aviso que salta en toda rosca es uno que se aprende a ignorar — y entonces
+  tampoco sirve donde importa.
+  El ángulo de hélice es un COCIENTE entre dos longitudes, así que el aviso
+  funciona sin calibrar px→mm, a diferencia de la designación métrica.
+  El test comprueba además que el número anunciado es el de la rosca dibujada,
+  sacándolo del propio texto: si no, «avisa» solo probaría que hay una cadena.
+  Y lleva un `ASSERT` de que la rosca fina llegó a medirse, porque si hubiera
+  fallado antes tampoco llevaría la palabra «hélice» y el caso callado habría
+  dado verde sin probar nada.)*
   No es una herramienta nueva: es cerrar un cabo suelto de la ronda anterior.
   Por el ángulo de hélice, el flanco cercano y el lejano de una rosca se
   proyectan con inclinaciones distintas y el filete sale engrosado; los

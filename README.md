@@ -218,6 +218,23 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      identifica ningún tornillo. Necesita ver **varias vueltas**, y el ángulo de
      flanco además necesita que el filete se vea grande: con 50 px de altura de
      filete sale a ±1°, con 12 px deja de ser fiable y la herramienta lo dice.
+
+     Hay un segundo límite del ángulo de flanco, y este **no se arregla
+     acercando la cámara**: una rosca no es un perfil plano repetido, es una
+     hélice. Vista de lado, el flanco cercano y el lejano se proyectan con
+     inclinaciones distintas y la silueta del filete sale engrosada. Los
+     comparadores ópticos lo corrigen **inclinando el eje óptico** el ángulo de
+     hélice; una cámara fija sobre la mesa no puede, así que queda un **sesgo
+     sistemático** — no se va repitiendo la medida ni promediando piezas.
+
+     Como el ángulo de hélice sale del paso y del diámetro, que ya están
+     medidos, la herramienta puede decir **cuánto**: `atan(paso / (π·Ø medio))`.
+     Es un cociente entre dos longitudes, así que vale igual sin calibrar. El
+     aviso aparece **solo si el sesgo supera 1°**, que es lo mejor que la
+     medida resuelve: en un paso grueso salta (5,4°), en una M6×1 salta (3,4°)
+     y en una rosca fina se calla (0,7°). Un aviso que saltara en toda rosca
+     sería un aviso que se aprende a ignorar, y entonces tampoco serviría donde
+     importa.
    - *Engranaje*: cuenta los **dientes** y mide **Ø de cabeza**, **Ø de raíz**,
      **módulo**, **Ø primitivo** y **excentricidad**. La rueda debe verse **de
      cara**: arrastra del centro hacia fuera, pasando la punta de los dientes.

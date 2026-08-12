@@ -5591,3 +5591,59 @@ TEST(Groove, TheGeometrySurvivesARoundTrip) {
     EXPECT_EQ(back.stations, g.stations);
     EXPECT_EQ(back.measure, g.measure);
 }
+
+// ---------------------------------------------------------------------------
+// El sesgo del angulo de flanco por la helice, dicho en voz alta (M5)
+// ---------------------------------------------------------------------------
+
+TEST(ThreadSuite, TheHelixBiasIsAnnouncedOnACoarseThreadAndKeptQuietOnAFineOne) {
+    // El aviso tiene que valer para algo, y eso se prueba por los DOS lados: si
+    // saltara en toda rosca el operador aprenderia a ignorarlo, y entonces
+    // tampoco serviria en la rosca donde si importa.
+    //
+    // El angulo de helice es atan(paso / (pi*Ø medio)), un cociente entre dos
+    // longitudes: sale igual en pixeles que en mm, asi que el aviso no depende
+    // de haber calibrado.
+    struct Case {
+        const char* name;
+        double pitch;
+        double major;
+        double minor;
+        double band;
+        bool expectWarning;
+    };
+    // La segunda es una M6x1 a escala: paso 1 sobre Ø medio 5,35 da 3,4° de
+    // helice, la misma proporcion que 40 sobre 214 px.
+    const Case cases[] = {
+        {"paso grueso", 30.0, 120.0, 84.0, 110.0, true},
+        {"M6x1 a escala", 40.0, 234.0, 194.0, 130.0, true},
+        {"rosca fina", 10.0, 260.0, 248.0, 140.0, false},
+    };
+    for (const Case& c : cases) {
+        const cv::Mat gray = drawThread(c.pitch, c.major, c.minor, 60.0);
+        const auto r = runThreadOn(gray, threadAlong(0.0, c.band));
+        const double expected =
+            std::atan(c.pitch / (3.14159265358979323846 * (c.major + c.minor) / 2.0)) *
+            180.0 / 3.14159265358979323846;
+        // Sin esto el caso "callado" podria estar pasando en vacio: una rosca
+        // que fallara antes de llegar al aviso tampoco lo llevaria en el texto,
+        // y el test daria verde sin haber probado nada.
+        ASSERT_NE(r.detail.find("paso="), std::string::npos)
+            << c.name << " no llego siquiera a medirse: " << r.detail;
+        const bool warned = r.detail.find("hélice de") != std::string::npos;
+        std::printf("  %-14s helice %.2f° -> %s\n", c.name, expected,
+                    warned ? "AVISA" : "callado");
+        EXPECT_EQ(warned, c.expectWarning) << c.name << ": " << r.detail;
+        if (c.expectWarning) {
+            // Y dice CUANTO, que es lo que separa este aviso de un "puede haber
+            // error" generico: el numero es el que el operador tendria que
+            // inclinar la camara para quitarlo.
+            EXPECT_NE(r.detail.find("SISTEMÁTICO"), std::string::npos) << r.detail;
+            // El numero anunciado es el de verdad, no una etiqueta: se saca del
+            // propio texto y se compara con el de la rosca dibujada.
+            const std::size_t at = r.detail.find("hélice de ") + std::strlen("hélice de ");
+            const double announced = std::atof(r.detail.c_str() + at);
+            EXPECT_NEAR(announced, expected, 0.5) << r.detail;
+        }
+    }
+}

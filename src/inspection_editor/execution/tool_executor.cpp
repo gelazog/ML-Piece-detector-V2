@@ -1369,6 +1369,36 @@ ToolRunResult runThread(const cv::Mat& gray, const Fixture& fixture, const ToolC
         result.detail += " (filete de solo " + fmt2(crestHeight) +
                          " px: el ángulo de flanco no es fiable, acerca la cámara)";
     }
+    // Sesgo del ángulo de flanco por el ángulo de hélice (M5). Una rosca no es
+    // un perfil plano repetido: es una hélice. Mirándola de lado, el flanco
+    // cercano y el lejano se proyectan con inclinaciones distintas y la
+    // silueta del filete sale engrosada. Los comparadores ópticos lo corrigen
+    // INCLINANDO el eje óptico el ángulo de hélice; una cámara fija sobre la
+    // mesa no puede, así que el sesgo está ahí se hable de él o no — y hasta
+    // ahora no se hablaba.
+    //
+    // Lo que lo hace decible en vez de un "puede haber error" genérico: el
+    // ángulo de hélice sale del paso y del diámetro, que ya están medidos. Y es
+    // un COCIENTE entre dos longitudes, así que no hace falta calibración
+    // px→mm: el aviso vale igual en una rosca sin calibrar.
+    const double pitchDiameter = (majorDiameter + minorDiameter) / 2.0;
+    if (pitchDiameter > 1.0) {
+        const double helixDeg =
+            std::atan(pitchPx / (kPi * pitchDiameter)) * 180.0 / kPi;
+        // Solo se avisa por encima de lo que la propia herramienta resuelve
+        // (±1° en el mejor caso, y peor con el filete pequeño). En una rosca
+        // fina el sesgo se pierde bajo el ruido de la medida, y un aviso que
+        // salta en toda rosca es un aviso que se aprende a ignorar.
+        if (helixDeg > 1.0) {
+            result.detail += " (hélice de " + fmt2(helixDeg) +
+                             "°: el flanco cercano y el lejano se proyectan con "
+                             "inclinaciones que difieren en ese orden, así que el ángulo "
+                             "de flanco lleva un sesgo SISTEMÁTICO de unos " +
+                             fmt2(helixDeg) +
+                             "° que no se va repitiendo la medida — se quitaría "
+                             "inclinando la cámara ese mismo ángulo)";
+        }
+    }
     if (confidence < 0.5) {
         result.detail += " (repetición débil: confianza " + fmt2(confidence) + ")";
     }
