@@ -177,6 +177,24 @@ QIcon toolIcon(ToolType type) {
                 p.drawEllipse(QPointF(12, 13), 2.0, 2.0);
                 p.drawEllipse(QPointF(18, 15), 1.6, 1.6);
             });
+        case ToolType::Symmetry:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // Dos mitades iguales enfrentadas y el eje de trazo y punto que
+                // las separa: el dibujo de un plano para "simétrico respecto a".
+                QPolygonF left;
+                left << QPointF(11, 5) << QPointF(4, 12) << QPointF(7, 23)
+                     << QPointF(11, 23);
+                p.drawPolyline(left);
+                QPolygonF right;
+                right << QPointF(17, 5) << QPointF(24, 12) << QPointF(21, 23)
+                      << QPointF(17, 23);
+                p.drawPolyline(right);
+                QPen axis = p.pen();
+                axis.setStyle(Qt::DashDotLine);
+                axis.setWidthF(1.4);
+                p.setPen(axis);
+                p.drawLine(14, 2, 14, 26);
+            });
         case ToolType::Region:
             return makeIcon([](QPainter& p, const QColor& c) {
                 // Una silueta con su area tramada: lo que se mide es la region,

@@ -250,6 +250,18 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      **0,82** (el valor exacto de un cuadrado es 0,785 — la diferencia es el
      sesgo conocido de medir un borde recto sobre una rejilla de píxeles). Una
      mota de ruido **no** cuenta como agujero.
+   - *Simetría*: busca el mejor **eje de simetría** de la silueta y da un
+     **grado de 0 a 1** (1 = perfectamente simétrica). Arrastra un rectángulo
+     sobre la pieza. Sirve para lo que ninguna cota pilla: una pieza **montada
+     del revés**, o con un rasgo que no debería estar. El detalle da también el
+     grado en el eje **perpendicular**, que es lo que distingue un rectángulo
+     —simétrico en dos ejes— de un triángulo isósceles, que solo lo es en uno.
+     El eje que encuentra se puede usar como **referencia** de otras
+     herramientas. **No** es la simetría de GD&T: esa se retiró de la norma en
+     2018, y darla con ese nombre sería vender como cota algo que ya no lo es.
+     Ojo: es la herramienta **más cara** de todas (prueba muchos ángulos), unos
+     14 ms por imagen — si vas justo de fps, úsala en inspección única y no en
+     auto-inspección continua.
    - *Punto construido* y *Recta construida*: **no miden nada**. Calculan un
      punto o una recta a partir de otras herramientas para que puedas
      **declarar una referencia** (un *datum*). Colócalas con un clic —el clic

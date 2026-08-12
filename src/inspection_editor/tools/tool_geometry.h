@@ -220,6 +220,19 @@ struct RegionGeometry {
     bool darkPiece = true;  // la pieza es lo oscuro (o lo claro si false)
 };
 
+// Simetría de la silueta (F2). Es un DESCRIPTOR DE FORMA, no una tolerancia
+// GD&T: la simetría de la norma se retiró en ASME Y14.5-2018 y darla con ese
+// nombre sería vender como cota algo que ya no lo es.
+//
+// Para lo que sirve de verdad es para lo que se pidió: detectar una pieza
+// montada del revés, o con un rasgo asimétrico que no debería estar.
+struct SymmetryGeometry {
+    cv::Point2f center;  // rectángulo alineado a los ejes de la pieza
+    float width = 160.0F;
+    float height = 120.0F;
+    bool darkPiece = true;
+};
+
 [[nodiscard]] const std::array<RegionMeasure, 6>& allRegionMeasures();
 [[nodiscard]] const char* regionMeasureLabel(RegionMeasure measure);
 
@@ -229,7 +242,7 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
                                   PositionGeometry, ArcGeometry, ShaftGeometry,
                                   ThreadGeometry, GearGeometry, ConstructedPointGeometry,
                                   ConstructedLineGeometry, MedianAxisGeometry,
-                                  RegionGeometry>;
+                                  RegionGeometry, SymmetryGeometry>;
 
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
@@ -260,7 +273,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 18>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 19>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que
@@ -314,6 +327,15 @@ const char* toolTypeDescription(ToolType type);
 // Tolerancias sugeridas a partir de una primera medición sobre la pieza
 // buena: banda de ±10% para distancias/diámetros, conteo exacto para blobs y
 // techo holgado para la desviación de borde.
+// Si lo que mide esta herramienta es una FRACCION entre 0 y 1 (un grado, una
+// proporcion) y no una magnitud con unidades. Lo consulta `suggestTolerances`
+// para recortar el techo en 1 —un grado mayor que 1 no existe, y dejar la banda
+// abierta por arriba haria pasar por bueno un valor imposible— y lo consultan
+// los barridos de coherencia para no probar con valores que la herramienta no
+// puede dar. Vive aqui, en una sola funcion, porque tenerlo escrito en los dos
+// sitios acabaria divergiendo.
+[[nodiscard]] bool measuresFraction(ToolType type);
+
 void suggestTolerances(ToolType type, double measured, double& toleranceMin,
                        double& toleranceMax);
 

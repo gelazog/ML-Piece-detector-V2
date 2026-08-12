@@ -580,7 +580,22 @@ Formato: casilla, ID, tarea, por qué, cómo, archivos, cómo se verifica.
   circularidad de un círculo dibujado tiene que dar el valor que el test
   declare como referencia (y ese valor, con su explicación, en el comentario).
 
-- [ ] **F2 — Simetría.** Lo que pidió el usuario, y honesto **como descriptor
+- [x] **F2 — Simetría.** *(Se barre el ángulo ENTERO en vez de sembrar con el
+  eje principal de inercia como decía el plan. El eje de simetría de una figura
+  simétrica sí es un eje principal, así que sembrar sería correcto… salvo
+  cuando la nube es casi redonda, que es cuando ese eje es ruido — y es justo
+  la figura en la que uno querría fiarse. Barrer entero quita el caso especial;
+  costaba 26 ms, y haciendo el barrido grueso sobre una copia reducida a 160 px
+  baja a 14 sin mover el resultado (el afinado sigue a resolución completa,
+  porque perder píxeles del borde INFLA la simetría: los detalles que la rompen
+  son los primeros en desaparecer). Aun así es la herramienta más cara y eso
+  está dicho en el README. Medido: rectángulo 1,00 en los dos ejes, L 0,69,
+  círculo 1,00, y el recorte de esquina baja 1,000 → 0,956 → 0,858 → 0,809. El
+  eje encontrado se ofrece como referencia. Dos fallos propios cazados por los
+  barridos de coherencia: el `case` nuevo se coló entre `MedianAxis` y
+  `EdgeFlaw` y le recortaba a 1 la rectitud del eje; y el barrido de tolerancias
+  probaba la simetría con valores de 137, que una fracción no puede dar — se
+  arregló declarando `measuresFraction` en el modelo, no relajando el test.)* Lo que pidió el usuario, y honesto **como descriptor
   de forma**, no como tolerancia GD&T (la de la norma está retirada).
   Devuelve el **ángulo del mejor eje de simetría** y un **grado de simetría
   0..1**. Algoritmo: semilla con el eje principal de inercia

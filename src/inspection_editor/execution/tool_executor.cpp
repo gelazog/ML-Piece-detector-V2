@@ -1557,6 +1557,178 @@ ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& confi
     return result;
 }
 
+// Simetría de la silueta (F2). Un DESCRIPTOR DE FORMA, no una tolerancia GD&T:
+// la simetría de la norma se retiró en ASME Y14.5-2018, y darla con ese nombre
+// sería vender como cota algo que ya no lo es.
+//
+// El método: reflejar la máscara respecto a una recta que pasa por su centroide
+// y medir cuánto se solapa con la original (IoU). El mejor ángulo es el eje de
+// simetría, y su IoU es el grado.
+
+// Solape de una máscara consigo misma reflejada respecto a la recta que pasa por
+// `centre` con el ángulo dado. 1 = se superponen exactamente.
+double symmetryOverlap(const cv::Mat& mask, const cv::Point2f& centre, double angleRad) {
+    // Reflexión respecto a una recta por el origen con ángulo θ:
+    //   [ cos2θ   sin2θ ]
+    //   [ sin2θ  -cos2θ ]
+    // y luego se traslada para que el centroide quede fijo.
+    const double c = std::cos(2.0 * angleRad);
+    const double s = std::sin(2.0 * angleRad);
+    cv::Mat m = (cv::Mat_<double>(2, 3) << c, s, centre.x - c * centre.x - s * centre.y, s,
+                 -c, centre.y - s * centre.x + c * centre.y);
+
+    cv::Mat mirrored;
+    // INTER_NEAREST porque la máscara es binaria: interpolar crearía valores
+    // intermedios que luego habría que volver a umbralizar, y eso engorda o
+    // adelgaza la figura según el ángulo — justo el sesgo que se está midiendo.
+    cv::warpAffine(mask, mirrored, m, mask.size(), cv::INTER_NEAREST, cv::BORDER_CONSTANT,
+                   cv::Scalar(0));
+
+    cv::Mat inter;
+    cv::Mat uni;
+    cv::bitwise_and(mask, mirrored, inter);
+    cv::bitwise_or(mask, mirrored, uni);
+    const double unionArea = cv::countNonZero(uni);
+    if (unionArea <= 0.0) {
+        return 0.0;
+    }
+    return cv::countNonZero(inter) / unionArea;
+}
+
+ToolRunResult runSymmetry(const cv::Mat& gray, const Fixture& fixture,
+                          const ToolConfig& config, const SymmetryGeometry& g,
+                          const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+    (void)fmt;  // el grado no tiene unidades y el ángulo va en grados
+
+    const float hw = g.width / 2.0F;
+    const float hh = g.height / 2.0F;
+    const std::vector<cv::Point2f> quad{
+        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
+        toImg(fixture, g.center + cv::Point2f(hw, hh)),
+        toImg(fixture, g.center + cv::Point2f(-hw, hh))};
+    for (std::size_t i = 0; i < quad.size(); ++i) {
+        result.overlaySegments.push_back({quad[i], quad[(i + 1) % quad.size()]});
+    }
+
+    std::vector<cv::Point> quadInt;
+    quadInt.reserve(quad.size());
+    for (const auto& p : quad) {
+        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
+    }
+    // Se deja un margen alrededor del recuadro: al reflejar, parte de la figura
+    // cae fuera de su propia caja, y si el lienzo la recortara ese trozo
+    // contaría como asimetría cuando solo es falta de sitio.
+    constexpr int kPad = 8;
+    cv::Rect bounds = cv::boundingRect(quadInt);
+    bounds -= cv::Point(kPad, kPad);
+    bounds += cv::Size(2 * kPad, 2 * kPad);
+    bounds &= cv::Rect(0, 0, gray.cols, gray.rows);
+    if (bounds.area() < 100) {
+        result.detail = "La región cae fuera de la imagen";
+        return result;
+    }
+
+    cv::Mat regionMask = cv::Mat::zeros(bounds.size(), CV_8UC1);
+    std::vector<cv::Point> quadLocal;
+    quadLocal.reserve(quadInt.size());
+    for (const auto& p : quadInt) {
+        quadLocal.emplace_back(p.x - bounds.x, p.y - bounds.y);
+    }
+    cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
+
+    cv::Mat binary;
+    cv::threshold(gray(bounds), binary, 0.0, 255.0,
+                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
+    cv::bitwise_and(binary, regionMask, binary);
+
+    const cv::Moments moments = cv::moments(binary, true);
+    if (moments.m00 < 25.0) {
+        result.detail = "No se ve ninguna figura dentro del recuadro";
+        return result;
+    }
+    const cv::Point2f centroid(static_cast<float>(moments.m10 / moments.m00),
+                               static_cast<float>(moments.m01 / moments.m00));
+
+    // Barrido grueso por toda la media vuelta y afinado alrededor del mejor.
+    //
+    // Se barre entero en vez de sembrar con el eje principal de inercia. El eje
+    // de simetría de una figura simétrica ES un eje principal, así que sembrar
+    // sería correcto... salvo cuando la nube es casi redonda, que es cuando el
+    // eje principal es ruido — y esa es justo la figura en la que uno querría
+    // fiarse del resultado. Barrer entero quita el caso especial.
+    //
+    // El barrido grueso va sobre una copia REDUCIDA, y no es un atajo gratuito:
+    // barrer 60 ángulos a resolución completa costaba ~26 ms por frame, que en
+    // la vista en vivo es un tercio del presupuesto. Reducir a 160 px de lado
+    // baja eso a unos pocos ms, y no afecta al resultado porque el grueso solo
+    // tiene que acertar el TRAMO de 3°: el ángulo final y el grado que se
+    // publica salen del afinado, que va a resolución completa.
+    constexpr double kDegToRad = kPi / 180.0;
+    constexpr int kCoarseSide = 160;
+    cv::Mat coarse = binary;
+    cv::Point2f coarseCentroid = centroid;
+    const int longestSide = std::max(binary.cols, binary.rows);
+    if (longestSide > kCoarseSide) {
+        const double factor = static_cast<double>(kCoarseSide) / longestSide;
+        cv::resize(binary, coarse, cv::Size(), factor, factor, cv::INTER_NEAREST);
+        coarseCentroid = centroid * static_cast<float>(factor);
+    }
+
+    double bestAngleDeg = 0.0;
+    double bestScore = -1.0;
+    for (double angle = 0.0; angle < 180.0; angle += 3.0) {
+        const double score = symmetryOverlap(coarse, coarseCentroid, angle * kDegToRad);
+        if (score > bestScore) {
+            bestScore = score;
+            bestAngleDeg = angle;
+        }
+    }
+    // El afinado, a resolución completa: el grado que se publica no puede salir
+    // de una imagen reducida, porque perder píxeles del borde INFLA la simetría
+    // —los detalles pequeños que la rompen son los primeros en desaparecer—.
+    bestScore = -1.0;
+    const double coarseBest = bestAngleDeg;
+    for (double delta = -3.0; delta <= 3.0; delta += 0.25) {
+        const double angle = coarseBest + delta;
+        const double score = symmetryOverlap(binary, centroid, angle * kDegToRad);
+        if (score > bestScore) {
+            bestScore = score;
+            bestAngleDeg = angle;
+        }
+    }
+    // El ángulo de una recta vive en [0,180).
+    bestAngleDeg = std::fmod(bestAngleDeg + 180.0, 180.0);
+
+    // El eje perpendicular al mejor: es lo que distingue un rectángulo —simétrico
+    // en dos ejes— de un triángulo isósceles, que solo lo es en uno.
+    const double crossScore =
+        symmetryOverlap(binary, centroid, (bestAngleDeg + 90.0) * kDegToRad);
+
+    result.measured = bestScore;
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = "grado=" + fmt2(bestScore) + " en un eje a " + fmt2(bestAngleDeg) +
+                    "°, y " + fmt2(crossScore) + " en el perpendicular";
+
+    // El eje encontrado se ofrece como referencia: el eje de simetría de una
+    // pieza es un datum tan legítimo como su eje medio.
+    const cv::Point2f centreImage(centroid.x + bounds.x, centroid.y + bounds.y);
+    const cv::Point2f direction(static_cast<float>(std::cos(bestAngleDeg * kDegToRad)),
+                                static_cast<float>(std::sin(bestAngleDeg * kDegToRad)));
+    const cv::Point2f piecePoint = vision::toPieceCoords(fixture, centreImage);
+    const cv::Point2f pieceAlong = vision::toPieceCoords(fixture, centreImage + direction);
+    result.derived.kind = DerivedKind::Line;
+    result.derived.point = piecePoint;
+    result.derived.direction = pieceAlong - piecePoint;
+
+    const float half = std::max(hw, hh);
+    result.overlaySegments.push_back(
+        {centreImage - half * direction, centreImage + half * direction});
+    result.overlayPoints.push_back(centreImage);
+    return result;
+}
+
 // Región (F1): los descriptores de forma de la silueta que hay dentro del
 // recuadro. Una sola herramienta con selector de medida, porque cada instancia
 // lleva su tolerancia y así el operador pone solo las que le importan.
@@ -1909,6 +2081,9 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Region:
                 return ResultT::ok(runRegion(gray, fixture, config,
                                              std::get<RegionGeometry>(geometry.value()), fmt));
+            case ToolType::Symmetry:
+                return ResultT::ok(runSymmetry(
+                    gray, fixture, config, std::get<SymmetryGeometry>(geometry.value()), fmt));
             case ToolType::MedianAxis:
                 return ResultT::ok(runMedianAxis(
                     gray, fixture, config, std::get<MedianAxisGeometry>(geometry.value()),

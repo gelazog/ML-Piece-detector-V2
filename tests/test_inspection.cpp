@@ -764,6 +764,9 @@ ToolConfig makeToolAt(int index, float x, float y) {
         case ToolType::Region:
             geometry = RegionGeometry{{x, y}, 40.0F, 30.0F, RegionMeasure::Area, true};
             break;
+        case ToolType::Symmetry:
+            geometry = SymmetryGeometry{{x, y}, 40.0F, 30.0F, true};
+            break;
         case ToolType::ConstructedPoint:
             geometry = ConstructedPointGeometry{PointConstruction::Midpoint, {x, y}};
             break;
@@ -2453,7 +2456,12 @@ TEST(ToolCoherence, EveryToolSuggestsABandThatAcceptsTheGoodPiece) {
     // contuviera esa misma medida, la primera pieza daría NG nada más dibujar la
     // herramienta.
     for (const ToolType type : allToolTypes()) {
-        for (const double measured : {0.5, 3.0, 40.0, 137.25}) {
+        for (const double raw : {0.5, 3.0, 40.0, 137.25}) {
+            // Una herramienta que mide una fraccion no puede dar 137: probarla
+            // con eso comprobaria una situacion que no existe. El rango sale de
+            // `measuresFraction`, no de una lista escrita aqui que acabaria
+            // discrepando del modelo.
+            const double measured = measuresFraction(type) ? std::min(raw, 1.0) : raw;
             double lo = -1.0;
             double hi = -1.0;
             suggestTolerances(type, measured, lo, hi);
@@ -3421,4 +3429,150 @@ TEST(Region, TheSuggestedToleranceFitsTheMeasureAndNotJustTheType) {
     suggestTolerances(ToolGeometry(RulerGeometry{{0, 0}, {60, 0}}), 60.0, lo, hi);
     EXPECT_DOUBLE_EQ(lo, byType);
     EXPECT_DOUBLE_EQ(hi, byTypeHi);
+}
+
+// ---------------------------------------------------------------------------
+// Simetría de la silueta (F2)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+ToolConfig symmetryOver(cv::Point2f centre, float w, float h) {
+    ToolConfig config;
+    config.type = ToolType::Symmetry;
+    config.name = "simetria";
+    config.geometryJson = toJson(ToolGeometry(SymmetryGeometry{centre, w, h, true}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+ToolRunResult symmetryOf(const cv::Mat& gray) {
+    const auto result = runTool(gray, kIdentity, symmetryOver({200, 200}, 320, 320));
+    return result.isOk() ? result.value() : ToolRunResult{};
+}
+
+cv::Mat shapeCanvas() { return cv::Mat(400, 400, CV_8UC1, cv::Scalar(230)); }
+
+}  // namespace
+
+TEST(Symmetry, ARectangleIsSymmetricOnTwoOrthogonalAxes) {
+    cv::Mat gray = shapeCanvas();
+    cv::rectangle(gray, cv::Rect(130, 160, 140, 80), cv::Scalar(30), cv::FILLED);
+    const auto result = symmetryOf(gray);
+    ASSERT_TRUE(result.derived.valid()) << result.detail;
+    std::printf("  rectángulo: %s\n", result.detail.c_str());
+
+    EXPECT_GT(result.measured, 0.97) << result.detail;
+    // Y el perpendicular también: es lo que distingue un rectángulo de un
+    // triángulo isósceles, que solo es simétrico en un eje. El detalle lo dice.
+    EXPECT_NE(result.detail.find("en el perpendicular"), std::string::npos);
+
+    // El eje encontrado es uno de los dos del rectángulo (0° o 90°).
+    const double angle = std::atan2(result.derived.direction.y,
+                                    result.derived.direction.x) * 180.0 / CV_PI;
+    const double normalised = std::fmod(angle + 180.0, 180.0);
+    const bool horizontal = normalised < 3.0 || normalised > 177.0;
+    const bool vertical = std::abs(normalised - 90.0) < 3.0;
+    EXPECT_TRUE(horizontal || vertical) << "eje a " << normalised << "°";
+}
+
+TEST(Symmetry, AnLShapeScoresClearlyLower) {
+    cv::Mat gray = shapeCanvas();
+    // Una L: dos brazos en ángulo recto. No tiene ningún eje de simetría
+    // ortogonal, solo el de 45° que intercambia los dos brazos si son iguales,
+    // así que se hacen de distinto largo para que no lo tenga.
+    cv::rectangle(gray, cv::Rect(140, 140, 50, 160), cv::Scalar(30), cv::FILLED);
+    cv::rectangle(gray, cv::Rect(140, 250, 130, 50), cv::Scalar(30), cv::FILLED);
+    const auto result = symmetryOf(gray);
+    ASSERT_TRUE(result.derived.valid()) << result.detail;
+    std::printf("  pieza en L: %s\n", result.detail.c_str());
+    EXPECT_LT(result.measured, 0.85) << "una L no puede pasar por simétrica";
+}
+
+TEST(Symmetry, CuttingACornerLowersTheDegreeMonotonically) {
+    // La comprobación que pide el plan, y la que de verdad importa: la medida
+    // tiene que RESPONDER al tamaño del defecto, no solo distinguir dos casos.
+    double previous = 1.01;
+    for (const int bite : {0, 20, 40, 60}) {
+        cv::Mat gray = shapeCanvas();
+        cv::rectangle(gray, cv::Rect(130, 150, 140, 100), cv::Scalar(30), cv::FILLED);
+        if (bite > 0) {
+            // Un triángulo en la esquina superior derecha.
+            const std::vector<cv::Point> corner{
+                {270 - bite, 150}, {270, 150}, {270, 150 + bite}};
+            cv::fillPoly(gray, std::vector<std::vector<cv::Point>>{corner}, cv::Scalar(230));
+        }
+        const auto result = symmetryOf(gray);
+        ASSERT_TRUE(result.derived.valid()) << result.detail;
+        std::printf("  esquina de %2d px -> grado %.4f\n", bite, result.measured);
+        if (bite == 0) {
+            EXPECT_GT(result.measured, 0.97);
+        }
+        EXPECT_LT(result.measured, previous)
+            << "un recorte mayor tiene que bajar el grado de simetría";
+        previous = result.measured;
+    }
+}
+
+TEST(Symmetry, ACircleIsSymmetricWhicheverAxisIsChosen) {
+    // El caso que justifica barrer el ángulo entero en vez de sembrar con el eje
+    // principal de inercia: en una figura redonda ese eje es ruido, y es justo
+    // la figura donde uno querría fiarse del resultado.
+    cv::Mat gray = shapeCanvas();
+    cv::circle(gray, {200, 200}, 90, cv::Scalar(30), cv::FILLED);
+    const auto result = symmetryOf(gray);
+    ASSERT_TRUE(result.derived.valid()) << result.detail;
+    std::printf("  círculo: %s\n", result.detail.c_str());
+    EXPECT_GT(result.measured, 0.97);
+}
+
+TEST(Symmetry, TheAxisItFindsCanBeUsedAsADatum) {
+    // Para lo que sirve además de puntuar: el eje de simetría de una pieza es un
+    // datum tan legítimo como su eje medio.
+    cv::Mat gray = shapeCanvas();
+    cv::rectangle(gray, cv::Rect(130, 160, 140, 80), cv::Scalar(30), cv::FILLED);
+
+    ToolConfig point;
+    point.type = ToolType::Position;
+    point.name = "P";
+    point.geometryJson =
+        toJson(ToolGeometry(PositionGeometry{{100.0F, 100.0F}, PositionAxis::Radial}));
+    point.toleranceMin = 0.0;
+    point.toleranceMax = 1e9;
+
+    ToolConfig parallel;
+    parallel.type = ToolType::ConstructedLine;
+    parallel.name = "paralela";
+    parallel.reference = "simetria";
+    parallel.reference2 = "P";
+    parallel.geometryJson = toJson(ToolGeometry(
+        ConstructedLineGeometry{LineConstruction::ParallelThrough, {100.0F, 100.0F}}));
+    parallel.toleranceMin = 0.0;
+    parallel.toleranceMax = 1e9;
+
+    const std::vector<ToolConfig> tools{parallel, symmetryOver({200, 200}, 320, 320), point};
+    const auto results = runTools(gray, kIdentity, tools);
+    ASSERT_EQ(results.size(), 3U);
+    for (const auto& result : results) {
+        EXPECT_TRUE(result.ok) << result.name << ": " << result.detail;
+    }
+}
+
+TEST(Symmetry, AnEmptyRegionSaysSoInsteadOfScoringZero) {
+    const cv::Mat gray = shapeCanvas();  // sin figura
+    const auto result = runTool(gray, kIdentity, symmetryOver({200, 200}, 100, 100));
+    ASSERT_TRUE(result.isOk());
+    EXPECT_FALSE(result.value().ok);
+    EXPECT_FALSE(result.value().derived.valid());
+    EXPECT_NE(result.value().detail.find("figura"), std::string::npos)
+        << result.value().detail;
+}
+
+TEST(Symmetry, TheSuggestedToleranceStaysInsideZeroToOne) {
+    double lo = 0.0;
+    double hi = 0.0;
+    suggestTolerances(ToolType::Symmetry, 0.98, lo, hi);
+    EXPECT_NEAR(lo, 0.93, 1e-9);
+    EXPECT_DOUBLE_EQ(hi, 1.0) << "una simetría mayor que 1 no existe";
 }

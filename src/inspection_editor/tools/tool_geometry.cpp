@@ -29,17 +29,19 @@ const char* toolTypeName(ToolType type) {
         case ToolType::ConstructedLine: return "constructed_line";
         case ToolType::MedianAxis: return "median_axis";
         case ToolType::Region: return "region";
+        case ToolType::Symmetry: return "symmetry";
     }
     return "unknown";
 }
 
-const std::array<ToolType, 18>& allToolTypes() {
-    static const std::array<ToolType, 18> kTypes{
+const std::array<ToolType, 19>& allToolTypes() {
+    static const std::array<ToolType, 19> kTypes{
         ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine, ToolType::EdgeFlaw,
         ToolType::Blob,     ToolType::Ruler,    ToolType::LineToLine,  ToolType::Angle,
         ToolType::PolyBlob, ToolType::Position, ToolType::Arc,         ToolType::Shaft,
         ToolType::Thread,   ToolType::Gear,     ToolType::ConstructedPoint,
-        ToolType::ConstructedLine, ToolType::MedianAxis, ToolType::Region};
+        ToolType::ConstructedLine, ToolType::MedianAxis, ToolType::Region,
+        ToolType::Symmetry};
     return kTypes;
 }
 
@@ -66,6 +68,7 @@ ToolCategory categoryOf(ToolType type) {
         case ToolType::PolyBlob:
         case ToolType::EdgeFlaw:
         case ToolType::Region:
+        case ToolType::Symmetry:
             return ToolCategory::BasicShape;
         // La cota directa, que es lo que se pide en un plano.
         case ToolType::Caliper:
@@ -290,6 +293,7 @@ const char* toolTypeLabel(ToolType type) {
         case ToolType::ConstructedLine: return "Recta construida";
         case ToolType::MedianAxis: return "Eje medio";
         case ToolType::Region: return "Región";
+        case ToolType::Symmetry: return "Simetría";
     }
     return "?";
 }
@@ -400,8 +404,24 @@ const char* toolTypeDescription(ToolType type) {
                    "cuadrado 0,82 (el valor exacto de un cuadrado es 0,785; la\n"
                    "diferencia es el sesgo conocido de medir un borde recto sobre una\n"
                    "rejilla de píxeles). Lo que separa una forma de otra es de sobra.";
+        case ToolType::Symmetry:
+            return "Simetría — busca el mejor EJE DE SIMETRÍA de la silueta y da un\n"
+                   "grado de 0 a 1 (1 = perfectamente simétrica). Arrastra un\n"
+                   "rectángulo sobre la pieza. Sirve para pillar una pieza montada del\n"
+                   "revés o con un rasgo que no debería estar: son los casos en los que\n"
+                   "la simetría cae y ninguna cota se entera.\n"
+                   "NO es la simetría de GD&T —esa se retiró de la norma en 2018—,\n"
+                   "es un descriptor de forma; y el eje que encuentra se puede usar\n"
+                   "como referencia de otras herramientas.";
     }
     return "";
+}
+
+bool measuresFraction(ToolType type) {
+    // La Region puede medir una fraccion (solidez, circularidad) o no (area,
+    // perimetro, agujeros): eso lo decide su geometria, no su tipo, y lo
+    // resuelve la sobrecarga de `suggestTolerances` que la mira.
+    return type == ToolType::Symmetry;
 }
 
 void suggestTolerances(ToolType type, double measured, double& toleranceMin,
@@ -416,6 +436,18 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
             toleranceMin = measured;
             toleranceMax = measured;
             return;
+        case ToolType::Symmetry:
+            // Vive entre 0 y 1: una banda relativa sería ridícula cerca de 1. El
+            // techo se corta ahí porque una simetría mayor que 1 no existe, y
+            // dejarlo abierto haría pasar por bueno un valor imposible.
+            toleranceMin = std::max(0.0, measured - 0.05);
+            toleranceMax = std::min(1.0, measured + 0.05);
+            return;
+        // El Eje medio va con el Borde liso y NO con la Simetría, aunque estén
+        // seguidos en el enum: lo que mide es una rectitud en píxeles, no una
+        // fracción. Meterlo en la rama de arriba le recortaba el techo a 1 y
+        // dejaba fuera de tolerancia cualquier eje con más de 1 px de
+        // desviación. Lo cazó el barrido de coherencia.
         case ToolType::MedianAxis:
         case ToolType::EdgeFlaw:
             // Desviación: la pieza buena define el piso; techo holgado.
@@ -542,6 +574,8 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::MedianAxis;
             } else if constexpr (std::is_same_v<T, RegionGeometry>) {
                 return ToolType::Region;
+            } else if constexpr (std::is_same_v<T, SymmetryGeometry>) {
+                return ToolType::Symmetry;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -565,7 +599,8 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 g.p1 += delta;
             } else if constexpr (std::is_same_v<T, CircleGeometry> ||
                                  std::is_same_v<T, BlobGeometry> ||
-                                 std::is_same_v<T, RegionGeometry>) {
+                                 std::is_same_v<T, RegionGeometry> ||
+                                 std::is_same_v<T, SymmetryGeometry>) {
                 g.center += delta;
             } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
                 g.lineA += delta;
@@ -738,6 +773,11 @@ std::string toJson(const ToolGeometry& geometry) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "cx" << g.center.x << "cy" << g.center.y << "w" << g.width << "h"
                        << g.height << "minArea" << g.minArea << "dark" << (g.darkBlobs ? 1 : 0);
+                });
+            } else if constexpr (std::is_same_v<T, SymmetryGeometry>) {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "cx" << g.center.x << "cy" << g.center.y << "w" << g.width << "h"
+                       << g.height << "dark" << (g.darkPiece ? 1 : 0);
                 });
             } else if constexpr (std::is_same_v<T, RegionGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
@@ -970,6 +1010,18 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.axisTo = {static_cast<float>(bx.value()), static_cast<float>(by.value())};
                 g.searchBand = static_cast<float>(band.value());
                 g.stations = static_cast<int>(reader.numberOr("stations", 32.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::Symmetry: {
+                SymmetryGeometry g;
+                auto cx = f("cx"), cy = f("cy"), w = f("w"), h = f("h");
+                for (const auto* v : {&cx, &cy, &w, &h}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
+                g.width = static_cast<float>(w.value());
+                g.height = static_cast<float>(h.value());
+                g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
                 return ResultT::ok(g);
             }
             case ToolType::Region: {
