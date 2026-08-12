@@ -354,6 +354,48 @@ std::vector<std::vector<cv::Point>> findHoles(const cv::Mat& mask, double minAre
     return holes;
 }
 
+double digitalPerimeter(const std::vector<cv::Point>& contour) {
+    if (contour.size() < 2) {
+        return 0.0;
+    }
+    // Coeficientes de Vossepoel–Smeulders. No son ajustados aquí: vienen del
+    // estimador publicado, y por eso el sesgo que dejan está acotado en vez de
+    // afinado para las figuras con las que se probó.
+    constexpr double kStraight = 0.980;
+    constexpr double kDiagonal = 1.406;
+    constexpr double kCorner = -0.091;
+
+    const std::size_t n = contour.size();
+    int straight = 0;
+    int diagonal = 0;
+    int corners = 0;
+    std::vector<cv::Point> steps;
+    steps.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        const cv::Point step = contour[(i + 1) % n] - contour[i];
+        const int dx = std::abs(step.x);
+        const int dy = std::abs(step.y);
+        if (dx > 1 || dy > 1) {
+            // No es una cadena de 8 vecinos: el conteo de pasos no significa
+            // nada. Se cae a la longitud de cadena, que al menos es una
+            // longitud, en vez de devolver un número inventado.
+            return cv::arcLength(contour, true);
+        }
+        if (dx + dy == 1) {
+            ++straight;
+        } else if (dx == 1 && dy == 1) {
+            ++diagonal;
+        }
+        steps.push_back(step);
+    }
+    for (std::size_t i = 0; i < steps.size(); ++i) {
+        if (steps[i] != steps[(i + 1) % steps.size()]) {
+            ++corners;
+        }
+    }
+    return kStraight * straight + kDiagonal * diagonal + kCorner * corners;
+}
+
 ContourReport describeContour(const cv::Mat& mask, const DecomposeOptions& options) {
     ContourReport report;
     if (mask.empty() || mask.type() != CV_8UC1) {
@@ -386,7 +428,7 @@ ContourReport describeContour(const cv::Mat& mask, const DecomposeOptions& optio
     }
 
     report.outer = contours[static_cast<std::size_t>(best)];
-    report.perimeter = cv::arcLength(report.outer, true);
+    report.perimeter = digitalPerimeter(report.outer);
     report.area = bestArea;
     report.bounds = cv::boundingRect(report.outer);
     report.minRect = cv::minAreaRect(report.outer);

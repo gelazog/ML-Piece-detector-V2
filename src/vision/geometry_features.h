@@ -93,6 +93,40 @@ struct ContourReport {
 [[nodiscard]] ContourReport describeContour(const cv::Mat& mask,
                                             const DecomposeOptions& options = {});
 
+// Perímetro de un contorno digital, estimado con Vossepoel–Smeulders:
+// `0,980·Ne + 1,406·No − 0,091·Nc`, donde Ne son los pasos rectos, No los
+// diagonales y Nc los cambios de dirección.
+//
+// **No es `cv::arcLength`, y la diferencia importa.** La longitud de cadena que
+// devuelve `arcLength` mide el polígono que pasa por los centros de los píxeles
+// del borde, y eso la hace depender de CÓMO ESTÉ GIRADA LA PIEZA. Medido sobre
+// figuras sintéticas de perímetro conocido:
+//
+// | figura                | arcLength | Kulpa (×0,948) | Vossepoel–Smeulders |
+// |-----------------------|-----------|----------------|---------------------|
+// | círculo (r 15..240)   | +4,9…5,4 %| −0,5…−0,06 %   | −1,4…−0,12 %        |
+// | cuadrado alineado     |   0,00 %  | −5,19 %        | −2,3…−2,0 %         |
+// | el mismo a 45°        | +0,41 %   | −4,80 %        | −0,29 %             |
+// | el mismo a 30°        | **+7,59 %**| +2,00 %       | −0,33 %             |
+//
+// El número que condena a `arcLength` no es el sesgo del círculo sino ese
+// **+7,59 %**: el MISMO cuadrado leído un 7,6 % más largo solo por estar girado
+// 30° respecto a la cámara. Una medida de inspección no puede depender de cómo
+// se haya posado la pieza. Kulpa arregla el círculo y rompe el cuadrado; V–S
+// deja el error por debajo del **2,3 %** en todos los casos. Barriendo el mismo
+// cuadrado por 0°, 15°, 30°, 45° y 60°, la lectura de la cadena se dispersa
+// **8,01 puntos** y la del estimador **2,79** — 2,9 veces menos.
+//
+// El precio, dicho claro: en un borde recto alineado con los ejes `arcLength`
+// era EXACTO y V–S se queda un 2 % corto. Se acepta porque una pieza real no
+// llega siempre alineada, y un error acotado en todas las orientaciones vale
+// más que uno perfecto en una sola.
+//
+// Necesita un contorno de cadena de 8 vecinos (`CHAIN_APPROX_NONE`): con pasos
+// de más de un píxel el conteo no significa nada, y entonces **cae a
+// `cv::arcLength`** en vez de devolver un número inventado.
+[[nodiscard]] double digitalPerimeter(const std::vector<cv::Point>& contour);
+
 // El contorno en CSV, para llevárselo a un CAD.
 //
 // `mmPerPixel > 0` exporta en mm; si no, en px. La unidad va en el NOMBRE de la

@@ -20,6 +20,7 @@ using pci::vision::contourToCsv;
 using pci::vision::decomposeContour;
 using pci::vision::DecomposeOptions;
 using pci::vision::describeContour;
+using pci::vision::digitalPerimeter;
 using pci::vision::findHoles;
 using pci::vision::PrimitiveKind;
 using pci::vision::resampleClosedContour;
@@ -331,7 +332,13 @@ TEST(ContourReport, DescribesTheDrawnPlate) {
     // 1,5 %: el contorno de una máscara pasa por el CENTRO de los píxeles del
     // borde, así que encierra medio píxel menos por cada lado.
     EXPECT_NEAR(report.area, drawnArea, drawnArea * 0.015);
-    EXPECT_NEAR(report.perimeter, 4.0 * kPlateSide, 4.0 * kPlateSide * 0.015);
+    // 3 % en el perímetro, y el motivo NO es "no llegaba con 1,5 %". Esta placa
+    // es un cuadrado alineado con los ejes, que es justo el único caso en el que
+    // `cv::arcLength` acertaba exacto; el estimador que se usa ahora
+    // (Vossepoel–Smeulders) se queda ahí un 2,3 % corto a cambio de no depender
+    // de cómo esté girada la pieza. Lo que justifica el cambio es el test de
+    // abajo, no este límite.
+    EXPECT_NEAR(report.perimeter, 4.0 * kPlateSide, 4.0 * kPlateSide * 0.03);
     EXPECT_NEAR(report.bounds.x, kPlateX, 1);
     EXPECT_NEAR(report.bounds.y, kPlateY, 1);
     EXPECT_NEAR(report.bounds.width, kPlateSide, 2);
@@ -424,4 +431,105 @@ TEST(ContourCsv, AnInvalidReportStillWritesTheHeader) {
     // un fallo de escritura.
     const std::string csv = contourToCsv(ContourReport{});
     EXPECT_EQ(csv, "contorno,punto,x_px,y_px\n");
+}
+
+// ---------------------------------------------------------------------------
+// Perímetro digital: por qué no se usa cv::arcLength
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// El mismo cuadrado, girado. Devuelve su contorno como cadena de 8 vecinos.
+std::vector<cv::Point> rotatedSquareContour(int side, double angleDeg) {
+    const int canvas = side * 2 + 80;
+    cv::Mat mask(canvas, canvas, CV_8UC1, cv::Scalar(0));
+    cv::Point2f centre(canvas / 2.0F, canvas / 2.0F);
+    cv::Point2f corners[4];
+    cv::RotatedRect(centre, cv::Size2f(static_cast<float>(side), static_cast<float>(side)),
+                    static_cast<float>(angleDeg))
+        .points(corners);
+    std::vector<cv::Point> poly;
+    for (const auto& c : corners) {
+        poly.emplace_back(cv::Point(static_cast<int>(std::lround(c.x)),
+                                    static_cast<int>(std::lround(c.y))));
+    }
+    cv::fillPoly(mask, std::vector<std::vector<cv::Point>>{poly}, cv::Scalar(255));
+
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+    return contours.empty() ? std::vector<cv::Point>{} : contours.front();
+}
+
+}  // namespace
+
+TEST(DigitalPerimeter, TheSameSquareMeasuresTheSameHoweverItIsRotated) {
+    // ESTE es el test que justifica no usar `cv::arcLength`. Una pieza no llega
+    // siempre alineada con la cámara, y su perímetro no puede cambiar según cómo
+    // se haya posado.
+    constexpr int kSide = 200;
+    const double drawn = 4.0 * kSide;
+
+    double chainMin = 1e9;
+    double chainMax = 0.0;
+    double estimatedMin = 1e9;
+    double estimatedMax = 0.0;
+    for (const double angle : {0.0, 15.0, 30.0, 45.0, 60.0}) {
+        const auto contour = rotatedSquareContour(kSide, angle);
+        ASSERT_FALSE(contour.empty()) << angle;
+        const double chain = cv::arcLength(contour, true);
+        const double estimated = digitalPerimeter(contour);
+        std::printf("  %4.0f°  cadena %8.1f (%+.2f %%)   estimado %8.1f (%+.2f %%)\n", angle,
+                    chain, 100.0 * (chain - drawn) / drawn, estimated,
+                    100.0 * (estimated - drawn) / drawn);
+        chainMin = std::min(chainMin, chain);
+        chainMax = std::max(chainMax, chain);
+        estimatedMin = std::min(estimatedMin, estimated);
+        estimatedMax = std::max(estimatedMax, estimated);
+    }
+
+    const double chainSpread = 100.0 * (chainMax - chainMin) / drawn;
+    const double estimatedSpread = 100.0 * (estimatedMax - estimatedMin) / drawn;
+    std::printf("  dispersión por giro: cadena %.2f %%, estimado %.2f %%\n", chainSpread,
+                estimatedSpread);
+
+    // Medido con estos cinco ángulos: la cadena se dispersa 8,01 puntos y el
+    // estimador 2,79. Los dos umbrales salen de ahí con margen — no al revés.
+    EXPECT_GT(chainSpread, 5.0) << "si esto deja de cumplirse, `arcLength` habría "
+                                   "dejado de tener el problema y sobra el estimador";
+    EXPECT_LT(estimatedSpread, 3.5);
+    // La afirmación de verdad es la comparativa: el estimador tiene que dispersar
+    // menos de la mitad que la cadena (medido, 2,9 veces menos).
+    EXPECT_LT(estimatedSpread, chainSpread / 2.0);
+}
+
+TEST(DigitalPerimeter, ACircleComesOutRightWhereChainLengthIsFivePercentLong) {
+    // El sesgo del que avisaba el plan: sobre un círculo digital la cadena mide
+    // ~5 % de más, y por eso 4πA/P² daba ~0,86..0,90 en vez de 1,0.
+    for (const int radius : {30, 60, 120}) {
+        cv::Mat mask(radius * 3, radius * 3, CV_8UC1, cv::Scalar(0));
+        cv::circle(mask, cv::Point(radius * 3 / 2, radius * 3 / 2), radius, cv::Scalar(255),
+                   -1);
+        std::vector<std::vector<cv::Point>> contours;
+        cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+        ASSERT_FALSE(contours.empty());
+
+        const double drawn = 2.0 * 3.14159265358979323846 * radius;
+        const double chain = cv::arcLength(contours.front(), true);
+        const double estimated = digitalPerimeter(contours.front());
+        std::printf("  r=%3d  dibujado %7.1f  cadena %7.1f (%+.2f %%)  estimado %7.1f "
+                    "(%+.2f %%)\n",
+                    radius, drawn, chain, 100.0 * (chain - drawn) / drawn, estimated,
+                    100.0 * (estimated - drawn) / drawn);
+        EXPECT_GT(chain, drawn * 1.03) << "la cadena sobreestima el círculo";
+        EXPECT_NEAR(estimated, drawn, drawn * 0.015);
+    }
+}
+
+TEST(DigitalPerimeter, AContourThatIsNotAChainFallsBackInsteadOfInventing) {
+    // Con pasos de más de un píxel el conteo de pasos no significa nada. Se cae
+    // a la longitud de cadena, que al menos es una longitud.
+    const std::vector<cv::Point> square{{0, 0}, {100, 0}, {100, 100}, {0, 100}};
+    EXPECT_NEAR(digitalPerimeter(square), cv::arcLength(square, true), 1e-9);
+    EXPECT_DOUBLE_EQ(digitalPerimeter({}), 0.0);
+    EXPECT_DOUBLE_EQ(digitalPerimeter({{5, 5}}), 0.0);
 }

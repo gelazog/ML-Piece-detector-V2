@@ -955,6 +955,43 @@ cosas distintas. El área se convierte con el **cuadrado** de la escala; hacerlo
 linealmente daría un número plausible y cuatro veces mayor, y hay un test que
 falla si alguien lo cambia.
 
+#### El perímetro no se mide con `cv::arcLength`
+
+Preparando `F1` se midió el sesgo del perímetro y salió algo peor de lo esperado.
+`arcLength` mide el polígono que pasa por los **centros de los píxeles** del
+borde, y eso lo hace **depender de cómo esté girada la pieza**. El mismo cuadrado
+de 200 px, barrido por 0°, 15°, 30°, 45° y 60°:
+
+| ángulo | `arcLength` | `digitalPerimeter` |
+| --- | --- | --- |
+| 0° | +0,00 % | −2,05 % |
+| 15° | +7,06 % | +0,75 % |
+| 30° | +7,71 % | −0,22 % |
+| 45° | −0,30 % | −0,92 % |
+| 60° | +7,71 % | −0,22 % |
+| **dispersión** | **8,01 puntos** | **2,79 puntos** |
+
+Ese **+7,7 %** es el problema, no el sesgo del círculo del que avisaba el plan:
+la misma pieza leída un 7,7 % más larga solo por estar posada de otra manera. Una
+medida de inspección no puede depender de eso.
+
+Se usa **Vossepoel–Smeulders** (`vision::digitalPerimeter`), que pesa por
+separado pasos rectos, pasos diagonales y esquinas: error por debajo del 2,3 % en
+todas las figuras probadas y **2,9 veces menos dispersión** por orientación. Se
+descartó la corrección de Kulpa (×0,948) porque arregla el círculo y estropea el
+cuadrado alineado en un −5,2 %.
+
+El precio, dicho claro: en un borde recto **alineado con los ejes** `arcLength`
+era exacto y el estimador se queda un 2 % corto. Por eso el test de la placa
+cuadrada tuvo que pasar de 1,5 % a 3 % — y esa placa es justo el caso donde el
+método viejo era perfecto. Se acepta porque una pieza real no llega siempre
+alineada, y un error acotado en todas las orientaciones vale más que uno perfecto
+en una sola.
+
+Nadie tenía tolerancias puestas sobre este número: solo se muestra en el panel de
+contorno y se exporta al CSV. Si algún día alimenta un veredicto, el cambio de
+estimador sí sería un cambio de criterio.
+
 La **exportación a CSV** (`vision::contourToCsv`) existe para llevarse la pieza a
 un CAD. Dos decisiones que parecen menores y no lo son:
 
