@@ -65,6 +65,7 @@ QColor toolColor(ToolType type) {
         case ToolType::Position: return {255, 80, 80};
         case ToolType::Arc: return {120, 255, 190};
         case ToolType::Shaft: return {255, 210, 120};
+        case ToolType::Groove: return {90, 200, 220};
         case ToolType::Thread: return {200, 255, 120};
         case ToolType::Gear: return {160, 190, 255};
         // Las dos construcciones comparten color a propósito: son la misma
@@ -1014,6 +1015,15 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
             geometry = g;
             break;
         }
+        case ToolType::Groove: {
+            // Mismo gesto que el Eje: se traza el eje pasando por la ranura.
+            GrooveGeometry g;
+            g.axisFrom = a;
+            g.axisTo = b;
+            g.searchBand = std::max(15.0F, static_cast<float>(cv::norm(b - a)) * 0.4F);
+            geometry = g;
+            break;
+        }
         case ToolType::Shaft: {
             ShaftGeometry g;
             g.axisFrom = a;
@@ -1392,6 +1402,7 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 painter.drawEllipse(w1, 3.0, 3.0);
             } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
                                  std::is_same_v<T, ThreadGeometry> ||
+                                 std::is_same_v<T, GrooveGeometry> ||
                                  std::is_same_v<T, MedianAxisGeometry>) {
                 // El eje trazado y, a rayas, hasta dónde busca el borde a cada
                 // lado. Sin la banda, un "no encuentro bordes" no se entiende:

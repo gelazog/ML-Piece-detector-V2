@@ -722,6 +722,10 @@ ToolConfig makeToolAt(int index, float x, float y) {
         case ToolType::Shaft:
             geometry = ShaftGeometry{{x - 25.0F, y}, {x + 25.0F, y}, 20.0F, 12};
             break;
+        case ToolType::Groove:
+            geometry = GrooveGeometry{{x - 25.0F, y}, {x + 25.0F, y}, 20.0F, 60,
+                                      GrooveMeasure::Width};
+            break;
         case ToolType::Thread:
             geometry = ThreadGeometry{{x - 25.0F, y}, {x + 25.0F, y}, 20.0F, 60};
             break;
@@ -5365,4 +5369,225 @@ TEST(Fillet, TheDetailAlwaysCarriesRadiusSweepAndBothTangencies) {
     EXPECT_NE(detail.find("tangencia"), std::string::npos) << detail;
     // Y se dibujan el centro y los dos extremos del arco.
     EXPECT_GE(result.value().overlayPoints.size(), 3U);
+}
+
+// ---------------------------------------------------------------------------
+// Ranura o garganta en eje (M4)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Barra de torno con una entalla rectangular centrada, de cotas conocidas: la
+// silueta real de un eje con su alojamiento de anillo de retención.
+cv::Mat shaftWithGroove(double grooveWidth, double grooveDepth,
+                        double outerDiameter = 100.0, double centreX = 250.0) {
+    cv::Mat gray(500, 500, CV_8UC1, cv::Scalar(220));
+    const double cy = 250.0;
+    const double half = outerDiameter / 2.0;
+    const double rootHalf = half - grooveDepth;
+    const double x0 = centreX - grooveWidth / 2.0;
+    const double x1 = centreX + grooveWidth / 2.0;
+    const auto P = [](double x, double y) {
+        return cv::Point(cvRound(x), cvRound(y));
+    };
+    const std::vector<cv::Point> poly = {
+        P(40.0, cy - half),      P(x0, cy - half),       P(x0, cy - rootHalf),
+        P(x1, cy - rootHalf),    P(x1, cy - half),       P(460.0, cy - half),
+        P(460.0, cy + half),     P(x1, cy + half),       P(x1, cy + rootHalf),
+        P(x0, cy + rootHalf),    P(x0, cy + half),       P(40.0, cy + half)};
+    cv::fillPoly(gray, std::vector<std::vector<cv::Point>>{poly}, cv::Scalar(40));
+    return gray;
+}
+
+// Cuantos pixeles de fondo quedan de verdad entre los dos flancos. Hace falta
+// porque `fillPoly` pinta la columna del borde, asi que una ranura pedida de
+// 40 px se dibuja con 39 px de hueco: comparar contra el nominal cargaria ese
+// pixel de la fixture en la cuenta de la herramienta.
+double drawnGrooveWidth(const cv::Mat& gray, double grooveDepth) {
+    const int row = 250 - static_cast<int>(50.0 - grooveDepth / 2.0);
+    int gap = 0;
+    for (int x = 60; x < 440; ++x) {
+        if (gray.at<uchar>(row, x) > 120) {
+            ++gap;
+        }
+    }
+    return gap;
+}
+
+ToolConfig grooveAlong(GrooveMeasure measure, int stations = 120, float fromX = 100.0F,
+                       float toX = 400.0F) {
+    ToolConfig config;
+    config.type = ToolType::Groove;
+    config.name = "ranura";
+    config.geometryJson = toJson(ToolGeometry(
+        GrooveGeometry{{fromX, 250.0F}, {toX, 250.0F}, 80.0F, stations, measure}));
+    config.toleranceMin = 0.0;
+    config.toleranceMax = 1e9;
+    return config;
+}
+
+}  // namespace
+
+TEST(Groove, TheWidthDepthAndRootAreTheOnesItWasDrawnWith) {
+    // Tres ranuras de cotas distintas, y las tres medidas por separado porque
+    // cada una puede fallar sola.
+    //
+    // El ancho se compara contra el hueco REALMENTE dibujado y con el margen de
+    // un corte, que es justo lo que la herramienta promete: el ancho sale de
+    // contar cortes, asi que no puede ser mas fino que el paso. Apretar mas el
+    // margen no probaria mas exactitud, probaria que la fixture tuvo suerte.
+    struct Case {
+        double width;
+        double depth;
+    };
+    const int stations = 120;
+    const double step = 300.0 / (stations - 1);
+    for (const Case c : {Case{40.0, 20.0}, Case{24.0, 12.0}, Case{60.0, 30.0}}) {
+        const cv::Mat gray = shaftWithGroove(c.width, c.depth);
+        const double drawn = drawnGrooveWidth(gray, c.depth);
+
+        const auto width = runTool(gray, kIdentity, grooveAlong(GrooveMeasure::Width));
+        ASSERT_TRUE(width.isOk()) << width.error().message;
+        std::printf("  ranura %4.0f x %4.0f (hueco dibujado %2.0f) -> %s\n", c.width,
+                    c.depth, drawn, width.value().detail.c_str());
+        EXPECT_NEAR(width.value().measured, drawn, step) << width.value().detail;
+
+        const auto depth = runTool(gray, kIdentity, grooveAlong(GrooveMeasure::Depth));
+        ASSERT_TRUE(depth.isOk());
+        EXPECT_NEAR(depth.value().measured, c.depth, 1.5) << depth.value().detail;
+
+        const auto root = runTool(gray, kIdentity, grooveAlong(GrooveMeasure::RootDiameter));
+        ASSERT_TRUE(root.isOk());
+        EXPECT_NEAR(root.value().measured, 100.0 - 2.0 * c.depth, 2.0)
+            << root.value().detail;
+    }
+}
+
+TEST(Groove, TheWidthErrorStaysWithinTheSamplingStep) {
+    // La herramienta promete una cosa concreta: el ancho sale de contar cortes,
+    // asi que su resolucion es el paso axial. Esto lo comprueba en serio —
+    // cuatro tamanos de ranura por dos muestreos— y de paso descarta lo que si
+    // seria un fallo: un error PROPORCIONAL, que seria una escala mal puesta y
+    // estropearia la pieza grande.
+    //
+    // El error no es un sesgo fijo en pixeles: SIGUE AL PASO y hasta cambia de
+    // signo con el. Eso es cuantizacion del muestreo, que es exactamente lo
+    // anunciado, y no un error sistematico escondido.
+    for (const int stations : {120, 300}) {
+        const double step = 300.0 / (stations - 1);
+        double relativeOnTheSmallest = 0.0;
+        double relativeOnTheLargest = 0.0;
+        for (const double w : {10.0, 20.0, 40.0, 60.0}) {
+            const cv::Mat gray = shaftWithGroove(w, 20.0);
+            const double drawn = drawnGrooveWidth(gray, 20.0);
+            const auto r =
+                runTool(gray, kIdentity, grooveAlong(GrooveMeasure::Width, stations));
+            ASSERT_TRUE(r.isOk()) << r.error().message;
+            const double error = r.value().measured - drawn;
+            std::printf("  paso %.2f px · hueco %2.0f px -> medido %6.2f (error %+5.2f)\n",
+                        step, drawn, r.value().measured, error);
+            EXPECT_LT(std::abs(error), step) << r.value().detail;
+            if (w == 10.0) {
+                relativeOnTheSmallest = std::abs(error) / drawn;
+            }
+            if (w == 60.0) {
+                relativeOnTheLargest = std::abs(error) / drawn;
+            }
+        }
+        // Si hubiera una escala mal puesta, el error RELATIVO seria el mismo en
+        // las cuatro. Lo que pasa es lo contrario: el absoluto se queda quieto y
+        // el relativo se diluye al crecer la ranura, que es la firma de la
+        // cuantizacion. Se comprueba la FORMA, no una cota inventada.
+        EXPECT_GT(relativeOnTheSmallest, relativeOnTheLargest * 3.0)
+            << "el error relativo no se diluye con el tamano (" << relativeOnTheSmallest
+            << " frente a " << relativeOnTheLargest << "): huele a escala, no a paso";
+    }
+}
+
+TEST(Groove, AGrooveNarrowerThanTheSamplingIsDeclaredUnmeasurableInsteadOfRounded) {
+    // La comprobacion que pedia el plan. La misma pieza —una ranura de 12 px—
+    // recorrida con tres muestreos distintos pasa por los tres regimenes, y en
+    // ninguno de los dos malos se devuelve un numero.
+    const cv::Mat gray = shaftWithGroove(12.0, 20.0);
+
+    // 1) Paso mayor que la ranura: NINGUN corte cae dentro y el perfil sale
+    //    plano. Desde el perfil esto es indistinguible de un eje liso, asi que
+    //    lo que no se puede hacer es dar por sentado que no hay ranura.
+    const auto missed = runTool(gray, kIdentity, grooveAlong(GrooveMeasure::Width, 24));
+    ASSERT_TRUE(missed.isOk()) << missed.error().message;
+    std::printf("  24 cortes  -> %s\n", missed.value().detail.c_str());
+    EXPECT_FALSE(missed.value().ok);
+    EXPECT_NE(missed.value().detail.find("se colaría entre dos cortes"), std::string::npos)
+        << missed.value().detail;
+
+    // 2) Uno o dos cortes dentro: la ranura se ve, pero sus flancos no estan
+    //    resueltos. Aqui es donde seria comodo devolver el paso disfrazado de
+    //    ancho, y es justo lo que no se hace.
+    const auto coarse = runTool(gray, kIdentity, grooveAlong(GrooveMeasure::Width, 48));
+    ASSERT_TRUE(coarse.isOk()) << coarse.error().message;
+    std::printf("  48 cortes  -> %s\n", coarse.value().detail.c_str());
+    EXPECT_FALSE(coarse.value().ok);
+    EXPECT_NE(coarse.value().detail.find("NO SE PUEDE"), std::string::npos)
+        << coarse.value().detail;
+    EXPECT_NE(coarse.value().detail.find("cortes"), std::string::npos)
+        << coarse.value().detail;
+
+    // 3) Con el muestreo que la ranura necesita, la misma pieza SI se mide: el
+    //    limite es la resolucion elegida, no la herramienta rindiendose.
+    const auto fine = runTool(gray, kIdentity, grooveAlong(GrooveMeasure::Width, 240));
+    ASSERT_TRUE(fine.isOk()) << fine.error().message;
+    std::printf("  240 cortes -> %s\n", fine.value().detail.c_str());
+    EXPECT_TRUE(fine.value().ok) << fine.value().detail;
+    EXPECT_NEAR(fine.value().measured, 12.0, 2.0) << fine.value().detail;
+}
+
+TEST(Groove, ItSaysWhenThereIsNoGrooveAtAll) {
+    // Un eje liso no tiene ranura, y dar un ancho ahi seria inventarlo.
+    const auto result = runTool(drawShaft(100.0, 100.0), kIdentity,
+                                grooveAlong(GrooveMeasure::Width, 120, 140.0F, 360.0F));
+    ASSERT_TRUE(result.isOk());
+    EXPECT_FALSE(result.value().ok);
+    std::printf("  eje liso -> %s\n", result.value().detail.c_str());
+    EXPECT_NE(result.value().detail.find("ninguna ranura"), std::string::npos)
+        << result.value().detail;
+}
+
+TEST(Groove, ItSaysWhenTheGrooveIsNotFullyInsideTheTrace) {
+    // Si el trazo acaba dentro de la ranura no se ven sus dos flancos, y el
+    // ancho que saliera dependeria de donde solto el raton el operador.
+    const cv::Mat gray = shaftWithGroove(50.0, 20.0);
+    const auto result = runTool(gray, kIdentity,
+                                grooveAlong(GrooveMeasure::Width, 120, 100.0F, 250.0F));
+    ASSERT_TRUE(result.isOk());
+    EXPECT_FALSE(result.value().ok);
+    std::printf("  trazo que acaba en la ranura -> %s\n", result.value().detail.c_str());
+    EXPECT_NE(result.value().detail.find("flancos"), std::string::npos)
+        << result.value().detail;
+}
+
+TEST(Groove, TheDetailAlwaysCarriesTheThreeMeasuresAndTheSampling) {
+    // Se pida la que se pida, el detalle lleva las tres cotas y el paso: sin el
+    // paso, el operador no puede juzgar si el ancho es fiable.
+    const auto result =
+        runTool(shaftWithGroove(40.0, 20.0), kIdentity, grooveAlong(GrooveMeasure::Depth));
+    ASSERT_TRUE(result.isOk());
+    const std::string& detail = result.value().detail;
+    for (const char* piece : {"ancho=", "profundidad=", "fondo=", "paso "}) {
+        EXPECT_NE(detail.find(piece), std::string::npos) << piece << " en: " << detail;
+    }
+    // Y se marcan los dos flancos medidos.
+    EXPECT_EQ(result.value().overlayPoints.size(), 2U);
+}
+
+TEST(Groove, TheGeometrySurvivesARoundTrip) {
+    const GrooveGeometry g{{12.5F, 30.25F}, {180.0F, 33.5F}, 44.5F, 96,
+                           GrooveMeasure::RootDiameter};
+    const auto parsed = geometryFromJson(ToolType::Groove, toJson(ToolGeometry(g)));
+    ASSERT_TRUE(parsed.isOk()) << parsed.error().message;
+    const auto& back = std::get<GrooveGeometry>(parsed.value());
+    EXPECT_FLOAT_EQ(back.axisFrom.x, g.axisFrom.x);
+    EXPECT_FLOAT_EQ(back.axisTo.y, g.axisTo.y);
+    EXPECT_FLOAT_EQ(back.searchBand, g.searchBand);
+    EXPECT_EQ(back.stations, g.stations);
+    EXPECT_EQ(back.measure, g.measure);
 }

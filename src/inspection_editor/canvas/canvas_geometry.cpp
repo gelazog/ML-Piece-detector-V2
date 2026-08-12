@@ -151,6 +151,7 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
                 return {g.start, g.mid, g.end};
             } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
                                  std::is_same_v<T, ThreadGeometry> ||
+                                 std::is_same_v<T, GrooveGeometry> ||
                                  std::is_same_v<T, MedianAxisGeometry>) {
                 return {g.axisFrom, g.axisTo};
             } else if constexpr (std::is_same_v<T, GearGeometry>) {
@@ -218,6 +219,7 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
                 return {g.start, g.mid, g.end};
             } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
                                  std::is_same_v<T, ThreadGeometry> ||
+                                 std::is_same_v<T, GrooveGeometry> ||
                                  std::is_same_v<T, MedianAxisGeometry>) {
                 return {g.axisFrom, g.axisTo};
             } else if constexpr (std::is_same_v<T, GearGeometry>) {
@@ -341,6 +343,7 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
                 }
             } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
                                  std::is_same_v<T, ThreadGeometry> ||
+                                 std::is_same_v<T, GrooveGeometry> ||
                                  std::is_same_v<T, MedianAxisGeometry>) {
                 if (handle == 0) {
                     g.axisFrom = q;
@@ -437,6 +440,7 @@ double distanceToGeometry(const ToolGeometry& geometry, const vision::Fixture& f
                     }
                 } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
                                      std::is_same_v<T, ThreadGeometry> ||
+                                     std::is_same_v<T, GrooveGeometry> ||
                                      std::is_same_v<T, MedianAxisGeometry>) {
                     d = distanceToSegment(p, vision::toImageCoords(fixture, g.axisFrom),
                                           vision::toImageCoords(fixture, g.axisTo));

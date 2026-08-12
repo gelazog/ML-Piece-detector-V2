@@ -823,6 +823,223 @@ ToolRunResult runShaft(const cv::Mat& gray, const Fixture& fixture, const ToolCo
     return result;
 }
 
+// --- Ranura o garganta (M4) -------------------------------------------------
+
+// La cota de un anillo de retención: ancho, profundidad y diámetro de FONDO de
+// una entalla en una pieza de torno.
+//
+// Reutiliza el mismo perfil radio-contra-posición-axial que el Eje torneado, con
+// una diferencia que es todo el asunto: el Eje AJUSTA una recta a cada borde
+// para describir el conjunto, y aquí eso destruiría la medida — la ranura es
+// justo el sitio donde el borde se sale de esa recta. Así que se usa el perfil
+// crudo, estación a estación, y se busca su mínimo local.
+//
+// La consecuencia incómoda, y por eso está escrita en la herramienta: el ancho
+// se mide CONTANDO cortes, así que el paso axial es su resolución. Una ranura
+// que solo abarca uno o dos cortes no tiene los flancos resueltos, y devolver
+// ahí un número redondeado al paso sería inventarlo.
+ToolRunResult runGroove(const cv::Mat& gray, const Fixture& fixture, const ToolConfig& config,
+                        const GrooveGeometry& g, const Fmt& fmt) {
+    ToolRunResult result = baseResult(config);
+    const cv::Point2f from = toImg(fixture, g.axisFrom);
+    const cv::Point2f to = toImg(fixture, g.axisTo);
+    const double axisLength = cv::norm(to - from);
+    if (axisLength < 20.0) {
+        result.detail = "El eje trazado es demasiado corto para buscar una ranura";
+        return result;
+    }
+
+    const int stations = std::clamp(g.stations, 12, 400);
+    const double step = axisLength / (stations - 1);
+    const double reach = std::max(5.0, static_cast<double>(g.searchBand));
+    const auto sideA = axialProfile(gray, from, to, ProfileSide::Positive, stations, reach);
+    const auto sideB = axialProfile(gray, from, to, ProfileSide::Negative, stations, reach);
+    if (static_cast<int>(sideA.size()) != stations ||
+        static_cast<int>(sideB.size()) != stations) {
+        result.detail = "No se pudo recorrer el eje trazado";
+        return result;
+    }
+
+    // Diámetro crudo en cada corte: la suma de los dos alcances al borde.
+    std::vector<double> diameter(static_cast<std::size_t>(stations), 0.0);
+    std::vector<bool> known(static_cast<std::size_t>(stations), false);
+    int found = 0;
+    for (int i = 0; i < stations; ++i) {
+        const auto k = static_cast<std::size_t>(i);
+        if (sideA[k].found && sideB[k].found) {
+            diameter[k] = sideA[k].offset + sideB[k].offset;
+            known[k] = true;
+            ++found;
+        }
+    }
+    if (found < stations * 3 / 4) {
+        result.detail = "Bordes insuficientes (" + std::to_string(found) + " de " +
+                        std::to_string(stations) +
+                        " cortes ven los dos lados). Sube el alcance de búsqueda (ahora " +
+                        fmt2(reach) + " px) o centra mejor el eje";
+        return result;
+    }
+    // Huecos cortos se rellenan interpolando; uno largo se dice, porque tapar un
+    // tramo ciego de tres cortes con una recta puede borrar la ranura entera.
+    for (int i = 0; i < stations; ++i) {
+        if (known[static_cast<std::size_t>(i)]) {
+            continue;
+        }
+        int left = i - 1;
+        while (left >= 0 && !known[static_cast<std::size_t>(left)]) {
+            --left;
+        }
+        int right = i + 1;
+        while (right < stations && !known[static_cast<std::size_t>(right)]) {
+            ++right;
+        }
+        if (left < 0 || right >= stations || right - left > 3) {
+            result.detail = "Hay un tramo del eje sin borde a la altura del corte " +
+                            std::to_string(i) + ": no se puede seguir el perfil";
+            return result;
+        }
+        const double f = static_cast<double>(i - left) / (right - left);
+        diameter[static_cast<std::size_t>(i)] =
+            diameter[static_cast<std::size_t>(left)] * (1.0 - f) +
+            diameter[static_cast<std::size_t>(right)] * f;
+    }
+
+    const auto medianOf = [](std::vector<double> v) {
+        std::sort(v.begin(), v.end());
+        return v[v.size() / 2];
+    };
+
+    // La ranura más estrecha que este muestreo puede medir. Sale de la misma
+    // regla que el corte de abajo —hacen falta tres cortes dentro para tener
+    // los dos flancos resueltos— y se dice en los dos sitios, porque las dos
+    // veces la respuesta del operador es la misma: subir el número de cortes.
+    const double finestGroove = 3.0 * step;
+
+    const double minimum = *std::min_element(diameter.begin(), diameter.end());
+    double outer = medianOf(diameter);  // la ranura es minoría del eje trazado
+    if (outer - minimum < std::max(3.0, outer * 0.03)) {
+        // Ojo con lo que se afirma aquí. Si la ranura es más fina que el paso,
+        // puede que NINGÚN corte caiga dentro y el perfil salga plano: desde el
+        // perfil, "no hay ranura" y "la ranura se me ha colado entre dos cortes"
+        // son indistinguibles. Decir solo lo primero haría que el operador diese
+        // por buena una pieza sin mirarla.
+        result.detail = "No se ve ninguna ranura en el eje trazado: el diámetro apenas "
+                        "varía (Ø=" + fmtLen(outer, fmt) + ", variación=" +
+                        fmtLen(outer - minimum, fmt) + "). Con este muestreo (paso " +
+                        fmt2(step) + " px) una ranura de menos de " +
+                        fmtLen(finestGroove, fmt) +
+                        " se colaría entre dos cortes sin verse: si esperabas una más "
+                        "fina, sube el número de cortes (ahora " +
+                        std::to_string(stations) + ")";
+        return result;
+    }
+
+    // El tramo de la ranura es la racha CONTIGUA que contiene el mínimo y baja
+    // del nivel de media profundidad. Contigua a propósito: si el eje trazado
+    // pilla dos ranuras, se mide una, no la envolvente de las dos.
+    const int lowest = static_cast<int>(
+        std::min_element(diameter.begin(), diameter.end()) - diameter.begin());
+    double root = minimum;
+    int first = lowest;
+    int last = lowest;
+    for (int pass = 0; pass < 2; ++pass) {
+        const double level = (outer + root) / 2.0;
+        first = lowest;
+        while (first > 0 && diameter[static_cast<std::size_t>(first - 1)] < level) {
+            --first;
+        }
+        last = lowest;
+        while (last + 1 < stations && diameter[static_cast<std::size_t>(last + 1)] < level) {
+            ++last;
+        }
+        // Fondo: la mediana de los cortes que están en el quinto más hondo, no
+        // el mínimo suelto — un solo corte con ruido no debe fijar la cota.
+        std::vector<double> floorSamples;
+        std::vector<double> outside;
+        const double floorLevel = minimum + (outer - minimum) * 0.2;
+        for (int i = 0; i < stations; ++i) {
+            const double d = diameter[static_cast<std::size_t>(i)];
+            if (i >= first && i <= last) {
+                if (d <= floorLevel) {
+                    floorSamples.push_back(d);
+                }
+            } else {
+                outside.push_back(d);
+            }
+        }
+        if (!floorSamples.empty()) {
+            root = medianOf(floorSamples);
+        }
+        if (outside.size() >= 4) {
+            outer = medianOf(outside);
+        }
+    }
+
+    if (first == 0 || last == stations - 1) {
+        result.detail = "La ranura llega al extremo del eje trazado: no se ven sus dos "
+                        "flancos. Alarga el trazo por fuera de la ranura";
+        return result;
+    }
+
+    const int inside = last - first + 1;
+    if (inside < 3) {
+        // Aquí está la línea que separa medir de inventar. Con uno o dos cortes
+        // dentro, los flancos no están resueltos y cualquier ancho que se diera
+        // sería el paso de muestreo disfrazado de medida.
+        result.detail = "La ranura solo abarca " + std::to_string(inside) +
+                        (inside == 1 ? " corte" : " cortes") + " de " + fmt2(step) +
+                        " px: es más estrecha que el muestreo y su ancho NO SE PUEDE "
+                        "medir con esta configuración (harían falta al menos " +
+                        fmtLen(finestGroove, fmt) +
+                        " de ranura). Sube el número de cortes (ahora " +
+                        std::to_string(stations) + ") o acorta el trazo del eje";
+        return result;
+    }
+
+    // Flancos por interpolación del cruce con el nivel de media profundidad.
+    // Afina dentro del paso, pero no crea resolución: por eso el corte de arriba
+    // se hace CONTANDO cortes y no con este número.
+    const double level = (outer + root) / 2.0;
+    const auto crossing = [&](int above, int below) {
+        const double da = diameter[static_cast<std::size_t>(above)];
+        const double db = diameter[static_cast<std::size_t>(below)];
+        const double f = std::abs(da - db) < 1e-9 ? 0.5 : (da - level) / (da - db);
+        return (above + std::clamp(f, 0.0, 1.0) * (below - above)) * step;
+    };
+    const double tLeft = crossing(first - 1, first);
+    const double tRight = crossing(last + 1, last);
+    const double width = tRight - tLeft;
+    const double depth = (outer - root) / 2.0;
+
+    switch (g.measure) {
+        case GrooveMeasure::Width: result.measured = width; break;
+        case GrooveMeasure::Depth: result.measured = depth; break;
+        case GrooveMeasure::RootDiameter: result.measured = root; break;
+    }
+    result.ok = withinTolerance(config, result.measured);
+    result.detail = std::string(grooveMeasureLabel(g.measure)) + " · ancho=" +
+                    fmtLen(width, fmt) + " · profundidad=" + fmtLen(depth, fmt) +
+                    " · Ø fondo=" + fmtLen(root, fmt) + " · Ø fuera=" + fmtLen(outer, fmt) +
+                    " (" + std::to_string(inside) + " cortes dentro, paso " + fmt2(step) +
+                    " px)";
+    appendConditionWarnings(result.detail, fmt,
+                            (meanStrength(sideA) + meanStrength(sideB)) / 2.0);
+
+    const cv::Point2f dir = (to - from) / static_cast<float>(axisLength);
+    const cv::Point2f normal = profileNormal(from, to);
+    const cv::Point2f leftAt = from + dir * static_cast<float>(tLeft);
+    const cv::Point2f rightAt = from + dir * static_cast<float>(tRight);
+    const auto half = static_cast<float>(root / 2.0);
+    // Los dos flancos, y el fondo entre ellos: lo que se ha medido, dibujado.
+    result.overlaySegments.push_back({leftAt - normal * half, leftAt + normal * half});
+    result.overlaySegments.push_back({rightAt - normal * half, rightAt + normal * half});
+    result.overlaySegments.push_back({leftAt + normal * half, rightAt + normal * half});
+    result.overlaySegments.push_back({leftAt - normal * half, rightAt - normal * half});
+    result.overlayPoints.push_back(leftAt);
+    result.overlayPoints.push_back(rightAt);
+    return result;
+}
+
 // --- Rosca -----------------------------------------------------------------
 
 // Perfil de un lado, convertido en señal uniforme. Los cortes sin borde se
@@ -3714,6 +3931,10 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
             case ToolType::Shaft:
                 return ResultT::ok(runShaft(gray, fixture, config,
                                             std::get<ShaftGeometry>(geometry.value()), fmt));
+            case ToolType::Groove:
+                return ResultT::ok(runGroove(gray, fixture, config,
+                                             std::get<GrooveGeometry>(geometry.value()),
+                                             fmt));
             case ToolType::Thread:
                 return ResultT::ok(runThread(gray, fixture, config,
                                              std::get<ThreadGeometry>(geometry.value()), fmt));

@@ -41,6 +41,9 @@ inline ToolGeometry sampleGeometry(ToolType type) {
             return PositionGeometry{{12.0F, 34.0F}, PositionAxis::Radial};
         case ToolType::Arc:
             return ArcGeometry{{-40.0F, 0.0F}, {0.0F, -40.0F}, {40.0F, 0.0F}, 12.0F, 24};
+        case ToolType::Groove:
+            return GrooveGeometry{{-80.0F, 0.0F}, {80.0F, 0.0F}, 60.0F, 120,
+                                  GrooveMeasure::Width};
         case ToolType::Shaft:
             return ShaftGeometry{{-80.0F, 0.0F}, {80.0F, 0.0F}, 60.0F, 32};
         case ToolType::Thread:

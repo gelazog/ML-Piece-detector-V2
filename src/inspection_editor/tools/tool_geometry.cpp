@@ -42,12 +42,13 @@ const char* toolTypeName(ToolType type) {
         case ToolType::Extremes: return "extremes";
         case ToolType::Chamfer: return "chamfer";
         case ToolType::Fillet: return "fillet";
+        case ToolType::Groove: return "groove";
     }
     return "unknown";
 }
 
-const std::array<ToolType, 31>& allToolTypes() {
-    static const std::array<ToolType, 31> kTypes{
+const std::array<ToolType, 32>& allToolTypes() {
+    static const std::array<ToolType, 32> kTypes{
         ToolType::Caliper,  ToolType::Circle,   ToolType::PointToLine, ToolType::EdgeFlaw,
         ToolType::Blob,     ToolType::Ruler,    ToolType::LineToLine,  ToolType::Angle,
         ToolType::PolyBlob, ToolType::Position, ToolType::Arc,         ToolType::Shaft,
@@ -57,7 +58,7 @@ const std::array<ToolType, 31>& allToolTypes() {
         ToolType::Clearance, ToolType::Straightness, ToolType::Roundness,
         ToolType::Orientation, ToolType::CentreOffset, ToolType::BoltPattern,
         ToolType::Profile, ToolType::Extremes, ToolType::Chamfer,
-        ToolType::Fillet};
+        ToolType::Fillet, ToolType::Groove};
     return kTypes;
 }
 
@@ -121,6 +122,7 @@ ToolCategory categoryOf(ToolType type) {
         case ToolType::Extremes:
         case ToolType::Chamfer:
         case ToolType::Fillet:
+        case ToolType::Groove:
             return ToolCategory::TurnedAndExtremes;
     }
     return ToolCategory::InLine;
@@ -207,6 +209,21 @@ ToolReferences referencesFromParams(const std::string& paramsJson) {
         // medir; reventar aquí tumbaría la carga de la plantilla entera.
         return {};
     }
+}
+
+const std::array<GrooveMeasure, 3>& allGrooveMeasures() {
+    static const std::array<GrooveMeasure, 3> kMeasures{
+        GrooveMeasure::Width, GrooveMeasure::Depth, GrooveMeasure::RootDiameter};
+    return kMeasures;
+}
+
+const char* grooveMeasureLabel(GrooveMeasure measure) {
+    switch (measure) {
+        case GrooveMeasure::Width: return "Ancho";
+        case GrooveMeasure::Depth: return "Profundidad";
+        case GrooveMeasure::RootDiameter: return "Diámetro de fondo";
+    }
+    return "?";
 }
 
 const std::array<FilletMeasure, 2>& allFilletMeasures() {
@@ -377,6 +394,7 @@ const char* toolTypeLabel(ToolType type) {
         case ToolType::Extremes: return "Máx./mín.";
         case ToolType::Chamfer: return "Chaflán";
         case ToolType::Fillet: return "Radio de acuerdo";
+        case ToolType::Groove: return "Ranura";
     }
     return "?";
 }
@@ -630,6 +648,15 @@ const char* toolTypeDescription(ToolType type) {
                    "salto, una herramienta mal compensada— y el radio por sí solo no lo\n"
                    "delata: dos piezas con el mismo radio y distinta tangencia no son\n"
                    "la misma pieza. La desviación se da en grados; 0 es perfecto.";
+        case ToolType::Groove:
+            return "Ranura — el ancho, la profundidad y el diámetro de FONDO de una\n"
+                   "entalla en una pieza de torno: la cota de un anillo de retención.\n"
+                   "Traza el eje a lo largo de la pieza pasando por la ranura, igual\n"
+                   "que con el Eje torneado.\n"
+                   "El ancho se mide CONTANDO cortes, así que el paso axial es su\n"
+                   "resolución: una ranura más estrecha que unos pocos cortes NO SE\n"
+                   "MIDE y se dice, en vez de devolver un número redondeado al paso.\n"
+                   "Si pasa eso, sube el número de cortes.";
     }
     return "";
 }
@@ -714,6 +741,7 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
             toleranceMin = 0.0;
             toleranceMax = 1e9;
             return;
+        case ToolType::Groove:
         case ToolType::Fillet:
         case ToolType::Chamfer:
         case ToolType::LineToLine:
@@ -848,6 +876,8 @@ ToolType typeOf(const ToolGeometry& geometry) {
                 return ToolType::Chamfer;
             } else if constexpr (std::is_same_v<T, FilletGeometry>) {
                 return ToolType::Fillet;
+            } else if constexpr (std::is_same_v<T, GrooveGeometry>) {
+                return ToolType::Groove;
             } else {
                 // Sin rama genérica a propósito. Antes esta cadena acababa en un
                 // `else` que devolvía Position, así que al añadir un tipo nuevo
@@ -914,6 +944,7 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 g.end += delta;
             } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
                                  std::is_same_v<T, ThreadGeometry> ||
+                                 std::is_same_v<T, GrooveGeometry> ||
                                  std::is_same_v<T, MedianAxisGeometry>) {
                 g.axisFrom += delta;
                 g.axisTo += delta;
@@ -1160,6 +1191,12 @@ std::string toJson(const ToolGeometry& geometry) {
                 return writeJson([&](cv::FileStorage& fs) {
                     fs << "cx" << g.center.x << "cy" << g.center.y << "rin"
                        << g.innerRadius << "rout" << g.outerRadius << "rays" << g.rayCount;
+                });
+            } else if constexpr (std::is_same_v<T, GrooveGeometry>) {
+                return writeJson([&](cv::FileStorage& fs) {
+                    fs << "ax" << g.axisFrom.x << "ay" << g.axisFrom.y << "bx" << g.axisTo.x
+                       << "by" << g.axisTo.y << "band" << g.searchBand << "stations"
+                       << g.stations << "mode" << static_cast<int>(g.measure);
                 });
             } else if constexpr (std::is_same_v<T, FilletGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
@@ -1515,6 +1552,21 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 g.innerRadius = static_cast<float>(rin.value());
                 g.outerRadius = static_cast<float>(rout.value());
                 g.rayCount = static_cast<int>(reader.numberOr("rays", 1440.0));
+                return ResultT::ok(g);
+            }
+            case ToolType::Groove: {
+                GrooveGeometry g;
+                auto ax = f("ax"), ay = f("ay"), bx = f("bx"), by = f("by"), band = f("band");
+                for (const auto* v : {&ax, &ay, &bx, &by, &band}) {
+                    if (!v->isOk()) return ResultT::err(v->error().message);
+                }
+                g.axisFrom = {static_cast<float>(ax.value()), static_cast<float>(ay.value())};
+                g.axisTo = {static_cast<float>(bx.value()), static_cast<float>(by.value())};
+                g.searchBand = static_cast<float>(band.value());
+                g.stations = static_cast<int>(reader.numberOr("stations", 120.0));
+                const auto measure = readConstruction(reader, allGrooveMeasures());
+                if (!measure.isOk()) return ResultT::err(measure.error().message);
+                g.measure = measure.value();
                 return ResultT::ok(g);
             }
             case ToolType::Fillet: {

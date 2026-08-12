@@ -38,7 +38,8 @@ enum class ToolType {
     Profile,
     Extremes,
     Chamfer,
-    Fillet
+    Fillet,
+    Groove
 };
 
 const char* toolTypeName(ToolType type);

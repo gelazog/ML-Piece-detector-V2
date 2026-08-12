@@ -962,7 +962,27 @@ tiene que estar accesible desde la familia.
   Verificación: acuerdo sintético tangente (desviación ~0) frente a uno con un
   escalón deliberado (desviación = la dibujada).
 
-- [ ] **M4 — Ranura o garganta en eje.** Ancho, profundidad y **diámetro de
+- [x] **M4 — Ranura o garganta en eje.** *(Reutiliza el perfil axial del Eje
+  pero con el borde CRUDO, no ajustado: la ranura es justo donde el borde se
+  sale de la recta que el Eje ajusta, así que ajustar ahí borraría la medida.
+  El aviso que pedía el plan resultó tener DOS regímenes, no uno, y el segundo
+  lo encontró un test que falló bien: con paso 13 px sobre una ranura de 12 px
+  no cae dentro NINGÚN corte y el perfil sale plano, así que la herramienta
+  decía «no se ve ninguna ranura» — verdad literal y mensaje que engaña, porque
+  desde el perfil eso es indistinguible de un eje liso y el operador daría la
+  pieza por buena. Ahora ese aviso lleva siempre cuál es la ranura más fina que
+  ese muestreo podría ver. El régimen que sí estaba previsto —uno o dos cortes
+  dentro— se rechaza con las cifras y el qué hacer.
+  Exactitud comprobada en serio, y de paso corrigió mi propia hipótesis: el
+  error NO es un sesgo fijo en píxeles sino que sigue al paso y cambia de signo
+  con él (+1,50 px con paso 2,52; −0,97 px con paso 1,00), o sea cuantización
+  del muestreo, que es lo anunciado. El test lo afirma por su FORMA —|error| <
+  paso, y error relativo que se diluye al crecer la ranura— en vez de con una
+  cota inventada, que es lo que descarta una escala mal puesta.
+  Un detalle de método: la fixture dibujaba 39 px de hueco cuando le pedías 40,
+  porque `fillPoly` pinta la columna del borde. Comparar contra el nominal
+  habría cargado ese píxel en la cuenta de la herramienta, así que el test mide
+  el hueco realmente dibujado y compara contra eso.)* Ancho, profundidad y **diámetro de
   fondo** de una entalla en una pieza torneada — la cota de un anillo de
   retención.
   Reutiliza el perfil radio-contra-posición-axial que el Eje ya genera:

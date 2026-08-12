@@ -263,6 +263,46 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      **0,82** (el valor exacto de un cuadrado es 0,785 — la diferencia es el
      sesgo conocido de medir un borde recto sobre una rejilla de píxeles). Una
      mota de ruido **no** cuenta como agujero.
+   - *Ranura*: el **ancho, la profundidad y el diámetro de fondo** de una
+     entalla en una pieza de torno — la cota de un alojamiento de anillo de
+     retención. Traza el eje a lo largo de la pieza **pasando por la ranura**,
+     igual que con el *Eje torneado*, y elige en *Medida* cuál vigilar; el
+     detalle enseña las tres de todas formas.
+
+     Por dentro reutiliza el mismo perfil radio-contra-posición-axial que el
+     *Eje*, con una diferencia que lo es todo: el *Eje* ajusta una recta a cada
+     borde para describir el conjunto, y aquí eso borraría la medida —la ranura
+     es justo el sitio donde el borde se sale de esa recta—, así que se usa el
+     perfil crudo corte a corte y se busca su mínimo local.
+
+     **El ancho se mide contando cortes, así que el paso axial es su
+     resolución**, y eso tiene dos consecuencias que la herramienta dice en voz
+     alta en vez de tragárselas:
+
+     - Si la ranura abarca **uno o dos cortes**, sus flancos no están resueltos y
+       el ancho **no se mide**: te dice cuántos cortes ha abarcado, cuánto mide
+       el paso y cuánta ranura haría falta. Devolver ahí un número sería el paso
+       de muestreo disfrazado de medida.
+     - Si la ranura es **más fina que el paso**, puede que no caiga dentro
+       *ningún* corte y el perfil salga plano. Desde el perfil, «no hay ranura» y
+       «se me ha colado entre dos cortes» son indistinguibles, así que el aviso
+       de «no se ve ninguna ranura» **añade siempre** cuál es la ranura más fina
+       que ese muestreo podría ver. Dar por buena la pieza sin más sería el error
+       caro.
+
+     En los dos casos la salida es la misma: subir el número de cortes. Con el
+     muestreo adecuado la misma pieza se mide sin problema — el límite es la
+     resolución que elegiste, no la herramienta rindiéndose.
+
+     Qué exactitud esperar: medido sobre ranuras de 9 a 59 px con dos muestreos,
+     el error se queda **por debajo de un corte** siempre (±1,5 px con paso 2,52;
+     ±0,97 px con paso 1,00) y **cambia de signo con el paso**. Es cuantización
+     del muestreo, que es justo lo anunciado, y no un sesgo de escala escondido:
+     el error relativo se diluye al crecer la ranura (12 % en la de 9 px, 2,5 %
+     en la de 59) en vez de mantenerse constante.
+
+     Si la ranura llega al extremo del trazo no se ven sus dos flancos y te lo
+     dice: alarga el eje por fuera de la ranura.
    - *Radio de acuerdo*: el radio del redondeo de transición y —lo que de verdad
      aporta— **si empalma tangente** con las caras vecinas. Arrastra un recuadro
      que abarque el acuerdo con un trozo de las dos caras.

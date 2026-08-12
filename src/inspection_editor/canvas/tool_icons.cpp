@@ -67,6 +67,21 @@ QIcon toolIcon(ToolType type) {
                 p.drawPolyline(top.translated(0, 8));
                 p.drawLine(4, 15, 27, 15);
             });
+        case ToolType::Groove:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // El perfil de un eje con una entalla: lo que se mide es el
+                // hueco — su ancho, su hondura y el fondo.
+                p.drawLine(3, 9, 11, 9);
+                p.drawLine(11, 9, 11, 15);
+                p.drawLine(11, 15, 19, 15);
+                p.drawLine(19, 15, 19, 9);
+                p.drawLine(19, 9, 27, 9);
+                QPen thin = p.pen();
+                thin.setWidthF(1.1);
+                thin.setStyle(Qt::DashLine);
+                p.setPen(thin);
+                p.drawLine(3, 22, 27, 22);
+            });
         case ToolType::Shaft:
             return makeIcon([](QPainter& p, const QColor&) {
                 // Dos bordes paralelos con el eje discontinuo por el medio.

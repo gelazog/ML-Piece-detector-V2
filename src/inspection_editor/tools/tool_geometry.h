@@ -454,6 +454,31 @@ struct FilletGeometry {
     bool darkPiece = true;
 };
 
+// Ranura o garganta en una pieza torneada (M4): la cota de un anillo de
+// retención. Ancho, profundidad y diámetro de fondo.
+//
+// Se traza el eje igual que en el Eje torneado —mismo gesto, misma
+// exploración—: lo que cambia es que aquí se busca el MÍNIMO local del perfil
+// de diámetros en vez de describir el conjunto.
+enum class GrooveMeasure {
+    Width,         // ancho axial de la ranura
+    Depth,         // profundidad radial respecto al diámetro de fuera
+    RootDiameter,  // diámetro de fondo
+};
+
+struct GrooveGeometry {
+    cv::Point2f axisFrom;
+    cv::Point2f axisTo;
+    float searchBand = 60.0F;
+    // Muchas estaciones: el ancho de la ranura se mide CONTANDO estaciones, así
+    // que el paso axial es la resolución de esa medida.
+    int stations = 120;
+    GrooveMeasure measure = GrooveMeasure::Width;
+};
+
+[[nodiscard]] const std::array<GrooveMeasure, 3>& allGrooveMeasures();
+[[nodiscard]] const char* grooveMeasureLabel(GrooveMeasure measure);
+
 [[nodiscard]] const std::array<FilletMeasure, 2>& allFilletMeasures();
 [[nodiscard]] const char* filletMeasureLabel(FilletMeasure measure);
 
@@ -478,7 +503,7 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
                                   OrientationGeometry, CentreOffsetGeometry,
                                   BoltPatternGeometry, ProfileGeometry,
                                   ExtremesGeometry, ChamferGeometry,
-                                  FilletGeometry>;
+                                  FilletGeometry, GrooveGeometry>;
 
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
@@ -509,7 +534,7 @@ ToolType typeOf(const ToolGeometry& geometry);
 // la fila "Dibujar" de la vista en vivo, donde nadie las echó de menos hasta el
 // repaso de coherencia. Quien añada la decimoquinta la pone aquí y aparece en
 // todas partes; las pruebas de coherencia recorren esta misma lista.
-[[nodiscard]] const std::array<ToolType, 31>& allToolTypes();
+[[nodiscard]] const std::array<ToolType, 32>& allToolTypes();
 
 // Familias de herramientas. Son un DATO, no el orden en que se pintan los
 // botones: viven aquí, junto a `allToolTypes()`, por la misma razón por la que
