@@ -4,6 +4,7 @@
 
 #include <opencv2/videoio.hpp>
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -187,6 +188,71 @@ struct ProfileVerdict {
 // «¿se puede separar la pieza del fondo aquí?». `fps` habla por sí solo.
 [[nodiscard]] ProfileVerdict judgeProfile(double fpsBefore, double contrastBefore,
                                           double fpsAfter, double contrastAfter);
+
+// Lo que se ve de la escena en una ventana de medida. Velocidad y contraste van
+// juntos porque la decisión necesita los dos: una exposición que da muchos fps
+// y deja la pieza indistinguible del fondo no sirve de nada.
+struct SceneObservation {
+    double fps = 0.0;
+    double contrast = 0.0;
+};
+
+// La COSTURA del barrido: todo lo que la orquestación necesita de una cámara,
+// que resulta ser muy poco —fijar la exposición, poner o quitar el automático,
+// y mirar—. Con esto `runExposureProfile` no sabe qué es una `cv::VideoCapture`
+// y se puede ejercitar entera contra una cámara de mentira, que es la única
+// forma de ver correr el camino de ACEPTACIÓN: en la cámara de esta máquina hay
+// poca luz y el perfil siempre acaba rechazado.
+struct ExposureSweepCamera {
+    std::function<void(double)> setExposure;
+    std::function<void(bool)> setAutoExposure;
+    std::function<SceneObservation()> observe;
+};
+
+// Cómo acabó el perfil. Son cuatro y no dos porque «no se aplicó» tiene tres
+// motivos que al operador le importan de forma distinta.
+enum class ExposureProfileOutcome {
+    // No se escribió NADA en la cámara: no había recorrido de exposición que
+    // barrer, y sin poder elegir la exposición tampoco se toca el automático.
+    Untouched,
+    // Se midió, pero el barrido no permite decidir. Vuelta al automático, sin
+    // molestar al operador: no hay nada que contarle salvo en el log.
+    Undecided,
+    // Se probó de verdad y no compensaba: vuelta al automático, con motivo.
+    Reverted,
+    // La cámara aceptó las escrituras y no reaccionó a ninguna. NO es un
+    // perfil aplicado, aunque lo parezca desde fuera.
+    Ignored,
+    // La exposición fija se quedó puesta porque se lo ganó.
+    Applied,
+};
+
+// El resultado del perfil: qué quedó puesto, con qué se midió y por qué.
+struct ExposureProfileResult {
+    ExposureProfileOutcome outcome = ExposureProfileOutcome::Untouched;
+    std::optional<double> exposure;  // la que quedó puesta, si quedó alguna
+    std::vector<ExposureFpsSample> sweep;
+    SceneObservation automatic;  // lo que daba la cámara en automático
+    SceneObservation fixed;      // lo que dio con la exposición elegida
+    std::string reason;          // por qué no quedó puesta, en castellano
+};
+
+// La orquestación entera del perfil de medición, sin tocar OpenCV: mide la
+// referencia en automático, barre las candidatas con salida temprana, elige,
+// mide el resultado, juzga si se lo ha ganado y deshace si no.
+//
+// Vive aquí y no en el controlador porque encadenada con una `cv::VideoCapture`
+// delante no se puede probar, y es justo la parte donde un error sale caro: los
+// dos diseños fallidos que hubo antes de este no fallaron en las piezas
+// sueltas, fallaron en el orden en que se llamaban.
+//
+// `minExposure` y `maxExposure` son el rango MEDIDO por `probeControls`. Si no
+// hay recorrido entre ellos la función se va sin escribir nada, que es la
+// aplicación literal de la regla: no se apaga un automático que no se pueda
+// sustituir.
+[[nodiscard]] ExposureProfileResult runExposureProfile(const ExposureSweepCamera& camera,
+                                                       double minExposure,
+                                                       double maxExposure);
 
 // El aviso de «escala calibrada + automático encendido», o vacío si no hay nada
 // que decir.

@@ -111,6 +111,16 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    frames y las medidas bailan. Los valores que toques se guardan y se
    reaplican la próxima vez que inicies la cámara.
 
+   En una cámara que no has configurado nunca, la app lo intenta sola: al abrir
+   **prueba varias exposiciones, mide cuál va rápido sin oscurecer la pieza** y
+   la fija. Cuesta unos tres segundos y **puede salir que no compense** — es lo
+   normal con poca luz, porque en automático la cámara sube también la ganancia
+   y al fijar la exposición esa ayuda se pierde. Si pasa, vuelve al automático y
+   te dice el motivo: pon una lámpara sobre la pieza y al siguiente arranque la
+   respuesta cambia sola. También te avisa si la cámara **acepta los cambios y
+   no reacciona a ninguno** — hay modelos que dicen que sí y no hacen nada, y
+   ahí no se puede dar por buena una repetibilidad que no existe.
+
    **Dónde se va el tiempo** (pestaña *Rendimiento* de *Configurar*): marca
    *Medir el reparto por etapas* y verás en qué se va cada análisis —segmentar,
    contorno, fixture, normalizar y herramientas— en milisegundos y en

@@ -150,6 +150,37 @@ La moraleja, que es lo que hay que llevarse: **de una cámara no se cree lo que
 dice, se mide lo que hace**. Las tres versiones tenían tests verdes; las tres
 veces fue la cámara real la que dijo que no.
 
+**Y la contrapartida: la cámara de esta máquina tampoco lo prueba todo.** Aquí
+hay poca luz, así que el perfil **siempre acaba rechazado** y el camino de
+aceptación no se había visto correr nunca — precisamente el que deja la cámara
+tocada. Por eso la orquestación vive en `runExposureProfile` (en
+`camera_controls`), detrás de una costura de tres funciones —fijar la
+exposición, poner o quitar el automático, mirar— que es todo lo que el barrido
+necesita de una cámara. `drainExposureSweep` quedó en cableado: monta las tres
+lambdas sobre la `cv::VideoCapture` y traduce el resultado a log y señal. Los
+tres diseños fallidos no fallaron en las piezas sueltas —`chooseExposure` y
+`judgeProfile` estaban bien— sino en **el orden en que se llamaban**, que era
+justo lo único sin probar.
+
+Con la cámara de mentira aparecieron dos agujeros más, los dos con la misma
+forma: `judgeProfile` los aprobaba, porque ninguno es asunto suyo.
+
+- **La cámara sorda.** Acepta las escrituras y las ignora. El barrido sale
+  plano, el veredicto no tiene nada que reprochar (velocidad ×1,00, contraste
+  ×1,00) y se anunciaba «exposición fija aceptada»: el operador se fiaba de una
+  repetibilidad inexistente. Ahora, si **todas** las medidas salen idénticas
+  —incluida la del automático— el resultado es `Ignored` y se restaura el
+  automático. La igualdad se exige casi exacta (1e-9) a propósito: en una cámara
+  viva dos ventanas nunca dan el mismo contraste, así que no puede haber falsos
+  positivos.
+- **El techo mal medido.** El techo es la primera medida. Si esa ventana se
+  pierde sale 0, la salida temprana se dispara con la primera candidata y la
+  elegida acaba siendo la **más larga**, que es la peor. Y el veredicto lo
+  aprobaba con buena nota, porque una exposición larga da *más* contraste. La
+  regla que faltaba es la que no admite intercambio: **el perfil no puede dejar
+  la cámara más lenta que el automático**. Sin esa red, 29,7 → 8,0 fps: el mismo
+  desastre de 3,7× que este código existe para evitar.
+
 ### El primer arranque
 
 Una instalación nueva abre sin calibrar y sin ninguna pieza registrada, y no

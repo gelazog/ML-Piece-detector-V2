@@ -108,15 +108,10 @@ namespace {
 // 400 ms salen 3 frames en el caso lento y 12 en el rápido, que separa de
 // sobra.
 //
-// El contraste es la desviación típica de la imagen, y va aquí y no aparte
-// porque es la otra mitad de la decisión: una exposición que da muchos fps y
-// deja la pieza indistinguible del fondo no sirve de nada.
-struct Observation {
-    double fps = 0.0;
-    double contrast = 0.0;
-};
-
-Observation observe(cv::VideoCapture& capture) {
+// El contraste es la desviación típica de la imagen, y se mide en la misma
+// pasada y no aparte porque es la otra mitad de la decisión: una exposición que
+// da muchos fps y deja la pieza indistinguible del fondo no sirve de nada.
+SceneObservation observe(cv::VideoCapture& capture) {
     cv::Mat frame;
     // La cámara tarda un par de frames en aplicar un cambio; medirlos contaría
     // el tiempo de la exposición vieja.
@@ -138,15 +133,10 @@ Observation observe(cv::VideoCapture& capture) {
     }
     const double seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-    Observation observation;
+    SceneObservation observation;
     observation.fps = seconds > 0.0 ? frames / seconds : 0.0;
     observation.contrast = frames > 0 ? contrastSum / frames : 0.0;
     return observation;
-}
-
-double measureFps(cv::VideoCapture& capture, double exposure) {
-    capture.set(cv::CAP_PROP_EXPOSURE, exposure);
-    return observe(capture).fps;
 }
 
 }  // namespace
@@ -164,63 +154,51 @@ void CameraController::drainExposureSweep(cv::VideoCapture& capture) {
         maxExposure = exposureSweepMax_;
     }
 
-    const std::vector<double> candidates = exposureCandidates(minExposure, maxExposure);
-    if (candidates.size() < 2) {
-        return;
-    }
     core::setBreadcrumb("midiendo los fps de cada exposición");
 
-    // Primero, la referencia: qué da la cámara EN AUTOMÁTICO sobre esta escena.
-    // Sin ella no hay forma de saber si fijar la exposición mejora o empeora, y
-    // ese fue exactamente el error de la primera versión — se daba por hecho
-    // que mejoraba.
-    capture.set(cv::CAP_PROP_AUTO_EXPOSURE, 1.0);
-    const Observation reference = observe(capture);
-    capture.set(cv::CAP_PROP_AUTO_EXPOSURE, 0.0);
+    // Cableado y nada más: la decisión entera vive en `runExposureProfile`, que
+    // no sabe qué es una cv::VideoCapture y por eso se puede probar. Aquí solo
+    // se le enseña esta cámara.
+    ExposureSweepCamera seam;
+    seam.setExposure = [&capture](double exposure) {
+        capture.set(cv::CAP_PROP_EXPOSURE, exposure);
+    };
+    seam.setAutoExposure = [&capture](bool on) {
+        capture.set(cv::CAP_PROP_AUTO_EXPOSURE, on ? 1.0 : 0.0);
+    };
+    seam.observe = [&capture] { return observe(capture); };
 
-    // La más corta primero: es la que da la velocidad máxima alcanzable, y sin
-    // ese techo no se puede saber cuándo parar. Luego se baja desde la más
-    // larga y se para en la primera que lo alcanza — el codo está por ese lado,
-    // así que se sale en dos o tres medidas en vez de en nueve.
-    std::vector<ExposureFpsSample> sweep;
-    sweep.push_back({candidates.back(), measureFps(capture, candidates.back())});
-    const double ceiling = sweep.front().fps;
-    for (std::size_t i = 0; i + 1 < candidates.size(); ++i) {
-        const double fps = measureFps(capture, candidates[i]);
-        sweep.push_back({candidates[i], fps});
-        if (fps + 1e-9 >= ceiling * 0.95) {
-            break;
-        }
-    }
-
-    const std::optional<double> chosen = chooseExposure(sweep);
-    for (const auto& sample : sweep) {
+    const ExposureProfileResult result = runExposureProfile(seam, minExposure, maxExposure);
+    for (const auto& sample : result.sweep) {
         core::logInfo("Exposición " + std::to_string(sample.exposure) + " -> " +
                       std::to_string(sample.fps) + " fps");
     }
-    if (!chosen.has_value()) {
-        core::logWarning("El barrido de exposición no permite decidir: se deja como está");
-        capture.set(cv::CAP_PROP_AUTO_EXPOSURE, 1.0);
-        return;
-    }
 
-    // El veredicto: ¿se lo ha ganado? Se compara con la imagen que daba el
-    // automático sobre ESTA escena, no contra un número de catálogo. Si no
-    // compensa se vuelve al automático y se dice por qué — una estación que
-    // mide repetible pero no ve la pieza no mide nada.
-    capture.set(cv::CAP_PROP_EXPOSURE, *chosen);
-    const Observation after = observe(capture);
-    const ProfileVerdict verdict =
-        judgeProfile(reference.fps, reference.contrast, after.fps, after.contrast);
-    if (!verdict.keep) {
-        capture.set(cv::CAP_PROP_AUTO_EXPOSURE, 1.0);
-        core::logWarning("Exposición fija descartada: " + verdict.reason);
-        emit profileRejected(QString::fromStdString(verdict.reason));
-        return;
+    switch (result.outcome) {
+        case ExposureProfileOutcome::Untouched:
+        case ExposureProfileOutcome::Undecided:
+            // Nada que contarle al operador: la cámara sigue como estaba y
+            // avisar de cada no-cambio es la mejor forma de que deje de leer
+            // los avisos.
+            core::logWarning("Exposición sin fijar: " + result.reason);
+            return;
+        case ExposureProfileOutcome::Ignored:
+        case ExposureProfileOutcome::Reverted:
+            // Las dos acaban en automático, y el operador tiene que saberlo:
+            // significa que sus medidas no son repetibles todavía.
+            core::logWarning("Exposición fija descartada: " + result.reason);
+            emit profileRejected(QString::fromStdString(result.reason));
+            return;
+        case ExposureProfileOutcome::Applied:
+            core::logInfo("Exposición fija aceptada: " + std::to_string(result.fixed.fps) +
+                          " fps con " +
+                          std::to_string(static_cast<int>(result.fixed.contrast)) +
+                          " de contraste (en automático daba " +
+                          std::to_string(result.automatic.fps) + " fps con " +
+                          std::to_string(static_cast<int>(result.automatic.contrast)) + ")");
+            emit exposureChosen(*result.exposure, result.sweep);
+            return;
     }
-    core::logInfo("Exposición fija aceptada: " + std::to_string(after.fps) + " fps con " +
-                  std::to_string(static_cast<int>(after.contrast)) + " de contraste");
-    emit exposureChosen(*chosen, sweep);
 }
 
 void CameraController::drainResolutionRequests(cv::VideoCapture& capture) {

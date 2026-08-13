@@ -346,6 +346,139 @@ ProfileVerdict judgeProfile(double fpsBefore, double contrastBefore, double fpsA
     return verdict;
 }
 
+namespace {
+
+// Dos medidas que no se distinguen NI en velocidad NI en contraste. Se exige
+// igualdad casi exacta a proposito: en una camara viva, dos ventanas de medida
+// sobre la misma escena no dan el mismo contraste ni con el mismo ajuste, asi
+// que esto solo se cumple cuando la camara esta devolviendo una respuesta
+// enlatada pase lo que pase. Con un margen generoso aqui se rechazarian
+// camaras buenas, y eso es peor.
+bool sameObservation(const SceneObservation& a, const SceneObservation& b) {
+    constexpr double kEpsilon = 1e-9;
+    return std::abs(a.fps - b.fps) <= kEpsilon && std::abs(a.contrast - b.contrast) <= kEpsilon;
+}
+
+// Redondeo a entero para los mensajes: al operador le sirve "8 fps", no
+// "8.000000", que es lo que da std::to_string con un double.
+std::string round0(double value) {
+    return std::to_string(static_cast<int>(std::lround(value)));
+}
+
+}  // namespace
+
+ExposureProfileResult runExposureProfile(const ExposureSweepCamera& camera,
+                                         double minExposure, double maxExposure) {
+    ExposureProfileResult result;
+
+    const std::vector<double> candidates = exposureCandidates(minExposure, maxExposure);
+    if (candidates.size() < 2) {
+        // Sin recorrido no hay exposicion que elegir, y sin exposicion que
+        // elegir NO SE APAGA EL AUTOMATICO: se sale sin escribir una sola
+        // propiedad. Medido: apagarlo a secas dejo la camara en 8,0 fps
+        // viniendo de 29,7, porque se cae a su manual, que es el mas largo.
+        result.reason = "la camara no deja recorrer la exposicion: se queda como estaba";
+        return result;
+    }
+
+    // Primero, la referencia: que da la camara EN AUTOMATICO sobre esta escena.
+    // Sin ella no hay forma de saber si fijar la exposicion mejora o empeora, y
+    // ese fue exactamente el error de la primera version — se daba por hecho
+    // que mejoraba.
+    camera.setAutoExposure(true);
+    result.automatic = camera.observe();
+    camera.setAutoExposure(false);
+
+    // Todo lo observado, para poder distinguir despues una camara que obedece
+    // de una que dice que si y no hace nada.
+    std::vector<SceneObservation> seen{result.automatic};
+    const auto measure = [&camera, &seen](double exposure) {
+        camera.setExposure(exposure);
+        seen.push_back(camera.observe());
+        return seen.back();
+    };
+
+    // La mas corta primero: es la que da la velocidad maxima alcanzable, y sin
+    // ese techo no se puede saber cuando parar. Luego se baja desde la mas
+    // larga y se para en la primera que lo alcanza — el codo esta por ese lado,
+    // asi que se sale en dos o tres medidas en vez de en nueve.
+    result.sweep.push_back({candidates.back(), measure(candidates.back()).fps});
+    const double ceiling = result.sweep.front().fps;
+    for (std::size_t i = 0; i + 1 < candidates.size(); ++i) {
+        const double fps = measure(candidates[i]).fps;
+        result.sweep.push_back({candidates[i], fps});
+        if (fps + 1e-9 >= ceiling * 0.95) {
+            break;
+        }
+    }
+
+    const std::optional<double> chosen = chooseExposure(result.sweep);
+    if (!chosen.has_value()) {
+        camera.setAutoExposure(true);
+        result.outcome = ExposureProfileOutcome::Undecided;
+        result.reason = "el barrido de exposicion no permite decidir: se deja en automatico";
+        return result;
+    }
+
+    // El veredicto: ¿se lo ha ganado? Se compara con la imagen que daba el
+    // automatico sobre ESTA escena, no contra un numero de catalogo. Si no
+    // compensa se vuelve al automatico y se dice por que — una estacion que
+    // mide repetible pero no ve la pieza no mide nada.
+    camera.setExposure(*chosen);
+    result.fixed = camera.observe();
+    seen.push_back(result.fixed);
+
+    // La camara sorda: acepto todas las escrituras y dio exactamente la misma
+    // medida para todas, incluida la del automatico. No se le ha cambiado
+    // nada, asi que no puede decirse que quedo configurada — y decirlo seria
+    // lo peor de todo, porque el operador se fiaria de una repetibilidad que
+    // no tiene. Es lo que hace la camara real con CAP_PROP_AUTO_EXPOSURE, que
+    // acepta el set() y devuelve -1 pase lo que pase.
+    if (std::all_of(seen.begin(), seen.end(), [&seen](const SceneObservation& observation) {
+            return sameObservation(observation, seen.front());
+        })) {
+        camera.setAutoExposure(true);
+        result.outcome = ExposureProfileOutcome::Ignored;
+        result.reason =
+            "la camara acepta los cambios de exposicion y no reacciona a ninguno: dio la "
+            "misma velocidad y el mismo contraste en todo el barrido, asi que no puede "
+            "darse por configurada";
+        return result;
+    }
+
+    // Y antes de juzgar el intercambio contraste/velocidad, lo que no admite
+    // intercambio: el perfil NO puede dejar la camara mas lenta de lo que
+    // estaba. Pasa cuando la medida del techo sale mal —un tropiezo en la
+    // primera ventana da un techo de 0 fps, la salida temprana se dispara
+    // enseguida y la elegida acaba siendo la mas larga—, y es exactamente el
+    // desastre de 3,7x que este codigo existe para evitar. `judgeProfile` no
+    // lo ve: solo se pregunta si la perdida de contraste se paga con
+    // velocidad, y aqui no hay ganancia que repartir.
+    constexpr double kSpeedFloor = 0.95;  // el mismo 5 % de ruido de medida
+    if (result.automatic.fps > 0.0 &&
+        result.fixed.fps + 1e-9 < result.automatic.fps * kSpeedFloor) {
+        camera.setAutoExposure(true);
+        result.outcome = ExposureProfileOutcome::Reverted;
+        result.reason = "fijar la exposicion dejo la camara en " + round0(result.fixed.fps) +
+                        " fps cuando el automatico daba " + round0(result.automatic.fps) +
+                        ": cambiar a peor no es un perfil, se vuelve al automatico";
+        return result;
+    }
+
+    const ProfileVerdict verdict = judgeProfile(result.automatic.fps, result.automatic.contrast,
+                                                result.fixed.fps, result.fixed.contrast);
+    if (!verdict.keep) {
+        camera.setAutoExposure(true);
+        result.outcome = ExposureProfileOutcome::Reverted;
+        result.reason = verdict.reason;
+        return result;
+    }
+
+    result.outcome = ExposureProfileOutcome::Applied;
+    result.exposure = *chosen;
+    return result;
+}
+
 std::string automaticsWarning(bool calibrated, bool autoExposureOn, bool autoFocusOn) {
     if (!calibrated || (!autoExposureOn && !autoFocusOn)) {
         return {};
