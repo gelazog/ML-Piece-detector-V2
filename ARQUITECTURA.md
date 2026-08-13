@@ -50,7 +50,52 @@ Dos reglas que sostienen el diseño:
 
 ---
 
-## 2. Captura de cámara
+## 2. Captura: la cámara y los ficheros
+
+### Una imagen es una fuente, no un modo
+
+La observación que ordena esta parte: **`MainWindow` cuelga entero de una
+señal.** Llega un `QImage`, y todo lo que hay detrás —segmentar, contorno,
+fixture, herramientas, zona de trabajo, recuento, medición automática,
+inspección— ya trabaja sobre ese `QImage` **sin preguntar de dónde salió**. Lo
+único atado a la cámara es quién produce el frame.
+
+Así que «que lo del vídeo funcione sobre una imagen» no es un modo nuevo ni una
+pantalla nueva: es una **fuente** más (`camera/frame_source.h`,
+`camera/file_sources.*`). Hacerlo como modo aparte daría dos caminos que
+divergen, y este proyecto ya pagó eso una vez con los botones y otra con las
+tres paletas.
+
+El desplegable de cámaras pasa a ofrecer también **Abrir imagen…** y **Abrir
+vídeo…**, y hay un efecto secundario que vale más que la función pedida: antes,
+**sin cámara la aplicación era inservible** —el botón Iniciar salía
+deshabilitado y no se podía ni ajustar la detección ni preparar una plantilla—.
+Ahora se abre una imagen y funciona todo.
+
+Tres decisiones que no son evidentes:
+
+- **La imagen REEMITE su frame** cuatro veces por segundo en vez de una sola.
+  Media aplicación reacciona a «llegó un frame nuevo», así que emitir una vez
+  dejaría la pantalla congelada en cuanto el operador tocara un ajuste de
+  detección. Y a ritmo bajo porque reanalizar treinta veces por segundo una
+  imagen que no cambia es quemar CPU para nada.
+- **El vídeo va en su propio hilo** y en bucle, como la cámara: la regla de esta
+  capa es que nada bloquea la interfaz, y descodificar 1080p en el hilo de la UI
+  la dejaría a tirones.
+- **El índice de cámara viaja en el DATO del elemento del combo, no en su
+  posición.** En cuanto se añaden dos entradas al final, cualquier código que
+  asumiera «posición del combo == índice en `cameras_`» apunta a otra cosa sin
+  avisar. Este proyecto ya pagó ese precio una vez con las pestañas de
+  Configurar.
+
+`CameraController` **no** implementa la interfaz común, y es deliberado: tiene
+controles, resolución y perfil de exposición que un fichero no puede prometer, y
+forzar una interfaz común obligaría a rellenar esos huecos con métodos vacíos.
+Lo que comparten —lo único que la ventana necesita— es que llega un frame.
+`capabilitiesOf()` responde qué se puede hacer con cada fuente, para que la
+interfaz deshabilite **con motivo** en vez de repartir `if (esCámara)`.
+
+### Enumerar y abrir la cámara
 
 **Enumerar sin abrir.** La lista de cámaras se pide a la API nativa del sistema
 —DirectShow COM en Windows, V4L2 en Linux— que devuelve el **nombre real** del

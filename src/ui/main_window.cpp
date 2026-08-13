@@ -29,6 +29,7 @@
 #include <variant>
 
 #include "camera/camera_enumerator.h"
+#include "camera/file_sources.h"
 #include "camera/frame_utils.h"
 #include "core/logging.h"
 #include "inspection_editor/editor_window.h"
@@ -70,6 +71,12 @@ namespace pci::ui {
 namespace {
 
 const char* const kSettingCameraIndex = "camera_index";
+
+// Marcadores del desplegable de fuente, guardados en el DATO del elemento. Los
+// valores negativos no chocan nunca con un índice de cámara, que es lo que
+// permite preguntar «¿qué eligió?» sin depender de dónde caiga en la lista.
+constexpr int kSourceOpenImage = -1;
+constexpr int kSourceOpenVideo = -2;
 constexpr int kCaptureTarget = 30;
 constexpr int kCaptureMinimum = 5;
 
@@ -1522,22 +1529,38 @@ void MainWindow::onCamerasEnumerated() {
     cameras_ = enumerationWatcher_.result();
     cameraCombo_->clear();
 
-    if (cameras_.empty()) {
-        cameraCombo_->addItem(tr("No se encontraron cámaras"));
-        statusBar()->showMessage(tr("No se detectó ninguna cámara. Conecta una y actualiza."));
-        refreshAction_->setEnabled(true);
-        startStopButton_->setEnabled(false);
-        return;
-    }
-
-    for (const auto& cam : cameras_) {
+    for (std::size_t i = 0; i < cameras_.size(); ++i) {
         // La resolución solo se conoce tras conectar (la enumeración ya no abre
         // el dispositivo), así que se omite mientras sea 0.
-        QString label = QString::fromStdString(cam.name);
-        if (cam.width > 0 && cam.height > 0) {
-            label += QStringLiteral(" (%1x%2)").arg(cam.width).arg(cam.height);
+        QString label = QString::fromStdString(cameras_[i].name);
+        if (cameras_[i].width > 0 && cameras_[i].height > 0) {
+            label += QStringLiteral(" (%1x%2)").arg(cameras_[i].width).arg(cameras_[i].height);
         }
-        cameraCombo_->addItem(label);
+        // El índice va en el DATO, no en la posición del combo. Este proyecto
+        // ya pagó una vez el precio de señalar cosas por su posición: en cuanto
+        // se añaden «Abrir imagen…» y «Abrir vídeo…» al final, cualquier código
+        // que asumiera «índice del combo == índice en cameras_» apunta a otra
+        // cosa sin avisar.
+        cameraCombo_->addItem(label, QVariant(static_cast<int>(i)));
+    }
+
+    // Los ficheros son fuentes como la cámara, y van SIEMPRE, haya cámaras o
+    // no. Antes, sin cámara, la aplicación entera se quedaba inservible: ni se
+    // podía ajustar la detección, ni dibujar herramientas, ni probar una
+    // plantilla. Con una imagen se puede hacer todo eso.
+    if (!cameras_.empty()) {
+        cameraCombo_->insertSeparator(cameraCombo_->count());
+    }
+    cameraCombo_->addItem(tr("Abrir imagen…"), QVariant(kSourceOpenImage));
+    cameraCombo_->addItem(tr("Abrir vídeo…"), QVariant(kSourceOpenVideo));
+
+    if (cameras_.empty()) {
+        statusBar()->showMessage(
+            tr("No se detectó ninguna cámara. Puedes conectar una y actualizar, o abrir una "
+               "imagen o un vídeo para trabajar sin ella."));
+        refreshAction_->setEnabled(true);
+        startStopButton_->setEnabled(true);
+        return;
     }
 
     // Restaurar la última cámara elegida por el usuario (si sigue conectada).
@@ -1562,11 +1585,27 @@ void MainWindow::onStartStopClicked() {
     if (streaming_) {
         // stop() une el hilo de captura; la UI se restablece en onStreamStopped.
         startStopButton_->setEnabled(false);
-        controller_.stop();
+        if (fileSource_ != nullptr) {
+            fileSource_->stop();
+        } else {
+            controller_.stop();
+        }
         return;
     }
 
-    const int comboIndex = cameraCombo_->currentIndex();
+    // Qué fuente se eligió, preguntado por el DATO del elemento. Un separador no
+    // tiene dato, y por eso no hace nada en vez de arrancar lo que hubiera
+    // debajo.
+    const QVariant choice = cameraCombo_->currentData();
+    if (!choice.isValid()) {
+        return;
+    }
+    if (choice.toInt() == kSourceOpenImage || choice.toInt() == kSourceOpenVideo) {
+        startFileSource(choice.toInt() == kSourceOpenImage ? camera::SourceKind::Image
+                                                           : camera::SourceKind::Video);
+        return;
+    }
+    const int comboIndex = choice.toInt();
     if (comboIndex < 0 || comboIndex >= static_cast<int>(cameras_.size())) {
         return;
     }
@@ -1598,6 +1637,48 @@ void MainWindow::onStartStopClicked() {
         // La resolución elegida se reaplica al abrir, igual que los controles.
         controller_.requestResolution(savedResolution_);
     }
+}
+
+bool MainWindow::startFileSource(camera::SourceKind kind) {
+    const bool wantsImage = kind == camera::SourceKind::Image;
+    const QString path = QFileDialog::getOpenFileName(
+        this, wantsImage ? tr("Abrir imagen") : tr("Abrir vídeo"), QString(),
+        wantsImage ? tr("Imágenes (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;Todos (*)")
+                   : tr("Vídeos (*.mp4 *.avi *.mkv *.mov *.wmv);;Todos (*)"));
+    if (path.isEmpty()) {
+        // Cancelar no es un error: la ventana se queda exactamente como estaba.
+        return false;
+    }
+
+    if (wantsImage) {
+        fileSource_ = std::make_unique<camera::StillImageSource>(path);
+    } else {
+        fileSource_ = std::make_unique<camera::VideoFileSource>(path);
+    }
+    // Las mismas ranuras que la cámara. Ahí está todo el asunto: a partir de
+    // aquí la ventana no sabe —ni necesita saber— de dónde vino el frame.
+    connect(fileSource_.get(), &camera::FrameSource::frameReady, this, &MainWindow::onFrame);
+    connect(fileSource_.get(), &camera::FrameSource::statsUpdated, this, &MainWindow::onStats);
+    connect(fileSource_.get(), &camera::FrameSource::sourceError, this,
+            &MainWindow::onCameraError);
+    connect(fileSource_.get(), &camera::FrameSource::stopped, this,
+            &MainWindow::onStreamStopped);
+
+    sourceKind_ = kind;
+    streaming_ = true;
+    // La identidad de la fuente sirve para el aviso de calibración obsoleta: la
+    // escala en px/mm depende de la óptica y de la distancia al plano, y pasar
+    // de una cámara a un fichero (o entre ficheros) cambia las dos.
+    currentCameraKey_ = fileSource_->describe();
+    startStopButton_->setText(tr("Cerrar"));
+    cameraCombo_->setEnabled(false);
+    refreshAction_->setEnabled(false);
+    statusBar()->showMessage(wantsImage ? tr("Analizando la imagen %1").arg(fileSource_->describe())
+                                        : tr("Reproduciendo %1").arg(fileSource_->describe()));
+    updateCalibrationLabel();
+    updateStatusIndicators();
+    fileSource_->start();
+    return true;
 }
 
 void MainWindow::onFrame(const QImage& frame) {
@@ -1889,10 +1970,19 @@ void MainWindow::onCameraError(const QString& message) {
 
 void MainWindow::onStreamStopped() {
     streaming_ = false;
+    if (fileSource_ != nullptr) {
+        // `deleteLater` y no `reset()`: esta ranura puede estar corriendo
+        // DENTRO de la emisión de `stopped()` de la propia fuente, y destruirla
+        // ahí sería tirar el suelo mientras se está de pie encima.
+        fileSource_.release()->deleteLater();
+    }
+    sourceKind_ = camera::SourceKind::Camera;
     autoInspectButton_->setChecked(false);
     stopLiveCapture();
     startStopButton_->setText(tr("Iniciar"));
-    startStopButton_->setEnabled(!cameras_.empty());
+    // Siempre habilitado: aunque no haya ninguna cámara, se puede abrir una
+    // imagen o un vídeo.
+    startStopButton_->setEnabled(true);
     cameraCombo_->setEnabled(true);
     refreshAction_->setEnabled(true);
     statsLabel_->clear();
@@ -1914,7 +2004,9 @@ void MainWindow::onStreamStopped() {
 void MainWindow::setControlsEnabled(bool enabled) {
     cameraCombo_->setEnabled(enabled);
     refreshAction_->setEnabled(enabled);
-    startStopButton_->setEnabled(enabled && !cameras_.empty());
+    // Sin cámaras el botón sigue vivo: el desplegable siempre ofrece abrir una
+    // imagen o un vídeo.
+    startStopButton_->setEnabled(enabled);
 }
 
 // --- Herramientas dibujadas sobre el video ---------------------------------

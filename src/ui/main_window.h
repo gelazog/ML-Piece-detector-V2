@@ -16,6 +16,7 @@
 #include "vision/stage_stats.h"
 #include "camera/camera_controller.h"
 #include "camera/camera_info.h"
+#include "camera/frame_source.h"
 #include "domain/calibration.h"
 #include "engine/inspection_engine.h"
 #include "inspection_editor/tools/undo_stack.h"
@@ -157,6 +158,10 @@ private:
     void applyDetectionPage(DetectionPage* page);
     // Piezas esperadas (C5): va con la pieza seleccionada, no con la máquina.
     void applyPiecesPage(PiecesPage* page);
+    // Abrir una imagen o un vídeo como fuente. False si el operador canceló el
+    // diálogo de fichero, que no es un error y no debe dejar la ventana a
+    // medio arrancar.
+    bool startFileSource(pci::camera::SourceKind kind);
     // ¿Va alguien a leer CUÁNTAS piezas se ven? La pieza espera más de una, o
     // el panel Configurar está abierto. Se pregunta en dos sitios —al montar el
     // análisis y al elegir la zona— y tienen que responder lo mismo, así que la
@@ -326,6 +331,14 @@ private:
     QImage lastFrame_;
     QImage inspectedFrame_;
     camera::CameraController controller_;
+    // La fuente de archivo, viva solo cuando la fuente elegida es una imagen o
+    // un vídeo. La cámara y los ficheros no comparten clase a propósito: la
+    // cámara tiene controles, resolución y perfil de exposición que un fichero
+    // no puede prometer, y una interfaz común obligaría a rellenar esos huecos
+    // con métodos vacíos. Lo que sí comparten —y es lo único que la ventana
+    // necesita— es que llega un frame.
+    std::unique_ptr<camera::FrameSource> fileSource_;
+    camera::SourceKind sourceKind_ = camera::SourceKind::Camera;
     QFutureWatcher<std::vector<camera::CameraInfo>> enumerationWatcher_;
     QFutureWatcher<AnalysisOverlay> analysisWatcher_;
     QFutureWatcher<core::Result<engine::InspectionEngine::Outcome>> inspectionWatcher_;

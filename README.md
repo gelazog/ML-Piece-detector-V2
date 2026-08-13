@@ -39,16 +39,31 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    **Cám** (cámara transmitiendo), **BD** (base de datos conectada) y **ONNX**
    (modelo de embeddings cargado) — para ver de un vistazo qué está disponible.
 
-2. **Cámara**: elige una del combo (aparecen con su nombre real, listadas por
-   la API nativa del SO sin abrirlas) y pulsa **Iniciar** para la vista en vivo.
+2. **Fuente**: elige del combo y pulsa **Iniciar**. Hay tres tipos y **todos
+   funcionan igual** de ahí en adelante:
+
+   - una **cámara** (aparecen con su nombre real, listadas por la API nativa del
+     SO sin abrirlas),
+   - **Abrir imagen…** — una foto de la pieza,
+   - **Abrir vídeo…** — un `.mp4`/`.avi`, que se reproduce en bucle.
+
+   Con una imagen o un vídeo tienes **exactamente lo mismo** que con la cámara:
+   detección de contorno, fixture, zona de trabajo, herramientas de medición,
+   medición automática, recuento de piezas e inspección. Sirve para preparar una
+   plantilla en el despacho, para reproducir un caso que falló en la línea (te
+   mandan la foto y lo ves tú), y para trabajar cuando la cámara no está.
+
+   **Sin ninguna cámara conectada la aplicación ya no se queda inservible**:
+   abre una imagen y puedes hacerlo todo. `sample_images/pieza_demo.png` sirve
+   para probar ahora mismo.
+
    Con **Ver ▸ Mostrar
    contorno** activo (por defecto), el contorno de la pieza, su centro y su
    eje se dibujan sobre el video en tiempo real; **al ocultarlo, las
    herramientas se congelan en su sitio** (la pieza se inspecciona fija, sin
    que nada tiemble) y el análisis se pausa si no hay nada que medir. La
    unidad de medida se elige en **Ver ▸ Unidad**. La cámara elegida queda
-   guardada. *Sin cámara, todos los pasos siguientes aceptan imágenes desde
-   archivo* (`sample_images/pieza_demo.png` sirve para probar).
+   guardada.
 
    La **primera vez** que arrancas, sobre el vídeo aparece una línea con el
    siguiente paso que toca —calibrar y luego registrar una pieza—. Se quita con

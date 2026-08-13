@@ -3,6 +3,8 @@ add_library(pci_camera STATIC
   camera_controls.cpp
   camera_enumerator.cpp
   native_cameras.cpp
+  file_sources.cpp
+  frame_source.cpp
   frame_utils.cpp
 )
 target_include_directories(pci_camera PUBLIC ${CMAKE_SOURCE_DIR}/src)

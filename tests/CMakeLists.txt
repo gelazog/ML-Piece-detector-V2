@@ -50,11 +50,19 @@ gtest_discover_tests(pci_tests DISCOVERY_MODE PRE_TEST)
 
 # Pruebas de gesto sobre el widget: necesitan Qt y una plataforma sin pantalla,
 # por eso van aparte de la suite principal.
-add_executable(pci_gui_tests test_canvas_gestures.cpp test_configure_dialog.cpp)
+#
+# Las fuentes de archivo van aquí y no en la suite general aunque no dibujen
+# nada: necesitan un bucle de eventos vivo, porque el temporizador de la imagen
+# y las señales encoladas del hilo del vídeo no llegan sin él.
+add_executable(pci_gui_tests
+  test_canvas_gestures.cpp
+  test_configure_dialog.cpp
+  test_frame_sources.cpp
+)
 set_target_properties(pci_gui_tests PROPERTIES AUTOMOC ON)
 target_link_libraries(pci_gui_tests
-  PRIVATE pci_editor pci_inspection pci_ui pci_vision pci_core
-          pci_repositories pci_database Qt6::Widgets
+  PRIVATE pci_camera pci_editor pci_inspection pci_ui pci_vision pci_core
+          pci_repositories pci_database Qt6::Widgets Qt6::Test
           GTest::gtest ${OpenCV_LIBS} project_warnings
 )
 gtest_discover_tests(pci_gui_tests
