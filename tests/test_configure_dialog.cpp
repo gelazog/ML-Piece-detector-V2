@@ -695,13 +695,9 @@ TEST(ToolsDock, TheThirdRowIsNarrowerWithoutTheDrawingControls) {
     //
     // La fila competía por el ancho en una ventana que arranca a 1100 px, y con
     // la paleta dentro no habia forma de que cupiera al crecer.
-    const auto rowWidth = [](const QStringList& buttons, bool withPalette) {
+    const auto rowWidth = [](const QStringList& buttons) {
         auto* host = new QWidget();
         auto* row = new QHBoxLayout(host);
-        if (withPalette) {
-            row->addWidget(new QLabel(QStringLiteral("Dibujar:"), host));
-            row->addWidget(new pci::inspection::ToolPalette(pci::inspection::ToolPalette::Shape::Compact, host));
-        }
         for (const QString& text : buttons) {
             row->addWidget(new QPushButton(text, host));
         }
@@ -711,14 +707,12 @@ TEST(ToolsDock, TheThirdRowIsNarrowerWithoutTheDrawingControls) {
         return width;
     };
 
-    // Lo que llevaba: paleta, Borrar, Rasgo, Puntos + spin, Fijar escala,
-    // Guardar, Atajos.
-    const QStringList before{QStringLiteral("Borrar herramienta"),
-                             QStringLiteral("Rasgo distintivo"),
-                             QStringLiteral("Puntos:"),
-                             QStringLiteral("Fijar escala con esta medida…"),
-                             QStringLiteral("Guardar plantilla (Ctrl+S)"),
-                             QStringLiteral("Atajos (F1)")};
+    // El ANTES es una cifra registrada, no un calculo: se midio con la paleta
+    // compacta dentro de la fila, y esa paleta ya no existe — se retiro al
+    // quedarse sin usos. Volver a "medirla" con un sustituto seria inventar el
+    // numero, asi que se deja el que salio y se dice de donde viene.
+    constexpr int kMeasuredBefore = 1049;
+
     // Lo que lleva ahora: solo lo que actua sobre la PIEZA y la PLANTILLA. El
     // dibujo y lo que actua sobre la herramienta seleccionada se fueron al dock.
     const QStringList after{QStringLiteral("Rasgo distintivo"),
@@ -726,11 +720,10 @@ TEST(ToolsDock, TheThirdRowIsNarrowerWithoutTheDrawingControls) {
                             QStringLiteral("Guardar plantilla (Ctrl+S)"),
                             QStringLiteral("Atajos (F1)")};
 
-    const int wide = rowWidth(before, /*withPalette=*/true);
-    const int narrow = rowWidth(after, /*withPalette=*/false);
-    std::printf("  la fila 3 pedia %d px y ahora pide %d (%d menos)\n", wide, narrow,
-                wide - narrow);
-    EXPECT_LT(narrow, wide) << "sacar la paleta no estrecho la fila";
+    const int narrow = rowWidth(after);
+    std::printf("  la fila 3 pedia %d px medidos y ahora pide %d\n", kMeasuredBefore,
+                narrow);
+    EXPECT_LT(narrow, kMeasuredBefore) << "sacar la paleta no estrecho la fila";
     // Y lo que de verdad importa: cabe en la ventana que arranca a 1100, con
     // sitio de sobra para el video.
     EXPECT_LT(narrow, 900) << "la fila 3 sigue comiendose la ventana";

@@ -73,7 +73,7 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     // desplazamiento. El panel las pone en rejilla, así que la familia mayor
     // ocupa dos filas en vez de ocho, y se ven todas a la vez — que es lo que
     // hace que se pueda elegir en un vistazo en vez de leyendo.
-    palette_ = new ToolPalette(ToolPalette::Shape::Panel, this);
+    palette_ = new ToolPalette(this);
     // 190 era lo que pedía el acordeón por su texto vertical. El panel cabe en
     // 176 —medido: es el ancho de la franja de familias— y por debajo de eso no
     // encoge nada, así que ponerle menos solo dejaría hueco muerto.

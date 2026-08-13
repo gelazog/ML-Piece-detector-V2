@@ -271,7 +271,15 @@ Verificación: medir el ancho mínimo de la fila 3 **antes y después** e imprim
 en el test, como se hizo con la paleta compacta. La ventana tiene que caber de
 verdad a 1100 px.
 
-### - [ ] P6 — Retirar `Compact` y `Accordion`
+### - [x] P6 — Retirar `Compact` y `Accordion`
+
+*(Sin usos en producción tras P4 y P5, así que fuera: **263 líneas menos de las
+que se añaden**. `Shape` se queda sin enumeración y el parámetro desaparece del
+constructor — con una sola forma, pedirla era ceremonia.
+Un detalle de honestidad en los tests: la medida «antes» de la fila 3 (1049 px)
+se tomó con la paleta compacta dentro, y esa paleta ya no existe. Volver a
+«medirla» con un sustituto habría sido inventar el número, así que queda como
+cifra registrada, con una nota de dónde salió.)*
 
 Solo después de P4 y P5, y solo si no queda ningún uso. `Shape` se queda sin
 enumeración o con una sola entrada; si es una sola, se elimina el parámetro del

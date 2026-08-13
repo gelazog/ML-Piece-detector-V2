@@ -594,76 +594,44 @@ int main(int argc, char** argv) {
 // Paleta agrupada por familias (R2)
 // ---------------------------------------------------------------------------
 
-TEST(ToolPaletteTest, EveryToolIsReachableInEveryShape) {
+TEST(ToolPaletteTest, EveryToolIsReachable) {
     // Agrupar no puede esconder nada: si una herramienta no aparece en ninguna
     // familia, deja de existir para el operador aunque el codigo la tenga.
     //
-    // En el panel hay que ABRIR cada familia, porque solo se instancian los
-    // botones de la activa. Eso es a proposito —crear 32 botones para enseñar 8
-    // seria trabajo tirado en cada cambio— y obliga al test a recorrerlas, que
-    // es exactamente lo que hace el operador.
-    for (const auto shape : {ToolPalette::Shape::Compact, ToolPalette::Shape::Accordion,
-                             ToolPalette::Shape::Panel}) {
-        ToolPalette palette(shape);
-        std::vector<ToolType> reachable;
+    // Hay que ABRIR cada familia, porque solo se instancian los botones de la
+    // activa. Eso es a proposito —crear 32 botones para enseñar 8 seria trabajo
+    // tirado en cada cambio— y obliga al test a recorrerlas, que es exactamente
+    // lo que hace el operador.
+    ToolPalette palette;
+    std::vector<ToolType> reachable;
 
-        const auto collect = [&palette, &reachable] {
-            for (auto* button : palette.findChildren<QToolButton*>()) {
-                if (auto* menu = button->menu(); menu != nullptr) {
-                    for (auto* action : menu->actions()) {
-                        for (const ToolType type : allToolTypes()) {
-                            if (action->text() == QString::fromUtf8(toolTypeLabel(type))) {
-                                reachable.push_back(type);
-                            }
-                        }
-                    }
-                    continue;
-                }
-                for (const ToolType type : allToolTypes()) {
-                    const QString name = QString::fromUtf8(toolTypeLabel(type));
-                    // El panel usa botones de solo icono: el nombre vive en el
-                    // tooltip, y ahi es donde el operador lo lee.
-                    if (button->text() == name || button->toolTip() == name) {
-                        reachable.push_back(type);
-                    }
-                }
-            }
-        };
-
-        if (shape == ToolPalette::Shape::Panel) {
-            for (const auto category : allToolCategories()) {
-                if (toolsInCategory(category).empty()) {
-                    continue;
-                }
-                palette.activateCategory(category);
-                collect();
-            }
-        } else {
-            collect();
+    for (const auto category : allToolCategories()) {
+        if (toolsInCategory(category).empty()) {
+            continue;
         }
-
-        std::sort(reachable.begin(), reachable.end());
-        reachable.erase(std::unique(reachable.begin(), reachable.end()), reachable.end());
-        auto expected = std::vector<ToolType>(allToolTypes().begin(), allToolTypes().end());
-        std::sort(expected.begin(), expected.end());
-        EXPECT_EQ(reachable, expected)
-            << "forma " << static_cast<int>(shape) << ": alguna herramienta quedo escondida";
+        palette.activateCategory(category);
+        for (auto* button : palette.findChildren<QToolButton*>()) {
+            for (const ToolType type : allToolTypes()) {
+                // Los botones de la rejilla son de solo icono: el nombre vive
+                // en el tooltip, y ahi es donde el operador lo lee.
+                if (button->toolTip() == QString::fromUtf8(toolTypeLabel(type))) {
+                    reachable.push_back(type);
+                }
+            }
+        }
     }
-}
 
-TEST(ToolPaletteTest, TheCompactRowFitsInTheWindow) {
-    // La razón de ser del ítem: la fila plana pedía ~1400 px de ancho mínimo en
-    // una ventana que arranca a 1100.
-    ToolPalette palette(ToolPalette::Shape::Compact);
-    const int width = palette.sizeHint().width();
-    std::printf("  paleta compacta: %d px de ancho (la fila plana pedía ~1400)\n", width);
-    EXPECT_LT(width, 700) << "la paleta tiene que dejar sitio al resto de la barra";
+    std::sort(reachable.begin(), reachable.end());
+    reachable.erase(std::unique(reachable.begin(), reachable.end()), reachable.end());
+    auto expected = std::vector<ToolType>(allToolTypes().begin(), allToolTypes().end());
+    std::sort(expected.begin(), expected.end());
+    EXPECT_EQ(reachable, expected) << "alguna herramienta quedo escondida";
 }
 
 TEST(ToolPaletteTest, FamilyPlusDigitPicksTheRightTool) {
     // El atajo que sustituye a la tabla escrita a mano de un dígito por
     // herramienta, que se quedó corta con catorce.
-    ToolPalette palette(ToolPalette::Shape::Compact);
+    ToolPalette palette;
     std::vector<std::optional<ToolType>> chosen;
     QObject::connect(&palette, &ToolPalette::toolChosen,
                      [&chosen](std::optional<ToolType> type) { chosen.push_back(type); });
@@ -693,7 +661,7 @@ TEST(ToolPaletteTest, FamilyPlusDigitPicksTheRightTool) {
 TEST(ToolPaletteTest, ChoosingATooolAnnouncesItAndShowingDoesNot) {
     // `activate` es "el operador pulsó" y avisa; `showSelection` es sincronizar
     // desde fuera y no debe disparar nada, o se realimentaría en bucle.
-    ToolPalette palette(ToolPalette::Shape::Accordion);
+    ToolPalette palette;
     int announced = 0;
     QObject::connect(&palette, &ToolPalette::toolChosen,
                      [&announced](std::optional<ToolType>) { ++announced; });
@@ -928,7 +896,7 @@ TEST(ToolPanel, ItFitsWithoutHorizontalScrollAtEveryUsefulWidth) {
     // igual que un menu.
     // Lo que decide si aparece barra horizontal es el ancho MINIMO, no el
     // preferido: un widget se deja estrechar hasta el minimo sin quejarse.
-    ToolPalette palette(ToolPalette::Shape::Panel);
+    ToolPalette palette;
     // Hay que mostrarlo: Qt APLAZA el evento de redimensionado en un widget que
     // nunca se ha mostrado, asi que sin esto la rejilla se quedaria con las
     // columnas del ancho inicial y el test mediria un panel que no existe.
@@ -974,7 +942,7 @@ TEST(ToolPanel, OpeningAFamilyDoesNotChangeWhatYouAreDrawing) {
     // ABRE para mirarla, y el atajo SI elige —quien pulsa un atajo quiere
     // dibujar ya—. Si abrir un cajon cambiara la herramienta activa, mirar
     // saldria caro.
-    ToolPalette palette(ToolPalette::Shape::Panel);
+    ToolPalette palette;
     palette.activateCategory(ToolCategory::InLine);
     const auto drawing = palette.currentTool();
     ASSERT_TRUE(drawing.has_value());
@@ -997,7 +965,7 @@ TEST(ToolPanel, TheShortcutOpensTheFamilyItPicksFrom) {
     // Si el atajo eligiera una herramienta sin abrir su familia, el operador
     // veria una rejilla que no contiene lo que esta dibujando — y dejaria de
     // fiarse de las dos cosas.
-    ToolPalette palette(ToolPalette::Shape::Panel);
+    ToolPalette palette;
     for (const auto category : allToolCategories()) {
         if (toolsInCategory(category).empty()) {
             continue;
@@ -1052,7 +1020,7 @@ TEST(ToolHelpLine, ItNamesWhatTheMouseIsOverAndGoesBackWhenItLeaves) {
     // Los botones de la rejilla no tienen texto: sin esto, el panel seria mas
     // bonito y PEOR, porque habria que adivinar cada icono o esperar el
     // tooltip. La linea es lo que repone lo que la rejilla quita.
-    ToolPalette palette(ToolPalette::Shape::Panel);
+    ToolPalette palette;
     palette.show();
     palette.activateCategory(ToolCategory::InLine);
     const auto selected = palette.currentTool();
@@ -1078,7 +1046,7 @@ TEST(ToolHelpLine, ItNamesWhatTheMouseIsOverAndGoesBackWhenItLeaves) {
 TEST(ToolHelpLine, WithNothingChosenItSaysWhereToStart) {
     // El primer momento es justo cuando mas falta hace decir algo, y es cuando
     // una linea de ayuda mal pensada se queda en blanco.
-    ToolPalette palette(ToolPalette::Shape::Panel);
+    ToolPalette palette;
     palette.show();
     ASSERT_FALSE(palette.currentTool().has_value());
 
@@ -1094,7 +1062,7 @@ TEST(ToolHelpLine, TheExplanationComesFromTheToolItselfAndIsNotACopy) {
     // Escrito dos veces acabaria divergiendo, que es la razon por la que la
     // paleta se compartio en su dia. Se comprueba que lo mostrado SALE de
     // `toolTypeDescription`, no que se le parezca.
-    ToolPalette palette(ToolPalette::Shape::Panel);
+    ToolPalette palette;
     palette.show();
     for (const auto category : allToolCategories()) {
         const auto tools = toolsInCategory(category);
@@ -1118,7 +1086,7 @@ TEST(ToolHelpLine, TheShortcutShownIsTheOneThatWorks) {
     // Un atajo mal anunciado es peor que ninguno: el operador lo prueba, no
     // pasa nada, y deja de fiarse de los que si funcionan. Se comprueba
     // ejecutando lo que la linea dice.
-    ToolPalette palette(ToolPalette::Shape::Panel);
+    ToolPalette palette;
     palette.show();
 
     int familyNumber = 0;
@@ -1146,7 +1114,7 @@ TEST(ToolHelpLine, TheShortcutShownIsTheOneThatWorks) {
 TEST(ToolHelpLine, ItDoesNotGrowAndShrinkUnderTheCursor) {
     // Si la linea cambiara de alto al pasar el raton, la rejilla botaria bajo
     // el cursor y elegir se volveria un juego de punteria.
-    ToolPalette palette(ToolPalette::Shape::Panel);
+    ToolPalette palette;
     palette.show();
     palette.resize(220, 600);
     palette.activateCategory(ToolCategory::TurnedAndExtremes);

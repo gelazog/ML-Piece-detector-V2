@@ -481,8 +481,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         auto* panelLayout = new QVBoxLayout(toolsPanel);
         panelLayout->setContentsMargins(0, 0, 0, 0);
 
-        toolPalette_ = new inspection::ToolPalette(inspection::ToolPalette::Shape::Panel,
-                                                   toolsPanel);
+        toolPalette_ = new inspection::ToolPalette(toolsPanel);
         panelLayout->addWidget(toolPalette_);
 
         // Parámetro de muestreo de la herramienta seleccionada, sin abrir el

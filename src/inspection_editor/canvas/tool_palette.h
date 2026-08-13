@@ -10,13 +10,18 @@
 
 class QGridLayout;
 class QLabel;
-class QToolBox;
 class QToolButton;
 
 namespace pci::inspection {
 
 // Paleta de herramientas agrupada por familias, compartida por las dos
-// superficies que la necesitan.
+// superficies que la necesitan: el dock de la ventana principal y la columna
+// del editor.
+//
+// Hubo tres formas —una fila con menús, un acordeón y este panel— y ahora hay
+// una. Mantener tres divergen: ya pasó con los botones antes de que la paleta
+// se compartiera, y no hay razón para volver a pagarlo ahora que el panel cabe
+// en los dos sitios.
 //
 // Existe por una medida concreta: la fila plana de la vista en vivo pedía
 // ~1400 px de ancho mínimo en una ventana que arranca a 1100, y la columna del
@@ -31,25 +36,7 @@ class ToolPalette : public QWidget {
     Q_OBJECT
 
 public:
-    enum class Shape {
-        // Fila horizontal: un botón por familia con menú desplegable. Es lo que
-        // cabe en la barra de la vista en vivo.
-        Compact,
-        // Acordeón vertical: una sección por familia. Es lo que cabe en la
-        // columna del editor, donde hay alto pero no ancho.
-        Accordion,
-        // Panel acoplable estilo Paint: franja de familias arriba, nombre de la
-        // activa, y TODAS sus herramientas en rejilla debajo.
-        //
-        // Las dos formas anteriores comparten el mismo defecto de fondo: las
-        // herramientas no se ven. Con `Compact` hay que abrir un menú —que tapa
-        // el vídeo justo cuando quieres mirar dónde vas a dibujar— y con
-        // `Accordion` cada herramienta gasta una fila entera de alto. Aquí se ve
-        // la familia completa de un vistazo y se elige en un clic, no en dos.
-        Panel,
-    };
-
-    explicit ToolPalette(Shape shape, QWidget* parent = nullptr);
+    explicit ToolPalette(QWidget* parent = nullptr);
 
     // Herramienta activa; vacío = modo Mover/Elegir.
     [[nodiscard]] std::optional<ToolType> currentTool() const { return current_; }
@@ -94,8 +81,6 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
 
 private:
-    void buildCompact();
-    void buildAccordion();
     void buildPanel();
     // Rellena la rejilla con las herramientas de la familia activa. Solo se
     // instancian las de esa familia: con 32 herramientas, crear los 32 botones
@@ -107,20 +92,15 @@ private:
     // algo, si no lo seleccionado, y si no hay nada, por dónde empezar.
     void updateHelpLine();
 
-    Shape shape_;
     std::optional<ToolType> current_;
     ToolCategory currentCategory_ = ToolCategory::InLine;
     QToolButton* selectButton_ = nullptr;
-    QToolBox* accordion_ = nullptr;
     struct FamilyEntry {
         ToolCategory category;
-        QToolButton* button = nullptr;  // solo en Compact
-        int accordionPage = -1;         // solo en Accordion
+        QToolButton* button = nullptr;
     };
     std::vector<FamilyEntry> families_;
-    std::vector<std::pair<ToolType, QToolButton*>> toolButtons_;  // Accordion y Panel
-
-    // Solo en Panel.
+    std::vector<std::pair<ToolType, QToolButton*>> toolButtons_;
     QLabel* familyTitle_ = nullptr;
     QLabel* helpName_ = nullptr;
     QLabel* helpShortcut_ = nullptr;
