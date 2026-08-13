@@ -29,6 +29,88 @@ QIcon makeIcon(const std::function<void(QPainter&, const QColor&)>& draw) {
 
 }  // namespace
 
+QIcon categoryIcon(ToolCategory category) {
+    switch (category) {
+        case ToolCategory::BasicShape:
+            return makeIcon([](QPainter& p, const QColor& color) {
+                // Un contorno cerrado irregular con su área tramada: «la forma
+                // de lo que hay ahí dentro», que es lo que mide la familia.
+                const QPolygonF blob({QPointF(6, 12), QPointF(11, 5), QPointF(20, 6),
+                                      QPointF(23, 14), QPointF(18, 22), QPointF(9, 21)});
+                QColor fill = color;
+                fill.setAlpha(70);
+                p.setBrush(QBrush(fill, Qt::BDiagPattern));
+                p.drawPolygon(blob);
+            });
+        case ToolCategory::InLine:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // Una cota: flecha doble entre dos topes. El dibujo que
+                // cualquiera reconoce de un plano.
+                p.drawLine(6, 6, 6, 22);
+                p.drawLine(22, 6, 22, 22);
+                p.drawLine(6, 14, 22, 14);
+                p.drawLine(6, 14, 10, 11);
+                p.drawLine(6, 14, 10, 17);
+                p.drawLine(22, 14, 18, 11);
+                p.drawLine(22, 14, 18, 17);
+            });
+        case ToolCategory::Construction:
+            return makeIcon([](QPainter& p, const QColor& color) {
+                // Dos rectas finas cruzándose y el punto marcado en la
+                // intersección: no miden, FABRICAN una referencia.
+                QPen thin = p.pen();
+                thin.setWidthF(1.2);
+                thin.setStyle(Qt::DashLine);
+                p.setPen(thin);
+                p.drawLine(4, 20, 24, 8);
+                p.drawLine(5, 7, 23, 21);
+                p.setPen(QPen(color, 2.0));
+                p.setBrush(color);
+                p.drawEllipse(QPointF(14.2, 14.1), 2.6, 2.6);
+            });
+        case ToolCategory::Gdt:
+            return makeIcon([](QPainter& p, const QColor& color) {
+                // El marco de control de característica. Es el símbolo que un
+                // metrólogo reconoce sin leer, y por eso vale más que
+                // cualquier dibujo bonito.
+                QPen thin = p.pen();
+                thin.setWidthF(1.4);
+                p.setPen(thin);
+                p.drawRect(3, 9, 22, 11);
+                p.drawLine(11, 9, 11, 20);
+                p.drawLine(19, 9, 19, 20);
+                // Símbolo de posición en la primera casilla.
+                p.drawEllipse(QPointF(7, 14.5), 3.0, 3.0);
+                p.drawLine(7, 10, 7, 19);
+                p.drawLine(3, 14.5, 11, 14.5);
+                // Tolerancia y datum, sugeridos.
+                p.setBrush(color);
+                p.drawEllipse(QPointF(15, 14.5), 1.4, 1.4);
+                p.drawLine(21, 12, 23, 17);
+                p.drawLine(21, 17, 23, 17);
+            });
+        case ToolCategory::TurnedAndExtremes:
+            return makeIcon([](QPainter& p, const QColor&) {
+                // Silueta escalonada de una pieza de torno con la cota del
+                // máximo encima.
+                p.drawLine(4, 20, 11, 20);
+                p.drawLine(11, 20, 11, 14);
+                p.drawLine(11, 14, 19, 14);
+                p.drawLine(19, 14, 19, 20);
+                p.drawLine(19, 20, 25, 20);
+                QPen thin = p.pen();
+                thin.setWidthF(1.2);
+                p.setPen(thin);
+                p.drawLine(4, 7, 25, 7);
+                p.drawLine(4, 7, 7, 5);
+                p.drawLine(4, 7, 7, 9);
+                p.drawLine(25, 7, 22, 5);
+                p.drawLine(25, 7, 22, 9);
+            });
+    }
+    return {};
+}
+
 QIcon moveModeIcon() {
     return makeIcon([](QPainter& p, const QColor&) {
         // Cruz de mover con puntas de flecha.

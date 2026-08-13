@@ -782,3 +782,105 @@ TEST(DependencyArrows, AReferenceIsDrawnAndABrokenOneIsNot) {
     EXPECT_EQ(differences(broken, without), 0)
         << "una referencia que no existe no puede dibujar una flecha";
 }
+
+// ---------------------------------------------------------------------------
+// Iconos de familia (P1)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Fraccion de pixeles con tinta de un icono renderizado a `size`.
+double inkFraction(const QIcon& icon, int size) {
+    const QImage image = icon.pixmap(size, size).toImage().convertToFormat(
+        QImage::Format_ARGB32);
+    int inked = 0;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            if (qAlpha(image.pixel(x, y)) > 40) {
+                ++inked;
+            }
+        }
+    }
+    const int total = image.width() * image.height();
+    return total > 0 ? static_cast<double>(inked) / total : 0.0;
+}
+
+// Cuanto se diferencian dos iconos: fraccion de pixeles en los que uno tiene
+// tinta y el otro no. 0 = identicos.
+double differenceFraction(const QIcon& a, const QIcon& b, int size) {
+    const QImage left = a.pixmap(size, size).toImage().convertToFormat(
+        QImage::Format_ARGB32);
+    const QImage right = b.pixmap(size, size).toImage().convertToFormat(
+        QImage::Format_ARGB32);
+    if (left.size() != right.size()) {
+        return 1.0;
+    }
+    int differing = 0;
+    for (int y = 0; y < left.height(); ++y) {
+        for (int x = 0; x < left.width(); ++x) {
+            const bool inkLeft = qAlpha(left.pixel(x, y)) > 40;
+            const bool inkRight = qAlpha(right.pixel(x, y)) > 40;
+            if (inkLeft != inkRight) {
+                ++differing;
+            }
+        }
+    }
+    const int total = left.width() * left.height();
+    return total > 0 ? static_cast<double>(differing) / total : 0.0;
+}
+
+}  // namespace
+
+TEST(CategoryIcons, EveryFamilyHasAnIconWithInkAtEverySizeItIsUsed) {
+    // Un icono vacio pasa desapercibido hasta que alguien mira la franja, y una
+    // mancha tampoco dice nada. La banda es ancha a proposito: lo que se caza es
+    // "no se dibujo" o "se dibujo del tamaño equivocado", no un matiz de estilo.
+    for (const auto category : allToolCategories()) {
+        for (const int size : {20, 24, 32}) {
+            const double ink = inkFraction(categoryIcon(category), size);
+            EXPECT_GT(ink, 0.02) << categoryLabel(category) << " a " << size << " px";
+            EXPECT_LT(ink, 0.60) << categoryLabel(category) << " a " << size << " px";
+        }
+    }
+}
+
+TEST(CategoryIcons, NoTwoFamiliesLookAlike) {
+    // Cinco pastillas indistinguibles serian peor que cinco palabras: el
+    // operador tendria que leer el tooltip cada vez, o sea que la franja de
+    // iconos habria empeorado lo que venia a mejorar.
+    const auto categories = allToolCategories();
+    double worst = 1.0;
+    std::string worstPair;
+    for (std::size_t i = 0; i < categories.size(); ++i) {
+        for (std::size_t j = i + 1; j < categories.size(); ++j) {
+            const double difference =
+                differenceFraction(categoryIcon(categories[i]), categoryIcon(categories[j]), 24);
+            if (difference < worst) {
+                worst = difference;
+                worstPair = std::string(categoryLabel(categories[i])) + " vs " +
+                            categoryLabel(categories[j]);
+            }
+        }
+    }
+    std::printf("  el par mas parecido: %s (%.1f %% de pixeles distintos)\n",
+                worstPair.c_str(), worst * 100.0);
+    // Umbral medido primero y fijado despues: el par mas parecido difiere un
+    // 19 %, asi que exigir un 12 % deja margen de sobra para el antialiasing y
+    // sigue cazando de verdad un icono que se acerque a otro. Un umbral del 6 %
+    // habria pasado con dos iconos casi iguales.
+    EXPECT_GT(worst, 0.12) << "dos familias se parecen demasiado: " << worstPair;
+}
+
+TEST(CategoryIcons, TheyDoNotDependOnTheToolIcons) {
+    // Un icono de familia que sea igual que el de una de sus herramientas
+    // confundiria las dos filas del panel, que es justo lo que la franja viene
+    // a separar.
+    for (const auto category : allToolCategories()) {
+        for (const auto type : toolsInCategory(category)) {
+            const double difference =
+                differenceFraction(categoryIcon(category), toolIcon(type), 24);
+            EXPECT_GT(difference, 0.04)
+                << categoryLabel(category) << " se parece a " << toolTypeLabel(type);
+        }
+    }
+}

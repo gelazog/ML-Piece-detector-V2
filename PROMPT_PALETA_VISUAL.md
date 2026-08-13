@@ -89,7 +89,16 @@ coherente:
 
 ## Ítems
 
-### - [ ] P1 — Iconos de familia
+### - [x] P1 — Iconos de familia
+
+*(Los cinco dibujados con `QPainter`, sin ficheros. El barrido de «ningún par se
+parece» dio 19,4 % de píxeles distintos en el par más cercano —Medición en
+línea contra Construcciones—, así que el umbral quedó en 12 %: mi primera cifra
+era del 6 % y habría pasado con dos iconos casi iguales, o sea que no habría
+cazado nada.
+Hay un tercer barrido que no estaba en el plan y hacía falta: que ningún icono
+de familia se parezca a los de SUS herramientas. Si se parecieran, las dos filas
+del panel se confundirían, que es justo lo que la franja viene a separar.)*
 
 Cinco iconos nuevos en `canvas/tool_icons.{h,cpp}`:
 `[[nodiscard]] QIcon categoryIcon(ToolCategory category);`, dibujados con
