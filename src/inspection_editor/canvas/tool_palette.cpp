@@ -2,6 +2,8 @@
 
 #include <QAction>
 #include <QButtonGroup>
+#include <QEvent>
+#include <QFontMetrics>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -31,6 +33,14 @@ constexpr int kToolIconSize = 28;
 // de acertar con el ratón, y esto se usa todo el día.
 constexpr int kToolButtonSide = 36;
 constexpr int kFamilyIconSize = 24;
+
+// Primer renglón de la descripción: es el que resume qué mide la herramienta.
+// El resto —cómo trazarla, sus avisos— es demasiado para una línea que cambia
+// al pasar el ratón, y va al tooltip de la propia línea.
+QString firstLine(const QString& text) {
+    const int cut = text.indexOf(QLatin1Char('\n'));
+    return cut < 0 ? text : text.left(cut);
+}
 
 }  // namespace
 
@@ -202,6 +212,30 @@ void ToolPalette::buildPanel() {
     familyTitle_->setFont(titleFont);
     column->addWidget(familyTitle_);
 
+    // --- Línea de ayuda (P3) ---
+    //
+    // Es lo que sustituye al texto que la rejilla le quita a los botones. Sin
+    // esto, el panel sería más bonito y peor: iconos sin nombre obligan a
+    // adivinar o a esperar el tooltip.
+    auto* helpRow = new QHBoxLayout();
+    helpRow->setContentsMargins(0, 0, 0, 0);
+    helpName_ = new QLabel(this);
+    QFont nameFont = helpName_->font();
+    nameFont.setBold(true);
+    helpName_->setFont(nameFont);
+    helpRow->addWidget(helpName_, 1);
+    helpShortcut_ = new QLabel(this);
+    helpShortcut_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    helpRow->addWidget(helpShortcut_);
+
+    helpText_ = new QLabel(this);
+    helpText_->setWordWrap(true);
+    // Alto FIJO de dos renglones. Si creciera y menguara al pasar el ratón por
+    // la rejilla, la rejilla botaría bajo el cursor y elegir se volvería un
+    // juego de puntería.
+    const QFontMetrics metrics(helpText_->font());
+    helpText_->setFixedHeight(metrics.lineSpacing() * 2 + 2);
+
     gridHost_ = new QWidget(this);
     // La rejilla NO impone su ancho, y esto es lo que hace que el reflujo
     // funcione de verdad.
@@ -222,9 +256,79 @@ void ToolPalette::buildPanel() {
     grid_->setContentsMargins(0, 0, 0, 0);
     grid_->setSpacing(kPanelSpacing);
     column->addWidget(gridHost_);
+    column->addLayout(helpRow);
+    column->addWidget(helpText_);
     column->addStretch(1);
 
     rebuildGrid();
+    updateHelpLine();
+}
+
+QString ToolPalette::shortcutHint(ToolType type) {
+    const ToolCategory category = categoryOf(type);
+    int familyNumber = 0;
+    for (const auto candidate : allToolCategories()) {
+        if (toolsInCategory(candidate).empty()) {
+            continue;
+        }
+        ++familyNumber;
+        if (candidate == category) {
+            break;
+        }
+    }
+    const auto tools = toolsInCategory(category);
+    int position = 0;
+    for (std::size_t i = 0; i < tools.size(); ++i) {
+        if (tools[i] == type) {
+            position = static_cast<int>(i) + 1;
+        }
+    }
+    if (familyNumber <= 0 || position <= 0 || position > 9) {
+        return {};  // más allá del noveno no hay dígito que ofrecer
+    }
+    return tr("Ctrl+%1, luego %2").arg(familyNumber).arg(position);
+}
+
+void ToolPalette::updateHelpLine() {
+    if (helpName_ == nullptr) {
+        return;
+    }
+    // Lo señalado manda sobre lo seleccionado: el operador está mirando eso.
+    const std::optional<ToolType> shown = hovered_.has_value() ? hovered_ : current_;
+    if (!shown.has_value()) {
+        // Ni ratón encima ni herramienta elegida: es el primer momento, y
+        // dejarlo en blanco sería desperdiciar el único sitio donde se puede
+        // decir por dónde se empieza.
+        helpName_->setText(tr("Elige una familia arriba"));
+        helpShortcut_->clear();
+        helpText_->setText(tr("Cada familia enseña sus herramientas debajo. Pasa el "
+                              "ratón por encima para saber qué mide cada una."));
+        helpText_->setToolTip(QString());
+        return;
+    }
+    helpName_->setText(label(*shown));
+    helpShortcut_->setText(shortcutHint(*shown));
+    // El texto SALE de `toolTypeDescription`, no es una copia: escrito dos
+    // veces acabaría divergiendo, que es la razón por la que la paleta se
+    // compartió en su día.
+    const QString full = description(*shown);
+    helpText_->setText(firstLine(full));
+    helpText_->setToolTip(full);
+}
+
+bool ToolPalette::eventFilter(QObject* watched, QEvent* event) {
+    if (event->type() == QEvent::Enter || event->type() == QEvent::Leave) {
+        const bool entering = event->type() == QEvent::Enter;
+        for (const auto& [type, button] : toolButtons_) {
+            if (button != watched) {
+                continue;
+            }
+            hovered_ = entering ? std::optional<ToolType>(type) : std::nullopt;
+            updateHelpLine();
+            break;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 void ToolPalette::rebuildGrid() {
@@ -235,6 +339,12 @@ void ToolPalette::rebuildGrid() {
     // si el que se va es justo el que emitió el clic que trajo aquí.
     for (auto& [type, button] : toolButtons_) {
         button->hide();
+        // Se desvincula ANTES de programar el borrado. `deleteLater` no borra
+        // hasta que corra el bucle de eventos, y mientras tanto el botón sigue
+        // siendo hijo del panel: `findChildren` lo devolvía y se podía acabar
+        // hablando con un botón de la familia anterior que ya no está en
+        // pantalla.
+        button->setParent(nullptr);
         button->deleteLater();
     }
     toolButtons_.clear();
@@ -252,6 +362,7 @@ void ToolPalette::rebuildGrid() {
         // nombre: la descripción entera en un tooltip que salta al pasar es
         // ilegible.
         button->setToolTip(label(type));
+        button->installEventFilter(this);
         connect(button, &QToolButton::clicked, this, [this, type] { activate(type); });
         toolButtons_.emplace_back(type, button);
     }
@@ -260,6 +371,10 @@ void ToolPalette::rebuildGrid() {
     if (familyTitle_ != nullptr) {
         familyTitle_->setText(QString::fromUtf8(categoryLabel(currentCategory_)));
     }
+    // Los botones señalados ya no existen: quedarse con el anterior enseñaría
+    // el nombre de algo que no está en pantalla.
+    hovered_.reset();
+    updateHelpLine();
 }
 
 int ToolPalette::gridColumnsFor(int width) {
@@ -373,6 +488,7 @@ void ToolPalette::refreshButtons() {
                 family.button->setChecked(family.category == currentCategory_);
             }
         }
+        updateHelpLine();
         return;
     }
     for (const auto& family : families_) {

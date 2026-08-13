@@ -174,7 +174,20 @@ Verificación:
   **contando las que quedan por añadir**: el test las simula pidiendo la rejilla
   para una lista inflada, no espera a que existan.
 
-### - [ ] P3 — La línea de ayuda
+### - [x] P3 — La línea de ayuda
+
+*(Lo que repone el texto que P2 le quita a los botones. El atajo que enseña se
+comprueba EJECUTÁNDOLO: un atajo mal anunciado es peor que ninguno, porque el
+operador lo prueba, no pasa nada y deja de fiarse también de los que sí
+funcionan.
+El test del ratón destapó un fallo de P2 que no se veía: al cambiar de familia,
+los botones retirados con `deleteLater` **siguen siendo hijos del panel** hasta
+que corre el bucle de eventos, así que `findChildren` devolvía botones de la
+familia anterior que ya no están en pantalla. Ahora se desvinculan antes de
+programar el borrado.
+El alto de la línea es fijo, de dos renglones: si creciera y menguara al pasar
+el ratón, la rejilla botaría bajo el cursor y elegir sería un juego de
+puntería. Hay un test que lo mide recorriendo una familia entera.)*
 
 Debajo de la rejilla, dos renglones con el **nombre** y la **descripción** de la
 herramienta señalada con el ratón; sin ratón encima, los de la seleccionada; sin

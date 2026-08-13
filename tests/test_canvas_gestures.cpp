@@ -1008,3 +1008,156 @@ TEST(ToolPanel, TheShortcutOpensTheFamilyItPicksFrom) {
         EXPECT_TRUE(titled) << "el titulo no dice " << categoryLabel(category);
     }
 }
+
+// ---------------------------------------------------------------------------
+// La linea de ayuda (P3)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Los textos de la linea de ayuda, de arriba abajo. Se buscan por contenido y
+// no por posicion: un test que hay que reparar cada vez que se añade una
+// etiqueta no protege nada.
+QStringList panelLabels(const ToolPalette& palette) {
+    QStringList texts;
+    for (auto* label : palette.findChildren<QLabel*>()) {
+        texts << label->text();
+    }
+    return texts;
+}
+
+QToolButton* buttonFor(const ToolPalette& palette, ToolType type) {
+    for (auto* button : palette.findChildren<QToolButton*>()) {
+        if (button->toolTip() == QString::fromUtf8(toolTypeLabel(type))) {
+            return button;
+        }
+    }
+    return nullptr;
+}
+
+void hover(QWidget* widget, bool entering) {
+    QEvent event(entering ? QEvent::Enter : QEvent::Leave);
+    QApplication::sendEvent(widget, &event);
+}
+
+}  // namespace
+
+TEST(ToolHelpLine, ItNamesWhatTheMouseIsOverAndGoesBackWhenItLeaves) {
+    // Los botones de la rejilla no tienen texto: sin esto, el panel seria mas
+    // bonito y PEOR, porque habria que adivinar cada icono o esperar el
+    // tooltip. La linea es lo que repone lo que la rejilla quita.
+    ToolPalette palette(ToolPalette::Shape::Panel);
+    palette.show();
+    palette.activateCategory(ToolCategory::InLine);
+    const auto selected = palette.currentTool();
+    ASSERT_TRUE(selected.has_value());
+
+    const auto tools = toolsInCategory(ToolCategory::InLine);
+    ASSERT_GE(tools.size(), 2U);
+    const ToolType other = tools[1];
+    ASSERT_NE(other, *selected);
+
+    auto* button = buttonFor(palette, other);
+    ASSERT_NE(button, nullptr);
+
+    hover(button, true);
+    EXPECT_TRUE(panelLabels(palette).contains(QString::fromUtf8(toolTypeLabel(other))))
+        << "la linea no dice lo que el raton esta señalando";
+
+    hover(button, false);
+    EXPECT_TRUE(panelLabels(palette).contains(QString::fromUtf8(toolTypeLabel(*selected))))
+        << "al salir el raton, la linea deberia volver a la seleccionada";
+}
+
+TEST(ToolHelpLine, WithNothingChosenItSaysWhereToStart) {
+    // El primer momento es justo cuando mas falta hace decir algo, y es cuando
+    // una linea de ayuda mal pensada se queda en blanco.
+    ToolPalette palette(ToolPalette::Shape::Panel);
+    palette.show();
+    ASSERT_FALSE(palette.currentTool().has_value());
+
+    bool saysSomething = false;
+    for (const QString& text : panelLabels(palette)) {
+        saysSomething = saysSomething || text.contains(QStringLiteral("familia"),
+                                                       Qt::CaseInsensitive);
+    }
+    EXPECT_TRUE(saysSomething) << "sin nada elegido la linea no dice por donde empezar";
+}
+
+TEST(ToolHelpLine, TheExplanationComesFromTheToolItselfAndIsNotACopy) {
+    // Escrito dos veces acabaria divergiendo, que es la razon por la que la
+    // paleta se compartio en su dia. Se comprueba que lo mostrado SALE de
+    // `toolTypeDescription`, no que se le parezca.
+    ToolPalette palette(ToolPalette::Shape::Panel);
+    palette.show();
+    for (const auto category : allToolCategories()) {
+        const auto tools = toolsInCategory(category);
+        if (tools.empty()) {
+            continue;
+        }
+        palette.activateCategory(category);
+        const ToolType type = tools.front();
+        const QString full = QString::fromUtf8(toolTypeDescription(type));
+
+        bool derived = false;
+        for (const QString& text : panelLabels(palette)) {
+            derived = derived || (!text.isEmpty() && full.startsWith(text));
+        }
+        EXPECT_TRUE(derived) << toolTypeLabel(type)
+                             << ": lo que se enseña no sale de su descripcion";
+    }
+}
+
+TEST(ToolHelpLine, TheShortcutShownIsTheOneThatWorks) {
+    // Un atajo mal anunciado es peor que ninguno: el operador lo prueba, no
+    // pasa nada, y deja de fiarse de los que si funcionan. Se comprueba
+    // ejecutando lo que la linea dice.
+    ToolPalette palette(ToolPalette::Shape::Panel);
+    palette.show();
+
+    int familyNumber = 0;
+    for (const auto category : allToolCategories()) {
+        const auto tools = toolsInCategory(category);
+        if (tools.empty()) {
+            continue;
+        }
+        ++familyNumber;
+        for (std::size_t i = 0; i < tools.size() && i < 9U; ++i) {
+            const QString hint = ToolPalette::shortcutHint(tools[i]);
+            EXPECT_TRUE(hint.contains(QString::number(familyNumber)))
+                << toolTypeLabel(tools[i]) << " -> " << hint.toStdString();
+
+            // Y lo que dice se cumple: esa familia y esa posicion dan esa
+            // herramienta.
+            palette.activateCategory(category);
+            ASSERT_TRUE(palette.activateInCurrentCategory(static_cast<int>(i)));
+            EXPECT_EQ(palette.currentTool(), tools[i])
+                << "el atajo anunciado (" << hint.toStdString() << ") elige otra cosa";
+        }
+    }
+}
+
+TEST(ToolHelpLine, ItDoesNotGrowAndShrinkUnderTheCursor) {
+    // Si la linea cambiara de alto al pasar el raton, la rejilla botaria bajo
+    // el cursor y elegir se volveria un juego de punteria.
+    ToolPalette palette(ToolPalette::Shape::Panel);
+    palette.show();
+    palette.resize(220, 600);
+    palette.activateCategory(ToolCategory::TurnedAndExtremes);
+
+    int tallest = 0;
+    int shortest = 1 << 20;
+    for (const auto type : toolsInCategory(ToolCategory::TurnedAndExtremes)) {
+        auto* button = buttonFor(palette, type);
+        ASSERT_NE(button, nullptr);
+        hover(button, true);
+        for (auto* label : palette.findChildren<QLabel*>()) {
+            if (label->wordWrap()) {  // la de la explicacion es la unica que envuelve
+                tallest = std::max(tallest, label->height());
+                shortest = std::min(shortest, label->height());
+            }
+        }
+        hover(button, false);
+    }
+    EXPECT_EQ(tallest, shortest) << "la linea de ayuda cambia de alto: la rejilla botaria";
+}

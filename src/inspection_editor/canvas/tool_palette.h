@@ -65,6 +65,10 @@ public:
     // false si esa familia no tiene tantas.
     bool activateInCurrentCategory(int index);
     [[nodiscard]] ToolCategory currentCategory() const { return currentCategory_; }
+    // Cómo se activa una herramienta con el teclado, en texto («Ctrl+2, luego
+    // 1»). Se calcula de las mismas listas que generan los atajos, así que no
+    // puede quedarse contando otra cosa que la que hace la tecla.
+    [[nodiscard]] static QString shortcutHint(ToolType type);
 
     // Cuántas columnas y cuánto alto pide una rejilla de `toolCount` botones a
     // un ancho dado. Son la aritmética del panel expuesta a propósito: la
@@ -79,6 +83,11 @@ signals:
     void toolChosen(std::optional<pci::inspection::ToolType> type);
 
 protected:
+    // Los botones de la rejilla no tienen texto: el nombre y la explicación
+    // viven en la línea de ayuda, y para saber cuál se está señalando hace
+    // falta ver entrar y salir el ratón.
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
     // La rejilla no tiene layout de flujo en Qt, así que se recoloca a mano
     // cuando cambia el ancho. Para ≤10 botones por familia, un `QGridLayout`
     // que se rehace es mucho menos máquina que un FlowLayout.
@@ -94,6 +103,9 @@ private:
     void rebuildGrid();
     void relayoutGrid();
     void refreshButtons();
+    // Qué dice la línea de ayuda ahora mismo: lo señalado con el ratón si hay
+    // algo, si no lo seleccionado, y si no hay nada, por dónde empezar.
+    void updateHelpLine();
 
     Shape shape_;
     std::optional<ToolType> current_;
@@ -110,6 +122,10 @@ private:
 
     // Solo en Panel.
     QLabel* familyTitle_ = nullptr;
+    QLabel* helpName_ = nullptr;
+    QLabel* helpShortcut_ = nullptr;
+    QLabel* helpText_ = nullptr;
+    std::optional<ToolType> hovered_;
     QGridLayout* grid_ = nullptr;
     QWidget* gridHost_ = nullptr;
     int gridColumns_ = 0;
