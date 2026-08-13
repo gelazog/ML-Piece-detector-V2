@@ -1397,6 +1397,164 @@ Qué propone, a partir de la descomposición del contorno y de los agujeros:
 por redondeo, un **Calíper** por cada par de caras paralelas enfrentadas y un
 **Ángulo** por esquina viva.
 
+#### Y antes de todo eso, QUÉ FIGURA ES
+
+Lo anterior mira el tamaño de los rasgos y nunca la **forma**, y eso se notaba
+en cuanto la pieza no era un rectángulo con agujeros. Medido sobre figuras
+sintéticas, esto es lo que proponía:
+
+| Pieza | Proponía | Faltaba |
+|---|---|---|
+| Disco Ø300 | «Largo total» 301 y un arco de radio 151 | el **diámetro**, el perímetro, la **redondez** |
+| Hexágono | largo, ancho y **5** ángulos | los **lados**, y un ángulo de seis |
+| Triángulo | largo, ancho y **2** ángulos | los **lados**, y un ángulo de tres |
+
+Las dos cosas mal son distintas. Sobre un disco, el largo y el ancho de la
+envolvente **son el mismo número que el diámetro**, y el radio del arco es su
+mitad: tres nombres para una cota, en una lista cuyo valor entero depende de que
+se pueda revisar. Y a un polígono no se le medía ni una cara.
+
+Así que `vision::classifyShape` (en `vision/shape_class.*`) pregunta primero qué
+figura es: **círculo, arandela, polígono de n lados, polígono redondeado o
+irregular**. Vive en `vision` y no en el editor porque es una propiedad de la
+pieza, no de una pantalla.
+
+Cómo decide, que es lo interesante: **compiten tres modelos.** Primero se
+pregunta a la descomposición si hay rectas unidas por arcos; si no, compiten un
+ajuste de polígono (`approxPolyDP`) y uno de circunferencia (Taubin) **con la
+misma vara** —cuánto se separa el punto peor— y gana el que menos se desvía. Sin
+esa competición habría que ordenarlos a mano —«primero mira si es círculo»— y
+ese orden decidiría los empates en silencio; un dodecágono está a un pelo de ser
+un círculo y quien tiene que resolverlo es la medida, no el orden de dos `if`.
+
+Que la descomposición vaya **primero** tampoco es un detalle: un polígono de
+muchos vértices también aproxima un rectángulo redondeado —basta con poner
+vértices a lo largo de cada esquina— y entonces saldría «polígono de 12 lados»,
+que es la discretización de la curva y no la descripción de la pieza. El filtro
+es cuánto perímetro va en curva: medido, un rectángulo de 300×200 con redondeos
+de 40 px lleva el **27 %** del contorno en arco y un hexágono o una L llevan
+**0 %**.
+
+Cuatro cosas que costaron una medida cada una, y las cuatro tenían la misma
+forma: **un número absoluto en un mundo que escala**.
+
+- **El barrido de epsilon tiene que empezar MUY fino.** Empezando en el 0,5 % del
+  perímetro, un polígono de 14 lados se quedaba sin ajuste: ese epsilon ya vale
+  más que la flecha de sus lados, así que `approxPolyDP` se comía vértices y nada
+  pasaba la tolerancia. Salía «irregular», la peor respuesta posible —ni lados ni
+  diámetro— y la causa no se ve mirando el resultado, solo barriendo.
+- **Del barrido se saca la MESETA, no el primer acierto.** Con «el primero que
+  cumple», un hexágono salía de 6 lados a 0°, de **7** a 10° y de **8** a 15°:
+  al rasterizar un borde inclinado aparecen escalones y con el epsilon más fino
+  se cuelan vértices de más. Medido, el ajuste de 6 vértices aparece en 29 de los
+  30 epsilon del barrido y el de 7 u 8 en uno solo. La meseta dice cuál es la
+  respuesta; el primer acierto dice cuál fue la casualidad. Y una clase que
+  cambia al girar la pieza no sirve de nada, porque la pieza llega a la mesa como
+  llega.
+  **Y el orden dentro de esa regla también importa**: mirando primero la anchura
+  de la meseta y después su desviación, un polígono de 12 lados salía «círculo»
+  —su meseta más ancha era la de 6 vértices malísimos, se descartaba, y con ella
+  se iba el ajuste de 12 que sí valía—. Una meseta que no explica el contorno no
+  es una candidata peor: no es una candidata.
+- **El paso de remuestreo de la descomposición se fija en MUESTRAS, no en
+  píxeles.** Con los 2 px fijos que trae por defecto, el mismo hexágono daba sus
+  6 lados con perímetro 1013 px y «4 rectas y 2 arcos» con perímetro 257: solo
+  128 muestras para seis esquinas. Ahora `decomposeOptionsFor` mantiene ~500
+  muestras sea cual sea el tamaño, con tope en los 2 px de antes para no tocar
+  lo que ya funcionaba en piezas grandes. **La usan el clasificador y el
+  generador de propuestas, y tienen que usar la misma**: si vieran contornos
+  distintos, uno diría «hexágono» y el otro propondría cuatro lados.
+- **La tolerancia tiene un suelo y una pendiente.** El dentado del rasterizado
+  mide un píxel y no encoge cuando la pieza crece, así que hace falta un suelo
+  absoluto (6 px, medido: un hexágono girado se separa hasta 3,9 px de sus
+  propios lados, y un redondeo de 40 px se separa 16,6 px — el 6 cae en medio de
+  ese hueco). Pero el error de **colocar** un vértice sí crece con la pieza: si
+  cae dos píxeles antes de la esquina, el lado entero se inclina. Con 6 px a
+  secas, un decágono de radio 400 salía «círculo»; con el 2,5 % del radio
+  añadido, sale de 10 lados.
+
+Y la tierra de nadie entre polígono y círculo, que se resuelve con la misma
+lógica relativa: un contorno de 14 o 16 lados tiene más caras de las que merece
+la pena medir una a una y todavía no cae dentro del ruido de una circunferencia.
+Si se separa menos del **5 % del radio**, se mide como redondo —con la redondez
+diciendo la verdad sobre las caras planas— y una estrella de veinte puntas, que
+se separa un 40 %, se queda fuera.
+
+Con la figura en la mano, lo que se propone cambia:
+
+| Figura | Se propone | Se deja de proponer |
+|---|---|---|
+| Redonda | **Ø** y **Redondez** | largo/ancho y el arco: son la misma cota |
+| Arandela | **Ø exterior**, **Ø interior** y Redondez | — |
+| Polígono | **Lados (n)**, una regla **Lado i** por cara, los ángulos | — |
+| Redondeado | una regla **Lado i** por tramo recto, los radios | **Lados (n)** |
+| Irregular | lo de siempre | — |
+
+**`Lados (n)` y las reglas `Lado i` no son lo mismo, y por eso van las dos.** La
+herramienta de Lados mide el **recuento** de caras: vigila que no aparezca ni
+falte una, que es una avería distinta de que un lado se salga de cota. Las
+longitudes necesitan una regla por cara, cada una con su tolerancia y su
+veredicto.
+
+En un polígono **redondeado** no se propone el recuento, y no es un olvido: la
+herramienta exige que el número de lados no cambie al mitad y al doble de
+epsilon, y al afinar epsilon las esquinas redondeadas aparecen como vértices
+nuevos. La herramienta tiene razón y la propuesta nacería muerta.
+
+**Dos fallos más que salieron de medir esto**, ninguno visible mirando una pieza
+cualquiera:
+
+- **El recuento de esquinas siempre se quedaba uno corto.** El contorno es
+  cerrado —la última cara hace esquina con la primera— y el bucle se paraba en
+  `size()-1`. A un hexágono le proponía cinco ángulos y a un triángulo dos. Un
+  contador que siempre falla por uno es de los peores: cuadra casi siempre y
+  falla justo cuando cuentas.
+- **Un «Espesor» que anunciaba 260 px y medía 81.** El calíper recorre su trazo y
+  se queda con el primer par de bordes de polaridad opuesta, que no tiene por qué
+  ser el par de caras que motivó la propuesta: en una pieza en L se topaba por el
+  camino con una pared más cercana. Son dos fallos en uno —un motivo que miente y
+  una cota repetida con otro nombre— y ahora la propuesta **se descarta** en vez
+  de corregirle el texto: prometía medir esas dos caras y no las mide.
+
+#### Hasta dónde aguanta, medido
+
+El banco ensucia la escena a propósito (`tests/test_shape_proposals.cpp`) porque
+una cámara no da máscaras impecables. Sobre siete figuras —disco, arandela,
+hexágono, triángulo, cuadrado, rectángulo redondeado y una L— resegmentando con
+Otsu en cada caso:
+
+| Degradación | Aguanta hasta | Nota |
+|---|---|---|
+| Ruido gaussiano | **σ = 20** | sobre pieza 220 / fondo 30 |
+| Desenfoque | **kernel 9** | |
+| Contraste bajo | **120 / 90** | 30 niveles, con σ=5 encima |
+| Gradiente de luz | **±60** | y viñeta del 60 % |
+| Contraste bajo **+** gradiente | **falla** | y falla **Otsu**, no el clasificador |
+
+El último caso queda escrito en el test tal cual, porque saber dónde falla vale
+más que fingir que no falla: con 30 niveles de contraste y un gradiente de 15,
+Otsu corta por donde no debe y la máscara se traga el encuadre entero. La clase
+que sale describe fielmente esa mancha de 500 px. En la aplicación no llega a
+pasar, porque el `maxAreaFraction` del pipeline rechaza antes una «pieza» que
+ocupa casi todo el frame — y el test afirma justamente que el fallo está ahí, de
+modo que si algún día se muda al clasificador, lo dirá.
+
+Y los límites que **no son fallos sino física**, que por eso se afirman en vez de
+perseguirse:
+
+- **Cuantos más lados, más grande hay que ver la pieza.** Con 3 o 6 lados basta
+  un radio de 35 px; con 10 o 12 hace falta llegar a 100. Por debajo salen
+  «redondas», que a 24 px de ancho es la respuesta honesta *y* la útil: se les
+  mide el diámetro. Un pentágono de radio 25 —50 px de ancho— se lee como
+  cuadrado, porque a ese tamaño una esquina de 108° cabe en tres píxeles.
+- **El ruido del borde tiene distinto precio según la forma.** Un disco aguanta
+  dientes de sierra de 7,2 px de desviación radial sin dejar de ser un disco: el
+  ruido no le cambia la forma. Un polígono aguanta 3,5 px, que es cuando el
+  diente empieza a parecerse a una esquina.
+- Un giro de 25° sobre un **dodecágono de radio 160** ya lo pasa a círculo, y
+  está bien: a ese tamaño se separa 5,5 px de su propia circunferencia. Forzar
+  una respuesta ahí sería fijar por contrato el ruido del rasterizado.
+
 Tres reglas que hacen que la lista sea revisable:
 
 - **Cada propuesta se ejecuta antes de proponerse.** Si la herramienta no

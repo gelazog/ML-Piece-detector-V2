@@ -14,6 +14,7 @@ add_library(pci_vision STATIC
   position_fixture.cpp
   quality_metrics.cpp
   segmentation.cpp
+  shape_class.cpp
 )
 target_include_directories(pci_vision PUBLIC ${CMAKE_SOURCE_DIR}/src)
 # OpenCV, core y domain son PUBLIC: los headers públicos exponen cv::Mat,

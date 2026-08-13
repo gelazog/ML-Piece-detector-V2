@@ -199,14 +199,37 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    sigan al rotar, activa **Ver ▸ Seguir rotación de la pieza** (ahí sí
    aplican el rasgo distintivo y la anisotropía).
 3. **Medir automáticamente**: en el editor de plantilla, el botón
-   **Medir automáticamente…** mira la pieza y propone las cotas que encuentra —
-   largo y ancho generales, un círculo por agujero, un arco por redondeo, un
-   espesor por cada par de caras paralelas y un ángulo por esquina. No las
-   inserta a lo loco: abre una lista con **la medida de cada una, su tolerancia
-   sugerida y por qué se propone**, todas marcadas de entrada, y añade solo las
-   que dejes marcadas — en un solo paso que Ctrl+Z deshace entero. Cada
+   **Medir automáticamente…** mira la pieza y propone las cotas que encuentra.
+   No las inserta a lo loco: abre una lista con **la medida de cada una, su
+   tolerancia sugerida y por qué se propone**, todas marcadas de entrada, y añade
+   solo las que dejes marcadas — en un solo paso que Ctrl+Z deshace entero. Cada
    propuesta se ha medido de verdad antes de ofrecerse, así que lo que aparece
    en la lista ya funciona sobre esa pieza.
+
+   **Primero mira qué FIGURA es tu pieza**, y de ahí sale qué te propone:
+
+   | Si la pieza es… | Te propone |
+   |---|---|
+   | **Redonda** | el **diámetro** (con su perímetro en el porqué) y la **redondez** |
+   | **Una arandela** | **Ø exterior**, **Ø interior** y la redondez |
+   | **Un polígono** | **cada lado** con su propia cota, el **recuento de lados** y **cada ángulo** |
+   | **Un polígono redondeado** | cada tramo recto, el **radio de cada redondeo** y el largo/ancho |
+   | Cualquier otra | largo y ancho, un círculo por agujero, un espesor por cada par de caras paralelas y un ángulo por esquina |
+
+   A una pieza redonda **ya no le propone el largo y el ancho**: en un disco esos
+   dos números son el mismo que el diámetro, y una lista con la misma cota tres
+   veces con tres nombres no se revisa. El **recuento de lados** y **cada lado**
+   son cosas distintas y por eso van los dos: el recuento vigila que no aparezca
+   ni falte una cara, y cada lado vigila su medida.
+
+   Dos avisos honestos sobre los límites, que están medidos: la pieza tiene que
+   **verse suficientemente grande** para contarle los lados —con 3 o 6 caras basta
+   con que mida unos 70 px de ancho, pero con 10 o 12 hacen falta 200— y por
+   debajo de eso la da por redonda y te mide el diámetro, que es lo útil a ese
+   tamaño. Y aguanta bastante suciedad de imagen (ruido, desenfoque, poca luz,
+   iluminación desigual), pero **poca luz *más* iluminación desigual** puede
+   hacer que la detección de la pieza falle antes de llegar a medir: ahí lo que
+   hay que arreglar es la luz.
 
    **Ver contorno** (mismo panel) dibuja encima el contorno detectado con su
    descomposición: los tramos **rectos en azul**, los **arcos en naranja** con su

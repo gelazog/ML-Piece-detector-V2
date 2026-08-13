@@ -25,6 +25,9 @@ add_executable(pci_tests
   test_periodicity.cpp
   test_profiles.cpp
   test_result.cpp
+  test_shape_class.cpp
+  test_shape_measure.cpp
+  test_shape_proposals.cpp
   test_vision.cpp
   test_working_zone.cpp
 )

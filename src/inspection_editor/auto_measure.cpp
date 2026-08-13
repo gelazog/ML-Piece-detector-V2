@@ -10,6 +10,7 @@
 #include "vision/fitting.h"
 #include "vision/geometry_features.h"
 #include "vision/position_fixture.h"
+#include "vision/shape_class.h"
 
 namespace pci::inspection {
 
@@ -81,6 +82,21 @@ bool alreadyCovered(const std::vector<AutoProposal>& accepted, const AutoProposa
     return false;
 }
 
+// ¿La pieza es más oscura que su fondo? La herramienta de Lados necesita
+// saberlo y `proposeTools` no recibe la polaridad de la segmentación.
+//
+// Se MIDE en vez de suponerse: la media dentro de la máscara contra la media
+// fuera. Suponer «pieza oscura», que es el valor por defecto, hacía que la
+// propuesta de Lados no midiera nada en un montaje a contraluz y se descartara
+// en silencio — el operador no vería la propuesta y no sabría por qué.
+bool pieceIsDarkerThanBackground(const cv::Mat& gray, const cv::Mat& mask) {
+    cv::Mat background;
+    cv::bitwise_not(mask, background);
+    const double inside = cv::mean(gray, mask)[0];
+    const double outside = cv::mean(gray, background)[0];
+    return inside < outside;
+}
+
 // Mide una propuesta ejecutando de verdad la herramienta. Devuelve false si no
 // consigue medir: entonces la propuesta se descarta en vez de ofrecerse.
 bool measureProposal(const cv::Mat& gray, const vision::Fixture& fixture, double mmPerPixel,
@@ -118,9 +134,93 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
         outer.begin(), outer.end(),
         [](const auto& a, const auto& b) { return cv::contourArea(a) < cv::contourArea(b); });
 
+    // --- Qué figura es ------------------------------------------------------
+    // Se pregunta ANTES de proponer nada, porque cambia qué tiene sentido
+    // medir. Sin esta pregunta, a un disco se le proponían el largo y el ancho
+    // de su rectángulo envolvente —dos números que sobre una pieza redonda no
+    // significan nada, y que además son el mismo— y a un hexágono no se le
+    // proponía ni un lado.
+    const vision::ShapeClass shape = vision::classifyShape(contour, mask);
+    const bool isRound =
+        shape.kind == vision::ShapeKind::Circle || shape.kind == vision::ShapeKind::Ring;
+
+    // --- Redonda: diámetro y redondez --------------------------------------
+    if (isRound && shape.outerDiameter > options.minFeatureLength) {
+        AutoProposal diameter;
+        diameter.config.type = ToolType::Circle;
+        diameter.config.name = shape.kind == vision::ShapeKind::Ring ? "Ø exterior" : "Ø";
+        CircleGeometry g;
+        g.center = toPiece(fixture, shape.center);
+        g.radius = static_cast<float>(shape.outerDiameter / 2.0);
+        g.searchBand = std::max(6.0F, g.radius * 0.25F);
+        g.rayCount = 72;
+        diameter.geometry = g;
+        diameter.reason = std::string(shape.reason) + ". El perímetro sale " +
+                          std::to_string(static_cast<int>(std::lround(
+                              CV_PI * shape.outerDiameter))) +
+                          " px.";
+        if (measureProposal(gray, fixture, mmPerPixel, diameter)) {
+            proposals.push_back(std::move(diameter));
+        }
+
+        // La redondez es la otra mitad: un diámetro correcto no dice nada de la
+        // FORMA. Una pieza ovalada puede dar el diámetro nominal en el ajuste y
+        // estar fuera de plano, y esa es exactamente la avería que un pie de
+        // rey no ve.
+        AutoProposal round;
+        round.config.type = ToolType::Roundness;
+        round.config.name = "Redondez";
+        RoundnessGeometry r;
+        r.center = toPiece(fixture, shape.center);
+        r.radius = static_cast<float>(shape.outerDiameter / 2.0);
+        r.searchBand = std::max(6.0F, r.radius * 0.25F);
+        r.rayCount = 72;
+        round.geometry = r;
+        round.reason = "La pieza es redonda: el diámetro solo dice el tamaño, la redondez "
+                       "dice si la forma está dentro de plano.";
+        if (measureProposal(gray, fixture, mmPerPixel, round)) {
+            proposals.push_back(std::move(round));
+        }
+    }
+
+    // --- Con esquinas vivas: cuántos lados hay ------------------------------
+    // Ojo con lo que mide esta herramienta: mide el RECUENTO, no las
+    // longitudes. Su valor es «6 lados», y su tolerancia vigila que no
+    // aparezca ni falte una cara — que es una avería distinta de que un lado
+    // se salga de cota. Las longitudes van aparte, una regla por lado.
+    //
+    // Solo para polígonos de esquina viva. En uno redondeado la propia
+    // herramienta se niega, y con razón: exige que el recuento no cambie al
+    // mitad y al doble de epsilon, y al afinar epsilon las esquinas
+    // redondeadas aparecen como vértices nuevos. Proponerla ahí sería ofrecer
+    // una propuesta que nace muerta.
+    if (shape.kind == vision::ShapeKind::Polygon && shape.sides >= 3) {
+        const cv::Rect bounds = cv::boundingRect(contour);
+        AutoProposal sides;
+        sides.config.type = ToolType::Polygon;
+        sides.config.name = "Lados (" + std::to_string(shape.sides) + ")";
+        PolygonGeometry g;
+        g.center = toPiece(fixture, cv::Point2f(static_cast<float>(bounds.x + bounds.width / 2.0),
+                                                static_cast<float>(bounds.y + bounds.height / 2.0)));
+        // Con holgura: el recuadro tiene que abarcar la pieza entera, y ceñirlo
+        // al contorno deja fuera los píxeles del borde.
+        g.width = static_cast<float>(bounds.width * 1.1);
+        g.height = static_cast<float>(bounds.height * 1.1);
+        g.epsilonFraction = 0.02F;
+        g.darkPiece = pieceIsDarkerThanBackground(gray, mask);
+        sides.geometry = g;
+        sides.reason = std::string(shape.reason) + ". Mide cada lado y cada ángulo interior.";
+        if (measureProposal(gray, fixture, mmPerPixel, sides)) {
+            proposals.push_back(std::move(sides));
+        }
+    }
+
     // --- Envolvente: largo y ancho de la pieza ---------------------------
     // Son las dos primeras medidas que toma cualquiera con un pie de rey, así
-    // que se proponen siempre y las primeras.
+    // que se proponen siempre y las primeras... salvo en una pieza redonda,
+    // donde el largo y el ancho de la envolvente SON el diámetro, y proponer
+    // tres nombres para el mismo número es exactamente lo que hace que una
+    // lista de propuestas no se revise.
     const cv::RotatedRect box = cv::minAreaRect(contour);
     const double angle = box.angle * CV_PI / 180.0;
     const cv::Point2f axisX(static_cast<float>(std::cos(angle)),
@@ -137,7 +237,7 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
     int spanIndex = 0;
     for (const auto& [dir, extent] : spans) {
         ++spanIndex;
-        if (extent < options.minFeatureLength) {
+        if (extent < options.minFeatureLength || isRound) {
             continue;
         }
         AutoProposal p;
@@ -163,26 +263,68 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
         }
         AutoProposal p;
         p.config.type = ToolType::Circle;
-        p.config.name = "Ø agujero " + std::to_string(holeIndex);
+        // En una arandela el agujero central no es «un agujero más»: es la otra
+        // cota de la pieza, y llamarlo «agujero 1» obligaría al operador a
+        // adivinar cuál de los dos círculos está mirando.
+        const bool isTheRingBore =
+            shape.kind == vision::ShapeKind::Ring &&
+            std::abs(2.0 * radius - shape.innerDiameter) < 2.0;
+        p.config.name = isTheRingBore ? "Ø interior"
+                                      : "Ø agujero " + std::to_string(holeIndex);
         CircleGeometry g;
         g.center = toPiece(fixture, center);
         g.radius = radius;
         g.searchBand = std::max(4.0F, radius * 0.3F);
         g.rayCount = 36;
         p.geometry = g;
-        p.reason = "Agujero interno detectado en la máscara de la pieza.";
+        p.reason = isTheRingBore ? "Agujero central de la corona: la cota interior de la pieza."
+                                 : "Agujero interno detectado en la máscara de la pieza.";
         if (measureProposal(gray, fixture, mmPerPixel, p) && !alreadyCovered(proposals, p)) {
             proposals.push_back(std::move(p));
         }
     }
 
     // --- Descomposición del contorno --------------------------------------
-    const auto primitives = vision::decomposeContour(contour);
+    // Con las MISMAS opciones que usó el clasificador, ajustadas al tamaño de
+    // la pieza. Si cada uno mirara el contorno con un paso distinto, el
+    // clasificador podría decir «hexágono» y esta parte proponer cuatro lados.
+    const auto primitives =
+        vision::decomposeContour(contour, vision::decomposeOptionsFor(contour));
+
+    // Los lados, uno a uno. Esto es lo que le pone tolerancia y veredicto a
+    // cada cara: «Lados» dice cuántas hay y estas dicen cuánto mide cada una.
+    //
+    // Vale igual para el polígono de esquina viva y para el redondeado, porque
+    // las dos formas tienen tramos rectos y la descomposición ya los ha
+    // separado de los redondeos.
+    if (shape.kind == vision::ShapeKind::Polygon || shape.kind == vision::ShapeKind::Rounded) {
+        int sideIndex = 0;
+        for (const auto& primitive : primitives) {
+            if (primitive.kind != vision::PrimitiveKind::Line ||
+                primitive.length < options.minFeatureLength) {
+                continue;
+            }
+            ++sideIndex;
+            AutoProposal p;
+            p.config.type = ToolType::Ruler;
+            p.config.name = "Lado " + std::to_string(sideIndex);
+            p.geometry = RulerGeometry{toPiece(fixture, primitive.start),
+                                       toPiece(fixture, primitive.end)};
+            p.reason = "Tramo recto del contorno, de extremo a extremo.";
+            if (measureProposal(gray, fixture, mmPerPixel, p) && !alreadyCovered(proposals, p)) {
+                proposals.push_back(std::move(p));
+            }
+        }
+    }
 
     // Arcos: el radio de cada redondeo.
+    //
+    // En una pieza redonda NO: ahí el «arco» es el contorno entero y su radio
+    // es la mitad del diámetro que ya se ha propuesto. Serían dos nombres para
+    // la misma cota, que es justo lo que hace que una lista no se revise.
     int arcIndex = 0;
     for (const auto& primitive : primitives) {
-        if (primitive.kind != vision::PrimitiveKind::Arc ||
+        if (isRound || primitive.kind != vision::PrimitiveKind::Arc ||
             primitive.length < options.minFeatureLength) {
             continue;
         }
@@ -247,18 +389,41 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
             p.geometry = CaliperGeometry{toPiece(fixture, from), toPiece(fixture, to), 10.0F};
             p.reason = "Dos caras paralelas enfrentadas, a ≈ " +
                        std::to_string(static_cast<int>(std::lround(gap))) + " px.";
-            if (measureProposal(gray, fixture, mmPerPixel, p) &&
-                !alreadyCovered(proposals, p)) {
-                proposals.push_back(std::move(p));
+            if (!measureProposal(gray, fixture, mmPerPixel, p) || alreadyCovered(proposals, p)) {
+                continue;
             }
+            // Y que haya medido LO QUE SE LE PIDIÓ. El calíper recorre su
+            // trazo y se queda con el primer par de bordes de polaridad
+            // opuesta que encuentra, que no tiene por qué ser el par de caras
+            // que motivó la propuesta: en una pieza en L salía «Espesor 2, dos
+            // caras a ≈ 260 px» midiendo 81, porque por el camino se topaba
+            // con una pared más cercana.
+            //
+            // Eso son dos fallos en uno: un motivo que miente y una cota
+            // repetida con otro nombre. Se descarta, y no se «arregla» el
+            // texto: la propuesta prometía medir esas dos caras y no las mide.
+            if (std::abs(p.measured - gap) > std::max(4.0, gap * 0.1)) {
+                continue;
+            }
+            proposals.push_back(std::move(p));
         }
     }
 
     // Esquinas vivas: el ángulo entre dos caras consecutivas.
+    //
+    // El contorno es CERRADO, así que la última cara hace esquina con la
+    // primera. Recorrerlo hasta `size()-1` perdía siempre esa esquina, y el
+    // fallo no se veía mirando una pieza cualquiera: a un hexágono le proponía
+    // cinco ángulos de seis y a un triángulo dos de tres. Un contador que
+    // siempre se queda uno corto es peor que no tenerlo, porque cuadra con la
+    // pieza casi siempre y falla justo cuando cuentas.
     int cornerIndex = 0;
-    for (std::size_t i = 0; i + 1 < primitives.size(); ++i) {
+    for (std::size_t i = 0; i < primitives.size(); ++i) {
         const auto& a = primitives[i];
-        const auto& b = primitives[i + 1];
+        const auto& b = primitives[(i + 1) % primitives.size()];
+        if (primitives.size() < 2) {
+            break;
+        }
         if (a.kind != vision::PrimitiveKind::Line || b.kind != vision::PrimitiveKind::Line ||
             a.length < options.minFeatureLength || b.length < options.minFeatureLength) {
             continue;
