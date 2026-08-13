@@ -1740,12 +1740,12 @@ void MainWindow::updateStationStatus() {
             QStringLiteral("QPushButton { border: none; padding: 0 6px; color: %1; }")
                 .arg(QString::fromUtf8(colour)));
         light->disconnect();
-        if (indicator.tab >= 0) {
-            const int tab = indicator.tab;
-            connect(light, &QPushButton::clicked, this, [this, tab] {
+        if (indicator.target != ConfigureTarget::None) {
+            const ConfigureTarget target = indicator.target;
+            connect(light, &QPushButton::clicked, this, [this, target] {
                 onConfigureClicked();
                 if (configureDialog_ != nullptr) {
-                    configureDialog_->setCurrentTab(tab);
+                    configureDialog_->showPage(target);
                 }
             });
         }

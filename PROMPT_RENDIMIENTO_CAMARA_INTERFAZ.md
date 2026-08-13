@@ -321,20 +321,36 @@ La regla de diseño que la gobierna: **ámbar solo cuando de verdad afecta a la
 medida**. Sin calibración, el enfoque automático es ámbar; con calibración es
 rojo. Cuatro luces siempre encendidas serían cuatro luces que nadie mira.
 
-### - [ ] I2 — El panel «Configurar» ordenado por lo que decide, no por lo que es
+### - [x] I2 — «Configurar» se queda como está, y el índice de pestaña se va
 
-Las pestañas de hoy (*Cámara e imagen*, *Detección*, *Rendimiento*, *Piezas*,
-*Preferencias*) agrupan por **componente del programa**. El operador no piensa
-en componentes: piensa en «no me detecta la pieza» o «va lento».
+*(El ítem traía su propia condición —«para cada uno de los cinco síntomas más
+comunes, el ajuste que lo arregla está a un clic; si no se cumple, no se cambia
+nada»— y se cumple ya:*
 
-Con `C` y `R` dentro habrá más ajustes, y el momento de repensar el orden es
-antes de añadirlos, no después. Reagrupar por síntoma y dejar los nombres de
-componente como subtítulo.
+| Síntoma | Dónde se arregla | Clics |
+| --- | --- | --- |
+| «No detecta la pieza» | Detección | 1 |
+| «Va lento, pocos fps» | Rendimiento y Cámara | 1 |
+| «No salen milímetros» | Escala | 1 |
+| «Espero 6 y detecta 5» | Piezas | 1 |
+| «La imagen se ve mal» | Cámara e imagen | 1 |
 
-Ojo: esto es lo que más fácil se convierte en mover cosas de sitio porque sí. La
-prueba de que merece la pena es concreta — **para cada uno de los cinco síntomas
-más comunes, el ajuste que lo arregla está a un clic** — y si no se cumple con
-el orden nuevo, no se cambia nada.
+*La premisa del ítem era que las pestañas agrupan por componente del programa;
+mirándolas, cuatro de las siete ya se llaman por el síntoma —Detección,
+Rendimiento, Escala, Piezas—. Reordenarlas habría sido mover cosas de sitio
+porque sí, rompiendo de paso la memoria muscular de quien ya lo usa.*
+
+*Lo que sí salió del repaso es un error que yo mismo acababa de meter en I1:
+los indicadores llevaban ÍNDICES de pestaña a fuego. Y este código ya había
+pagado ese error —hay un comentario en las pruebas del panel diciendo que se
+rompieron dos veces seguidas al añadir páginas—. Ahora el indicador dice un
+NOMBRE (`ConfigureTarget`) y el diálogo resuelve dónde tiene esa página, así
+que reordenar no puede desviar un clic en silencio.*
+
+*Y el test de eso encontró otro fallo de verdad: sin cámara conectada, la
+pestaña lleva un sustituto y `camera_` es nulo, así que el clic no iba a
+ninguna parte — justo cuando más falta hace, porque ahí es donde se explica por
+qué está vacía.)*
 
 ### - [ ] I3 — Que el primer arranque no empiece en blanco
 

@@ -2,6 +2,8 @@
 
 #include <QDialog>
 
+#include "ui/station_status.h"
+
 #include <cstdint>
 #include <vector>
 
@@ -84,6 +86,11 @@ public:
     [[nodiscard]] int currentTab() const;
     void setCurrentTab(int index);
 
+    // Abrir la página que arregla algo, dicho por su NOMBRE. El diálogo es
+    // quien sabe en qué posición tiene cada pestaña, y así reordenarlas no
+    // rompe en silencio a quien las señala desde fuera.
+    void showPage(ConfigureTarget target);
+
 signals:
     // El operador pulsó Aplicar o Aceptar: la ventana debe leer las páginas.
     void applied();
@@ -98,6 +105,10 @@ private:
     PiecesPage* pieces_ = nullptr;
     PreferencesPage* preferences_ = nullptr;
     CameraImagePage* camera_ = nullptr;
+    // La pestaña de cámara, sea la página real o el sustituto de «todavía
+    // no hay cámara». Se guarda aparte porque hay que poder llevar al
+    // operador ahí en los dos casos.
+    QWidget* cameraTab_ = nullptr;
 };
 
 }  // namespace pci::ui

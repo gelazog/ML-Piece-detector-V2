@@ -12,7 +12,7 @@ StationIndicator automaticIndicator(const QString& name, bool automaticOn,
                                     bool adjustable, bool calibrated,
                                     const QString& damage) {
     StationIndicator indicator;
-    indicator.tab = kCameraTab;
+    indicator.target = ConfigureTarget::Camera;
     if (!adjustable) {
         // No es un fallo de la estación ni algo que el operador pueda arreglar:
         // esta cámara no deja tocarlo. Decirlo evita que parezca una avería.
@@ -56,7 +56,8 @@ std::vector<StationIndicator> stationStatus(const StationState& state) {
     // 1) La escala. Es la primera porque es la que decide si las otras tres
     // importan mucho o poco.
     StationIndicator scale;
-    scale.tab = -1;  // se calibra desde su propio diálogo, no desde Configurar
+    // La escala se calibra desde su propio diálogo, no desde «Configurar».
+    scale.target = ConfigureTarget::None;
     if (!state.calibrated) {
         scale.label = QObject::tr("px");
         scale.light = StationLight::Neutral;
@@ -90,7 +91,7 @@ std::vector<StationIndicator> stationStatus(const StationState& state) {
     // lento pero no está mal, y avisar de algo que no es un problema es la
     // forma más rápida de que se deje de mirar la tira.
     StationIndicator zone;
-    zone.tab = kPerformanceTab;
+    zone.target = ConfigureTarget::Performance;
     if (state.zoneActive) {
         zone.label = QObject::tr("Zona ✓");
         zone.light = StationLight::Good;

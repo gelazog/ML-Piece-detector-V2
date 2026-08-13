@@ -27,11 +27,23 @@ enum class StationLight {
     Bad,      // afecta a la medida Y hay milímetros de por medio
 };
 
+// A dónde lleva el clic de un indicador. Es un NOMBRE y no un índice de
+// pestaña a propósito: la primera versión llevaba índices y este código ya
+// había pagado ese error antes —hay un comentario en las pruebas del panel que
+// dice que se rompió dos veces seguidas al añadir páginas—. Un índice se queda
+// mal en silencio; un nombre lo resuelve el diálogo, que es quien sabe dónde
+// tiene cada cosa.
+enum class ConfigureTarget {
+    None,
+    Camera,
+    Performance,
+};
+
 struct StationIndicator {
     QString label;   // texto corto con su símbolo
     StationLight light = StationLight::Neutral;
     QString reason;  // qué significa y qué hacer, para el tooltip
-    int tab = -1;    // pestaña de «Configurar» que lo arregla; −1 = ninguna
+    ConfigureTarget target = ConfigureTarget::None;
 };
 
 // Lo que hace falta saber para pintar la tira. Son datos planos a propósito:
@@ -46,12 +58,6 @@ struct StationState {
     bool zoneActive = false;  // recortando (automática o fija)
     bool streaming = false;
 };
-
-// Índices de las pestañas de «Configurar», para que el clic lleve a la que
-// arregla cada cosa. Están aquí y no en el diálogo porque la regla es la que
-// decide a dónde apunta cada indicador.
-inline constexpr int kCameraTab = 0;
-inline constexpr int kPerformanceTab = 3;
 
 [[nodiscard]] std::vector<StationIndicator> stationStatus(const StationState& state);
 

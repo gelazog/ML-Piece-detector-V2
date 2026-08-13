@@ -49,6 +49,7 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
         camera_ = new CameraImagePage(*inputs.controller, inputs.probedControls,
                                       inputs.knownResolutions, inputs.currentResolution,
                                       this);
+        cameraTab_ = camera_;
         tabs_->addTab(camera_, tr("Cámara e imagen"));
     } else {
         auto* placeholder = new QWidget(this);
@@ -62,6 +63,11 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
         label->setWordWrap(true);
         layout->addWidget(label);
         layout->addStretch(1);
+        // El sustituto también se recuerda: sin cámara, la pestaña existe
+        // igual y es justo donde hay que llegar para leer POR QUÉ está
+        // vacía. Apuntar solo a la página real dejaba ese clic sin efecto
+        // precisamente cuando más falta hace.
+        cameraTab_ = placeholder;
         tabs_->addTab(placeholder, tr("Cámara e imagen"));
     }
 
@@ -121,6 +127,18 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
 
 int ConfigureDialog::currentTab() const {
     return tabs_ != nullptr ? tabs_->currentIndex() : 0;
+}
+
+void ConfigureDialog::showPage(ConfigureTarget target) {
+    QWidget* page = nullptr;
+    switch (target) {
+        case ConfigureTarget::Camera: page = cameraTab_; break;
+        case ConfigureTarget::Performance: page = performance_; break;
+        case ConfigureTarget::None: break;
+    }
+    if (page != nullptr && tabs_ != nullptr) {
+        tabs_->setCurrentWidget(page);
+    }
 }
 
 void ConfigureDialog::setCurrentTab(int index) {

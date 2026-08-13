@@ -457,8 +457,8 @@ TEST(StationStatus, ItNamesWhatEachAutomaticBreaks) {
     EXPECT_TRUE(exposure.reason.contains(QStringLiteral("borde")))
         << exposure.reason.toStdString();
     // Y los dos llevan a la pestaña que los arregla.
-    EXPECT_EQ(focus.tab, pci::ui::kCameraTab);
-    EXPECT_EQ(exposure.tab, pci::ui::kCameraTab);
+    EXPECT_EQ(focus.target, pci::ui::ConfigureTarget::Camera);
+    EXPECT_EQ(exposure.target, pci::ui::ConfigureTarget::Camera);
 }
 
 TEST(StationStatus, ACameraThatCannotFixItIsNotTheOperatorsFault) {
@@ -483,7 +483,7 @@ TEST(StationStatus, ProcessingTheWholeImageIsNeverAWarning) {
     state.zoneActive = false;
     const auto zone = indicatorFor(state, "Zona");
     EXPECT_EQ(zone.light, StationLight::Neutral);
-    EXPECT_EQ(zone.tab, pci::ui::kPerformanceTab);
+    EXPECT_EQ(zone.target, pci::ui::ConfigureTarget::Performance);
 }
 
 TEST(StationStatus, AStaleCalibrationIsRedBecauseItIsAlreadyLying) {
@@ -500,4 +500,30 @@ TEST(StationStatus, AStaleCalibrationIsRedBecauseItIsAlreadyLying) {
     // legitima de trabajar.
     StationState raw;
     EXPECT_EQ(indicatorFor(raw, "px").light, StationLight::Neutral);
+}
+
+TEST(StationStatus, PointingAtAPageLandsOnThatPageWhateverItsPosition) {
+    // La primera version de la tira llevaba INDICES de pestaña, y este codigo
+    // ya habia pagado ese error: hay un comentario al principio de este mismo
+    // fichero contando que las pruebas se rompieron dos veces seguidas al
+    // añadir paginas. Un indice se queda mal en silencio.
+    //
+    // Ahora el indicador dice un NOMBRE y el dialogo resuelve donde tiene esa
+    // pagina, asi que reordenar las pestañas no puede desviar el clic. Esto lo
+    // comprueba de punta a punta.
+    ConfigureDialog dialog(sampleInputs());
+    auto* tabs = dialog.findChild<QTabWidget*>();
+    ASSERT_NE(tabs, nullptr);
+
+    dialog.showPage(pci::ui::ConfigureTarget::Performance);
+    EXPECT_EQ(tabs->currentIndex(), tabNamed(tabs, QStringLiteral("Rendimiento")));
+
+    dialog.showPage(pci::ui::ConfigureTarget::Camera);
+    EXPECT_EQ(tabs->currentIndex(), tabNamed(tabs, QStringLiteral("Cámara")));
+
+    // Y un indicador que no lleva a ninguna parte no mueve nada: la escala se
+    // calibra desde su propio dialogo.
+    const int before = tabs->currentIndex();
+    dialog.showPage(pci::ui::ConfigureTarget::None);
+    EXPECT_EQ(tabs->currentIndex(), before);
 }
