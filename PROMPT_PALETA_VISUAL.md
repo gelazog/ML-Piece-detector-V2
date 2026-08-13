@@ -207,7 +207,16 @@ Verificación:
 - La etiqueta tiene alto fijo (reserva de dos renglones): si creciera y menguara
   al pasar el ratón, la rejilla botaría.
 
-### - [ ] P4 — El editor estrena el panel
+### - [x] P4 — El editor estrena el panel
+
+*(Una línea de cambio y una prueba que costó más que la línea, como debía ser:
+el plan pedía humo de verdad, así que el test abre un editor REAL —con su base
+de datos migrada, su pieza y su repositorio— en vez de un doble. Recorre las
+cinco familias, elige una de cada una pulsando su botón de la rejilla y
+comprueba que la elección llega. Un repositorio falso habría probado otra cosa.
+La columna baja de 190 a 176 px medidos, y hay un test que exige que el panel
+no sea más ancho que el acordeón al que sustituye — si lo fuera, el cambio
+habría empeorado justo lo que venía a mejorar.)*
 
 `editor_window.cpp:68` pasa de `Shape::Accordion` a `Shape::Panel`. El ancho
 mínimo baja de 190 a lo que pida P2 y la columna deja de gastar una fila por

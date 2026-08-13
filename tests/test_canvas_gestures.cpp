@@ -21,6 +21,8 @@
 #include <QToolButton>
 
 #include <cmath>
+#include <filesystem>
+#include <memory>
 #include <cstdio>
 #include <vector>
 
@@ -35,7 +37,11 @@
 #include "inspection_editor/auto_measure_dialog.h"
 #include "inspection_editor/canvas/editor_canvas.h"
 #include "inspection_editor/canvas/tool_icons.h"
+#include "database/db.h"
+#include "database/schema.h"
 #include "inspection_editor/canvas/tool_palette.h"
+#include "inspection_editor/editor_window.h"
+#include "repositories/tool_repository.h"
 #include "sample_geometries.h"
 
 using namespace pci::inspection;
@@ -1160,4 +1166,98 @@ TEST(ToolHelpLine, ItDoesNotGrowAndShrinkUnderTheCursor) {
         hover(button, false);
     }
     EXPECT_EQ(tallest, shortest) << "la linea de ayuda cambia de alto: la rejilla botaria";
+}
+
+// ---------------------------------------------------------------------------
+// El editor estrena el panel (P4)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Un editor DE VERDAD: con su base de datos, su pieza y sus herramientas
+// guardadas. Darle un repositorio falso probaria otra cosa — y lo que hay que
+// comprobar es justo que el cambio de paleta no rompe el editor real.
+class RealEditor {
+public:
+    RealEditor() {
+        path_ = (std::filesystem::temp_directory_path() /
+                 ("pci_p4_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) +
+                  ".db"))
+                    .string();
+        std::filesystem::remove(path_);
+        auto opened = pci::database::Db::open(path_);
+        EXPECT_TRUE(opened.isOk());
+        db_ = std::move(opened.value());  // `open` ya devuelve el unique_ptr
+        EXPECT_TRUE(pci::database::migrate(*db_).isOk());
+        repo_ = std::make_unique<pci::repositories::ToolRepository>(*db_);
+
+        QImage reference(640, 480, QImage::Format_RGB888);
+        reference.fill(QColor(200, 200, 200));
+        window_ = std::make_unique<EditorWindow>(reference, pci::vision::Fixture{},
+                                                 /*pieceId=*/1, repo_.get());
+    }
+
+    ~RealEditor() {
+        window_.reset();
+        repo_.reset();
+        db_.reset();
+        std::error_code ignored;
+        std::filesystem::remove(path_, ignored);
+    }
+
+    [[nodiscard]] EditorWindow& window() { return *window_; }
+
+private:
+    std::string path_;
+    std::unique_ptr<pci::database::Db> db_;
+    std::unique_ptr<pci::repositories::ToolRepository> repo_;
+    std::unique_ptr<EditorWindow> window_;
+};
+
+}  // namespace
+
+TEST(EditorPanel, TheEditorOpensWithThePanelAndReachesEveryTool) {
+    // El editor pasa del acordeon al panel. Lo que hay que comprobar no es que
+    // compile: es que la columna sigue dando acceso a las 32 herramientas y que
+    // elegir una llega hasta el lienzo, que es para lo que sirve la paleta.
+    RealEditor editor;
+    auto* palette = editor.window().findChild<ToolPalette*>();
+    ASSERT_NE(palette, nullptr) << "el editor se quedo sin paleta";
+
+    editor.window().show();
+    editor.window().resize(1100, 700);
+
+    std::vector<ToolType> reached;
+    for (const auto category : allToolCategories()) {
+        const auto tools = toolsInCategory(category);
+        if (tools.empty()) {
+            continue;
+        }
+        palette->activateCategory(category);
+        // Una de cada familia, elegida como lo haria el raton sobre la rejilla.
+        for (auto* button : palette->findChildren<QToolButton*>()) {
+            if (button->toolTip() == QString::fromUtf8(toolTypeLabel(tools.front()))) {
+                button->click();
+                break;
+            }
+        }
+        ASSERT_TRUE(palette->currentTool().has_value()) << categoryLabel(category);
+        EXPECT_EQ(*palette->currentTool(), tools.front())
+            << "elegir en la rejilla de " << categoryLabel(category) << " no llego";
+        reached.push_back(*palette->currentTool());
+    }
+    EXPECT_EQ(reached.size(), allToolCategories().size());
+}
+
+TEST(EditorPanel, TheColumnIsNarrowerThanTheAccordionItReplaces) {
+    // El acordeon pedia 190 px por su texto vertical. Si el panel pidiera mas,
+    // el cambio habria empeorado justo lo que venia a mejorar.
+    RealEditor editor;
+    auto* palette = editor.window().findChild<ToolPalette*>();
+    ASSERT_NE(palette, nullptr);
+    editor.window().show();
+
+    const int minimum = palette->minimumSizeHint().width();
+    std::printf("  el panel del editor pide %d px (el acordeon pedia 190)\n", minimum);
+    EXPECT_LE(minimum, 190) << "el panel es mas ancho que el acordeon al que sustituye";
 }

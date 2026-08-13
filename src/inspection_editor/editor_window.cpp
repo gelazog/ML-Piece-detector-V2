@@ -66,9 +66,18 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
 
     // Paleta agrupada por familias (izquierda). Antes eran quince botones en
     // columna, ~440 px de alto; con las herramientas que quedan por añadir no
-    // cabrían. El acordeón enseña una familia a la vez.
-    palette_ = new ToolPalette(ToolPalette::Shape::Accordion, this);
-    palette_->setMinimumWidth(190);
+    // cabrían.
+    //
+    // El acordeón enseñaba una familia a la vez pero gastaba una fila entera de
+    // alto por herramienta: con 32, una familia grande ya no cabía sin barra de
+    // desplazamiento. El panel las pone en rejilla, así que la familia mayor
+    // ocupa dos filas en vez de ocho, y se ven todas a la vez — que es lo que
+    // hace que se pueda elegir en un vistazo en vez de leyendo.
+    palette_ = new ToolPalette(ToolPalette::Shape::Panel, this);
+    // 190 era lo que pedía el acordeón por su texto vertical. El panel cabe en
+    // 176 —medido: es el ancho de la franja de familias— y por debajo de eso no
+    // encoge nada, así que ponerle menos solo dejaría hueco muerto.
+    palette_->setMinimumWidth(180);
     rootLayout->addWidget(palette_);
 
     // Canvas (centro).
