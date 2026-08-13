@@ -86,7 +86,7 @@ std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture&
                                     LengthUnit unit = LengthUnit::Auto,
                                     const cv::Mat& imageToMm = cv::Mat(),
                                     const vision::BoardFrame* board = nullptr,
-                                    double scaleQuality = -1.0);
+                                    double scaleQuality = -1.0, bool parallel = true);
 
 // Formatea una longitud en píxeles según la escala y la unidad elegida.
 std::string formatLength(double px, double mmPerPixel, LengthUnit unit);

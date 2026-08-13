@@ -4088,7 +4088,8 @@ ToolRunResult runOrExplain(const cv::Mat& image, const vision::Fixture& fixture,
 std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture& fixture,
                                     const std::vector<ToolConfig>& tools, double mmPerPixel,
                                     LengthUnit unit, const cv::Mat& imageToMm,
-                                    const vision::BoardFrame* board, double scaleQuality) {
+                                    const vision::BoardFrame* board, double scaleQuality,
+                                    bool parallel) {
     // Las herramientas se ejecutan en ORDEN DE DEPENDENCIA —primero las que
     // pueden ser referencia, después las que la consumen— pero los resultados
     // se devuelven en el orden en que el operador las tiene en la lista. Si se
@@ -4112,31 +4113,60 @@ std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture&
     while (progressed && !pending.empty()) {
         progressed = false;
         std::vector<const ToolConfig*> stillPending;
+        std::vector<const ToolConfig*> ready;
         for (const auto* config : pending) {
             // Lista para ejecutarse cuando TODAS las referencias que declara ya
             // se intentaron. Una referencia a un nombre que no existe no espera
             // a nadie: se resuelve —fallando— dentro de `runTool`.
-            bool ready = true;
+            bool isReady = true;
             for (const std::string* ref : {&config->reference, &config->reference2}) {
                 if (ref->empty() || known.find(*ref) == known.end()) {
                     continue;
                 }
                 if (attempted.find(*ref) == attempted.end()) {
-                    ready = false;
+                    isReady = false;
                 }
             }
-            if (!ready) {
-                stillPending.push_back(config);
-                continue;
+            (isReady ? ready : stillPending).push_back(config);
+        }
+
+        // Dentro de una ONDA las herramientas son independientes por
+        // construcción: una solo entra aquí cuando todas sus referencias se
+        // intentaron en ondas ANTERIORES, así que ninguna lee lo que otra de
+        // esta misma onda va a producir. Eso es lo que hace seguro repartirlas,
+        // y no una apuesta: la estructura ya lo garantizaba, solo faltaba
+        // aprovecharla.
+        //
+        // Cada una escribe en SU hueco y el mapa de referencias se actualiza
+        // después, en serie. Escribir en el mapa dentro del bucle sería la
+        // carrera de datos evidente, y no hace falta para nada.
+        std::vector<ToolRunResult> wave(ready.size());
+        const auto runOne = [&](std::size_t index) {
+            wave[index] = runOrExplain(image, fixture, *ready[index], mmPerPixel, unit,
+                                       imageToMm, board, scaleQuality, references);
+        };
+        if (parallel && ready.size() > 1) {
+            // `cv::parallel_for_` y no hilos a mano: OpenCV ya está aquí, ya
+            // tiene su reparto y respeta el número de hilos que el usuario le
+            // haya puesto al proceso.
+            cv::parallel_for_(cv::Range(0, static_cast<int>(ready.size())),
+                              [&](const cv::Range& range) {
+                                  for (int i = range.start; i < range.end; ++i) {
+                                      runOne(static_cast<std::size_t>(i));
+                                  }
+                              });
+        } else {
+            for (std::size_t i = 0; i < ready.size(); ++i) {
+                runOne(i);
             }
-            ToolRunResult result =
-                runOrExplain(image, fixture, *config, mmPerPixel, unit, imageToMm, board,
-                             scaleQuality, references);
-            attempted.insert(config->name);
-            if (result.ok && result.derived.valid()) {
-                references[config->name] = result.derived;
+        }
+
+        for (std::size_t i = 0; i < ready.size(); ++i) {
+            attempted.insert(ready[i]->name);
+            if (wave[i].ok && wave[i].derived.valid()) {
+                references[ready[i]->name] = wave[i].derived;
             }
-            results.push_back(std::move(result));
+            results.push_back(std::move(wave[i]));
             progressed = true;
         }
         pending = std::move(stillPending);

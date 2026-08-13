@@ -1,4 +1,6 @@
 #include <gtest/gtest.h>
+
+#include <thread>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
@@ -5750,6 +5752,81 @@ TEST(ToolCoherence, EveryGdtToolSaysWhetherItNeedsADatumAndWhichOne) {
 // banco se borro en vez de dejarlo dando una cifra que engaña.
 // ---------------------------------------------------------------------------
 
+namespace {
+
+// La PIEZA QUIETA del banco: una escena fija, sin ruido y sin nada aleatorio.
+// Es lo que permite comparar dos versiones y creerse la diferencia — con una
+// escena que cambia, la diferencia medida es la de las escenas.
+cv::Mat stillPiece() {
+    cv::Mat gray(600, 900, CV_8UC1, cv::Scalar(225));
+    cv::rectangle(gray, cv::Rect(120, 220, 660, 160), cv::Scalar(35), cv::FILLED);
+    cv::circle(gray, cv::Point(300, 300), 45, cv::Scalar(225), cv::FILLED);
+    return gray;
+}
+
+// Una plantilla del tamaño de las que se dibujan de verdad. El coste de estas
+// herramientas lo domina el número de cortes, así que las cifras solo
+// significan algo si los cortes son los reales.
+ToolConfig bigTool(int index) {
+    const auto y = static_cast<float>(300 + (index % 3) * 8);
+    switch (index % 5) {
+        case 0:
+            return makeConfig(
+                ToolType::Shaft,
+                ToolGeometry(ShaftGeometry{{140.0F, y}, {760.0F, y}, 90.0F, 64}), 0.0, 1e9);
+        case 1:
+            return makeConfig(
+                ToolType::Thread,
+                ToolGeometry(ThreadGeometry{{140.0F, y}, {760.0F, y}, 90.0F, 400}), 0.0,
+                1e9);
+        case 2:
+            return makeConfig(ToolType::Groove,
+                              ToolGeometry(GrooveGeometry{{140.0F, y}, {760.0F, y}, 90.0F,
+                                                          200, GrooveMeasure::Width}),
+                              0.0, 1e9);
+        case 3:
+            return makeConfig(ToolType::Region,
+                              ToolGeometry(RegionGeometry{{450.0F, 300.0F}, 640.0F, 150.0F,
+                                                          RegionMeasure::Area, true}),
+                              0.0, 1e9);
+        default:
+            return makeConfig(ToolType::Extremes,
+                              ToolGeometry(ExtremesGeometry{{450.0F, 300.0F}, 640.0F,
+                                                            150.0F, ExtremeMeasure::MaxSpan,
+                                                            true}),
+                              0.0, 1e9);
+    }
+}
+
+std::vector<ToolConfig> bigTemplate(int count) {
+    std::vector<ToolConfig> tools;
+    for (int i = 0; i < count; ++i) {
+        tools.push_back(bigTool(i));
+        tools.back().name = "g" + std::to_string(i);
+    }
+    return tools;
+}
+
+// Milisegundos por pasada, con calentamiento: la primera paga cachés que las
+// demás no, y contarla mezclaría dos cosas distintas.
+double msPerRun(const cv::Mat& gray, const std::vector<ToolConfig>& tools, bool parallel,
+                int repeats) {
+    (void)runTools(gray, kIdentity, tools, 0.0, LengthUnit::Auto, cv::Mat(), nullptr, -1.0,
+                   parallel);
+    const auto started = std::chrono::steady_clock::now();
+    for (int r = 0; r < repeats; ++r) {
+        const auto results = runTools(gray, kIdentity, tools, 0.0, LengthUnit::Auto,
+                                      cv::Mat(), nullptr, -1.0, parallel);
+        EXPECT_EQ(results.size(), tools.size());
+    }
+    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                     started)
+               .count() /
+           repeats;
+}
+
+}  // namespace
+
 TEST(ToolsCost, TheSameQuestionWithToolsTheSizeOfTheRealOnes) {
     // El banco de arriba usa las geometrias de `makeToolAt`, que son de
     // juguete: un Eje de 50 px con 12 cortes, una Rosca con 60. En una pieza de
@@ -5805,12 +5882,19 @@ TEST(ToolsCost, TheSameQuestionWithToolsTheSizeOfTheRealOnes) {
             tools.push_back(bigTool(i));
             tools.back().name = "g" + std::to_string(i);
         }
-        (void)runTools(gray, kIdentity, tools);
+        // EN SERIE a proposito: lo que este banco documenta es cuanto TRABAJO
+        // hay, y que crece lineal con las herramientas. Con el reparto entre
+        // hilos encendido mediria el trabajo mas el numero de nucleos de esta
+        // maquina, que es otra pregunta — esa la responde `ParallelTools`.
+        constexpr bool kSerial = false;
+        (void)runTools(gray, kIdentity, tools, 0.0, LengthUnit::Auto, cv::Mat(), nullptr,
+                       -1.0, kSerial);
 
         constexpr int kRepeats = 10;
         const auto started = std::chrono::steady_clock::now();
         for (int r = 0; r < kRepeats; ++r) {
-            const auto results = runTools(gray, kIdentity, tools);
+            const auto results = runTools(gray, kIdentity, tools, 0.0, LengthUnit::Auto,
+                                          cv::Mat(), nullptr, -1.0, kSerial);
             EXPECT_EQ(results.size(), tools.size());
         }
         const double ms = std::chrono::duration<double, std::milli>(
@@ -5839,4 +5923,103 @@ TEST(ToolsCost, TheSameQuestionWithToolsTheSizeOfTheRealOnes) {
     EXPECT_GT(atTwenty / atTen, 1.5) << "doblar las herramientas deberia doblar el coste";
     EXPECT_LT(atTwenty / atTen, 2.6)
         << "el coste crece mas que lineal: hay trabajo repetido entre herramientas";
+}
+
+TEST(ParallelTools, ItGivesExactlyTheSameNumbersAsRunningThemOneByOne) {
+    // Lo PRIMERO, antes de mirar ningun cronometro: repartir las herramientas
+    // entre hilos no puede cambiar ni una cifra. Una optimizacion que altera lo
+    // que se mide no es una optimizacion, es un fallo mas rapido.
+    const cv::Mat gray = stillPiece();
+    const auto tools = bigTemplate(20);
+
+    const auto serial = runTools(gray, kIdentity, tools, 0.0, LengthUnit::Auto, cv::Mat(),
+                                 nullptr, -1.0, /*parallel=*/false);
+    const auto threaded = runTools(gray, kIdentity, tools, 0.0, LengthUnit::Auto, cv::Mat(),
+                                   nullptr, -1.0, /*parallel=*/true);
+
+    ASSERT_EQ(serial.size(), threaded.size());
+    for (std::size_t i = 0; i < serial.size(); ++i) {
+        EXPECT_EQ(serial[i].name, threaded[i].name) << "el ORDEN cambio en el hueco " << i;
+        EXPECT_DOUBLE_EQ(serial[i].measured, threaded[i].measured) << serial[i].name;
+        EXPECT_EQ(serial[i].ok, threaded[i].ok) << serial[i].name;
+        // El detalle tambien: ahi van los avisos, y un aviso que aparece o
+        // desaparece segun el hilo que toco seria peor que no tenerlo.
+        EXPECT_EQ(serial[i].detail, threaded[i].detail) << serial[i].name;
+    }
+}
+
+TEST(ParallelTools, ReferencesStillResolveInTheRightOrder) {
+    // El reparto es por ONDAS: una herramienta solo entra en una onda cuando
+    // todas sus referencias se intentaron en ondas anteriores. Si eso se
+    // rompiera, una construccion podria ejecutarse antes que su operando y
+    // fallar por "no existe" de forma intermitente — el peor fallo posible.
+    const cv::Mat gray = stillPiece();
+
+    std::vector<ToolConfig> tools;
+    for (int i = 0; i < 8; ++i) {
+        tools.push_back(bigTool(i));
+        tools.back().name = "base" + std::to_string(i);
+    }
+    // Dos circulos que dan punto, y una construccion que los usa: obliga a que
+    // haya mas de una onda.
+    ToolConfig left = makeConfig(ToolType::Circle,
+                                 ToolGeometry(CircleGeometry{{300.0F, 300.0F}, 45.0F, 12.0F,
+                                                             36}),
+                                 0.0, 1e9);
+    left.name = "izq";
+    ToolConfig point = makeConfig(
+        ToolType::ConstructedPoint,
+        ToolGeometry(ConstructedPointGeometry{PointConstruction::Midpoint, {}}), 0.0, 1e9);
+    point.name = "medio";
+    point.reference = "izq";
+    point.reference2 = "izq";
+    tools.push_back(left);
+    tools.push_back(point);
+
+    std::string firstDetail;
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        const auto results = runTools(gray, kIdentity, tools, 0.0, LengthUnit::Auto,
+                                      cv::Mat(), nullptr, -1.0, /*parallel=*/true);
+        ASSERT_EQ(results.size(), tools.size());
+        const auto found = std::find_if(results.begin(), results.end(),
+                                        [](const auto& r) { return r.name == "medio"; });
+        ASSERT_NE(found, results.end());
+        // Nunca puede decir que le falta la referencia: la tiene, y en una onda
+        // anterior.
+        EXPECT_EQ(found->detail.find("no se pudo usar"), std::string::npos)
+            << "intento " << attempt << ": " << found->detail;
+        // Y tiene que salir SIEMPRE lo mismo, no una de cada tres: veinte
+        // repeticiones porque una carrera de datos no falla a la primera.
+        if (attempt == 0) {
+            firstDetail = found->detail;
+        } else {
+            EXPECT_EQ(found->detail, firstDetail) << "resultado inestable entre pasadas";
+        }
+    }
+}
+
+TEST(ParallelTools, HowMuchItActuallySavesOnAStillPiece) {
+    // El banco: la MISMA pieza quieta, la MISMA plantilla, y lo unico que
+    // cambia es si las herramientas se reparten o no. Asi la diferencia medida
+    // es la del reparto y no la de dos escenas distintas.
+    const cv::Mat gray = stillPiece();
+    std::printf("  herramientas | en serie | repartidas | ganancia | %% de un frame\n");
+    double bestSpeedup = 0.0;
+    for (const int count : {5, 10, 20}) {
+        const auto tools = bigTemplate(count);
+        const double serial = msPerRun(gray, tools, /*parallel=*/false, 10);
+        const double threaded = msPerRun(gray, tools, /*parallel=*/true, 10);
+        const double speedup = serial / threaded;
+        bestSpeedup = std::max(bestSpeedup, speedup);
+        std::printf("  %12d | %6.2f ms | %7.2f ms | %6.2fx | %.0f %% -> %.0f %%\n", count,
+                    serial, threaded, speedup, serial / 33.3 * 100.0,
+                    threaded / 33.3 * 100.0);
+    }
+    std::printf("  (%u nucleos disponibles)\n", std::thread::hardware_concurrency());
+    // Con un solo nucleo esto no puede ganar nada, y exigir una ganancia fija
+    // seria exigirle a la maquina en vez de al codigo.
+    if (std::thread::hardware_concurrency() >= 4) {
+        EXPECT_GT(bestSpeedup, 1.5)
+            << "repartir entre hilos no gano nada: revisa si algo esta serializando";
+    }
 }

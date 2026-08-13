@@ -266,35 +266,29 @@ Verificación: la tabla de tiempos, escrita en `ARQUITECTURA.md` esté como est�
 el resultado. Un «se midió y no hacía falta» es un resultado que ahorra trabajo
 al siguiente, exactamente como la escala de trabajo adaptativa.
 
-### - [ ] R4 — La escala de trabajo, esta vez sin modo nuevo
+### - [x] R4 — La escala de trabajo se descarta; el tiempo estaba en las herramientas
 
-> **Lo que R3 le hace a este ítem.** La escala de trabajo acelera **la
-> segmentación**, y con herramientas dibujadas la segmentación no es el cuello:
-> con veinte herramientas son ~1,6 ms de 31 (el 5 %), así que el 1,33× que
-> valdría sobre la segmentación se queda en **menos de un 2 % del frame**.
-> Este ítem estaba escrito para poder caerse y R3 ya lo ha empujado; queda
-> decidir si se cierra con un «se midió y no hacía falta» o si el esfuerzo se
-> pone donde está el 83 %.
+*(El ítem se escribió para poder caerse y se cayó, pero con la medida delante en
+vez de por corazonada: la escala de trabajo acelera la **segmentación**, que con
+herramientas dibujadas son ~1,6 ms de 31 — el 1,33× prometido se quedaba en
+menos de un 2 % del frame.*
 
-`ARQUITECTURA.md` deja el cabo suelto explícito: la escala de trabajo valía
-1,10× cuando se probó y valdría **~1,33×** sobre el reparto de hoy, y se
-descartó porque «no justifica un modo nuevo en la interfaz». La objeción era al
-**modo**, no a la técnica — y ya está demostrado que reducir **no mueve las
-medidas** si el contorno se recupera a resolución completa (fixture a ±0,000 px).
+*Lo que sí se hizo es donde estaba el 83 %: **repartir las herramientas entre
+hilos**. Y lo interesante es que no hubo que rediseñar nada para que fuera
+seguro — `runTools` ya avanzaba por ONDAS, y una herramienta solo entra en una
+onda cuando sus referencias se intentaron en ondas anteriores. El orden de
+dependencia que ya existía por corrección resultó ser también el permiso para
+repartir. Lo único que cambió es dónde se escribe: cada una en su hueco, y el
+mapa de referencias después, en serie.*
 
-Aplicarla **sola**, sin ajuste ni casilla, y únicamente cuando la pieza es lo
-bastante grande para que compense. El umbral sale de medir, no de elegirlo.
+*Medido sobre la misma pieza quieta, con 8 núcleos: 20 herramientas pasan de
+**33,8 ms a 9,1** (3,72×), o sea de no caber en un frame a ocupar un cuarto.
+Con 10, de 14,4 a 5,0.*
 
-Este ítem es el que más fácil se cae, y está bien que se caiga: **si con `C1`
-puesto la cámara da 30 fps y el análisis va sobrado, 1,33× no le sirve a nadie**
-y meter una ruta de código nueva a cambio de nada es un mal negocio. Decidir con
-la medida de `R2` delante, y si se descarta, escribir por qué.
-
-Verificación (si entra): el fixture y todas las cotas idénticas a la ruta sin
-reducir, con implementación de referencia. Ni «parecidas» ni «dentro de
-tolerancia»: idénticas.
-
----
+*Las pruebas, en este orden: que da **exactamente** las mismas cifras —incluido
+el detalle, donde van los avisos—, que las referencias siguen resolviéndose en
+veinte pasadas seguidas —una carrera de datos no falla a la primera—, y solo
+después el cronómetro.)*
 
 ## Bloque I — Interfaz: lo que queda aparte de la paleta
 

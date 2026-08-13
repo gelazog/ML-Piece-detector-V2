@@ -103,6 +103,11 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    por prudencia: esto corre en cada frame, y apagado no cuesta ni una llamada
    al reloj. Enciéndelo mientras miras y apágalo al terminar.
 
+   Las herramientas se ejecutan **repartidas entre los núcleos** de la máquina,
+   que es donde está el grueso del tiempo: con veinte herramientas grandes,
+   9 ms en vez de 34. Dan exactamente las mismas cifras — hay pruebas que lo
+   exigen medida a medida.
+
    La última línea, *sin atribuir*, es el tiempo que el desglose no reparte
    entre las etapas. Debería ser pequeña; si crece, es que hay trabajo real
    fuera de lo que se está midiendo y el reparto ya no dice dónde apretar.

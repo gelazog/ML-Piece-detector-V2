@@ -393,6 +393,50 @@ de juguete —un Eje de 50 px con 12 cortes cuando el real cruza 400 con 64— y
 coste de estas herramientas está dominado por el número de cortes. Medir el
 tamaño equivocado no da un número impreciso: da la conclusión contraria.
 
+### Las herramientas se reparten entre hilos, y por qué se podía
+
+R3 dejó claro dónde estaba el tiempo: veinte herramientas cuestan 27-34 ms en
+serie, o sea **el frame entero**. Y como crece lineal, no había trabajo repetido
+que quitar — solo quedaba hacerlo a la vez.
+
+Lo que hizo que fuera seguro no fue una revisión de cada herramienta, sino que
+**la estructura ya lo garantizaba**. `runTools` avanza en **ondas**: una
+herramienta solo entra en una onda cuando todas sus referencias se intentaron en
+ondas *anteriores*. Por construcción, entonces, ninguna herramienta de una onda
+lee lo que otra de esa misma onda va a producir. El orden de dependencia que ya
+existía por corrección resultó ser también el permiso para repartir.
+
+Lo único que había que cambiar era dónde se escribe: cada herramienta deja su
+resultado en **su hueco** de un vector, y el mapa de referencias se actualiza
+después, en serie. Escribir en el mapa dentro del bucle habría sido la carrera
+de datos evidente, y no hacía falta para nada.
+
+Se usa `cv::parallel_for_` y no hilos a mano: OpenCV ya está aquí, ya tiene su
+reparto y respeta el número de hilos que se le haya puesto al proceso.
+
+Medido sobre la misma pieza quieta y la misma plantilla, con 8 núcleos:
+
+| Herramientas | En serie | Repartidas | Ganancia | % de un frame a 30 fps |
+|---|---|---|---|---|
+| 5 | 6,9 ms | 4,6 ms | 1,49× | 21 % → 14 % |
+| 10 | 14,4 ms | 5,0 ms | 2,87× | 43 % → 15 % |
+| **20** | **33,8 ms** | **9,1 ms** | **3,72×** | **102 % → 27 %** |
+
+Con veinte herramientas pasa de **no caber en un frame** a ocupar un cuarto.
+
+Las tres pruebas, en este orden a propósito: primero que **da exactamente las
+mismas cifras** que ejecutándolas de una en una —medida, veredicto y detalle,
+porque en el detalle van los avisos y uno que aparezca según qué hilo tocó sería
+peor que no tenerlo—; después que las **referencias siguen resolviéndose**, con
+veinte pasadas seguidas, porque una carrera de datos no falla a la primera; y
+solo entonces el cronómetro. Una optimización que altera lo que se mide no es
+una optimización, es un fallo más rápido.
+
+**La escala de trabajo adaptativa se descarta definitivamente.** Aceleraba la
+segmentación, que con herramientas dibujadas son ~1,6 ms de 31: el 1,33× que
+prometía se quedaba en menos de un 2 % del frame. Se midió dónde estaba el
+tiempo antes de optimizar, y estaba en otro sitio.
+
 ### El desglose de tiempos que la propia app puede dar
 
 Los tiempos de la sección siguiente se midieron una vez, con un programa suelto.
