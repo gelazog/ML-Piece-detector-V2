@@ -203,15 +203,24 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    píxeles si no, y con la unidad escrita en la cabecera de cada columna para que
    no haya dudas tres días después.
 
-4. **Dibujar sobre el video en vivo**: con la pieza detectada, elige una
-   herramienta en la fila **Dibujar**, agrupada por **familias** (Figuras
-   básicas · Medición en línea · Construcciones · GD&T · Máx./mín. y
-   torneadas): cada botón abre su familia y cada herramienta explica en su
-   tooltip qué mide y cómo trazarla.
-   Con el teclado, **Ctrl+1…5** elige familia y **1…9** la herramienta dentro.
-   En el editor de plantilla la misma paleta se muestra como acordeón y dibuja directamente sobre el video arrastrando el
-   mouse — en tiempo real y anclado a la pieza: si la mueves o la giras, las
-   herramientas la siguen. Al soltar, **la herramienta mide la pieza actual y
+4. **Dibujar sobre el video en vivo**: las herramientas viven en el panel
+   **Herramientas**, a la derecha. Arriba, una franja con las cinco familias
+   (Figuras básicas · Medición en línea · Construcciones · GD&T · Máx./mín. y
+   torneadas); debajo, **todas** las de la familia abierta en rejilla, y al pie
+   una línea que dice qué mide la que señalas con el ratón y con qué atajo se
+   activa.
+
+   Pulsar una familia **la abre para mirarla** y no cambia con qué estás
+   dibujando; con el teclado, **Ctrl+1…5** elige familia y **1…9** la
+   herramienta dentro — y ahí sí elige, porque quien pulsa un atajo quiere
+   dibujar ya. La herramienta activa se ve marcada sin tener que pasar el ratón.
+
+   El panel se puede **cerrar y mover** como el de comparación, y se recupera
+   desde *Ver ▸ Panel de herramientas*. El editor de plantilla usa el mismo
+   panel en su columna izquierda.
+
+   Se dibuja arrastrando el mouse sobre el video — en tiempo real y anclado a
+   la pieza: si la mueves o la giras, las herramientas la siguen. Al soltar, **la herramienta mide la pieza actual y
    se auto-sugiere sus tolerancias** (±10 % para distancias, conteo exacto
    para blobs). **Mover/Elegir** selecciona y arrastra; **Borrar
    herramienta** elimina la seleccionada.

@@ -894,15 +894,60 @@ algo**. El compilador no puede comprobar eso.
 
 **La paleta** (`canvas/tool_palette.*`) construye los botones desde
 `toolsInCategory()` y la comparten las dos superficies, así que el orden, los
-iconos y las descripciones son los mismos en las dos. Tiene dos formas porque
-los dos sitios tienen huecos distintos: **compacta** (un botón por familia con
-menú desplegable) para la barra de la vista en vivo, donde falta ancho, y
-**acordeón** para la columna del editor, donde falta alto.
+iconos y las descripciones son los mismos en las dos.
 
-La medida que lo justifica: la fila plana pedía **~1400 px** de ancho mínimo en
-una ventana que arranca a 1100. La paleta compacta pide **312 px**. Hay un test
-que lo fija y otro que exige que **toda** herramienta siga siendo alcanzable a
-clics — agrupar no puede esconder nada.
+Es **un panel**: franja de familias arriba (iconos de `categoryIcon`, que vive
+junto a `toolIcon` y con el mismo `switch` sin `default`), el nombre de la
+activa, y **todas** sus herramientas en rejilla debajo. Hubo tres formas —una
+fila con menús, un acordeón y este panel— y se retiraron las dos primeras al
+quedarse sin usos: tres paletas mantenidas a la vez divergen, y este proyecto
+ya pagó eso una vez con los botones.
+
+Las dos formas viejas compartían el defecto de fondo: **las herramientas no se
+veían**. Con la fila había que abrir un menú, que tapa el vídeo justo cuando
+quieres mirar dónde vas a dibujar; con el acordeón, cada herramienta gastaba una
+fila entera de alto y con 32 ya no cabía una familia. El panel enseña la familia
+completa de un vistazo y se elige en un clic.
+
+Las medidas, que son las que lo justifican:
+
+| | Antes | Ahora |
+|---|---|---|
+| Fila 3 de la ventana principal | 1049 px de ancho mínimo | **439** (la paleta se fue al dock) |
+| Columna del editor | 190 px (acordeón) | **176** |
+| Ancho mínimo del panel | — | **176 px**, con reflujo de 4 a 9 columnas entre 180 y 400 |
+
+**El reflujo tenía una pescadilla que se muerde la cola**, y es lo que hay que
+saber si alguien lo toca: el mínimo de un `QGridLayout` es el de sus columnas,
+así que con las ocho herramientas de una familia en una fila el panel pedía
+324 px y Qt no le dejaba estrecharse por debajo — y como no se estrechaba, el
+reflujo no llegaba a ocurrir nunca. Se rompe con `QSizePolicy::Ignored` en el
+contenedor de la rejilla: acepta el ancho que le den y recoloca dentro. Y el
+layout se **rehace** al cambiar de columnas, porque `QGridLayout` no encoge
+nunca su número de columnas.
+
+**La línea de ayuda** es lo que repone el nombre que la rejilla le quita a los
+botones; sin ella el panel sería más bonito y peor. Su texto sale de
+`toolTypeDescription`, no es una copia. Tiene alto fijo de dos renglones: si
+creciera al pasar el ratón, la rejilla botaría bajo el cursor.
+
+En la ventana principal el panel va en un `QDockWidget` (`toolsDock`) con lo que
+**actúa sobre la herramienta seleccionada** —«Borrar» y el parámetro de
+muestreo—; «Rasgo distintivo», «Fijar escala» y «Guardar plantilla» se quedan en
+la barra porque actúan sobre la pieza y la plantilla. El reparto es por
+significado, no por hacer sitio.
+
+El `objectName` es estable porque `saveState`/`restoreState` guardan la
+disposición por nombre. Un dock nuevo sobre un estado guardado **viejo** es el
+caso que hay que probar contra el fichero de verdad, no contra un perfil limpio:
+se hizo, la disposición real de esta máquina contiene solo `compareDock` y Qt 6
+lo coloca visible igualmente. La salvaguarda que lo recoloca si quedara oculto
+se mantiene, porque el fallo que evita es «el operador actualiza y se queda sin
+paleta».
+
+Hay un test que exige que **toda** herramienta siga siendo alcanzable a clics
+—agrupar no puede esconder nada—, y como solo se instancian los botones de la
+familia activa, el barrido tiene que abrirlas todas, igual que el operador.
 
 Los **atajos** pasan a ser *familia + dígito* (`Ctrl+1..5` elige familia, `1..9`
 la herramienta dentro) y se generan de las propias familias. La tabla escrita a
