@@ -1,11 +1,17 @@
 #include "inspection_editor/canvas/tool_palette.h"
 
 #include <QAction>
+#include <QButtonGroup>
+#include <QGridLayout>
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QMenu>
+#include <QResizeEvent>
 #include <QToolBox>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 #include "inspection_editor/canvas/tool_icons.h"
 
@@ -16,13 +22,23 @@ namespace {
 QString label(ToolType type) { return QString::fromUtf8(toolTypeLabel(type)); }
 QString description(ToolType type) { return QString::fromUtf8(toolTypeDescription(type)); }
 
+// Un solo sitio para los márgenes del panel. Con números sueltos por el fichero
+// basta con tocar uno para que la rejilla deje de cuadrar.
+constexpr int kPanelMargin = 4;
+constexpr int kPanelSpacing = 4;
+constexpr int kToolIconSize = 28;
+// Lado del botón de herramienta. No baja de 34: por debajo deja de ser cómodo
+// de acertar con el ratón, y esto se usa todo el día.
+constexpr int kToolButtonSide = 36;
+constexpr int kFamilyIconSize = 24;
+
 }  // namespace
 
 ToolPalette::ToolPalette(Shape shape, QWidget* parent) : QWidget(parent), shape_(shape) {
-    if (shape_ == Shape::Compact) {
-        buildCompact();
-    } else {
-        buildAccordion();
+    switch (shape_) {
+        case Shape::Compact: buildCompact(); break;
+        case Shape::Accordion: buildAccordion(); break;
+        case Shape::Panel: buildPanel(); break;
     }
     refreshButtons();
 }
@@ -126,6 +142,175 @@ void ToolPalette::buildAccordion() {
     column->addWidget(accordion_, 1);
 }
 
+void ToolPalette::buildPanel() {
+    auto* column = new QVBoxLayout(this);
+    column->setContentsMargins(kPanelMargin, kPanelMargin, kPanelMargin, kPanelMargin);
+    column->setSpacing(kPanelSpacing);
+
+    // Mover/Elegir arriba del todo y CON TEXTO, fuera de la franja: no es una
+    // familia, y ponerlo entre ellas invitaría a leerlo como una más.
+    selectButton_ = new QToolButton(this);
+    selectButton_->setIcon(moveModeIcon());
+    selectButton_->setIconSize(QSize(kFamilyIconSize, kFamilyIconSize));
+    selectButton_->setText(tr("Mover/Elegir"));
+    selectButton_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    selectButton_->setCheckable(true);
+    selectButton_->setChecked(true);
+    selectButton_->setFocusPolicy(Qt::NoFocus);
+    selectButton_->setToolTip(
+        tr("Mover/Elegir — clic para seleccionar; arrastra para mover; arrastra en\n"
+           "vacío para un marco de selección múltiple."));
+    connect(selectButton_, &QToolButton::clicked, this, [this] { activate(std::nullopt); });
+    column->addWidget(selectButton_);
+
+    // Franja de familias: exclusiva, solo iconos.
+    auto* strip = new QHBoxLayout();
+    strip->setContentsMargins(0, 0, 0, 0);
+    strip->setSpacing(2);
+    auto* group = new QButtonGroup(this);
+    group->setExclusive(true);
+    for (const ToolCategory category : allToolCategories()) {
+        if (toolsInCategory(category).empty()) {
+            continue;  // familia declarada y todavía sin herramientas
+        }
+        auto* button = new QToolButton(this);
+        button->setIcon(categoryIcon(category));
+        button->setIconSize(QSize(kFamilyIconSize, kFamilyIconSize));
+        button->setCheckable(true);
+        button->setAutoRaise(true);
+        button->setFocusPolicy(Qt::NoFocus);
+        button->setToolTip(QString::fromUtf8(categoryDescription(category)));
+        group->addButton(button);
+        strip->addWidget(button);
+        // Pulsar una familia LA ABRE; no elige herramienta. Es un gesto distinto
+        // del atajo —que sí elige la primera, porque quien pulsa un atajo quiere
+        // dibujar ya— y confundirlos haría que abrir un cajón para mirar
+        // cambiara con qué estás dibujando.
+        connect(button, &QToolButton::clicked, this, [this, category] {
+            currentCategory_ = category;
+            rebuildGrid();
+            refreshButtons();
+        });
+        families_.push_back({category, button, -1});
+    }
+    strip->addStretch(1);
+    column->addLayout(strip);
+
+    familyTitle_ = new QLabel(this);
+    QFont titleFont = familyTitle_->font();
+    titleFont.setBold(true);
+    familyTitle_->setFont(titleFont);
+    column->addWidget(familyTitle_);
+
+    gridHost_ = new QWidget(this);
+    // La rejilla NO impone su ancho, y esto es lo que hace que el reflujo
+    // funcione de verdad.
+    //
+    // Sin esto hay una pescadilla que se muerde la cola: el mínimo de un
+    // `QGridLayout` es el de sus columnas, así que con las ocho herramientas de
+    // una familia en una fila el panel pedía 324 px y Qt no le dejaba
+    // estrecharse por debajo; y como no se estrechaba, el reflujo a cuatro
+    // columnas no llegaba a ocurrir nunca. Medido: `resize(180)` devolvía un
+    // ancho real de 324.
+    //
+    // Con `Ignored` el contenedor acepta el ancho que le den y la rejilla se
+    // recoloca dentro. El mínimo del panel pasa a ser el de la franja de
+    // familias, que es lo que de verdad no se puede encoger.
+    gridHost_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    gridHost_->setMinimumWidth(kToolButtonSide);
+    grid_ = new QGridLayout(gridHost_);
+    grid_->setContentsMargins(0, 0, 0, 0);
+    grid_->setSpacing(kPanelSpacing);
+    column->addWidget(gridHost_);
+    column->addStretch(1);
+
+    rebuildGrid();
+}
+
+void ToolPalette::rebuildGrid() {
+    if (grid_ == nullptr) {
+        return;
+    }
+    // Fuera los botones de la familia anterior. `deleteLater` y no `delete` por
+    // si el que se va es justo el que emitió el clic que trajo aquí.
+    for (auto& [type, button] : toolButtons_) {
+        button->hide();
+        button->deleteLater();
+    }
+    toolButtons_.clear();
+
+    for (const ToolType type : toolsInCategory(currentCategory_)) {
+        auto* button = new QToolButton(gridHost_);
+        button->setIcon(toolIcon(type));
+        button->setIconSize(QSize(kToolIconSize, kToolIconSize));
+        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        button->setCheckable(true);
+        button->setAutoRaise(true);
+        button->setFocusPolicy(Qt::NoFocus);
+        button->setFixedSize(kToolButtonSide, kToolButtonSide);
+        // El nombre va en el tooltip Y en la línea de ayuda (P3). Aquí solo el
+        // nombre: la descripción entera en un tooltip que salta al pasar es
+        // ilegible.
+        button->setToolTip(label(type));
+        connect(button, &QToolButton::clicked, this, [this, type] { activate(type); });
+        toolButtons_.emplace_back(type, button);
+    }
+    gridColumns_ = 0;  // fuerza recolocar
+    relayoutGrid();
+    if (familyTitle_ != nullptr) {
+        familyTitle_->setText(QString::fromUtf8(categoryLabel(currentCategory_)));
+    }
+}
+
+int ToolPalette::gridColumnsFor(int width) {
+    const int step = kToolButtonSide + kPanelSpacing;
+    const int usable = std::max(kToolButtonSide, width - 2 * kPanelMargin);
+    return std::max(1, (usable + kPanelSpacing) / step);
+}
+
+int ToolPalette::gridHeightFor(int toolCount, int width) {
+    if (toolCount <= 0) {
+        return 0;
+    }
+    const int columns = gridColumnsFor(width);
+    const int rows = (toolCount + columns - 1) / columns;
+    return rows * kToolButtonSide + (rows - 1) * kPanelSpacing;
+}
+
+void ToolPalette::relayoutGrid() {
+    if (grid_ == nullptr || toolButtons_.empty()) {
+        return;
+    }
+    const int columns = gridColumnsFor(width());
+    if (columns == gridColumns_) {
+        return;  // nada que mover: recolocar en cada píxel de arrastre parpadea
+    }
+    gridColumns_ = columns;
+
+    // El layout se REHACE, no se recoloca. `QGridLayout` no encoge nunca su
+    // número de columnas: al pasar de ocho a cuatro, las cuatro vacías siguen
+    // contando y el panel sigue pidiendo el ancho de ocho. Se veía como una
+    // barra de desplazamiento horizontal que no se iba al estrechar.
+    delete grid_;
+    grid_ = new QGridLayout(gridHost_);
+    grid_->setContentsMargins(0, 0, 0, 0);
+    grid_->setSpacing(kPanelSpacing);
+
+    for (int i = 0; i < static_cast<int>(toolButtons_.size()); ++i) {
+        grid_->addWidget(toolButtons_[static_cast<std::size_t>(i)].second, i / columns,
+                         i % columns, Qt::AlignLeft | Qt::AlignTop);
+    }
+    // La última fila incompleta se alinea a la izquierda en vez de repartirse:
+    // una rejilla con el paso cambiando de fila a fila se lee peor que una con
+    // un hueco al final.
+    grid_->setColumnStretch(columns, 1);
+}
+
+void ToolPalette::resizeEvent(QResizeEvent* event) {
+    QWidget::resizeEvent(event);
+    relayoutGrid();
+}
+
 void ToolPalette::showSelection(std::optional<ToolType> type) {
     current_ = type;
     if (type.has_value()) {
@@ -148,6 +333,13 @@ void ToolPalette::activateCategory(ToolCategory category) {
                 accordion_->setCurrentIndex(family.accordionPage);
             }
         }
+    }
+    if (shape_ == Shape::Panel) {
+        // El atajo tiene que dejar la vista contando lo mismo que el atajo hizo.
+        // Si eligiera una herramienta sin abrir su familia, el operador vería
+        // una rejilla que no contiene lo que está dibujando y dejaría de fiarse
+        // de las dos cosas.
+        rebuildGrid();
     }
     // Elegir familia elige también su primera herramienta: quien pulsa el
     // atajo quiere empezar a dibujar, no abrir un cajón.
@@ -175,6 +367,14 @@ void ToolPalette::refreshButtons() {
     // En la fila compacta, el botón de la familia activa lleva el icono de la
     // herramienta elegida: sin eso, cerrado el menú no hay forma de saber con
     // qué se está dibujando.
+    if (shape_ == Shape::Panel) {
+        for (const auto& family : families_) {
+            if (family.button != nullptr) {
+                family.button->setChecked(family.category == currentCategory_);
+            }
+        }
+        return;
+    }
     for (const auto& family : families_) {
         if (family.button == nullptr) {
             continue;

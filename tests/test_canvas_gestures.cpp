@@ -16,6 +16,8 @@
 #include <QMenu>
 #include <QStringList>
 #include <QToolBox>
+#include <QLabel>
+#include <QLayout>
 #include <QToolButton>
 
 #include <cmath>
@@ -586,36 +588,60 @@ int main(int argc, char** argv) {
 // Paleta agrupada por familias (R2)
 // ---------------------------------------------------------------------------
 
-TEST(ToolPaletteTest, EveryToolIsReachableInBothShapes) {
+TEST(ToolPaletteTest, EveryToolIsReachableInEveryShape) {
     // Agrupar no puede esconder nada: si una herramienta no aparece en ninguna
-    // familia, deja de existir para el operador aunque el código la tenga.
-    for (const auto shape : {ToolPalette::Shape::Compact, ToolPalette::Shape::Accordion}) {
+    // familia, deja de existir para el operador aunque el codigo la tenga.
+    //
+    // En el panel hay que ABRIR cada familia, porque solo se instancian los
+    // botones de la activa. Eso es a proposito —crear 32 botones para enseñar 8
+    // seria trabajo tirado en cada cambio— y obliga al test a recorrerlas, que
+    // es exactamente lo que hace el operador.
+    for (const auto shape : {ToolPalette::Shape::Compact, ToolPalette::Shape::Accordion,
+                             ToolPalette::Shape::Panel}) {
         ToolPalette palette(shape);
         std::vector<ToolType> reachable;
 
-        for (auto* button : palette.findChildren<QToolButton*>()) {
-            if (auto* menu = button->menu(); menu != nullptr) {
-                for (auto* action : menu->actions()) {
-                    for (const ToolType type : allToolTypes()) {
-                        if (action->text() == QString::fromUtf8(toolTypeLabel(type))) {
-                            reachable.push_back(type);
+        const auto collect = [&palette, &reachable] {
+            for (auto* button : palette.findChildren<QToolButton*>()) {
+                if (auto* menu = button->menu(); menu != nullptr) {
+                    for (auto* action : menu->actions()) {
+                        for (const ToolType type : allToolTypes()) {
+                            if (action->text() == QString::fromUtf8(toolTypeLabel(type))) {
+                                reachable.push_back(type);
+                            }
                         }
                     }
+                    continue;
                 }
-            } else {
                 for (const ToolType type : allToolTypes()) {
-                    if (button->text() == QString::fromUtf8(toolTypeLabel(type))) {
+                    const QString name = QString::fromUtf8(toolTypeLabel(type));
+                    // El panel usa botones de solo icono: el nombre vive en el
+                    // tooltip, y ahi es donde el operador lo lee.
+                    if (button->text() == name || button->toolTip() == name) {
                         reachable.push_back(type);
                     }
                 }
             }
+        };
+
+        if (shape == ToolPalette::Shape::Panel) {
+            for (const auto category : allToolCategories()) {
+                if (toolsInCategory(category).empty()) {
+                    continue;
+                }
+                palette.activateCategory(category);
+                collect();
+            }
+        } else {
+            collect();
         }
+
         std::sort(reachable.begin(), reachable.end());
         reachable.erase(std::unique(reachable.begin(), reachable.end()), reachable.end());
         auto expected = std::vector<ToolType>(allToolTypes().begin(), allToolTypes().end());
         std::sort(expected.begin(), expected.end());
         EXPECT_EQ(reachable, expected)
-            << "forma " << static_cast<int>(shape) << ": alguna herramienta quedó escondida";
+            << "forma " << static_cast<int>(shape) << ": alguna herramienta quedo escondida";
     }
 }
 
@@ -882,5 +908,103 @@ TEST(CategoryIcons, TheyDoNotDependOnTheToolIcons) {
             EXPECT_GT(difference, 0.04)
                 << categoryLabel(category) << " se parece a " << toolTypeLabel(type);
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// El panel: franja, titulo y rejilla (P2)
+// ---------------------------------------------------------------------------
+
+TEST(ToolPanel, ItFitsWithoutHorizontalScrollAtEveryUsefulWidth) {
+    // El panel va a vivir en una columna estrecha (el editor) y en un dock
+    // (la ventana principal). Entre 180 y 400 px tiene que caber sin barra
+    // horizontal: una paleta que hay que desplazar de lado esconde herramientas
+    // igual que un menu.
+    // Lo que decide si aparece barra horizontal es el ancho MINIMO, no el
+    // preferido: un widget se deja estrechar hasta el minimo sin quejarse.
+    ToolPalette palette(ToolPalette::Shape::Panel);
+    // Hay que mostrarlo: Qt APLAZA el evento de redimensionado en un widget que
+    // nunca se ha mostrado, asi que sin esto la rejilla se quedaria con las
+    // columnas del ancho inicial y el test mediria un panel que no existe.
+    palette.show();
+    for (const int width : {180, 220, 260, 300, 400}) {
+        palette.resize(width, 600);
+        // Se imprime porque documenta el reflujo. Y se exige que el ancho real
+        // siga al pedido: si no lo siguiera, seria que el minimo del layout lo
+        // esta bloqueando — que es exactamente el fallo que tuvo esto.
+        std::printf("  %3d px -> minimo %3d, %d columnas\n", palette.width(),
+                    palette.minimumSizeHint().width(), ToolPalette::gridColumnsFor(width));
+        EXPECT_EQ(palette.width(), width)
+            << "Qt no dejo estrechar el panel: algo esta imponiendo un minimo";
+        EXPECT_LE(palette.minimumSizeHint().width(), width)
+            << "el panel no cabe en " << width << " px";
+        EXPECT_GE(ToolPalette::gridColumnsFor(width), 1);
+    }
+    // Y a 180 px caben al menos cuatro botones por fila: con menos, la familia
+    // mas grande se convertiria en una columna larguisima.
+    EXPECT_GE(ToolPalette::gridColumnsFor(180), 4) << ToolPalette::gridColumnsFor(180);
+}
+
+TEST(ToolPanel, TheBiggestFamilyStillFitsWhenItDoublesInSize) {
+    // La pregunta que hay que poder responder HOY: ¿cabra la familia mas grande
+    // cuando tenga el doble de herramientas? Esperar a tenerlas para
+    // averiguarlo es tarde, asi que se le pregunta a la aritmetica de la
+    // rejilla en vez de al widget.
+    std::size_t biggest = 0;
+    for (const auto category : allToolCategories()) {
+        biggest = std::max(biggest, toolsInCategory(category).size());
+    }
+    ASSERT_GT(biggest, 0U);
+
+    const int doubled = static_cast<int>(biggest) * 2;
+    const int height = ToolPalette::gridHeightFor(doubled, 220);
+    std::printf("  la familia mayor tiene %zu; con %d caben en %d px de alto a 220 de ancho\n",
+                biggest, doubled, height);
+    EXPECT_LT(height, 520) << "la familia mas grande no cabria al doblarse";
+}
+
+TEST(ToolPanel, OpeningAFamilyDoesNotChangeWhatYouAreDrawing) {
+    // Dos gestos distintos y tienen que seguir siendolo: pulsar una familia la
+    // ABRE para mirarla, y el atajo SI elige —quien pulsa un atajo quiere
+    // dibujar ya—. Si abrir un cajon cambiara la herramienta activa, mirar
+    // saldria caro.
+    ToolPalette palette(ToolPalette::Shape::Panel);
+    palette.activateCategory(ToolCategory::InLine);
+    const auto drawing = palette.currentTool();
+    ASSERT_TRUE(drawing.has_value());
+
+    // Se pulsa el boton de otra familia, como haria el raton.
+    for (auto* button : palette.findChildren<QToolButton*>()) {
+        if (button->toolTip() ==
+            QString::fromUtf8(categoryDescription(ToolCategory::TurnedAndExtremes))) {
+            button->click();
+            break;
+        }
+    }
+    EXPECT_EQ(palette.currentCategory(), ToolCategory::TurnedAndExtremes)
+        << "pulsar la familia no la abrio";
+    EXPECT_EQ(palette.currentTool(), drawing)
+        << "abrir una familia cambio la herramienta con la que se estaba dibujando";
+}
+
+TEST(ToolPanel, TheShortcutOpensTheFamilyItPicksFrom) {
+    // Si el atajo eligiera una herramienta sin abrir su familia, el operador
+    // veria una rejilla que no contiene lo que esta dibujando — y dejaria de
+    // fiarse de las dos cosas.
+    ToolPalette palette(ToolPalette::Shape::Panel);
+    for (const auto category : allToolCategories()) {
+        if (toolsInCategory(category).empty()) {
+            continue;
+        }
+        palette.activateCategory(category);
+        EXPECT_EQ(palette.currentCategory(), category);
+        ASSERT_TRUE(palette.currentTool().has_value());
+        EXPECT_EQ(categoryOf(*palette.currentTool()), category);
+        // Y el titulo dice la misma familia que la franja.
+        bool titled = false;
+        for (auto* title : palette.findChildren<QLabel*>()) {
+            titled = titled || title->text() == QString::fromUtf8(categoryLabel(category));
+        }
+        EXPECT_TRUE(titled) << "el titulo no dice " << categoryLabel(category);
     }
 }

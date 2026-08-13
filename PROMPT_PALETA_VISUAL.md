@@ -125,7 +125,22 @@ Verificación, con el patrón de «renderizar y contar píxeles» que ya se usa:
   familia nueva **rompe la compilación** hasta que alguien le dibuje un icono.
   Esa es la garantía de que el panel no se llena de huecos con el tiempo.
 
-### - [ ] P2 — `Shape::Panel`: la franja, el título y la rejilla
+### - [x] P2 — `Shape::Panel`: la franja, el título y la rejilla
+
+*(El reflujo por ancho tenía una pescadilla que se muerde la cola y costó
+encontrarla: el mínimo de un `QGridLayout` es el de sus columnas, así que con
+las ocho herramientas de una familia en una fila el panel pedía 324 px y Qt no
+le dejaba estrecharse por debajo — y como no se estrechaba, el reflujo a cuatro
+columnas no llegaba a ocurrir NUNCA. Medido: `resize(180)` devolvía un ancho
+real de 324. Se arregla con `QSizePolicy::Ignored` en el contenedor de la
+rejilla: acepta el ancho que le den y recoloca dentro. Ahora el mínimo del panel
+es 176 px, que es el de la franja de familias — lo que de verdad no encoge.
+Segundo detalle del mismo sitio: `QGridLayout` no encoge nunca su número de
+columnas, así que al pasar de ocho a cuatro las cuatro vacías seguían contando.
+El layout se REHACE al cambiar el número de columnas en vez de recolocarse.
+Y una cosa que el test tuvo que aprender: Qt APLAZA el evento de redimensionado
+en un widget que nunca se ha mostrado, así que sin `show()` el test medía un
+panel que no existía.)*
 
 Tercera forma de `ToolPalette`, la de la anatomía de arriba. Piezas:
 
