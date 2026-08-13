@@ -20,6 +20,7 @@
 #include "ui/performance_page.h"
 #include "ui/preferences_page.h"
 #include "ui/rate_readout.h"
+#include "ui/setup_guide.h"
 #include "ui/station_status.h"
 
 using namespace pci::ui;
@@ -526,4 +527,60 @@ TEST(StationStatus, PointingAtAPageLandsOnThatPageWhateverItsPosition) {
     const int before = tabs->currentIndex();
     dialog.showPage(pci::ui::ConfigureTarget::None);
     EXPECT_EQ(tabs->currentIndex(), before);
+}
+
+// ---------------------------------------------------------------------------
+// Que el primer arranque no empiece en blanco (I3)
+// ---------------------------------------------------------------------------
+
+TEST(SetupGuide, ItSaysTheNextStepAndOnlyTheNextOne) {
+    // Enseñar los tres pasos a la vez cuando solo se puede hacer uno es la
+    // manera de que no se haga ninguno. Se dice el SIGUIENTE.
+    using pci::ui::SetupStep;
+    pci::ui::SetupState state;
+    state.cameraRunning = true;
+    EXPECT_EQ(pci::ui::nextSetupStep(state), SetupStep::Calibrate);
+
+    state.calibrated = true;
+    EXPECT_EQ(pci::ui::nextSetupStep(state), SetupStep::Register);
+
+    state.anyPieceRegistered = true;
+    EXPECT_EQ(pci::ui::nextSetupStep(state), SetupStep::Done);
+    EXPECT_TRUE(pci::ui::setupHint(SetupStep::Done).isEmpty());
+}
+
+TEST(SetupGuide, WithoutACameraRunningThereIsNothingToGuide) {
+    // El boton de arrancar esta a la vista. Decirle "enfoca la pieza" a quien
+    // todavia no ve imagen es ruido, y el ruido en el primer arranque es
+    // justamente lo que enseña a ignorar los avisos.
+    pci::ui::SetupState state;
+    state.cameraRunning = false;
+    EXPECT_EQ(pci::ui::nextSetupStep(state), pci::ui::SetupStep::Done);
+}
+
+TEST(SetupGuide, OnceSaidItDoesNotSayItAgain) {
+    // "Una vez y no volver a molestar". Repetirlo cada arranque seria un cartel
+    // que se aprende a no ver — y el estado permanente ya lo lleva la tira de
+    // indicadores, que para eso esta.
+    pci::ui::SetupState state;
+    state.cameraRunning = true;
+    ASSERT_NE(pci::ui::nextSetupStep(state), pci::ui::SetupStep::Done);
+    state.alreadyGuided = true;
+    EXPECT_EQ(pci::ui::nextSetupStep(state), pci::ui::SetupStep::Done);
+}
+
+TEST(SetupGuide, EveryStepSaysWhereToClickAndWhyItMatters) {
+    // Un aviso que dice que algo falta y no dice donde se arregla obliga a
+    // buscarlo por los menus, que es exactamente lo que este item existe para
+    // evitar.
+    for (const auto step : {pci::ui::SetupStep::Focus, pci::ui::SetupStep::Calibrate,
+                            pci::ui::SetupStep::Register}) {
+        const QString hint = pci::ui::setupHint(step);
+        EXPECT_FALSE(hint.isEmpty());
+        EXPECT_GT(hint.size(), 40) << hint.toStdString();
+        // Cada uno nombra el sitio: una tecla, un menu o una pestaña.
+        const bool pointsSomewhere = hint.contains(QStringLiteral("▸")) ||
+                                     hint.contains(QStringLiteral("pulsa"));
+        EXPECT_TRUE(pointsSomewhere) << hint.toStdString();
+    }
 }

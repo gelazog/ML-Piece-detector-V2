@@ -46,6 +46,7 @@
 #include "ui/inspection_result_dialog.h"
 #include "ui/history_dialog.h"
 #include "ui/piece_manager_dialog.h"
+#include "ui/setup_guide.h"
 #include "ui/measurement_mode_dialog.h"
 #include "ui/preferences_page.h"
 #include "ui/registration_wizard.h"
@@ -404,6 +405,27 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     toolsLayout->addWidget(shortcutsButton);
     rootLayout->addLayout(toolsLayout);
 
+    // Guía del primer arranque (I3). Va donde el veredicto y no en un diálogo
+    // a propósito: un asistente modal se cierra sin leer y encima tapa la
+    // ventana que hay que mirar para hacer el primer paso.
+    setupBanner_ = new QWidget(central);
+    {
+        auto* row = new QHBoxLayout(setupBanner_);
+        row->setContentsMargins(8, 4, 4, 4);
+        setupHintLabel_ = new QLabel(setupBanner_);
+        setupHintLabel_->setWordWrap(true);
+        row->addWidget(setupHintLabel_, 1);
+        auto* dismiss = new QPushButton(tr("Entendido"), setupBanner_);
+        dismiss->setToolTip(tr("No volver a mostrarlo. Los indicadores de la barra de "
+                               "abajo siguen diciendo el estado en todo momento."));
+        row->addWidget(dismiss);
+        connect(dismiss, &QPushButton::clicked, this, &MainWindow::dismissSetupGuide);
+    }
+    setupBanner_->setStyleSheet(
+        QStringLiteral("background:#1b2b38; color:#d7ecff; border-radius:4px;"));
+    setupBanner_->setVisible(false);
+    rootLayout->addWidget(setupBanner_);
+
     // Banner de veredicto para la auto-inspección.
     verdictBanner_ = new QLabel(central);
     verdictBanner_->setAlignment(Qt::AlignCenter);
@@ -695,6 +717,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
                 savedCameraControls_.push_back({property, stored.value()});
             }
         }
+        setupGuided_ = repos_.settings->getInt("setup_guided", 0).value() != 0;
         savedResolution_.width = repos_.settings->getInt("cam_width", 0).value();
         savedResolution_.height = repos_.settings->getInt("cam_height", 0).value();
     }
@@ -1328,6 +1351,7 @@ void MainWindow::updateCalibrationLabel() {
     // —calibrar, cambiar de cámara, tocar un automático, mover la zona—, así
     // que engancharse a él es engancharse a todos de una vez.
     updateStationStatus();
+    updateSetupGuide();
     // La escala por ArUco gestiona su propia etiqueta por frame (es dinámica).
     if (arucoLiveScale_) {
         return;
@@ -1694,6 +1718,29 @@ void MainWindow::onStats(double fps, int width, int height) {
     currentResolution_ = {width, height};
     lastCaptureFps_ = fps;
     updateRateReadout();
+}
+
+void MainWindow::updateSetupGuide() {
+    if (setupBanner_ == nullptr || setupHintLabel_ == nullptr) {
+        return;
+    }
+    SetupState state;
+    state.cameraRunning = streaming_;
+    state.calibrated = calibration_.valid();
+    state.anyPieceRegistered = pieceCombo_ != nullptr && pieceCombo_->count() > 0;
+    state.alreadyGuided = setupGuided_;
+
+    const QString hint = setupHint(nextSetupStep(state));
+    setupHintLabel_->setText(hint);
+    setupBanner_->setVisible(!hint.isEmpty());
+}
+
+void MainWindow::dismissSetupGuide() {
+    setupGuided_ = true;
+    if (repos_.settings != nullptr) {
+        repos_.settings->setInt("setup_guided", 1);
+    }
+    updateSetupGuide();
 }
 
 void MainWindow::updateStationStatus() {

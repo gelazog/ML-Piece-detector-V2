@@ -50,6 +50,11 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    guardada. *Sin cámara, todos los pasos siguientes aceptan imágenes desde
    archivo* (`sample_images/pieza_demo.png` sirve para probar).
 
+   La **primera vez** que arrancas, sobre el vídeo aparece una línea con el
+   siguiente paso que toca —calibrar y luego registrar una pieza—. Se quita con
+   *Entendido* y no vuelve: a partir de ahí el estado lo llevan los indicadores
+   de la barra.
+
    En la **barra de estado**, abajo, hay cuatro indicadores que dicen de un
    vistazo si estás midiendo en condiciones: **escala**, **enfoque**,
    **exposición** y **zona de trabajo**. Cada uno explica en su tooltip qué

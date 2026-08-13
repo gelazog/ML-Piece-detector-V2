@@ -10,6 +10,8 @@
 #include <vector>
 
 #include "ui/rate_readout.h"
+#include "ui/setup_guide.h"
+#include "ui/setup_guide.h"
 #include "ui/station_status.h"
 #include "vision/stage_stats.h"
 #include "camera/camera_controller.h"
@@ -260,6 +262,14 @@ private:
     QPushButton* saveTemplateButton_ = nullptr;       // guardar herramientas en vivo (P1)
     QDockWidget* compareDock_ = nullptr;              // panel comparación reubicable (S3)
     QPushButton* managePiecesButton_ = nullptr;
+
+    // Guía del primer arranque (I3). No es un asistente: es una línea que
+    // señala la tira de estado y se quita cuando el operador la ha leído.
+    QWidget* setupBanner_ = nullptr;
+    QLabel* setupHintLabel_ = nullptr;
+    bool setupGuided_ = false;
+    void updateSetupGuide();
+    void dismissSetupGuide();
 
     QLabel* verdictBanner_ = nullptr;
     QLabel* boardReadoutLabel_ = nullptr;  // dx/dy/radio/giro respecto al tablero (T3)

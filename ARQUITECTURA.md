@@ -150,6 +150,33 @@ La moraleja, que es lo que hay que llevarse: **de una cámara no se cree lo que
 dice, se mide lo que hace**. Las tres versiones tenían tests verdes; las tres
 veces fue la cámara real la que dijo que no.
 
+### El primer arranque
+
+Una instalación nueva abre sin calibrar y sin ninguna pieza registrada, y no
+decía por dónde empezar. Son tres pasos y siempre los mismos —enfocar,
+calibrar, registrar la pieza— pero solo se saben si alguien te los ha dicho una
+vez.
+
+Tres decisiones, y la forma importa tanto como el contenido:
+
+- **No es un asistente modal.** Esos se cierran sin leer, y encima tapan justo
+  la ventana que hay que mirar para hacer el primer paso. Es una línea sobre el
+  vídeo, con un botón de «Entendido».
+- **Dice el SIGUIENTE paso, no los tres.** Enseñar tres cosas cuando solo se
+  puede hacer una es la manera de que no se haga ninguna. Y el orden no es una
+  preferencia: calibrar con la imagen desenfocada fija una escala mala, y
+  registrar una pieza antes de calibrar guarda sus medidas en píxeles.
+- **Una vez y no vuelve.** Repetirlo cada arranque sería un cartel que se
+  aprende a no ver. El estado permanente ya lo lleva la tira de indicadores,
+  que para eso está — y por eso el texto la señala explícitamente en vez de
+  repetir lo que ella dice.
+
+Sin cámara en marcha no dice nada: el botón de arrancar está a la vista, y
+decirle «enfoca la pieza» a quien todavía no ve imagen es ruido — que en el
+primer arranque es exactamente lo que enseña a ignorar los avisos.
+
+La regla vive en `ui/setup_guide.*` y se prueba sin ventana.
+
 ### La tira de estado de la estación
 
 Los cuatro datos que deciden si una medida vale —**escala calibrada, enfoque
