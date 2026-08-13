@@ -1,5 +1,7 @@
 #include "inspection_editor/canvas/tool_palette.h"
 
+#include <QApplication>
+#include <QPalette>
 #include <QButtonGroup>
 #include <QEvent>
 #include <QFontMetrics>
@@ -30,6 +32,26 @@ constexpr int kToolIconSize = 28;
 // de acertar con el ratón, y esto se usa todo el día.
 constexpr int kToolButtonSide = 36;
 constexpr int kFamilyIconSize = 24;
+// La franja va más apretada que la rejilla a propósito: son cinco y se leen
+// como un grupo, no como cinco cosas sueltas.
+constexpr int kStripSpacing = 2;
+
+// La herramienta activa tiene que verse SIN pasar el ratón por encima.
+//
+// Con `autoRaise` el estado marcado se dibuja como un relieve tenue que en un
+// monitor de taller —con reflejos y a metro y medio— no se distingue de un
+// botón cualquiera. Y saber con qué se está dibujando no es un detalle
+// estético: es la diferencia entre trazar la herramienta que querías y otra.
+//
+// El color sale del tema (`QPalette::Highlight`), no de un valor escrito aquí:
+// así sigue siendo el color de «esto está seleccionado» que el operador ya
+// reconoce del resto del sistema, en claro y en oscuro.
+QString checkedStyle() {
+    const QColor highlight = QApplication::palette().color(QPalette::Highlight);
+    return QStringLiteral("QToolButton:checked { background: %1; border: 1px solid %2; "
+                          "border-radius: 3px; }")
+        .arg(highlight.name(), highlight.darker(140).name());
+}
 
 // Primer renglón de la descripción: es el que resume qué mide la herramienta.
 // El resto —cómo trazarla, sus avisos— es demasiado para una línea que cambia
@@ -61,6 +83,7 @@ void ToolPalette::buildPanel() {
     selectButton_->setCheckable(true);
     selectButton_->setChecked(true);
     selectButton_->setFocusPolicy(Qt::NoFocus);
+    selectButton_->setStyleSheet(checkedStyle());
     selectButton_->setToolTip(
         tr("Mover/Elegir — clic para seleccionar; arrastra para mover; arrastra en\n"
            "vacío para un marco de selección múltiple."));
@@ -70,7 +93,7 @@ void ToolPalette::buildPanel() {
     // Franja de familias: exclusiva, solo iconos.
     auto* strip = new QHBoxLayout();
     strip->setContentsMargins(0, 0, 0, 0);
-    strip->setSpacing(2);
+    strip->setSpacing(kStripSpacing);
     auto* group = new QButtonGroup(this);
     group->setExclusive(true);
     for (const ToolCategory category : allToolCategories()) {
@@ -84,6 +107,7 @@ void ToolPalette::buildPanel() {
         button->setAutoRaise(true);
         button->setFocusPolicy(Qt::NoFocus);
         button->setToolTip(QString::fromUtf8(categoryDescription(category)));
+        button->setStyleSheet(checkedStyle());
         group->addButton(button);
         strip->addWidget(button);
         // Pulsar una familia LA ABRE; no elige herramienta. Es un gesto distinto
@@ -252,6 +276,7 @@ void ToolPalette::rebuildGrid() {
         button->setAutoRaise(true);
         button->setFocusPolicy(Qt::NoFocus);
         button->setFixedSize(kToolButtonSide, kToolButtonSide);
+        button->setStyleSheet(checkedStyle());
         // El nombre va en el tooltip Y en la línea de ayuda (P3). Aquí solo el
         // nombre: la descripción entera en un tooltip que salta al pasar es
         // ilegible.

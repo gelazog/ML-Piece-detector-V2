@@ -1229,3 +1229,148 @@ TEST(EditorPanel, TheColumnIsNarrowerThanTheAccordionItReplaces) {
     std::printf("  el panel del editor pide %d px (el acordeon pedia 190)\n", minimum);
     EXPECT_LE(minimum, 190) << "el panel es mas ancho que el acordeon al que sustituye";
 }
+
+// ---------------------------------------------------------------------------
+// Que se vea bien de verdad, y por tanto medible (P7)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+QImage renderWidget(QWidget* widget) {
+    QImage shot(widget->size(), QImage::Format_ARGB32);
+    shot.fill(Qt::transparent);
+    widget->render(&shot);
+    return shot;
+}
+
+// Fraccion de pixeles distintos entre dos capturas. Es la forma directa de
+// preguntar "¿se nota?" sin describir COMO deberia notarse, que dejaria el test
+// atado a un estilo concreto.
+double pixelsChanged(const QImage& a, const QImage& b) {
+    if (a.size() != b.size()) {
+        return 1.0;
+    }
+    int different = 0;
+    for (int y = 0; y < a.height(); ++y) {
+        for (int x = 0; x < a.width(); ++x) {
+            if (a.pixel(x, y) != b.pixel(x, y)) {
+                ++different;
+            }
+        }
+    }
+    const int total = a.width() * a.height();
+    return total > 0 ? static_cast<double>(different) / total : 0.0;
+}
+
+}  // namespace
+
+TEST(ToolPanelLooks, TheActiveToolIsVisibleWithoutHoveringIt) {
+    // Saber con que se esta dibujando no es estetica: es la diferencia entre
+    // trazar la herramienta que querias y otra. Con `autoRaise` a secas, el
+    // estado marcado se dibuja como un relieve tenue que en un monitor de
+    // taller no se distingue de un boton cualquiera.
+    //
+    // El test no describe COMO tiene que verse —eso ataria el test al estilo—
+    // sino que se VE: se renderiza con y sin seleccion y se compara.
+    ToolPalette palette;
+    palette.show();
+    palette.resize(240, 400);
+
+    palette.activate(std::nullopt);  // Mover/Elegir, ninguna herramienta marcada
+    const QImage without = renderWidget(&palette);
+
+    const auto tools = toolsInCategory(palette.currentCategory());
+    ASSERT_FALSE(tools.empty());
+    palette.activate(tools.front());
+    const QImage with = renderWidget(&palette);
+
+    const double changed = pixelsChanged(without, with);
+    std::printf("  marcar la herramienta activa cambia el %.1f %% del panel\n",
+                changed * 100.0);
+    EXPECT_GT(changed, 0.005) << "la herramienta activa no se distingue de las demas";
+}
+
+TEST(ToolPanelLooks, TheGridStepIsTheSameInEveryFamily) {
+    // Rejilla uniforme: si el paso cambiara de familia en familia, los botones
+    // bailarian de sitio al cambiar de cajon y la memoria muscular no serviria
+    // de nada.
+    ToolPalette palette;
+    palette.show();
+    palette.resize(240, 400);
+
+    std::vector<int> steps;
+    for (const auto category : allToolCategories()) {
+        const auto tools = toolsInCategory(category);
+        if (tools.size() < 2) {
+            continue;
+        }
+        palette.activateCategory(category);
+        QApplication::processEvents();
+        // Sin esto los botones estan todos en (0,0): la rejilla se recoloca
+        // cuando corre el ciclo de eventos, y un test que mide antes mide un
+        // panel sin colocar. Se deja que Qt haga lo suyo en vez de activar
+        // layouts a mano, que seria el test hablando con las tripas.
+        // Los dos primeros botones de la rejilla, por su posicion en pantalla.
+        std::vector<QToolButton*> row;
+        for (const auto type : tools) {
+            for (auto* button : palette.findChildren<QToolButton*>()) {
+                if (button->toolTip() == QString::fromUtf8(toolTypeLabel(type))) {
+                    row.push_back(button);
+                    break;
+                }
+            }
+        }
+        ASSERT_GE(row.size(), 2U) << categoryLabel(category);
+        const int step = row[1]->x() - row[0]->x();
+        if (step > 0) {  // solo si los dos primeros caen en la misma fila
+            steps.push_back(step);
+        }
+        // Y todos los botones miden lo mismo: un hit target que cambia de
+        // tamaño se falla.
+        for (auto* button : row) {
+            EXPECT_EQ(button->size(), row.front()->size()) << categoryLabel(category);
+        }
+    }
+    ASSERT_FALSE(steps.empty());
+    for (const int step : steps) {
+        EXPECT_EQ(step, steps.front()) << "el paso de la rejilla cambia entre familias";
+    }
+    std::printf("  paso de rejilla uniforme: %d px en %zu familias\n", steps.front(),
+                steps.size());
+}
+
+TEST(ToolPanelLooks, TheShortcutLeavesTheViewTellingTheSameStory) {
+    // Si el atajo elige algo que la vista no refleja, el operador deja de
+    // fiarse de los dos. Se comprueba lo que el OJO ve: el boton marcado.
+    ToolPalette palette;
+    palette.show();
+    for (const auto category : allToolCategories()) {
+        const auto tools = toolsInCategory(category);
+        if (tools.empty()) {
+            continue;
+        }
+        palette.activateCategory(category);
+        ASSERT_TRUE(palette.activateInCurrentCategory(0));
+
+        QToolButton* checkedTool = nullptr;
+        for (auto* button : palette.findChildren<QToolButton*>()) {
+            if (button->toolTip() == QString::fromUtf8(toolTypeLabel(tools.front()))) {
+                checkedTool = button;
+            }
+        }
+        ASSERT_NE(checkedTool, nullptr) << categoryLabel(category);
+        EXPECT_TRUE(checkedTool->isChecked())
+            << "el atajo eligio " << toolTypeLabel(tools.front())
+            << " pero su boton no aparece marcado";
+
+        // Y la familia de la franja tambien, o la rejilla enseñaria un cajon y
+        // el atajo estaria en otro.
+        bool familyChecked = false;
+        for (auto* button : palette.findChildren<QToolButton*>()) {
+            if (button->toolTip() == QString::fromUtf8(categoryDescription(category))) {
+                familyChecked = button->isChecked();
+            }
+        }
+        EXPECT_TRUE(familyChecked) << "la franja no marca " << categoryLabel(category);
+    }
+}

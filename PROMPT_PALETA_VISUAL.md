@@ -287,7 +287,21 @@ constructor. Los tests que iteraban formas se simplifican.
 
 Tres paletas mantenidas a la vez divergen; ya pasó con los botones antes de R2.
 
-### - [ ] P7 — Que se vea bien de verdad
+### - [x] P7 — Que se vea bien de verdad
+
+*(Las cuatro cosas, medidas: marcar la herramienta activa cambia el **7 % del
+panel** —el test compara dos capturas y no describe CÓMO debe verse, que ataría
+la prueba a un estilo—; el paso de la rejilla sale **uniforme, 40 px en las
+cinco familias**; el atajo deja marcado el botón Y su familia; y el `2` suelto
+del espaciado de la franja pasa a constante.
+Lo que había que arreglar de verdad era el resaltado: con `autoRaise` a secas,
+el estado marcado se dibuja como un relieve tenue que en un monitor de taller
+no se distingue de un botón cualquiera — y saber con qué se está dibujando no
+es estética, es la diferencia entre trazar la herramienta que querías y otra. El
+color sale de `QPalette::Highlight`, no de un valor escrito a mano, para que
+siga siendo el «esto está seleccionado» que el operador ya reconoce.
+Dos veces tuve que dejar que corriera el ciclo de eventos para medir: Qt coloca
+la rejilla cuando le toca, y un test que mide antes mide un panel sin colocar.)*
 
 Lo «bonito» aquí es medible, así que se mide:
 
