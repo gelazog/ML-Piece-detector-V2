@@ -157,6 +157,11 @@ private:
     void applyDetectionPage(DetectionPage* page);
     // Piezas esperadas (C5): va con la pieza seleccionada, no con la máquina.
     void applyPiecesPage(PiecesPage* page);
+    // ¿Va alguien a leer CUÁNTAS piezas se ven? La pieza espera más de una, o
+    // el panel Configurar está abierto. Se pregunta en dos sitios —al montar el
+    // análisis y al elegir la zona— y tienen que responder lo mismo, así que la
+    // condición se escribe una vez.
+    [[nodiscard]] bool countingPieces() const;
     // Zona de trabajo (C3): elige con qué recorte se analiza el próximo frame.
     // El recorte automático NO pisa la zona manual del operador: son dos
     // cosas distintas y el modo decide cuál manda.

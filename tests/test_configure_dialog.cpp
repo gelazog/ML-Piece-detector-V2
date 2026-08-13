@@ -534,6 +534,36 @@ TEST(StationStatus, PointingAtAPageLandsOnThatPageWhateverItsPosition) {
     EXPECT_EQ(tabs->currentIndex(), before);
 }
 
+TEST(ConfigureDialog, OnlyThePiecesTabAsksForTheCount) {
+    // Contar piezas no es gratis: cuesta una segmentacion multi-pieza y obliga
+    // a SOLTAR el recorte automatico, porque ese recorte rodea a una sola pieza
+    // y contar dentro de el da 1 con seis en la mesa.
+    //
+    // Con «el panel esta abierto» como condicion, ese precio se pagaba por
+    // abrir cualquier pestaña. Y en Rendimiento salia el absurdo: es donde se
+    // enciende la zona automatica, asi que el operador la encendia y la veia
+    // apagada justo por estar mirandola.
+    ConfigureDialog dialog(sampleInputs());
+    auto* tabs = dialog.findChild<QTabWidget*>();
+    ASSERT_NE(tabs, nullptr);
+
+    tabs->setCurrentIndex(tabNamed(tabs, QStringLiteral("Piezas")));
+    EXPECT_TRUE(dialog.showingPieceCount());
+
+    // Las demas no lo piden. Se barren TODAS y no solo una de muestra: la que
+    // importa que diga que no es Rendimiento, y una lista escrita a mano se
+    // queda corta en cuanto alguien añade una pestaña.
+    const int pieces = tabNamed(tabs, QStringLiteral("Piezas"));
+    for (int i = 0; i < tabs->count(); ++i) {
+        if (i == pieces) {
+            continue;
+        }
+        tabs->setCurrentIndex(i);
+        EXPECT_FALSE(dialog.showingPieceCount())
+            << "la pestaña " << tabs->tabText(i).toStdString() << " no mira el recuento";
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Que el primer arranque no empiece en blanco (I3)
 // ---------------------------------------------------------------------------

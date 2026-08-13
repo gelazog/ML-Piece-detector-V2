@@ -152,6 +152,13 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    equivoca es peor que no tenerlo: mediría con confianza dentro de un
    rectángulo donde ya no hay nada.
 
+   También **se aparta sola cuando hay que contar piezas**: el recorte rodea a
+   una sola pieza, así que contar dentro de él daría siempre 1 aunque haya seis
+   en la mesa. Si tu pieza espera varias, o mientras miras la pestaña *Piezas*,
+   se analiza la imagen entera y el recuento es el de verdad. La zona fija **sí**
+   sigue limitando el recuento, y a propósito: si la dibujaste, dijiste «mira
+   solo aquí».
+
    No hace falta pasar por esa pestaña para usar una zona fija: **con dibujarla
    basta**. El botón *Zona de detección* de la barra te deja arrastrar el
    recuadro sobre el vídeo y a partir de ahí se usa (el modo pasa solo a «zona

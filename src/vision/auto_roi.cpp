@@ -68,10 +68,15 @@ const char* giveUpReason(AutoRoiGiveUp reason) {
 }
 
 cv::Rect effectiveWorkingZone(WorkingZoneMode mode, const cv::Rect& fixedZone,
-                              const cv::Rect& automaticZone) {
+                              const cv::Rect& automaticZone, bool countingPieces) {
     switch (mode) {
         case WorkingZoneMode::Off: return {};
-        case WorkingZoneMode::Automatic: return automaticZone;
+        case WorkingZoneMode::Automatic:
+            // El recorte automático sigue a UNA pieza. Si hay que contarlas
+            // todas, su premisa es falsa y se cede la vuelta a la imagen
+            // entera: el recuento es una respuesta, y ninguna optimización
+            // puede cambiar una respuesta.
+            return countingPieces ? cv::Rect{} : automaticZone;
         case WorkingZoneMode::Fixed: return fixedZone;
     }
     return {};

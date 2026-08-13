@@ -129,6 +129,12 @@ int ConfigureDialog::currentTab() const {
     return tabs_ != nullptr ? tabs_->currentIndex() : 0;
 }
 
+bool ConfigureDialog::showingPieceCount() const {
+    // Por el widget visible y no por un índice: este proyecto ya pagó una vez
+    // el precio de señalar pestañas por su número.
+    return tabs_ != nullptr && pieces_ != nullptr && tabs_->currentWidget() == pieces_;
+}
+
 void ConfigureDialog::showPage(ConfigureTarget target) {
     QWidget* page = nullptr;
     switch (target) {

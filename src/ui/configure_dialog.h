@@ -86,6 +86,12 @@ public:
     [[nodiscard]] int currentTab() const;
     void setCurrentTab(int index);
 
+    // ¿Está el operador MIRANDO el recuento de piezas? Lo pregunta la ventana
+    // porque contar no es gratis: cuesta una segmentación multi-pieza y obliga
+    // a soltar el recorte automático, así que se hace para quien lo lee y no
+    // por tener el panel abierto.
+    [[nodiscard]] bool showingPieceCount() const;
+
     // Abrir la página que arregla algo, dicho por su NOMBRE. El diálogo es
     // quien sabe en qué posición tiene cada pestaña, y así reordenarlas no
     // rompe en silencio a quien las señala desde fuera.

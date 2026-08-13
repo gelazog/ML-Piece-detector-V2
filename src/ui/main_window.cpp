@@ -1085,8 +1085,25 @@ void MainWindow::updateRoiButton() {
     roiButton_->setText(hasRoi ? tr("Quitar zona") : tr("Zona de detección"));
 }
 
+bool MainWindow::countingPieces() const {
+    // La pieza declara que espera varias: el recuento es parte del veredicto y
+    // se cuenta siempre.
+    if (expectedPieces_ > 1) {
+        return true;
+    }
+    // O el operador está mirando la pestaña Piezas. Antes bastaba con que el
+    // panel Configurar estuviera abierto, y eso era demasiado: contar cuesta
+    // una segmentación multi-pieza y además suelta el recorte automático, así
+    // que abrir la pestaña de la Cámara pagaba las dos cosas para nadie. Peor
+    // aún en la de Rendimiento, que es donde se enciende la zona automática:
+    // el operador la encendía y la veía apagada, por su propia culpa de estar
+    // mirándola.
+    return configureDialog_ != nullptr && configureDialog_->showingPieceCount();
+}
+
 cv::Rect MainWindow::effectiveWorkingZone() const {
-    return vision::effectiveWorkingZone(zoneMode_, pipelineConfig_.roi, autoRoi_.roi());
+    return vision::effectiveWorkingZone(zoneMode_, pipelineConfig_.roi, autoRoi_.roi(),
+                                        countingPieces());
 }
 
 void MainWindow::setWorkingZoneMode(vision::WorkingZoneMode mode) {
@@ -1749,11 +1766,14 @@ void MainWindow::maybeStartAnalysis() {
     const double markerMm = arucoLiveScale_ ? markerSizeMm_ : 0.0;
     // La zona con la que se analiza sale del modo elegido; `pipelineConfig_.roi`
     // sigue guardando la zona que dibujó el operador y no se toca.
+    //
+    // El orden importa: `effectiveWorkingZone` ya sabe que se está contando y
+    // por eso suelta el recorte automático. Antes no lo sabía, y el recuento
+    // salía SIEMPRE 1 —el recorte rodea a la pieza mayor y las demás quedan
+    // fuera por construcción—, con seis piezas delante del operador.
     vision::PipelineConfig working = pipelineConfig_;
     working.roi = effectiveWorkingZone();
-    // Solo se cuentan las piezas si alguien va a mirar el número: la pieza
-    // declara que espera más de una, o el panel Configurar está abierto.
-    const bool countPieces = expectedPieces_ > 1 || configureDialog_ != nullptr;
+    const bool countPieces = countingPieces();
     analysisWatcher_.setFuture(QtConcurrent::run(
         [frame, anchor, offset = currentOrientationOffset_, configs = std::move(configs),
          pipeline = working, previous = liveFixture_,

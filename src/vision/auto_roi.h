@@ -94,8 +94,17 @@ private:
 //
 // Vive aquí y no en la ventana porque es la regla, no una pantalla: quién usa
 // el rectángulo dibujado y quién el que sigue a la pieza.
+//
+// `countingPieces` es que alguien va a leer CUÁNTAS piezas se ven. Con eso
+// puesto, el modo automático se apaga, y no es un caso particular: el recorte
+// automático rodea a UNA pieza —la mayor— con su margen, así que contar dentro
+// de él da 1 por construcción, con seis piezas en la mesa. La zona FIJA sí
+// sigue recortando el recuento, porque ahí el operador dijo «mira solo aquí» y
+// esa es su respuesta; la automática es una optimización, y una optimización
+// que cambia la respuesta no es una optimización, es un fallo.
 [[nodiscard]] cv::Rect effectiveWorkingZone(WorkingZoneMode mode, const cv::Rect& fixedZone,
-                                            const cv::Rect& automaticZone);
+                                            const cv::Rect& automaticZone,
+                                            bool countingPieces = false);
 
 // Modo que corresponde después de dibujar o de quitar la zona fija.
 //

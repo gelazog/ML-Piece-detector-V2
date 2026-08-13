@@ -361,10 +361,23 @@ frame. **No hizo falta mecanismo nuevo**: `PipelineConfig::roi` ya recortaba y
 era quién calcula ese rectángulo y lo mueve con la pieza.
 
 Lo primero que hubo que demostrar es que **recortar no cambia el resultado**: si
-el fixture saliera distinto, todas las herramientas se desplazarían. El test
-recorre una secuencia de doce frames con la pieza moviéndose y compara el
-fixture del recorte con el del frame completo — coinciden dentro de **±0,5 px**,
-y el recorte contiene a la pieza en todos ellos.
+el fixture saliera distinto, todas las herramientas se desplazarían. El banco
+(`tests/test_working_zone.cpp`) lo lleva hasta el final: contorno punto a punto,
+área, perímetro, fixture, y el recorte canónico **y su máscara** comparados
+píxel a píxel. Sobre 20 frames con la pieza cruzando en diagonal el peor desfase
+del fixture es de **0,000015 px** —puro redondeo de sumar la esquina en
+`float`— y la comparación de imagen da **cero** diferencias.
+
+La pieza de prueba es una «L» **texturada** a propósito: sobre una pieza de un
+solo tono la comparación píxel a píxel pasaría igual con el recorte desplazado,
+porque estaría comparando una mancha uniforme contra otra. Y la contención se
+comprueba contra la verdad del frame completo, no contra los límites del
+análisis recortado, que se darían la razón a sí mismos si el recorte hubiera
+cortado a la pieza.
+
+Que el banco **muerde** se comprobó mutando producción: desplazar 1 px el offset
+del ROI, invertir el orden de las guardas y quitar la unión `(eased | target)`
+hacen caer un test distinto cada uno.
 
 La ganancia, medida en el mismo proceso: sobre 1280×720 con una pieza de
 180×140, el recorte ocupa el **7,9 %** del área y el análisis pasa de ~13 ms a
@@ -415,6 +428,40 @@ reportara que «la zona de detección no funciona»:
   `AnalysisOverlay::analysed` distingue «se buscó y no había» de «no se buscó»,
   y solo lo primero alimenta al seguimiento. Dar algo por perdido sin haberlo
   mirado es afirmar lo que no se ha medido.
+
+**El cuarto lo encontró el banco de pruebas** (`tests/test_working_zone.cpp`),
+y es el más instructivo porque el test que demuestra que recortar no cambia la
+medida **no podía verlo**: lo que el recorte se lleva por delante no es la
+precisión de la pieza mayor, son las otras cinco.
+
+Con la zona en Automático el **recuento de piezas siempre daba 1**. El recorte
+rodea a una pieza —la mayor— con un 35 % de margen, así que contar dentro de él
+da 1 por construcción. Medido sobre una escena de seis piezas: el recorte ocupa
+el 17,2 % del frame y dentro se ve **una**. Al operador le llegaba entero: abrir
+*Configurar ▸ Piezas* le enseñaba «Se ven 1 pieza(s) y se esperan 6» con las
+seis en la mesa, y «Usar detectadas» le ofrecía guardar el valor equivocado.
+
+La regla que lo arregla vive en `vision::effectiveWorkingZone`, no en la
+ventana: **cuando alguien va a leer el recuento, el modo automático suelta el
+recorte**. La zona FIJA no cede, y la diferencia no es un descuido — el operador
+la dibujó diciendo «mira solo aquí», así que ahí dentro está su respuesta; la
+automática es una optimización, y una optimización que cambia una respuesta no
+es una optimización, es un fallo.
+
+El primer arreglo traía su propia trampa, y por eso la condición es la que es:
+soltar el recorte «mientras el panel Configurar esté abierto» dejaba el panel de
+*Rendimiento* —que es justo donde se enciende la zona automática— diciendo
+«Procesando la imagen entera». El operador la encendía y la veía apagada por
+estar mirándola. Ahora se cuenta cuando alguien **lee** el número: la pieza
+espera varias, o la pestaña *Piezas* es la visible
+(`ConfigureDialog::showingPieceCount`, resuelto por widget y no por índice).
+
+Queda un caveat **documentado a propósito y sin tocar**: `min/maxAreaFraction`
+se aplican sobre el área del *recorte*, no del frame, así que la zona cambia el
+criterio de aceptación. Escalarlos al frame completo lo arreglaría y rompería
+algo mejor: ese suelo de área es lo que permite ver el trozo de pieza que asoma
+cuando se está saliendo, y sin él «se sale» degeneraría en «se dejó de ver» tres
+frames más tarde.
 
 ### Los fps que se enseñan, y los que importan
 
