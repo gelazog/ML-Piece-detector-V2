@@ -95,6 +95,44 @@ Lo que comparten —lo único que la ventana necesita— es que llega un frame.
 `capabilitiesOf()` responde qué se puede hacer con cada fuente, para que la
 interfaz deshabilite **con motivo** en vez de repartir `if (esCámara)`.
 
+#### Lo que no aplica se dice, y se dice bien
+
+La pestaña de cámara ya caía en un sustituto cuando no había controles que
+sondear, pero decía **«Inicia la cámara»** — y eso, con una imagen abierta,
+manda al operador a hacer algo que ya hizo y le deja pensando que la aplicación
+no se entera. Son dos motivos distintos para el mismo hueco y ahora se
+distinguen: con la cámara parada, «arráncala»; con un fichero, qué es la fuente
+y **qué sigue funcionando igual** —porque un panel que solo dice «esto no se
+puede» deja al operador creyendo que ha perdido la aplicación entera.
+
+Lo mismo con dos textos que habían dejado de ser ciertos:
+
+- El primer consejo de una instalación nueva empezaba por **«enfoca la pieza»**.
+  Sobre una fotografía eso es imposible, y un asistente que pide lo imposible se
+  deja de leer entero. El paso sigue siendo calibrar; lo que cambia es el
+  consejo.
+- El aviso de calibración obsoleta decía **«otra cámara»**. La escala px→mm
+  depende de la óptica y de la distancia al plano, y un fichero no garantiza
+  ninguna de las dos, así que ahora lo dice tal cual.
+
+#### La barra de fuente, auditada
+
+El hallazgo que más importaba era de **orientación**: tras abrir `pieza.png` el
+desplegable seguía diciendo «Abrir imagen…», así que no había dónde leer con qué
+se estaba trabajando. Y aquí eso pesa el doble, porque recalibrar, comparar y
+registrar dependen de con qué imagen se está. Ahora el fichero abierto **entra
+en la lista con su nombre** y sale al cerrar (buscado por su dato, no por su
+índice: entre abrir y cerrar puede haberse reenumerado).
+
+Lo demás fue nomenclatura que se había quedado atrás: el rótulo y el menú decían
+«Cámara» cuando ya no describen lo que hay (ahora **Fuente**), el botón decía
+«Iniciar» cuando lo siguiente que iba a hacer era abrir un diálogo de fichero
+(ahora **Abrir…**), y el indicador de estado decía «Cám» en verde mientras se
+analizaba una fotografía — exacto en el color y falso en la palabra, que es
+justo lo que no puede pasar cuando el color no debe cargar solo con el
+significado. Ahora dice **Cám / Img / Víd**. Y el diálogo de fichero vuelve a la
+última carpeta usada, porque quien revisa casos abre diez de la misma.
+
 ### El banco sin cámara: `pci_probe`
 
 Un ejecutable de consola (`tools/probe_main.cpp`, sin Qt) que corre el pipeline

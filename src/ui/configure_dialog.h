@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "camera/camera_controls.h"
+#include "camera/frame_source.h"
 #include "vision/auto_roi.h"
 #include "vision/segmentation.h"
 
@@ -61,6 +62,12 @@ public:
         double maxAreaFraction = 0.9;
         repositories::DetectionProfileRepository* profiles = nullptr;
         camera::CameraController* controller = nullptr;
+        // De dónde vienen los frames. Decide QUÉ MOTIVO se le da al operador
+        // cuando la pestaña de cámara no tiene nada que ofrecer: no es lo mismo
+        // «todavía no has arrancado» que «esto es un fichero y ya no se puede
+        // tocar», y darle el primero cuando el caso es el segundo le manda a
+        // hacer algo que ya hizo.
+        camera::SourceKind sourceKind = camera::SourceKind::Camera;
         std::vector<camera::CameraControlState> probedControls;
         std::vector<camera::CameraResolution> knownResolutions;
         camera::CameraResolution currentResolution;

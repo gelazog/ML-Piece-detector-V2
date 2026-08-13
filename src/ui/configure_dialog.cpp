@@ -54,12 +54,22 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
     } else {
         auto* placeholder = new QWidget(this);
         auto* layout = new QVBoxLayout(placeholder);
-        auto* label = new QLabel(
-            tr("Inicia la cámara para ajustar su brillo, exposición, enfoque y "
-               "resolución.\n\nLos controles se preguntan a la propia cámara al "
-               "abrirla, así que hasta entonces no se sabe cuáles admite: mostrar "
-               "deslizadores que no harían nada sería peor que no mostrarlos."),
-            placeholder);
+        // El motivo depende de POR QUÉ no hay controles, y son dos cosas
+        // distintas. Con la cámara parada, la respuesta es «arráncala». Con una
+        // imagen o un vídeo, decirle eso al operador sería mandarle a hacer
+        // algo que ya hizo —la fuente está funcionando— y dejarle pensando que
+        // la aplicación no se entera.
+        const QString why =
+            inputs.sourceKind == camera::SourceKind::Camera
+                ? tr("Inicia la cámara para ajustar su brillo, exposición, enfoque y "
+                     "resolución.\n\nLos controles se preguntan a la propia cámara al "
+                     "abrirla, así que hasta entonces no se sabe cuáles admite: mostrar "
+                     "deslizadores que no harían nada sería peor que no mostrarlos.")
+                : camera::whyNotAdjustable(inputs.sourceKind) +
+                      tr("\n\nTodo lo demás —detección, zona de trabajo, herramientas, "
+                         "medición automática e inspección— funciona igual que con la "
+                         "cámara.");
+        auto* label = new QLabel(why, placeholder);
         label->setWordWrap(true);
         layout->addWidget(label);
         layout->addStretch(1);

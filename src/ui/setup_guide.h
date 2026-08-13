@@ -30,6 +30,11 @@ struct SetupState {
     // cada día sería un cartel que se aprende a no ver, y la tira de estado ya
     // lleva el estado permanentemente.
     bool alreadyGuided = false;
+    // ¿Se puede enfocar esta fuente? Con una imagen o un vídeo de archivo, no:
+    // la nitidez es la que se grabó. Un primer consejo que empieza por «enfoca
+    // la pieza» manda a hacer lo imposible, y un asistente que pide lo
+    // imposible se deja de leer entero.
+    bool canFocus = true;
 };
 
 // El SIGUIENTE paso, no la lista entera. Enseñar tres cosas a la vez cuando
@@ -37,6 +42,9 @@ struct SetupState {
 [[nodiscard]] SetupStep nextSetupStep(const SetupState& state);
 
 // Qué se le dice al operador en ese paso, o vacío si no hay nada que decir.
-[[nodiscard]] QString setupHint(SetupStep step);
+//
+// `canFocus` cambia el consejo, no el paso: calibrar se calibra igual, pero
+// «enfoca la pieza y pulsa C» sobra cuando la fuente es un fichero.
+[[nodiscard]] QString setupHint(SetupStep step, bool canFocus = true);
 
 }  // namespace pci::ui

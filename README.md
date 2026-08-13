@@ -57,6 +57,14 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    abre una imagen y puedes hacerlo todo. `sample_images/pieza_demo.png` sirve
    para probar ahora mismo.
 
+   Mientras hay un fichero abierto, el desplegable **dice cuál es** y el
+   indicador de la barra de estado cambia a **Img** o **Víd** en vez de *Cám* —
+   con una imagen no estás mirando la cámara, y el indicador no debería decir
+   que sí. Los ajustes que no se pueden tocar sobre un fichero (brillo,
+   exposición, enfoque, resolución) **explican por qué** en su pestaña en vez de
+   salir muertos, y recuerdan que todo lo demás funciona igual. El diálogo de
+   abrir vuelve a la última carpeta que usaste.
+
    Con **Ver ▸ Mostrar
    contorno** activo (por defecto), el contorno de la pieza, su centro y su
    eje se dibujan sobre el video en tiempo real; **al ocultarlo, las

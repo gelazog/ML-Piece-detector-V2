@@ -77,6 +77,16 @@ const char* const kSettingCameraIndex = "camera_index";
 // permite preguntar «¿qué eligió?» sin depender de dónde caiga en la lista.
 constexpr int kSourceOpenImage = -1;
 constexpr int kSourceOpenVideo = -2;
+// El fichero que está abierto AHORA. Se añade al desplegable al abrirlo y se
+// quita al cerrar.
+//
+// Sin esto, tras abrir «pieza.png» el desplegable seguía diciendo «Abrir
+// imagen…»: el operador no tenía dónde leer QUÉ está mirando. Saber siempre
+// dónde estás es lo primero que una interfaz tiene que resolver, y aquí encima
+// importa el doble, porque la mitad de las decisiones —recalibrar, comparar,
+// registrar— dependen de con qué imagen se está trabajando.
+constexpr int kSourceOpenedFile = -3;
+const char* const kSettingLastSourceDir = "last_source_dir";
 constexpr int kCaptureTarget = 30;
 constexpr int kCaptureMinimum = 5;
 
@@ -283,12 +293,24 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
 
     // --- Fila 1: cámara ---
     auto* cameraLayout = new QHBoxLayout();
-    cameraLayout->addWidget(new QLabel(tr("Cámara:"), central));
+    cameraLayout->addWidget(new QLabel(tr("Fuente:"), central));
     cameraCombo_ = new QComboBox(central);
     cameraCombo_->setMinimumWidth(200);
     cameraLayout->addWidget(cameraCombo_, 1);
     startStopButton_ = new QPushButton(tr("Iniciar"), central);
     cameraLayout->addWidget(startStopButton_);
+    // El botón dice lo que va a hacer. Con «Abrir imagen…» elegido, «Iniciar»
+    // no describe la acción —lo siguiente que pasa es que se abre un diálogo de
+    // fichero— y un botón que no anuncia su efecto se pulsa con recelo.
+    connect(cameraCombo_, &QComboBox::currentIndexChanged, this, [this](int) {
+        if (streaming_) {
+            return;  // mientras hay fuente, el botón es «Detener»/«Cerrar»
+        }
+        const QVariant choice = cameraCombo_->currentData();
+        const bool opensAFile = choice.isValid() && (choice.toInt() == kSourceOpenImage ||
+                                                     choice.toInt() == kSourceOpenVideo);
+        startStopButton_->setText(opensAFile ? tr("Abrir…") : tr("Iniciar"));
+    });
 
     roiButton_ = new QPushButton(tr("Zona de detección"), central);
     roiButton_->setCheckable(true);
@@ -862,8 +884,8 @@ void MainWindow::buildMenuBar() {
     fileMenu->addAction(tr("Importar configuración…"), this,
                         &MainWindow::onImportConfigClicked);
 
-    auto* cameraMenu = menuBar()->addMenu(tr("&Cámara"));
-    refreshAction_ = cameraMenu->addAction(tr("Actualizar cámaras"), this,
+    auto* cameraMenu = menuBar()->addMenu(tr("&Fuente"));
+    refreshAction_ = cameraMenu->addAction(tr("Buscar cámaras de nuevo"), this,
                                            &MainWindow::refreshCameras);
     cameraMenu->addSeparator();
     // Una sola entrada: los ajustes estaban repartidos en cuatro menús y para
@@ -1409,8 +1431,25 @@ void MainWindow::updateStatusIndicators() {
         label->setToolTip(ok ? okText : badText);
     };
 
-    set(camIndicator_, tr("Cám"), streaming_, tr("Cámara: transmitiendo"),
-        tr("Cámara: detenida"));
+    // El indicador dice QUÉ fuente está viva, no solo que hay una. «Cám» en
+    // verde mientras se analiza una fotografía sería exacto en el color y falso
+    // en la palabra, y el color por sí solo nunca debe cargar con el
+    // significado.
+    switch (sourceKind_) {
+        case camera::SourceKind::Camera:
+            set(camIndicator_, tr("Cám"), streaming_, tr("Cámara: transmitiendo"),
+                tr("Cámara: detenida"));
+            break;
+        case camera::SourceKind::Image:
+            set(camIndicator_, tr("Img"), streaming_,
+                tr("Fuente: una imagen de archivo. Todo se mide igual que en vivo."),
+                tr("Sin fuente"));
+            break;
+        case camera::SourceKind::Video:
+            set(camIndicator_, tr("Víd"), streaming_,
+                tr("Fuente: un vídeo de archivo, en bucle."), tr("Sin fuente"));
+            break;
+    }
     set(dbIndicator_, tr("BD"), repos_.pieces != nullptr,
         tr("Base de datos: conectada"),
         tr("Base de datos: no disponible (sin persistencia)"));
@@ -1444,9 +1483,22 @@ void MainWindow::updateCalibrationLabel() {
                              !currentCameraKey_.isEmpty() &&
                              calibratedCameraKey_ != currentCameraKey_;
     if (resMismatch || camMismatch) {
-        calibLabel_->setText(
-            tr("⚠ Calibración obsoleta (%1) — recalibra con C")
-                .arg(resMismatch ? tr("otra resolución") : tr("otra cámara")));
+        // «Otra cámara» dejó de ser cierto en cuanto una imagen o un vídeo
+        // pueden ser la fuente, y el motivo es lo único que le dice al operador
+        // si tiene que recalibrar o si puede fiarse. La escala en px/mm depende
+        // de la óptica y de la distancia al plano, y un fichero no garantiza
+        // ninguna de las dos: al abrirlo, la escala de la estación deja de
+        // valer, aunque la imagen tenga el mismo tamaño.
+        QString why;
+        if (resMismatch) {
+            why = tr("otra resolución");
+        } else if (sourceKind_ != camera::SourceKind::Camera) {
+            why = tr("la escala se calibró con otra fuente y un fichero no dice a qué "
+                     "distancia se tomó");
+        } else {
+            why = tr("otra cámara");
+        }
+        calibLabel_->setText(tr("⚠ Calibración obsoleta (%1) — recalibra con C").arg(why));
         return;
     }
     // Escala calibrada + automático encendido es la combinación que da números
@@ -1641,13 +1693,31 @@ void MainWindow::onStartStopClicked() {
 
 bool MainWindow::startFileSource(camera::SourceKind kind) {
     const bool wantsImage = kind == camera::SourceKind::Image;
+    // Se vuelve a la última carpeta usada. Quien está revisando casos abre diez
+    // ficheros de la misma carpeta, y volver a navegar cada vez es una fricción
+    // tonta que se paga en cada abrir.
+    QString startDir;
+    if (repos_.settings != nullptr) {
+        if (const auto saved = repos_.settings->getString(kSettingLastSourceDir, "");
+            saved.isOk()) {
+            startDir = QString::fromStdString(saved.value());
+        }
+    }
     const QString path = QFileDialog::getOpenFileName(
-        this, wantsImage ? tr("Abrir imagen") : tr("Abrir vídeo"), QString(),
+        this, wantsImage ? tr("Abrir imagen") : tr("Abrir vídeo"), startDir,
         wantsImage ? tr("Imágenes (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;Todos (*)")
                    : tr("Vídeos (*.mp4 *.avi *.mkv *.mov *.wmv);;Todos (*)"));
     if (path.isEmpty()) {
         // Cancelar no es un error: la ventana se queda exactamente como estaba.
         return false;
+    }
+    if (repos_.settings != nullptr) {
+        if (auto saved = repos_.settings->setString(kSettingLastSourceDir,
+                                                    QFileInfo(path).absolutePath().toStdString());
+            !saved.isOk()) {
+            core::logWarning("No se pudo guardar la carpeta de la fuente: " +
+                             saved.error().message);
+        }
     }
 
     if (wantsImage) {
@@ -1670,6 +1740,11 @@ bool MainWindow::startFileSource(camera::SourceKind kind) {
     // escala en px/mm depende de la óptica y de la distancia al plano, y pasar
     // de una cámara a un fichero (o entre ficheros) cambia las dos.
     currentCameraKey_ = fileSource_->describe();
+    // Y el desplegable pasa a decir QUÉ está abierto. Dejarlo en «Abrir
+    // imagen…» convertía la única pista sobre con qué se está trabajando en una
+    // etiqueta que no dice nada.
+    cameraCombo_->insertItem(0, fileSource_->describe(), QVariant(kSourceOpenedFile));
+    cameraCombo_->setCurrentIndex(0);
     startStopButton_->setText(tr("Cerrar"));
     cameraCombo_->setEnabled(false);
     refreshAction_->setEnabled(false);
@@ -1881,7 +1956,8 @@ void MainWindow::updateSetupGuide() {
     state.anyPieceRegistered = pieceCombo_ != nullptr && pieceCombo_->count() > 0;
     state.alreadyGuided = setupGuided_;
 
-    const QString hint = setupHint(nextSetupStep(state));
+    state.canFocus = camera::capabilitiesOf(sourceKind_).focusable;
+    const QString hint = setupHint(nextSetupStep(state), state.canFocus);
     setupHintLabel_->setText(hint);
     setupBanner_->setVisible(!hint.isEmpty());
 }
@@ -1957,6 +2033,23 @@ void MainWindow::updateRateReadout() {
     // Con el contorno oculto no hay análisis que medir, así que se pide la
     // forma corta con un −1 en vez de enseñar un cero que parecería una avería.
     const bool analysing = streaming_ && analysisNeeded();
+
+    // Los fps de captura de una IMAGEN no significan nada: se reemite al ritmo
+    // que se inventa la aplicación. Enseñar «0.0 fps» sería responder a una
+    // pregunta que nadie hizo, y encima con cara de avería. Lo que sí importa
+    // es el tamaño —de él depende la calibración— y a qué ritmo se está
+    // analizando.
+    if (streaming_ && !camera::capabilitiesOf(sourceKind_).meaningfulCaptureFps) {
+        QString text = QStringLiteral("%1x%2 — imagen")
+                           .arg(currentResolution_.width)
+                           .arg(currentResolution_.height);
+        if (analysing) {
+            text += tr(" · analiza %1").arg(frames_.analysisFps(), 0, 'f', 1);
+        }
+        statsLabel_->setText(text);
+        return;
+    }
+
     statsLabel_->setText(formatRates(currentResolution_.width, currentResolution_.height,
                                      lastCaptureFps_,
                                      analysing ? frames_.analysisFps() : 0.0,
@@ -1977,6 +2070,14 @@ void MainWindow::onStreamStopped() {
         fileSource_.release()->deleteLater();
     }
     sourceKind_ = camera::SourceKind::Camera;
+    // Se quita la entrada del fichero que estaba abierto. Por su DATO y no por
+    // su índice: entre abrir y cerrar puede haberse reenumerado la lista.
+    for (int i = cameraCombo_->count() - 1; i >= 0; --i) {
+        if (cameraCombo_->itemData(i).isValid() &&
+            cameraCombo_->itemData(i).toInt() == kSourceOpenedFile) {
+            cameraCombo_->removeItem(i);
+        }
+    }
     autoInspectButton_->setChecked(false);
     stopLiveCapture();
     startStopButton_->setText(tr("Iniciar"));
@@ -3060,6 +3161,11 @@ void MainWindow::onConfigureClicked() {
     // Las resoluciones ya sondeadas de ESTA cámara se pasan hechas: volver a
     // preguntarlas cuesta segundos y detiene el vídeo.
     inputs.controller = (streaming_ && !cameraControls_.empty()) ? &controller_ : nullptr;
+    // Con una fuente de fichero no hay controles que sondear, así que la
+    // pestaña de cámara cae sola en su sustituto; lo que hace falta es que ese
+    // sustituto diga el motivo CORRECTO, y para eso tiene que saber qué fuente
+    // hay puesta.
+    inputs.sourceKind = sourceKind_;
     inputs.probedControls = cameraControls_;
     inputs.knownResolutions = knownResolutions_;
     inputs.currentResolution = currentResolution_;

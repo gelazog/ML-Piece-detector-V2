@@ -758,3 +758,84 @@ TEST(ToolsDock, TheThirdRowIsNarrowerWithoutTheDrawingControls) {
     // sitio de sobra para el video.
     EXPECT_LT(narrow, 900) << "la fila 3 sigue comiendose la ventana";
 }
+
+// ---------------------------------------------------------------------------
+// Lo que no aplica a un fichero se deshabilita CON MOTIVO (F2/F3)
+// ---------------------------------------------------------------------------
+
+TEST(ConfigureDialog, TheCameraTabExplainsTheRightReasonForEachSource) {
+    // La pestaña de camara cae en su sustituto siempre que no hay controles que
+    // sondear, y eso pasa por DOS motivos distintos: la camara esta parada, o la
+    // fuente es un fichero y ya no hay nada que tocar.
+    //
+    // Darle el primero cuando el caso es el segundo manda al operador a hacer
+    // algo que ya hizo —la fuente esta funcionando— y le deja pensando que la
+    // aplicacion no se entera de nada.
+    auto inputs = sampleInputs();
+    inputs.controller = nullptr;
+    inputs.probedControls.clear();
+
+    inputs.sourceKind = pci::camera::SourceKind::Camera;
+    ConfigureDialog stopped(inputs);
+    auto* tabs = stopped.findChild<QTabWidget*>();
+    ASSERT_NE(tabs, nullptr);
+    QWidget* page = tabs->widget(tabNamed(tabs, QStringLiteral("Cámara")));
+    ASSERT_NE(page, nullptr);
+    auto* label = page->findChild<QLabel*>();
+    ASSERT_NE(label, nullptr);
+    EXPECT_TRUE(label->text().contains(QStringLiteral("Inicia la cámara")))
+        << label->text().toStdString();
+
+    for (const auto kind : {pci::camera::SourceKind::Image, pci::camera::SourceKind::Video}) {
+        inputs.sourceKind = kind;
+        ConfigureDialog fromFile(inputs);
+        auto* fileTabs = fromFile.findChild<QTabWidget*>();
+        ASSERT_NE(fileTabs, nullptr);
+        QWidget* filePage = fileTabs->widget(tabNamed(fileTabs, QStringLiteral("Cámara")));
+        ASSERT_NE(filePage, nullptr);
+        auto* fileLabel = filePage->findChild<QLabel*>();
+        ASSERT_NE(fileLabel, nullptr);
+        const QString text = fileLabel->text();
+        EXPECT_FALSE(text.contains(QStringLiteral("Inicia la cámara")))
+            << "le pide arrancar la camara a quien ya tiene una fuente abierta: "
+            << text.toStdString();
+        EXPECT_TRUE(text.contains(QStringLiteral("archivo")))
+            << "no dice que la fuente es un fichero: " << text.toStdString();
+        // Y sobre todo: que lo que SÍ funciona siga estando claro. Un panel que
+        // solo dice «esto no se puede» deja al operador pensando que ha perdido
+        // la aplicacion entera.
+        EXPECT_TRUE(text.contains(QStringLiteral("funciona igual")))
+            << "no dice que el resto sigue funcionando: " << text.toStdString();
+    }
+}
+
+TEST(SetupGuide, ItDoesNotTellYouToFocusAPhotograph) {
+    // El primer consejo de una instalacion nueva empieza por «enfoca la pieza».
+    // Sobre una imagen de archivo eso es imposible —la nitidez es la que se
+    // grabo— y un asistente que pide lo imposible se deja de leer entero.
+    using pci::ui::SetupState;
+    using pci::ui::SetupStep;
+    using pci::ui::nextSetupStep;
+    using pci::ui::setupHint;
+
+    SetupState state;
+    state.cameraRunning = true;
+    state.calibrated = false;
+    ASSERT_EQ(nextSetupStep(state), SetupStep::Calibrate)
+        << "el paso es el mismo con cualquier fuente: hay que calibrar";
+
+    const QString withCamera = setupHint(SetupStep::Calibrate, true);
+    const QString withFile = setupHint(SetupStep::Calibrate, false);
+    EXPECT_TRUE(withCamera.contains(QStringLiteral("enfoca"), Qt::CaseInsensitive));
+    EXPECT_FALSE(withFile.contains(QStringLiteral("enfoca"), Qt::CaseInsensitive))
+        << withFile.toStdString();
+
+    // Pero los dos tienen que seguir diciendo QUÉ hacer, o quitar la palabra
+    // habria dejado un consejo que no aconseja.
+    for (const QString& hint : {withCamera, withFile}) {
+        EXPECT_TRUE(hint.contains(QStringLiteral("C")))
+            << "no dice con qué se calibra: " << hint.toStdString();
+        EXPECT_TRUE(hint.contains(QStringLiteral("píxeles")))
+            << "no dice qué pasa si no calibras: " << hint.toStdString();
+    }
+}

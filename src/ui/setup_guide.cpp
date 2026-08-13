@@ -25,7 +25,7 @@ SetupStep nextSetupStep(const SetupState& state) {
     return SetupStep::Done;
 }
 
-QString setupHint(SetupStep step) {
+QString setupHint(SetupStep step, bool canFocus) {
     switch (step) {
         case SetupStep::Done:
             return {};
@@ -34,6 +34,16 @@ QString setupHint(SetupStep step) {
                 "Primero, el enfoque: Cámara ▸ Configurar ▸ Cámara e imagen tiene una "
                 "barra que sube cuanto más nítida está la pieza.");
         case SetupStep::Calibrate:
+            // Sobre un fichero, «enfoca la pieza» manda a hacer lo imposible: la
+            // nitidez es la que se grabó. El paso es el mismo —hay que
+            // calibrar— pero el consejo no puede pedir lo que no se puede
+            // hacer, o el operador deja de leer el resto.
+            if (!canFocus) {
+                return QObject::tr(
+                    "Pulsa C para calibrar la escala de esta imagen. Hasta entonces se mide "
+                    "en píxeles — mira los indicadores de abajo a la derecha, que dicen en "
+                    "todo momento si estás midiendo en condiciones.");
+            }
             return QObject::tr(
                 "Para empezar: enfoca la pieza y pulsa C para calibrar la escala. Hasta "
                 "entonces se mide en píxeles — mira los indicadores de abajo a la "
