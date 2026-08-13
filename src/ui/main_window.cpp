@@ -508,6 +508,21 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(video_, &inspection::EditorCanvas::viewChanged, this, &MainWindow::updateZoomIndicator);
     updateZoomIndicator();
 
+    // Tira de estado de la estación (I1). Los cuatro datos que deciden si una
+    // medida vale estaban repartidos por las pestañas de «Configurar»: para
+    // saber si estabas midiendo en condiciones había que abrirlo y recorrerlas,
+    // que es justo lo que nadie hace antes de medir.
+    //
+    // Son botones planos y no etiquetas porque cada uno LLEVA a la pestaña que
+    // lo arregla: enseñar un problema sin decir dónde se toca es media ayuda.
+    for (int i = 0; i < 4; ++i) {
+        auto* light = new QPushButton(this);
+        light->setFlat(true);
+        light->setCursor(Qt::PointingHandCursor);
+        statusBar()->addPermanentWidget(light);
+        stationLights_.push_back(light);
+    }
+
     calibLabel_ = new QLabel(this);
     statusBar()->addPermanentWidget(calibLabel_);
     statsLabel_ = new QLabel(this);
@@ -1308,6 +1323,11 @@ void MainWindow::updateStatusIndicators() {
 }
 
 void MainWindow::updateCalibrationLabel() {
+    // La tira se refresca aquí y no aparte: este método ya se llama en todos
+    // los sitios donde cambia cualquiera de los cuatro datos que enseña
+    // —calibrar, cambiar de cámara, tocar un automático, mover la zona—, así
+    // que engancharse a él es engancharse a todos de una vez.
+    updateStationStatus();
     // La escala por ArUco gestiona su propia etiqueta por frame (es dinámica).
     if (arucoLiveScale_) {
         return;
@@ -1674,6 +1694,62 @@ void MainWindow::onStats(double fps, int width, int height) {
     currentResolution_ = {width, height};
     lastCaptureFps_ = fps;
     updateRateReadout();
+}
+
+void MainWindow::updateStationStatus() {
+    if (stationLights_.empty()) {
+        return;
+    }
+    StationState state;
+    state.calibrated = calibration_.valid();
+    state.calibrationStale =
+        state.calibrated &&
+        ((!lastFrame_.isNull() &&
+          !calibration_.matchesResolution(lastFrame_.width(), lastFrame_.height())) ||
+         (!calibratedCameraKey_.isEmpty() && !currentCameraKey_.isEmpty() &&
+          calibratedCameraKey_ != currentCameraKey_));
+    state.autoExposureOn = autoExposureOn_;
+    state.autoFocusOn = autoFocusOn_;
+    state.streaming = streaming_;
+    state.zoneActive = effectiveWorkingZone().area() > 0;
+    // Si la cámara no deja tocar un control, no es culpa del operador y no se
+    // pinta como si lo fuera. Lo dijo el sondeo al abrir.
+    for (const auto& control : cameraControls_) {
+        if (control.property == camera::CameraProperty::Exposure) {
+            state.exposureAdjustable = control.supported;
+        }
+        if (control.property == camera::CameraProperty::Focus) {
+            state.focusAdjustable = control.supported;
+        }
+    }
+
+    const auto indicators = stationStatus(state);
+    for (std::size_t i = 0; i < stationLights_.size() && i < indicators.size(); ++i) {
+        const auto& indicator = indicators[i];
+        auto* light = stationLights_[i];
+        light->setText(indicator.label);
+        light->setToolTip(indicator.reason);
+        const char* colour = "#888888";
+        switch (indicator.light) {
+            case StationLight::Good: colour = "#2e7d32"; break;
+            case StationLight::Neutral: colour = "#888888"; break;
+            case StationLight::Warning: colour = "#e08a00"; break;
+            case StationLight::Bad: colour = "#c62828"; break;
+        }
+        light->setStyleSheet(
+            QStringLiteral("QPushButton { border: none; padding: 0 6px; color: %1; }")
+                .arg(QString::fromUtf8(colour)));
+        light->disconnect();
+        if (indicator.tab >= 0) {
+            const int tab = indicator.tab;
+            connect(light, &QPushButton::clicked, this, [this, tab] {
+                onConfigureClicked();
+                if (configureDialog_ != nullptr) {
+                    configureDialog_->setCurrentTab(tab);
+                }
+            });
+        }
+    }
 }
 
 void MainWindow::updateRateReadout() {

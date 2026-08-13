@@ -295,7 +295,19 @@ después el cronómetro.)*
 La paleta de herramientas **no está aquí**: la cubre `PROMPT_PALETA_VISUAL.md`
 (P1–P8), sin empezar. Este bloque es lo demás.
 
-### - [ ] I1 — Que el estado de la estación se lea de un vistazo
+### - [x] I1 — Que el estado de la estación se lea de un vistazo
+
+*(Cuatro indicadores en la barra de estado, cada uno con su motivo y con un
+clic que lleva a la pestaña que lo arregla. La regla del color se sacó a
+`ui/station_status.*` y se prueba entera sin ventana ni cámara.
+Lo que hubo que decidir de verdad no fue el diseño sino **cuándo callarse**, y
+salieron tres casos: procesar la imagen entera NO es un aviso —es más lento
+pero es lo más difícil de que falle—, lo que la cámara no deja tocar no se
+pinta como culpa del operador —el foco de esta máquina no es ajustable—, y el
+mismo automático es ámbar sin calibrar y rojo con milímetros de por medio.
+Hay un test que exige que la estación en condiciones tenga los cuatro en verde:
+si la tira encontrara algo que decir en el caso bueno, se aprendería a
+ignorarla y no serviría el día que sí hay algo.)*
 
 Hoy hay que abrir *Configurar* y recorrer pestañas para saber si estás midiendo
 en condiciones. Los cuatro datos que deciden si una medida vale —**escala

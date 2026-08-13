@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "ui/rate_readout.h"
+#include "ui/station_status.h"
 #include "vision/stage_stats.h"
 #include "camera/camera_controller.h"
 #include "camera/camera_info.h"
@@ -280,6 +281,11 @@ private:
     bool measureStages_ = false;
     vision::StageStats stageStats_;
     double lastCaptureFps_ = 0.0;
+
+    // Tira de estado de la estación (I1): los cuatro datos que deciden si una
+    // medida vale, sin abrir nada.
+    std::vector<QPushButton*> stationLights_;
+    void updateStationStatus();
 
     QLabel* statsLabel_ = nullptr;
     // Indicadores de estado (S4): cámara / base de datos / modelo ONNX.

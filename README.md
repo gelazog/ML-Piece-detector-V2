@@ -50,6 +50,16 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    guardada. *Sin cámara, todos los pasos siguientes aceptan imágenes desde
    archivo* (`sample_images/pieza_demo.png` sirve para probar).
 
+   En la **barra de estado**, abajo, hay cuatro indicadores que dicen de un
+   vistazo si estás midiendo en condiciones: **escala**, **enfoque**,
+   **exposición** y **zona de trabajo**. Cada uno explica en su tooltip qué
+   significa, y un clic te lleva a donde se arregla.
+
+   Verde es que está bien; **ámbar es que afecta a la medida** y rojo que ya la
+   está estropeando. Gris no es un aviso: quiere decir «no configurado, y en
+   este caso no pasa nada» — medir en píxeles sin calibrar, o procesar la imagen
+   entera, son formas legítimas de trabajar.
+
    **Configurar** (menú *Cámara ▸ Configurar…*) es **el único sitio** donde se
    ajusta cómo se ve y cómo se detecta la pieza: cámara e imagen, detección,
    escala, preferencias y atajos, en pestañas. **No bloquea la ventana**, y eso

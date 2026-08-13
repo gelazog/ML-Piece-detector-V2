@@ -20,6 +20,7 @@
 #include "ui/performance_page.h"
 #include "ui/preferences_page.h"
 #include "ui/rate_readout.h"
+#include "ui/station_status.h"
 
 using namespace pci::ui;
 using pci::vision::WorkingZoneMode;
@@ -380,4 +381,123 @@ TEST(FrameAccounting, FreezingTheContourIsNotDropping) {
                             start + std::chrono::microseconds(33333 * i));
     }
     EXPECT_DOUBLE_EQ(frames.droppedFps(start + std::chrono::milliseconds(999)), 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// El estado de la estacion de un vistazo (I1)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+using pci::ui::StationIndicator;
+using pci::ui::StationLight;
+using pci::ui::StationState;
+
+StationIndicator indicatorFor(const StationState& state, const QString& startsWith) {
+    for (const auto& indicator : pci::ui::stationStatus(state)) {
+        if (indicator.label.startsWith(startsWith)) {
+            return indicator;
+        }
+    }
+    return {};
+}
+
+// La estacion en condiciones: calibrada, los dos automaticos apagados y con
+// zona. Los tests parten de aqui y estropean UNA cosa cada vez.
+StationState goodStation() {
+    StationState state;
+    state.calibrated = true;
+    state.zoneActive = true;
+    state.streaming = true;
+    return state;
+}
+
+}  // namespace
+
+TEST(StationStatus, AStationInGoodShapeShowsNoWarningAtAll) {
+    // Si la tira encontrara algo que decir en la estacion buena, el operador
+    // aprenderia a ignorarla y no serviria el dia que si hay algo.
+    for (const auto& indicator : pci::ui::stationStatus(goodStation())) {
+        EXPECT_EQ(indicator.light, StationLight::Good)
+            << indicator.label.toStdString() << ": " << indicator.reason.toStdString();
+        EXPECT_FALSE(indicator.reason.isEmpty()) << indicator.label.toStdString();
+    }
+}
+
+TEST(StationStatus, TheSameAutomaticIsAmberWithoutMillimetresAndRedWithThem) {
+    // La regla de diseño del item, y la unica que aqui puede estar mal: el
+    // MISMO estado de la camara significa cosas distintas segun haya
+    // milimetros de por medio. Sin calibrar, el autofoco es una comodidad
+    // legitima; con calibracion, un numero creible y falso.
+    StationState uncalibrated;
+    uncalibrated.autoFocusOn = true;
+    EXPECT_EQ(indicatorFor(uncalibrated, "Enfoque").light, StationLight::Warning);
+
+    StationState calibrated = goodStation();
+    calibrated.autoFocusOn = true;
+    EXPECT_EQ(indicatorFor(calibrated, "Enfoque").light, StationLight::Bad);
+
+    // Y lo mismo con la exposicion, que estropea otra cosa pero igual de real.
+    StationState exposure = goodStation();
+    exposure.autoExposureOn = true;
+    EXPECT_EQ(indicatorFor(exposure, "Exposición").light, StationLight::Bad);
+}
+
+TEST(StationStatus, ItNamesWhatEachAutomaticBreaks) {
+    // No basta con el color: si el operador no sabe QUE estropea, no sabe si le
+    // importa. El enfoque cambia todas las cotas a la vez; la exposicion mueve
+    // el borde.
+    StationState state = goodStation();
+    state.autoFocusOn = true;
+    state.autoExposureOn = true;
+    const auto focus = indicatorFor(state, "Enfoque");
+    const auto exposure = indicatorFor(state, "Exposición");
+    EXPECT_TRUE(focus.reason.contains(QStringLiteral("magnificación")))
+        << focus.reason.toStdString();
+    EXPECT_TRUE(exposure.reason.contains(QStringLiteral("borde")))
+        << exposure.reason.toStdString();
+    // Y los dos llevan a la pestaña que los arregla.
+    EXPECT_EQ(focus.tab, pci::ui::kCameraTab);
+    EXPECT_EQ(exposure.tab, pci::ui::kCameraTab);
+}
+
+TEST(StationStatus, ACameraThatCannotFixItIsNotTheOperatorsFault) {
+    // Medido en la camara de esta maquina: foco y autofoco salieron NO
+    // ajustables. Pintar eso en rojo seria pedirle al operador que arregle algo
+    // que no tiene con que arreglar, y ahi es donde una tira de estado deja de
+    // creerse.
+    StationState state = goodStation();
+    state.autoFocusOn = true;
+    state.focusAdjustable = false;
+    const auto focus = indicatorFor(state, "Enfoque");
+    EXPECT_EQ(focus.light, StationLight::Neutral);
+    EXPECT_TRUE(focus.reason.contains(QStringLiteral("no deja fijarlo")))
+        << focus.reason.toStdString();
+}
+
+TEST(StationStatus, ProcessingTheWholeImageIsNeverAWarning) {
+    // La imagen entera es mas lenta pero es lo mas dificil de que falle: es una
+    // eleccion legitima, no un defecto. Avisar de algo que no es un problema es
+    // la forma mas rapida de que se deje de mirar la tira.
+    StationState state = goodStation();
+    state.zoneActive = false;
+    const auto zone = indicatorFor(state, "Zona");
+    EXPECT_EQ(zone.light, StationLight::Neutral);
+    EXPECT_EQ(zone.tab, pci::ui::kPerformanceTab);
+}
+
+TEST(StationStatus, AStaleCalibrationIsRedBecauseItIsAlreadyLying) {
+    // No es "falta calibrar": es que HAY milimetros y son falsos. Ese es el
+    // unico caso en que la escala se pinta en rojo.
+    StationState state = goodStation();
+    state.calibrationStale = true;
+    const auto scale = indicatorFor(state, "mm");
+    EXPECT_EQ(scale.light, StationLight::Bad);
+    EXPECT_TRUE(scale.reason.contains(QStringLiteral("Recalibra")))
+        << scale.reason.toStdString();
+
+    // Y sin calibrar no es rojo ni ambar: medir en pixeles es una forma
+    // legitima de trabajar.
+    StationState raw;
+    EXPECT_EQ(indicatorFor(raw, "px").light, StationLight::Neutral);
 }

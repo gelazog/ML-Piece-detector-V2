@@ -9,6 +9,7 @@ add_library(pci_ui STATIC
   measurement_mode_dialog.cpp
   performance_page.cpp
   rate_readout.cpp
+  station_status.cpp
   pieces_page.cpp
   piece_manager_dialog.cpp
   preferences_page.cpp

@@ -150,6 +150,41 @@ La moraleja, que es lo que hay que llevarse: **de una cámara no se cree lo que
 dice, se mide lo que hace**. Las tres versiones tenían tests verdes; las tres
 veces fue la cámara real la que dijo que no.
 
+### La tira de estado de la estación
+
+Los cuatro datos que deciden si una medida vale —**escala calibrada, enfoque
+fijo, exposición fija y zona de trabajo**— estaban repartidos por las pestañas
+de «Configurar». Para saber si estabas midiendo en condiciones había que abrir
+el panel y recorrerlas, que es justo lo que nadie hace antes de medir.
+
+Ahora son cuatro indicadores en la barra de estado, cada uno con su motivo en
+el tooltip y **un clic que lleva a la pestaña que lo arregla**: enseñar un
+problema sin decir dónde se toca es media ayuda.
+
+La regla del color vive en `ui/station_status.*` y es lo único que aquí puede
+estar mal, así que va aparte y se prueba entera sin ventana ni cámara:
+
+- **El mismo estado significa cosas distintas según haya milímetros de por
+  medio.** El enfoque en automático es **ámbar** sin calibrar —una comodidad
+  legítima: las medidas van en píxeles y nadie ha prometido milímetros— y
+  **rojo** con la escala calibrada, porque entonces un reenfoque cambia todas
+  las cotas a la vez.
+- **Procesar la imagen entera nunca es un aviso.** Es más lento pero es lo más
+  difícil de que falle: una elección legítima, no un defecto. Avisar de algo que
+  no es un problema es la forma más rápida de que se deje de mirar la tira.
+- **Lo que la cámara no deja tocar no se pinta como culpa del operador.** Si el
+  sondeo dijo que el foco no es ajustable, el indicador queda neutro y lo
+  explica. Pedirle que arregle algo que no tiene con qué arreglar es donde una
+  tira de estado deja de creerse.
+- **La estación en condiciones no tiene nada que decir**: hay un test que exige
+  que los cuatro salgan en verde, porque si encontrara algo que decir en el caso
+  bueno el operador aprendería a ignorarla.
+
+Se refresca desde `updateCalibrationLabel()`, que ya se llamaba en todos los
+sitios donde cambia cualquiera de los cuatro —calibrar, cambiar de cámara,
+tocar un automático, mover la zona—, así que engancharse a él es engancharse a
+todos de una vez.
+
 ### El aviso de «calibrado + automático encendido»
 
 La combinación que produce números **creíbles y falsos**, que es la peor clase
