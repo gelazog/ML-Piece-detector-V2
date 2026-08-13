@@ -271,6 +271,10 @@ private:
     void updateSetupGuide();
     void dismissSetupGuide();
 
+    // Dock de herramientas (P5). La fila 3 se quedaba sin ancho, y lo que
+    // ACTÚA sobre la herramienta seleccionada se va con la paleta.
+    QDockWidget* toolsDock_ = nullptr;
+
     QLabel* verdictBanner_ = nullptr;
     QLabel* boardReadoutLabel_ = nullptr;  // dx/dy/radio/giro respecto al tablero (T3)
     inspection::EditorCanvas* video_ = nullptr;

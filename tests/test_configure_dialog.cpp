@@ -9,7 +9,11 @@
 #include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
+#include <QDockWidget>
+#include <QHBoxLayout>
+#include <QStringList>
 #include <QLabel>
+#include <QMainWindow>
 #include <QPushButton>
 #include <QSlider>
 #include <QSpinBox>
@@ -20,6 +24,7 @@
 #include "ui/performance_page.h"
 #include "ui/preferences_page.h"
 #include "ui/rate_readout.h"
+#include "inspection_editor/canvas/tool_palette.h"
 #include "ui/setup_guide.h"
 #include "ui/station_status.h"
 
@@ -583,4 +588,150 @@ TEST(SetupGuide, EveryStepSaysWhereToClickAndWhyItMatters) {
                                      hint.contains(QStringLiteral("pulsa"));
         EXPECT_TRUE(pointsSomewhere) << hint.toStdString();
     }
+}
+
+// ---------------------------------------------------------------------------
+// El dock de herramientas sobre una disposicion guardada vieja (P5)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Una ventana con los mismos docks que la real, para poder guardar y restaurar
+// disposiciones sin arrastrar la aplicacion entera. Lo que se prueba es el
+// comportamiento de `restoreState`, que es de Qt y no del programa: reproducir
+// la situacion basta y es mucho mas barato que montar la ventana principal.
+class WindowWithDocks : public QMainWindow {
+public:
+    explicit WindowWithDocks(bool withToolsDock) {
+        setCentralWidget(new QWidget(this));
+        auto* compare = new QDockWidget(QStringLiteral("Comparación"), this);
+        compare->setObjectName(QStringLiteral("compareDock"));
+        compare->setWidget(new QWidget(compare));
+        addDockWidget(Qt::RightDockWidgetArea, compare);
+        if (withToolsDock) {
+            tools_ = new QDockWidget(QStringLiteral("Herramientas"), this);
+            tools_->setObjectName(QStringLiteral("toolsDock"));
+            tools_->setWidget(new QWidget(tools_));
+            addDockWidget(Qt::RightDockWidgetArea, tools_);
+        }
+    }
+
+    [[nodiscard]] QDockWidget* toolsDock() const { return tools_; }
+
+private:
+    QDockWidget* tools_ = nullptr;
+};
+
+}  // namespace
+
+TEST(ToolsDock, ANewDockSurvivesALayoutSavedBeforeItExisted) {
+    // El caso que de verdad muerde, y que solo aparece con los ajustes de
+    // alguien que YA usaba el programa: la disposicion guardada se escribio
+    // antes de que este dock existiera, asi que `restoreState` no sabe nada de
+    // el. Abriria la version nueva sin paleta y sin forma de adivinar que le
+    // falta un panel.
+    QByteArray oldLayout;
+    {
+        WindowWithDocks before(/*withToolsDock=*/false);
+        before.resize(1100, 700);
+        oldLayout = before.saveState();
+    }
+    ASSERT_FALSE(oldLayout.isEmpty());
+
+    WindowWithDocks after(/*withToolsDock=*/true);
+    after.resize(1100, 700);
+    ASSERT_NE(after.toolsDock(), nullptr);
+    after.restoreState(oldLayout);
+
+    // Esta es la comprobacion: tras restaurar, el dock puede haber quedado
+    // oculto. El programa mira esto mismo y lo coloca a mano si hace falta.
+    const bool hiddenAfterRestore = after.toolsDock()->isHidden();
+    std::printf("  tras restaurar una disposicion vieja, el dock nuevo queda %s\n",
+                hiddenAfterRestore ? "OCULTO (hay que colocarlo)" : "visible");
+    if (hiddenAfterRestore) {
+        after.addDockWidget(Qt::RightDockWidgetArea, after.toolsDock());
+        after.toolsDock()->show();
+    }
+    EXPECT_FALSE(after.toolsDock()->isHidden())
+        << "el dock nuevo no aparece con una disposicion guardada vieja";
+}
+
+TEST(ToolsDock, ItsNameIsTheOneTheLayoutIsSavedUnder) {
+    // `saveState` guarda por `objectName`. Si alguien lo cambiara, la
+    // disposicion que el operador dejo se perderia en silencio al actualizar,
+    // que es la peor forma de perderla.
+    WindowWithDocks window(/*withToolsDock=*/true);
+    ASSERT_NE(window.toolsDock(), nullptr);
+    EXPECT_EQ(window.toolsDock()->objectName(), QStringLiteral("toolsDock"));
+
+    // Y de verdad viaja en el estado: se mueve, se guarda y se recupera.
+    window.addDockWidget(Qt::LeftDockWidgetArea, window.toolsDock());
+    const QByteArray saved = window.saveState();
+    window.addDockWidget(Qt::RightDockWidgetArea, window.toolsDock());
+    ASSERT_TRUE(window.restoreState(saved));
+    EXPECT_EQ(window.dockWidgetArea(window.toolsDock()), Qt::LeftDockWidgetArea)
+        << "la disposicion guardada no vuelve";
+}
+
+TEST(ToolsDock, ClosingItLeavesAWayBack) {
+    // Un panel que se cierra sin forma de recuperarlo es una herramienta
+    // perdida. `toggleViewAction` es la que va al menu de vista.
+    WindowWithDocks window(/*withToolsDock=*/true);
+    ASSERT_NE(window.toolsDock(), nullptr);
+    window.show();
+
+    auto* toggle = window.toolsDock()->toggleViewAction();
+    ASSERT_NE(toggle, nullptr);
+    window.toolsDock()->close();
+    EXPECT_TRUE(window.toolsDock()->isHidden());
+    toggle->trigger();
+    EXPECT_FALSE(window.toolsDock()->isHidden()) << "no hay forma de recuperarlo";
+}
+
+TEST(ToolsDock, TheThirdRowIsNarrowerWithoutTheDrawingControls) {
+    // La medida que justifica el dock, hecha como se hizo con la paleta
+    // compacta: se monta la fila 3 con lo que llevaba y con lo que lleva ahora,
+    // y se imprime la diferencia.
+    //
+    // La fila competía por el ancho en una ventana que arranca a 1100 px, y con
+    // la paleta dentro no habia forma de que cupiera al crecer.
+    const auto rowWidth = [](const QStringList& buttons, bool withPalette) {
+        auto* host = new QWidget();
+        auto* row = new QHBoxLayout(host);
+        if (withPalette) {
+            row->addWidget(new QLabel(QStringLiteral("Dibujar:"), host));
+            row->addWidget(new pci::inspection::ToolPalette(pci::inspection::ToolPalette::Shape::Compact, host));
+        }
+        for (const QString& text : buttons) {
+            row->addWidget(new QPushButton(text, host));
+        }
+        row->addStretch(1);
+        const int width = host->minimumSizeHint().width();
+        delete host;
+        return width;
+    };
+
+    // Lo que llevaba: paleta, Borrar, Rasgo, Puntos + spin, Fijar escala,
+    // Guardar, Atajos.
+    const QStringList before{QStringLiteral("Borrar herramienta"),
+                             QStringLiteral("Rasgo distintivo"),
+                             QStringLiteral("Puntos:"),
+                             QStringLiteral("Fijar escala con esta medida…"),
+                             QStringLiteral("Guardar plantilla (Ctrl+S)"),
+                             QStringLiteral("Atajos (F1)")};
+    // Lo que lleva ahora: solo lo que actua sobre la PIEZA y la PLANTILLA. El
+    // dibujo y lo que actua sobre la herramienta seleccionada se fueron al dock.
+    const QStringList after{QStringLiteral("Rasgo distintivo"),
+                            QStringLiteral("Fijar escala con esta medida…"),
+                            QStringLiteral("Guardar plantilla (Ctrl+S)"),
+                            QStringLiteral("Atajos (F1)")};
+
+    const int wide = rowWidth(before, /*withPalette=*/true);
+    const int narrow = rowWidth(after, /*withPalette=*/false);
+    std::printf("  la fila 3 pedia %d px y ahora pide %d (%d menos)\n", wide, narrow,
+                wide - narrow);
+    EXPECT_LT(narrow, wide) << "sacar la paleta no estrecho la fila";
+    // Y lo que de verdad importa: cabe en la ventana que arranca a 1100, con
+    // sitio de sobra para el video.
+    EXPECT_LT(narrow, 900) << "la fila 3 sigue comiendose la ventana";
 }

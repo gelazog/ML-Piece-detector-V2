@@ -226,7 +226,22 @@ Verificación: abrir el editor de una plantilla real con herramientas guardadas,
 elegir una de cada familia, dibujarla y comprobar que se guarda. Humo de verdad,
 no solo compilar.
 
-### - [ ] P5 — Dock «Herramientas» en la ventana principal
+### - [x] P5 — Dock «Herramientas» en la ventana principal
+
+*(La medida que lo justifica: la fila 3 pedía **1049 px** y ahora pide **439**
+—610 menos— en una ventana que arranca a 1100. El reparto se hizo por
+significado y no por hacer sitio: al dock se van la paleta, «Borrar» y
+«Puntos», que actúan sobre la herramienta seleccionada; se quedan en la barra
+«Rasgo distintivo», «Fijar escala» y «Guardar plantilla», que actúan sobre la
+pieza y la plantilla.*
+
+*Lo del `restoreState` con ajustes viejos se probó contra el fichero de verdad,
+como pedía el plan, y ahí está lo interesante: la disposición guardada en esta
+máquina contiene **solo `compareDock`** —se escribió antes de que el dock de
+herramientas existiera, que es exactamente el caso temido— y Qt 6 lo coloca
+visible igualmente. O sea que el riesgo no se materializó en esta versión. La
+salvaguarda se queda de todas formas, porque cuesta cuatro líneas y el fallo
+que evita es «el operador actualiza y se queda sin paleta».)*
 
 La fila 3 se vacía: el panel se va a un `QDockWidget` a la derecha, hermano del
 de comparación, y se lleva con él lo que **actúa sobre la herramienta

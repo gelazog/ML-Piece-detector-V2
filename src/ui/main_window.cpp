@@ -345,18 +345,14 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     pieceLayout->addStretch(0);
     rootLayout->addLayout(pieceLayout);
 
-    // --- Fila 3: herramientas para dibujar sobre el video en vivo ---
+    // --- Fila 3: lo que actúa sobre la PIEZA y la PLANTILLA ---
+    //
+    // El dibujo se fue al dock de la derecha (P5) y con él lo que actúa sobre
+    // la herramienta seleccionada. Aquí se queda lo demás, y el reparto no es
+    // por hacer sitio: es por significado. «Rasgo distintivo», «Fijar escala» y
+    // «Guardar plantilla» no son herramientas de dibujo — meterlas en el dock
+    // sería ordenar por tamaño en vez de por lo que hace cada cosa.
     auto* toolsLayout = new QHBoxLayout();
-    toolsLayout->addWidget(new QLabel(tr("Dibujar:"), central));
-    // Paleta agrupada por familias: quince iconos sueltos pedían ~1400 px de
-    // ancho mínimo en una ventana que arranca a 1100, y con las herramientas
-    // que quedan por añadir no cabrían de ninguna manera.
-    toolPalette_ = new inspection::ToolPalette(inspection::ToolPalette::Shape::Compact,
-                                               central);
-    toolsLayout->addWidget(toolPalette_);
-    deleteToolButton_ = new QPushButton(tr("Borrar herramienta"), central);
-    deleteToolButton_->setToolTip(tr("Elimina la herramienta seleccionada (Mover/Elegir)"));
-    toolsLayout->addWidget(deleteToolButton_);
 
     anchorButton_ = new QPushButton(tr("Rasgo distintivo"), central);
     anchorButton_->setIcon(inspection::anchorIcon());
@@ -366,20 +362,6 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
            "esquina oscura). Con él la orientación queda fija aunque la pieza sea\n"
            "simétrica: se detecta igual en cualquier rotación, incluso girada 180°."));
     toolsLayout->addWidget(anchorButton_);
-
-    // Parámetro de muestreo de la herramienta seleccionada, sin abrir el
-    // editor: banda del Caliper, rayos del Círculo, escaneos del Borde, área
-    // mínima del Blob.
-    liveParamLabel_ = new QLabel(tr("Puntos:"), central);
-    toolsLayout->addWidget(liveParamLabel_);
-    liveParamSpin_ = new QSpinBox(central);
-    liveParamSpin_->setRange(1, 1000);
-    liveParamSpin_->setEnabled(false);
-    liveParamSpin_->setToolTip(
-        tr("Cantidad de puntos de muestreo de la herramienta seleccionada:\n"
-           "Caliper: grosor de banda (px) · Círculo: rayos · Borde liso: escaneos\n"
-           "· Blob: área mínima (px²)"));
-    toolsLayout->addWidget(liveParamSpin_);
 
     calibrateFromToolButton_ = new QPushButton(tr("Fijar escala con esta medida…"), central);
     calibrateFromToolButton_->setEnabled(false);
@@ -488,6 +470,51 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     similarityLabel_->setWordWrap(true);
     compareLayout->addWidget(similarityLabel_);
     compareLayout->addStretch(1);
+
+    // --- Dock «Herramientas» (P5) ---
+    //
+    // La paleta y lo que actúa sobre la herramienta seleccionada: «Borrar» y el
+    // parámetro de muestreo. Su sitio natural es junto a la herramienta, no
+    // suelto en una barra donde ya no cabía nada.
+    {
+        auto* toolsPanel = new QWidget(this);
+        auto* panelLayout = new QVBoxLayout(toolsPanel);
+        panelLayout->setContentsMargins(0, 0, 0, 0);
+
+        toolPalette_ = new inspection::ToolPalette(inspection::ToolPalette::Shape::Panel,
+                                                   toolsPanel);
+        panelLayout->addWidget(toolPalette_);
+
+        // Parámetro de muestreo de la herramienta seleccionada, sin abrir el
+        // editor: banda del Caliper, rayos del Círculo, escaneos del Borde,
+        // área mínima del Blob.
+        auto* paramRow = new QHBoxLayout();
+        liveParamLabel_ = new QLabel(tr("Puntos:"), toolsPanel);
+        paramRow->addWidget(liveParamLabel_);
+        liveParamSpin_ = new QSpinBox(toolsPanel);
+        liveParamSpin_->setRange(1, 1000);
+        liveParamSpin_->setEnabled(false);
+        liveParamSpin_->setToolTip(
+            tr("Cantidad de puntos de muestreo de la herramienta seleccionada:\n"
+               "Caliper: grosor de banda (px) · Círculo: rayos · Borde liso: escaneos\n"
+               "· Blob: área mínima (px²)"));
+        paramRow->addWidget(liveParamSpin_, 1);
+        panelLayout->addLayout(paramRow);
+
+        deleteToolButton_ = new QPushButton(tr("Borrar herramienta"), toolsPanel);
+        deleteToolButton_->setToolTip(
+            tr("Elimina la herramienta seleccionada (Mover/Elegir)"));
+        panelLayout->addWidget(deleteToolButton_);
+        panelLayout->addStretch(1);
+
+        toolsDock_ = new QDockWidget(tr("Herramientas"), this);
+        // El nombre TIENE que ser estable: `saveState`/`restoreState` guardan la
+        // disposición por `objectName`, así que cambiarlo perdería la
+        // colocación que el operador dejó.
+        toolsDock_->setObjectName(QStringLiteral("toolsDock"));
+        toolsDock_->setWidget(toolsPanel);
+        addDockWidget(Qt::RightDockWidgetArea, toolsDock_);
+    }
 
     compareDock_ = new QDockWidget(tr("Comparación registrada / actual"), this);
     compareDock_->setObjectName(QStringLiteral("compareDock"));
@@ -771,6 +798,21 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         }
     }
 
+    // Un dock NUEVO sobre un estado guardado VIEJO: `restoreState` no sabe nada
+    // de él —se guardó antes de que existiera— y lo deja donde le parece, que a
+    // veces es oculto. Quien ya usaba el programa abriría la versión nueva sin
+    // paleta y sin forma de adivinar que le falta un panel.
+    //
+    // Se comprueba DESPUÉS de restaurar y se coloca a mano si hace falta. Es el
+    // mismo rigor que con las migraciones de esquema: no basta con que funcione
+    // en un perfil limpio.
+    if (toolsDock_ != nullptr && toolsDock_->isHidden()) {
+        addDockWidget(Qt::RightDockWidgetArea, toolsDock_);
+        toolsDock_->show();
+        core::logInfo("El dock de herramientas no estaba en la disposición guardada: "
+                      "se coloca a la derecha");
+    }
+
     refreshCameras();
     loadPieceList();
     // Al arrancar con una pieza ya seleccionada, su modo y su tablero mandan
@@ -887,6 +929,15 @@ void MainWindow::buildMenuBar() {
             &inspection::EditorCanvas::setLiveContourVisible);
     connect(showContourAction_, &QAction::toggled, this,
             [this](bool) { maybeStartAnalysis(); });
+
+    // Un panel que se cierra sin forma de recuperarlo es una herramienta
+    // perdida, así que el dock tiene su entrada en el menú igual que el de
+    // comparación.
+    if (toolsDock_ != nullptr) {
+        auto* toggle = toolsDock_->toggleViewAction();
+        toggle->setText(tr("Panel de herramientas"));
+        viewMenu->addAction(toggle);
+    }
 
     // Mostrar/ocultar el panel de comparación reubicable (S3).
     if (compareDock_ != nullptr) {
