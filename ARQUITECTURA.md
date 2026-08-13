@@ -95,6 +95,48 @@ Lo que comparten —lo único que la ventana necesita— es que llega un frame.
 `capabilitiesOf()` responde qué se puede hacer con cada fuente, para que la
 interfaz deshabilite **con motivo** en vez de repartir `if (esCámara)`.
 
+### El banco sin cámara: `pci_probe`
+
+Un ejecutable de consola (`tools/probe_main.cpp`, sin Qt) que corre el pipeline
+entero sobre una imagen o un vídeo y escribe lo que midió: qué se segmentó, el
+fixture, **la figura reconocida**, las propuestas de medición, la escala en
+mm/px y el reparto de tiempos por etapa. Con `--json` para consumirlo desde un
+script y con códigos de salida distintos según el fallo (2 argumentos, 3 no se
+pudo abrir, 4 sin pieza) — un banco cuyo código de salida siempre es 0 no sirve
+para nada automatizado.
+
+Existe porque **hasta ahora nada que dependiera de ver una pieza se podía
+comprobar sin hardware delante**, y eso ya ha costado varios diseños con tests
+verdes que la cámara real desmintió.
+
+Y lo justificó el primer día, destapando dos fallos que ninguna prueba
+sintética había cazado:
+
+- **Clasificar el contorno que devuelve `analyzeFrame` llamaba círculo a un
+  cuadrado.** `findLargestContour` extrae con `CHAIN_APPROX_SIMPLE`, o sea con
+  los tramos rectos colapsados: de un cuadrado alineado a los ejes quedan ocho
+  puntos, todos en las esquinas. Y una circunferencia pasa por las cuatro
+  esquinas de un cuadrado, así que sin ningún punto en medio de los lados no hay
+  nada que la desmienta: la salida era «contorno circular de Ø 402 px, el punto
+  peor se separa **0 px**». Exacta según su propia medida y completamente falsa,
+  y con la trampa puesta justo para quien hiciera lo natural, porque la cabecera
+  promete clasificar «el contorno exterior». `classifyShape` ahora **rellena**
+  los tramos largos antes de medir: sobre un contorno ya denso no añade nada, y
+  sobre uno simplificado devuelve la respuesta correcta en vez de rechazarlo.
+- **Un «Radio» que anunciaba 3899 px y medía 43**, sobre una pieza de 199. La
+  descomposición devuelve como arco cualquier tramo que no consigue llamar
+  recta, y a un tramo casi recto le sale una circunferencia enorme. Además esa
+  cifra alimentaba la banda de búsqueda (`radio × 0,3` = 1170 px en una imagen
+  de 640×480), así que la herramienta buscaba el borde por media pantalla.
+  Ahora un redondeo mayor que la propia pieza se descarta, la banda se limita al
+  tamaño de la pieza, y se aplica la misma regla que ya tenía el calíper: si lo
+  medido no es lo prometido, la propuesta se descarta.
+
+Queda **documentado y sin arreglar**: una zona de trabajo completamente fuera
+del frame se convierte en silencio en «sin zona» (`pipeline.cpp`, `roi &
+frameRect` vacío → `useRoi = false`), o sea que se pide mirar una esquina y se
+acaba midiendo todo. `pci_probe` lo detecta y se niega antes de analizar.
+
 ### Enumerar y abrir la cámara
 
 **Enumerar sin abrir.** La lista de cámaras se pide a la API nativa del sistema

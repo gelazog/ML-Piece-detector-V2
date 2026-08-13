@@ -19,6 +19,45 @@ std::string round0(double value) {
     return std::to_string(static_cast<int>(std::lround(value)));
 }
 
+// Rellena los tramos largos con puntos intermedios.
+//
+// Hace falta porque el contorno que devuelve `analyzeFrame` viene extraído con
+// `CHAIN_APPROX_SIMPLE`, o sea con los tramos rectos COLAPSADOS: de un cuadrado
+// alineado a los ejes quedan ocho puntos, todos en las esquinas. Y clasificar
+// esos ocho puntos daba «círculo» con desviación CERO — porque una
+// circunferencia pasa por las cuatro esquinas de un cuadrado y, sin ningún
+// punto en medio de los lados, no hay nada que la desmienta.
+//
+// Es el peor fallo que puede tener esta función: exacta según su propia medida
+// y completamente falsa. Y la trampa estaba puesta justo para quien hiciera lo
+// natural, porque la cabecera promete clasificar «el contorno exterior» y el
+// contorno exterior es lo que `analyzeFrame` devuelve.
+//
+// Rellenar en vez de rechazar: los ocho puntos describen el cuadrado
+// perfectamente, solo que la MEDIDA de desviación necesita puntos donde poder
+// separarse. Sobre un contorno ya denso no añade nada, así que sale gratis.
+std::vector<cv::Point> densify(const std::vector<cv::Point>& contour, double step = 1.0) {
+    if (contour.size() < 2) {
+        return contour;
+    }
+    std::vector<cv::Point> dense;
+    dense.reserve(contour.size());
+    for (std::size_t i = 0; i < contour.size(); ++i) {
+        const cv::Point& from = contour[i];
+        const cv::Point& to = contour[(i + 1) % contour.size()];
+        dense.push_back(from);
+        const double length = cv::norm(to - from);
+        const int pieces = static_cast<int>(length / std::max(step, 0.5));
+        for (int k = 1; k < pieces; ++k) {
+            const double t = static_cast<double>(k) / pieces;
+            dense.emplace_back(
+                static_cast<int>(std::lround(from.x + (to.x - from.x) * t)),
+                static_cast<int>(std::lround(from.y + (to.y - from.y) * t)));
+        }
+    }
+    return dense;
+}
+
 std::vector<cv::Point2f> asFloat(const std::vector<cv::Point>& contour) {
     std::vector<cv::Point2f> points;
     points.reserve(contour.size());
@@ -249,7 +288,10 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
         return shape;
     }
 
-    const std::vector<cv::Point2f> points = asFloat(contour);
+    // Todo lo que sigue mide DISTANCIAS de los puntos del contorno a un modelo,
+    // así que necesita puntos a lo largo de los lados y no solo en las esquinas.
+    const std::vector<cv::Point> dense = densify(contour);
+    const std::vector<cv::Point2f> points = asFloat(dense);
 
     // La tolerancia tiene DOS mitades, y hace falta entender por qué antes de
     // tocarla:
@@ -267,7 +309,7 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
     // girado se separa 3,9 px con radio 160, que es un 2,4 %.
     cv::Point2f enclosingCentre;
     float enclosingRadius = 0.0F;
-    cv::minEnclosingCircle(contour, enclosingCentre, enclosingRadius);
+    cv::minEnclosingCircle(dense, enclosingCentre, enclosingRadius);
     ClassifyOptions scaled = options;
     scaled.maxDeviationPx = std::max(options.maxDeviationPx, 0.025 * enclosingRadius);
 
@@ -286,7 +328,7 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
     int arcs = 0;
     double arcLength = 0.0;
     double totalLength = 0.0;
-    for (const auto& primitive : decomposeContour(contour, decomposeOptionsFor(contour))) {
+    for (const auto& primitive : decomposeContour(dense, decomposeOptionsFor(dense))) {
         totalLength += primitive.length;
         if (primitive.kind == PrimitiveKind::Line) {
             ++straight;
@@ -314,7 +356,7 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
     }
 
     // --- ¿Es un polígono? --------------------------------------------------
-    const PolygonFit polygon = fitPolygon(contour, scaled);
+    const PolygonFit polygon = fitPolygon(dense, scaled);
 
     // Los dos modelos compiten con la MISMA vara: cuánto se separa el punto
     // peor. Sin esto habría que ordenarlos a mano —«primero mira si es

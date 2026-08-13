@@ -322,10 +322,24 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
     // En una pieza redonda NO: ahí el «arco» es el contorno entero y su radio
     // es la mitad del diámetro que ya se ha propuesto. Serían dos nombres para
     // la misma cota, que es justo lo que hace que una lista no se revise.
+    // El tamaño de la pieza, que es la vara para decidir si un «redondeo» lo es.
+    cv::Point2f pieceCentre;
+    float pieceRadius = 0.0F;
+    cv::minEnclosingCircle(contour, pieceCentre, pieceRadius);
+
     int arcIndex = 0;
     for (const auto& primitive : primitives) {
         if (isRound || primitive.kind != vision::PrimitiveKind::Arc ||
             primitive.length < options.minFeatureLength) {
+            continue;
+        }
+        // Un redondeo MÁS GRANDE QUE LA PIEZA no es un redondeo. La
+        // descomposición devuelve como arco cualquier tramo que no consigue
+        // llamar recta, y a un tramo casi recto le sale una circunferencia
+        // enorme: en la pieza de muestra salía «un redondeo de radio ≈ 3899 px»
+        // sobre una pieza de 199. Ese número no es una cota, es el síntoma de
+        // que ahí no hay curva.
+        if (primitive.radius > 2.0 * pieceRadius) {
             continue;
         }
         ++arcIndex;
@@ -336,14 +350,26 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
         g.start = toPiece(fixture, primitive.start);
         g.mid = toPiece(fixture, primitive.mid);
         g.end = toPiece(fixture, primitive.end);
-        g.searchBand = std::max(4.0F, static_cast<float>(primitive.radius) * 0.3F);
+        // Y la banda de búsqueda se limita a la pieza. Salía de multiplicar el
+        // radio por 0,3, así que con aquel radio absurdo la herramienta buscaba
+        // el borde en 1170 px de banda sobre una imagen de 640x480: cualquier
+        // cosa que encontrara allí no era esta pieza.
+        g.searchBand = std::clamp(static_cast<float>(primitive.radius) * 0.3F, 4.0F,
+                                  std::max(8.0F, pieceRadius * 0.5F));
         g.rayCount = 24;
         p.geometry = g;
         p.reason = "Tramo curvo del contorno: un redondeo de radio ≈ " +
                    std::to_string(static_cast<int>(std::lround(primitive.radius))) + " px.";
-        if (measureProposal(gray, fixture, mmPerPixel, p) && !alreadyCovered(proposals, p)) {
-            proposals.push_back(std::move(p));
+        if (!measureProposal(gray, fixture, mmPerPixel, p) || alreadyCovered(proposals, p)) {
+            continue;
         }
+        // Y que haya medido el arco que se le pidió, la misma regla que ya se
+        // aplica al calíper: la propuesta prometía un radio y si la herramienta
+        // devuelve otro, no está midiendo eso.
+        if (std::abs(p.measured - primitive.radius) > std::max(4.0, primitive.radius * 0.25)) {
+            continue;
+        }
+        proposals.push_back(std::move(p));
     }
 
     // Caras enfrentadas: un Calíper que las cruce.

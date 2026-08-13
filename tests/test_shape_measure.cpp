@@ -508,3 +508,49 @@ TEST(ShapeProposals, TheMeasurementsScaleWithThePiece) {
         EXPECT_LT(worst, 0.05) << "radio " << radius;
     }
 }
+
+// El banco de consola destapó esto: `analyzeFrame` devuelve el contorno
+// extraído con `CHAIN_APPROX_SIMPLE`, o sea YA SIMPLIFICADO —de un cuadrado
+// quedan sus esquinas y poco más—, y clasificar esos puntos sueltos daba
+// «círculo», porque una circunferencia pasa por las cuatro esquinas de un
+// cuadrado y no hay ningún punto en medio de los lados que la desmienta.
+//
+// Es el peor fallo posible de esta función: la respuesta es exacta según su
+// propia medida (desviación 0,47 px) y completamente falsa. Y la trampa está
+// puesta para quien haga lo natural, porque la cabecera dice «clasifica el
+// contorno EXTERIOR» y el contorno exterior es justo lo que `analyzeFrame`
+// devuelve.
+TEST(ShapeClassBasics, ASimplifiedContourIsNotMistakenForACircle) {
+    // Alineado a los ejes a propósito: `CHAIN_APPROX_SIMPLE` colapsa los tramos
+    // horizontales y verticales, así que de un cuadrado recto quedan las cuatro
+    // esquinas y de un rombo no. El caso malo es el cuadrado.
+    const cv::Mat mask = regularPolygon(4, 500, 200, 45.0);
+
+    std::vector<std::vector<cv::Point>> dense;
+    cv::findContours(mask, dense, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+    ASSERT_FALSE(dense.empty());
+
+    std::vector<std::vector<cv::Point>> simplified;
+    cv::findContours(mask, simplified, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    ASSERT_FALSE(simplified.empty());
+
+    // Que el caso sea el caso: el contorno simplificado tiene que ser MUCHO más
+    // corto, o este test no estaría probando nada.
+    ASSERT_LT(simplified.front().size() * 10, dense.front().size())
+        << "el contorno simplificado no lo es: " << simplified.front().size() << " puntos de "
+        << dense.front().size();
+    std::printf("  [simplificado] %zu puntos frente a %zu densos\n", simplified.front().size(),
+                dense.front().size());
+
+    const auto fromDense = classifyShape(dense.front(), mask);
+    const auto fromSimple = classifyShape(simplified.front(), mask);
+
+    EXPECT_EQ(fromDense.kind, ShapeKind::Polygon);
+    EXPECT_EQ(fromDense.sides, 4);
+    // Y la misma pieza descrita con menos puntos tiene que dar la MISMA
+    // respuesta. Un clasificador cuya respuesta depende de cómo le pasen el
+    // contorno no es un clasificador.
+    EXPECT_EQ(fromSimple.kind, ShapeKind::Polygon)
+        << "con el contorno simplificado dijo: " << fromSimple.reason;
+    EXPECT_EQ(fromSimple.sides, 4) << "con el contorno simplificado contó " << fromSimple.sides;
+}

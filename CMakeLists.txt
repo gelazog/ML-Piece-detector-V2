@@ -44,6 +44,14 @@ target_link_libraries(pc_inspector
 # Sin ventana de consola en Release; en Debug se conserva para ver el log en vivo.
 set_target_properties(pc_inspector PROPERTIES WIN32_EXECUTABLE $<CONFIG:Release>)
 
+# Banco sin cámara: corre el pipeline sobre un fichero de imagen o vídeo y
+# escribe lo que midió. De consola y SIN Qt a propósito — es lo que permite
+# comprobar desde un script lo que hasta ahora solo se podía ver con la cámara
+# delante.
+add_executable(pci_probe tools/probe_main.cpp)
+target_link_libraries(pci_probe
+  PRIVATE pci_inspection pci_vision pci_domain pci_core ${OpenCV_LIBS} project_warnings)
+
 if(WIN32 AND ONNXRUNTIME_DLL_PATH)
   add_custom_command(TARGET pc_inspector POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
