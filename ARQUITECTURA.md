@@ -1955,6 +1955,51 @@ uniformidad de sus lados y diagonales: mide cuán perpendicular está la cámara
 plano. Con la cámara muy inclinada, una escala única deja de ser fiable lejos
 del marcador y el indicador lo dice.
 
+### La prueba que faltaba: la ida y vuelta
+
+Hasta ahora no había ninguna prueba de que la calibración sirviera. Se comprobaba
+la aritmética, que es exacta por construcción, y no lo único que importa: que una
+pieza de N milímetros vuelva midiendo N milímetros.
+
+Ahora se dibuja una figura de tamaño conocido en mm a una escala conocida, se
+pasa por el pipeline y por la medición automática, y se exige el número de
+vuelta. Barrido de 0,05 a 1,0 mm/px y de 80 a 800 px de pieza: **el peor error
+del barrido es del 0,145 %**, y la mayoría de las combinaciones caen entre el
+0,00 y el 0,05 %. Los dos métodos de calibración —objeto de referencia y
+distancia+FOV— coinciden sobre la misma geometría, que es lo que había que
+comprobar: si no coincidieran, uno de los dos mentiría.
+
+**Y hay una trampa en el propio banco que merece quedar escrita**, porque quien
+añada un test aquí se la va a encontrar. La primera versión daba errores de hasta
+el **3,3 %** y parecía que la calibración perdía precisión con las piezas
+pequeñas. No era eso: las figuras se dibujaban con `LINE_AA`, y OpenCV rasteriza
+un disco antialiaseado **1,4 px más grande de lo nominal por cada lado**. Medido:
+un Ø de 200 px sale con un contorno de 202,87. Ese sesgo es **constante** —no
+escala con la pieza— así que sobre 800 px es un 0,3 % y sobre 80 px un 3,3 %, que
+es exactamente la forma que tenía el «error». El mismo sesgo entraba por la
+longitud de referencia y hacía que los dos métodos discreparan un 3,5 %.
+
+Dibujando sin antialiasing el contorno mide exactamente lo nominal, y entonces se
+ve lo que de verdad hace la herramienta: **0,06 px de error sobre un Ø de 600**.
+La lección general es la de siempre en este proyecto —el error absoluto de un
+borde no encoge con la pieza— y su consecuencia práctica sí es del operador: la
+precisión relativa la fija **el tamaño en píxeles**, no la calibración.
+
+**Dos fallos reales que salieron de las entradas degeneradas**, los dos de la
+misma familia —una escala mala no falla, da números creíbles y equivocados—:
+
+- `calibrationFromKnownLength` podía **desbordar a infinito** (px minúsculos y mm
+  enormes), y `valid()` solo mira que la escala sea mayor que cero: infinito lo
+  es. La aplicación se habría dado por calibrada y toda medida saldría `inf`.
+  Ahora una escala que no es un número real deja la calibración inválida.
+- Un **campo de visión de 180° o más** se aceptaba. La tangente de su mitad se
+  dispara y a partir de ahí cambia de signo, así que salía una escala enorme —o
+  negativa— dada por buena. Ahora se rechaza.
+
+Con la interfaz de hoy no se llega a ninguno de los dos, porque el diálogo acota
+lo que se puede teclear. Pero que se llegue o no depende de quién llame, y esta
+es la única puerta por la que entra la escala a todo lo demás.
+
 **Límite fundamental**: con una sola cámara 2D no se recupera la profundidad
 punto a punto. Todo lo anterior vale para objetos **en el plano de trabajo**;
 medir a distinta altura requeriría cámara de profundidad o estéreo.
