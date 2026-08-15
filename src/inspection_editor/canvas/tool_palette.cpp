@@ -53,12 +53,63 @@ QString checkedStyle() {
         .arg(highlight.name(), highlight.darker(140).name());
 }
 
-// Primer renglón de la descripción: es el que resume qué mide la herramienta.
-// El resto —cómo trazarla, sus avisos— es demasiado para una línea que cambia
-// al pasar el ratón, y va al tooltip de la propia línea.
-QString firstLine(const QString& text) {
-    const int cut = text.indexOf(QLatin1Char('\n'));
-    return cut < 0 ? text : text.left(cut);
+// Cuántos renglones de descripción se enseñan. Tres y no dos, y sale de medir:
+// al ancho real del panel (232 px), el RESUMEN de 21 de las 32 herramientas ya
+// ocupa dos renglones por sí solo, así que con dos no cabía ni una palabra de
+// cómo se traza — que es justo lo que hace falta mientras eliges.
+constexpr int kHelpLines = 3;
+
+// Todo lo que quepa de la descripción, y unos puntos suspensivos si se corta.
+//
+// Antes esto devolvía solo el primer renglón, cortando en seco por el primer
+// salto de línea. Dos cosas estaban mal: se tiraba el segundo renglón que ya se
+// estaba reservando, y sobre todo el corte era MUDO — el operador no tenía forma
+// de saber que había más texto esperándole en el tooltip.
+//
+// La descripción entera no cabe y no va a caber: medidas a este ancho, van de 4
+// a 26 renglones. Así que la línea enseña el principio y los puntos suspensivos
+// dicen «hay más»; el texto completo sigue en el tooltip.
+QString fittedText(const QString& text, const QFontMetrics& metrics, int width, int lines) {
+    if (width <= 0) {
+        return text;
+    }
+    const int maxHeight = metrics.lineSpacing() * lines;
+    const auto fits = [&](const QString& candidate) {
+        return metrics
+                   .boundingRect(QRect(0, 0, width, 100000), Qt::TextWordWrap, candidate)
+                   .height() <= maxHeight;
+    };
+    // Los saltos de la descripción son de su formato de tooltip: dentro de una
+    // línea que se ajusta sola estorban, porque parten renglones a media frase.
+    QString flat = text;
+    flat.replace(QLatin1Char('\n'), QLatin1Char(' '));
+    flat = flat.simplified();
+    if (fits(flat)) {
+        return flat;
+    }
+    // Se recorta por PALABRAS y no por caracteres: cortar a mitad de palabra
+    // hace que el texto parezca roto en vez de continuado.
+    int low = 0;
+    int high = flat.size();
+    while (low < high) {
+        const int mid = (low + high + 1) / 2;
+        QString candidate = flat.left(mid);
+        const int space = candidate.lastIndexOf(QLatin1Char(' '));
+        if (space > 0) {
+            candidate = candidate.left(space);
+        }
+        if (fits(candidate + QStringLiteral("…"))) {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    QString cut = flat.left(low);
+    const int space = cut.lastIndexOf(QLatin1Char(' '));
+    if (space > 0) {
+        cut = cut.left(space);
+    }
+    return cut + QStringLiteral("…");
 }
 
 }  // namespace
@@ -152,7 +203,7 @@ void ToolPalette::buildPanel() {
     // la rejilla, la rejilla botaría bajo el cursor y elegir se volvería un
     // juego de puntería.
     const QFontMetrics metrics(helpText_->font());
-    helpText_->setFixedHeight(metrics.lineSpacing() * 2 + 2);
+    helpText_->setFixedHeight(metrics.lineSpacing() * kHelpLines + 2);
 
     gridHost_ = new QWidget(this);
     // La rejilla NO impone su ancho, y esto es lo que hace que el reflujo
@@ -230,7 +281,11 @@ void ToolPalette::updateHelpLine() {
     // veces acabaría divergiendo, que es la razón por la que la paleta se
     // compartió en su día.
     const QString full = description(*shown);
-    helpText_->setText(firstLine(full));
+    // El ancho se pregunta al propio widget: la paleta reflúye de 4 a 9 columnas
+    // según el sitio que tenga, así que cuánto texto cabe no es una constante.
+    const QFontMetrics metrics(helpText_->font());
+    const int usable = helpText_->width() > 0 ? helpText_->width() : width();
+    helpText_->setText(fittedText(full, metrics, usable, kHelpLines));
     helpText_->setToolTip(full);
 }
 

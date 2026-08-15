@@ -1374,3 +1374,87 @@ TEST(ToolPanelLooks, TheShortcutLeavesTheViewTellingTheSameStory) {
         EXPECT_TRUE(familyChecked) << "la franja no marca " << categoryLabel(category);
     }
 }
+
+// La línea de ayuda cortaba la descripción en seco por su primer salto de línea,
+// y eso estaba mal por dos motivos a la vez: tiraba espacio que ya se estaba
+// reservando, y el corte era MUDO — el operador no tenía forma de saber que
+// había más texto esperándole en el tooltip.
+//
+// Medido al ancho real del panel (232 px): la descripción entera de las 32
+// herramientas ocupa de 4 a 26 renglones, así que no cabe ni va a caber. Lo que
+// sí cabe es el resumen MÁS el principio de cómo se traza, que es lo que hace
+// falta mientras eliges.
+TEST(ToolHelpLine, ItShowsAsMuchAsFitsAndSaysWhenThereIsMore) {
+    ToolPalette palette;
+    palette.show();
+    palette.resize(240, 500);
+
+    QLabel* help = nullptr;
+    for (auto* label : palette.findChildren<QLabel*>()) {
+        if (label->wordWrap()) {
+            help = label;
+        }
+    }
+    ASSERT_NE(help, nullptr);
+
+    int withHowTo = 0;
+    int marked = 0;
+    int total = 0;
+    for (const auto category : allToolCategories()) {
+        palette.activateCategory(category);
+        for (const auto type : toolsInCategory(category)) {
+            auto* button = buttonFor(palette, type);
+            ASSERT_NE(button, nullptr) << toolTypeName(type);
+            hover(button, true);
+            const QString shown = help->text();
+            const QString full = QString::fromUtf8(toolTypeDescription(type));
+            ++total;
+
+            ASSERT_FALSE(shown.isEmpty()) << toolTypeName(type);
+            // El tooltip sigue teniendo el texto ENTERO: la línea es un resumen,
+            // no un sustituto.
+            EXPECT_EQ(help->toolTip(), full) << toolTypeName(type);
+
+            // Si se cortó, tiene que decirlo. Un corte mudo hace creer que la
+            // explicación acaba ahí.
+            // Si lo enseñado no es el texto entero, tiene que acabar en puntos
+            // suspensivos. Se comprueba por herramienta y no contando el total:
+            // una de las 32 SÍ cabe entera, y exigir que todas se corten sería
+            // fijar por contrato la longitud de una redacción.
+            if (shown.endsWith(QStringLiteral("…"))) {
+                ++marked;
+            } else {
+                QString whole = full;
+                whole.replace(QLatin1Char('\n'), QLatin1Char(' '));
+                EXPECT_EQ(shown, whole.simplified())
+                    << toolTypeName(type) << ": se cortó sin decirlo";
+            }
+            // Y lo que se enseña tiene que ser el principio del texto real, no
+            // otra cosa: se compara la primera palabra.
+            const QString firstWord = full.simplified().section(QLatin1Char(' '), 0, 0);
+            EXPECT_TRUE(shown.startsWith(firstWord))
+                << toolTypeName(type) << ": enseña «" << shown.left(40).toStdString() << "»";
+
+            // ¿Llega a asomar el CÓMO se traza? Es lo que se perdía antes: la
+            // primera línea de la descripción es el resumen y el resto explica
+            // el trazo.
+            const QString summary = full.split(QLatin1Char('\n')).first().simplified();
+            if (shown.size() > summary.size() + 1) {
+                ++withHowTo;
+            }
+            hover(button, false);
+        }
+    }
+    std::printf("  [ayuda] %d de %d herramientas asoman el «cómo se traza»; %d marcan el "
+                "corte con puntos suspensivos\n",
+                withHowTo, total, marked);
+
+    // Antes NINGUNA pasaba del resumen. Se exige que la mayoría lo haga ahora,
+    // con holgura sobre lo medido para que un retoque de redacción no rompa el
+    // test.
+    EXPECT_GT(withHowTo, total / 2)
+        << "casi ninguna herramienta enseña cómo se traza: la línea volvió a ser un resumen";
+    // Y que la inmensa mayoría se corte —son textos de 4 a 26 renglones— para
+    // que este test siga vigilando el caso que importa.
+    EXPECT_GT(marked, total - 3) << "casi ninguna se corta: ¿se acortaron las descripciones?";
+}
