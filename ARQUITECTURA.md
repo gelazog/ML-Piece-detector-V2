@@ -326,6 +326,32 @@ forma: `judgeProfile` los aprobaba, porque ninguno es asunto suyo.
   la cámara más lenta que el automático**. Sin esa red, 29,7 → 8,0 fps: el mismo
   desastre de 3,7× que este código existe para evitar.
 
+### Qué hace utilizable una imagen: el contraste, no el brillo
+
+El juicio de calidad rechazaba **dos montajes estándar y opuestos**, los dos
+perfectamente medibles:
+
+- **Contraluz** —pieza clara sobre fondo negro, que es como se miden las
+  siluetas—: brillo medio del frame **37**, por debajo del mínimo de 40. Es
+  decir, ninguna captura a contraluz se podía registrar con los criterios por
+  defecto.
+- **Pieza oscura sobre mesa blanca**: si el brillo se midiera sobre la pieza en
+  vez de sobre el frame —que fue el primer arreglo que probé— daría **30**, y se
+  rechazaría por el mismo motivo.
+
+Ningún nivel medio aprueba a los dos, y ahí está la lección: **lo que hace
+inservible una imagen no es que sea oscura ni que sea clara, es que la pieza no
+se distinga del fondo**. Así que `QualityMetrics` gana `pieceContrast` —la
+separación en niveles de gris entre la pieza y su fondo— y el criterio de brillo
+**solo se aplica cuando la pieza no se separa**. Medido: el contraluz da 190
+niveles y la mesa blanca 153; el umbral está en 60, con holgura por los dos
+lados. Sin pieza detectada no hay contraste que valga y el nivel medio vuelve a
+ser lo único que hay.
+
+Y cuando rechaza, el motivo dice **las dos cosas** —«demasiado oscura *y* la
+pieza no se separa del fondo»—, porque con solo la primera el operador sube la
+luz sin entender que su problema es el contraste.
+
 ### El primer arranque
 
 Una instalación nueva abre sin calibrar y sin ninguna pieza registrada, y no

@@ -16,6 +16,7 @@ add_executable(pci_tests
   test_crash_guard.cpp
   test_database.cpp
   test_domain.cpp
+  test_diverse_images.cpp
   test_engine.cpp
   test_fitting.cpp
   test_geometry_features.cpp
@@ -30,6 +31,7 @@ add_executable(pci_tests
   test_shape_class.cpp
   test_shape_measure.cpp
   test_shape_proposals.cpp
+  test_tool_options.cpp
   test_vision.cpp
   test_working_zone.cpp
 )

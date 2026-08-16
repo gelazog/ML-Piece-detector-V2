@@ -66,6 +66,21 @@ domain::QualityMetrics computeQualityMetrics(const cv::Mat& image,
         metrics.pieceTouchesBorder = box.x <= kMargin || box.y <= kMargin ||
                                      box.x + box.width >= gray.cols - kMargin ||
                                      box.y + box.height >= gray.rows - kMargin;
+
+        // Cuánto se separa la pieza de su fondo. Es lo único que dice de verdad
+        // si la imagen sirve para medir, y por eso se calcula aquí aunque el
+        // brillo medio siga estando: un contraluz y una pieza oscura sobre mesa
+        // blanca son montajes opuestos, los dos legítimos, y ningún nivel medio
+        // los aprueba a los dos.
+        cv::Mat pieceMask = cv::Mat::zeros(gray.size(), CV_8UC1);
+        cv::fillPoly(pieceMask, std::vector<std::vector<cv::Point>>{analysis->contour.points},
+                     cv::Scalar(255));
+        cv::Mat background;
+        cv::bitwise_not(pieceMask, background);
+        if (cv::countNonZero(pieceMask) > 0 && cv::countNonZero(background) > 0) {
+            metrics.pieceContrast =
+                std::abs(cv::mean(gray, pieceMask)[0] - cv::mean(gray, background)[0]);
+        }
     }
     return metrics;
 }

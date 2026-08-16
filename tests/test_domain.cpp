@@ -290,3 +290,68 @@ TEST(PieceCount, TheCountTravelsInTheVerdict) {
     EXPECT_EQ(verdict.count.found, 2);
     EXPECT_TRUE(verdict.count.evaluated);
 }
+
+// ---------------------------------------------------------------------------
+// El brillo no es lo que decide si una imagen sirve para medir
+// ---------------------------------------------------------------------------
+
+TEST(CaptureQuality, TwoOppositeButLegitimateSetupsAreBothAccepted) {
+    // El criterio de brillo medio rechazaba DOS montajes estándar y opuestos:
+    //
+    // - Contraluz (pieza clara sobre fondo negro), que es como se miden las
+    //   siluetas: brillo medio 37 sobre un mínimo de 40.
+    // - Pieza oscura sobre mesa blanca: si el brillo se midiera sobre la pieza,
+    //   30 sobre el mismo mínimo.
+    //
+    // Los dos se miden perfectamente, así que ningún nivel medio puede aprobar a
+    // los dos. Lo que hace inservible una imagen no es que sea oscura ni clara:
+    // es que la pieza no se separe del fondo.
+    using pci::domain::QualityMetrics;
+    using pci::domain::validateQuality;
+
+    QualityMetrics backlit;          // contraluz: pieza 220 sobre fondo 30
+    backlit.sharpness = 180.0;
+    backlit.meanBrightness = 37.0;   // medido sobre la escena del banco
+    backlit.pieceFound = true;
+    backlit.pieceContrast = 190.0;
+    EXPECT_TRUE(validateQuality(backlit).isOk())
+        << validateQuality(backlit).error().message;
+
+    QualityMetrics darkOnWhite;      // pieza 30 sobre mesa 213
+    darkOnWhite.sharpness = 180.0;
+    darkOnWhite.meanBrightness = 213.0;
+    darkOnWhite.pieceFound = true;
+    darkOnWhite.pieceContrast = 153.0;
+    EXPECT_TRUE(validateQuality(darkOnWhite).isOk())
+        << validateQuality(darkOnWhite).error().message;
+}
+
+TEST(CaptureQuality, AnImageWhereThePieceDoesNotStandOutIsStillRejected) {
+    // La otra mitad: soltar el criterio de brillo del todo dejaría pasar
+    // exactamente lo que existe para parar. Cuando la pieza NO se separa, el
+    // nivel medio vuelve a mandar.
+    using pci::domain::QualityMetrics;
+    using pci::domain::validateQuality;
+
+    QualityMetrics underexposed;
+    underexposed.sharpness = 180.0;
+    underexposed.meanBrightness = 22.0;
+    underexposed.pieceFound = true;
+    underexposed.pieceContrast = 9.0;  // apenas se distingue del fondo
+    const auto verdict = validateQuality(underexposed);
+    ASSERT_FALSE(verdict.isOk());
+    EXPECT_NE(verdict.error().message.find("oscura"), std::string::npos)
+        << verdict.error().message;
+    // Y el motivo dice las DOS cosas, porque con una sola el operador subiría la
+    // luz sin entender que el problema es el contraste.
+    EXPECT_NE(verdict.error().message.find("no se separa"), std::string::npos)
+        << verdict.error().message;
+
+    // Sin pieza detectada no hay contraste que valga: el nivel medio es lo único
+    // que hay, y una imagen negra se rechaza igual.
+    QualityMetrics blank;
+    blank.sharpness = 180.0;
+    blank.meanBrightness = 5.0;
+    blank.pieceFound = false;
+    EXPECT_FALSE(validateQuality(blank).isOk());
+}
