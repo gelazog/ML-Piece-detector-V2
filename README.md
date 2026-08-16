@@ -57,6 +57,14 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    abre una imagen y puedes hacerlo todo. `sample_images/pieza_demo.png` sirve
    para probar ahora mismo.
 
+   **Capturar foto** congela el frame que estás viendo y trabajas sobre esa
+   foto: con el vídeo en vivo la pieza tiembla y la detección late, así que
+   dibujar una herramienta encima es puntería. Sobre una foto se traza, se
+   calibra y se mide con calma. **La cámara no se cierra** — vuelves al vídeo con
+   el mismo botón, al instante y sin que se te muevan los ajustes. Y la
+   **calibración sigue valiendo**, porque la foto salió de esa misma cámara a esa
+   misma distancia; eso no pasa al abrir un fichero, y por eso ahí sí se avisa.
+
    Mientras hay un fichero abierto, el desplegable **dice cuál es** y el
    indicador de la barra de estado cambia a **Img** o **Víd** en vez de *Cám* —
    con una imagen no estás mirando la cámara, y el indicador no debería decir

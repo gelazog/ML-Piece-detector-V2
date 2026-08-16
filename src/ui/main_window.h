@@ -162,6 +162,11 @@ private:
     // diálogo de fichero, que no es un error y no debe dejar la ventana a
     // medio arrancar.
     bool startFileSource(pci::camera::SourceKind kind);
+    // Congelar el frame actual y trabajar sobre él, o soltarlo y volver al
+    // vídeo. La cámara NO se cierra al congelar: se deja de escuchar y se
+    // vuelve a escuchar, para que volver cueste cero y no haya que resondear
+    // controles ni relanzar el perfil de exposición.
+    void toggleFrozenPhoto();
     // ¿Va alguien a leer CUÁNTAS piezas se ven? La pieza espera más de una, o
     // el panel Configurar está abierto. Se pregunta en dos sitios —al montar el
     // análisis y al elegir la zona— y tienen que responder lo mismo, así que la
@@ -339,6 +344,10 @@ private:
     // necesita— es que llega un frame.
     std::unique_ptr<camera::FrameSource> fileSource_;
     camera::SourceKind sourceKind_ = camera::SourceKind::Camera;
+    // La escucha de la cámara, guardada para poder cortarla mientras se mira
+    // una foto y reanudarla al soltarla.
+    QMetaObject::Connection cameraFrames_;
+    QPushButton* freezeButton_ = nullptr;
     QFutureWatcher<std::vector<camera::CameraInfo>> enumerationWatcher_;
     QFutureWatcher<AnalysisOverlay> analysisWatcher_;
     QFutureWatcher<core::Result<engine::InspectionEngine::Outcome>> inspectionWatcher_;

@@ -19,6 +19,7 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStatusBar>
+#include <QTime>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QtConcurrent/QtConcurrent>
@@ -311,6 +312,19 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
                                                      choice.toInt() == kSourceOpenVideo);
         startStopButton_->setText(opensAFile ? tr("Abrir…") : tr("Iniciar"));
     });
+
+    // Congelar. Va junto al de arrancar porque es la misma decisión —«qué estoy
+    // mirando»— y porque es lo que se pulsa justo después de ver pasar la pieza
+    // buena.
+    freezeButton_ = new QPushButton(tr("Capturar foto"), central);
+    freezeButton_->setEnabled(false);
+    freezeButton_->setToolTip(
+        tr("Congela el frame actual y trabaja sobre esa foto: con el vídeo en vivo la\n"
+           "pieza tiembla y la detección late, así que dibujar una herramienta encima es\n"
+           "puntería. Sobre una foto se traza, se calibra y se mide con calma.\n\n"
+           "La cámara no se cierra: vuelves al vídeo con el mismo botón."));
+    connect(freezeButton_, &QPushButton::clicked, this, &MainWindow::toggleFrozenPhoto);
+    cameraLayout->addWidget(freezeButton_);
 
     roiButton_ = new QPushButton(tr("Zona de detección"), central);
     roiButton_->setCheckable(true);
@@ -620,7 +634,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(&analysisWatcher_, &QFutureWatcher<AnalysisOverlay>::finished, this,
             &MainWindow::onAnalysisFinished);
 
-    connect(&controller_, &camera::CameraController::frameReady, this, &MainWindow::onFrame);
+    cameraFrames_ =
+        connect(&controller_, &camera::CameraController::frameReady, this, &MainWindow::onFrame);
     connect(&controller_, &camera::CameraController::statsUpdated, this, &MainWindow::onStats);
     connect(&controller_, &camera::CameraController::cameraError, this,
             &MainWindow::onCameraError);
@@ -1440,6 +1455,12 @@ void MainWindow::updateStatusIndicators() {
             set(camIndicator_, tr("Cám"), streaming_, tr("Cámara: transmitiendo"),
                 tr("Cámara: detenida"));
             break;
+        case camera::SourceKind::Photo:
+            set(camIndicator_, tr("Foto"), streaming_,
+                tr("Fuente: una foto congelada de esta cámara. La escala calibrada sigue "
+                   "valiendo."),
+                tr("Sin fuente"));
+            break;
         case camera::SourceKind::Image:
             set(camIndicator_, tr("Img"), streaming_,
                 tr("Fuente: una imagen de archivo. Todo se mide igual que en vivo."),
@@ -1492,7 +1513,8 @@ void MainWindow::updateCalibrationLabel() {
         QString why;
         if (resMismatch) {
             why = tr("otra resolución");
-        } else if (sourceKind_ != camera::SourceKind::Camera) {
+        } else if (sourceKind_ != camera::SourceKind::Camera &&
+                   sourceKind_ != camera::SourceKind::Photo) {
             why = tr("la escala se calibró con otra fuente y un fichero no dice a qué "
                      "distancia se tomó");
         } else {
@@ -1676,6 +1698,7 @@ void MainWindow::onStartStopClicked() {
     currentCameraKey_ = QString::fromStdString(cameras_[comboIndex].name);
     loadCachedResolutions();  // lista sondeada antes para ESTA cámara
     startStopButton_->setText(tr("Detener"));
+    freezeButton_->setEnabled(true);
     cameraCombo_->setEnabled(false);
     refreshAction_->setEnabled(false);
     statusBar()->showMessage(tr("Transmitiendo desde %1")
@@ -1689,6 +1712,52 @@ void MainWindow::onStartStopClicked() {
         // La resolución elegida se reaplica al abrir, igual que los controles.
         controller_.requestResolution(savedResolution_);
     }
+}
+
+void MainWindow::toggleFrozenPhoto() {
+    if (sourceKind_ == camera::SourceKind::Photo) {
+        // Soltar la foto: se para la fuente y se vuelve a escuchar la cámara,
+        // que nunca dejó de transmitir. Volver cuesta cero.
+        if (fileSource_ != nullptr) {
+            fileSource_->stop();
+            fileSource_.release()->deleteLater();
+        }
+        sourceKind_ = camera::SourceKind::Camera;
+        cameraFrames_ = connect(&controller_, &camera::CameraController::frameReady, this,
+                                &MainWindow::onFrame);
+        freezeButton_->setText(tr("Capturar foto"));
+        statusBar()->showMessage(tr("De vuelta al vídeo en vivo."));
+        updateStatusIndicators();
+        updateCalibrationLabel();
+        return;
+    }
+    if (sourceKind_ != camera::SourceKind::Camera || lastFrame_.isNull()) {
+        statusBar()->showMessage(
+            tr("Solo se puede capturar una foto del vídeo en vivo de la cámara."));
+        return;
+    }
+
+    // Se deja de escuchar a la cámara, pero NO se la para: resondear controles y
+    // relanzar el perfil de exposición al volver costaría segundos y cambiaría
+    // la imagen, que es justo lo que no se quiere de una foto.
+    disconnect(cameraFrames_);
+    const QString label =
+        tr("Foto %1").arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss")));
+    fileSource_ = std::make_unique<camera::StillImageSource>(lastFrame_, label,
+                                                             camera::SourceKind::Photo);
+    connect(fileSource_.get(), &camera::FrameSource::frameReady, this, &MainWindow::onFrame);
+    connect(fileSource_.get(), &camera::FrameSource::statsUpdated, this, &MainWindow::onStats);
+    connect(fileSource_.get(), &camera::FrameSource::sourceError, this,
+            &MainWindow::onCameraError);
+    sourceKind_ = camera::SourceKind::Photo;
+    // `currentCameraKey_` NO se toca: la foto salió de esta misma cámara, con
+    // esta óptica y a esta distancia, así que la calibración sigue valiendo. Si
+    // se tocara, congelar dispararía el aviso de «calibración obsoleta» y en dos
+    // días el operador dejaría de leer ese aviso también cuando importa.
+    freezeButton_->setText(tr("Volver al vídeo"));
+    statusBar()->showMessage(tr("Trabajando sobre %1. La cámara sigue conectada.").arg(label));
+    updateStatusIndicators();
+    fileSource_->start();
 }
 
 bool MainWindow::startFileSource(camera::SourceKind kind) {
@@ -2070,6 +2139,8 @@ void MainWindow::onStreamStopped() {
         fileSource_.release()->deleteLater();
     }
     sourceKind_ = camera::SourceKind::Camera;
+    freezeButton_->setText(tr("Capturar foto"));
+    freezeButton_->setEnabled(false);
     // Se quita la entrada del fichero que estaba abierto. Por su DATO y no por
     // su índice: entre abrir y cerrar puede haberse reenumerado la lista.
     for (int i = cameraCombo_->count() - 1; i >= 0; --i) {

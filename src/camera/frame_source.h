@@ -21,9 +21,20 @@ namespace pci::camera {
 
 enum class SourceKind {
     Camera,  // cámara en vivo
+    Photo,   // una foto recién tomada CON ESTA cámara, congelada
     Image,   // una imagen de archivo
     Video,   // un vídeo de archivo
 };
+
+// `Photo` e `Image` son las dos una imagen fija, y aun así son tipos distintos
+// por una razón que se paga cara si se ignora: **la calibración**.
+//
+// Una foto sale de esta cámara, con esta óptica y a esta distancia del plano, así
+// que la escala px→mm sigue valiendo exactamente igual que en vivo. Un fichero no
+// garantiza ninguna de las tres. Tratarlas igual obligaría a elegir entre dos
+// errores: avisar de calibración obsoleta cada vez que alguien congela un frame
+// —un aviso que se aprende a ignorar en dos días— o callarse también cuando se
+// abre un fichero, que es cuando de verdad hay que avisar.
 
 // Qué se puede hacer con cada fuente. No es cosmético: la interfaz tiene que
 // deshabilitar CON MOTIVO lo que no aplica, y para eso hay que preguntárselo a

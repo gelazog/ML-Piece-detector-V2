@@ -13,10 +13,15 @@ SourceCapabilities capabilitiesOf(SourceKind kind) {
             caps.meaningfulCaptureFps = true;
             caps.focusable = true;
             return caps;
+        case SourceKind::Photo:
         case SourceKind::Image:
             // Nada de lo anterior. Ni siquiera los fps: una imagen fija se
             // reemite a un ritmo que se inventa la aplicación, así que
             // enseñarlo sería responder a una pregunta que nadie hizo.
+            //
+            // La foto tampoco es enfocable, y eso puede chocar: la cámara sigue
+            // ahí detrás. Pero enfocar mientras se mira una foto no cambiaría la
+            // foto, así que ofrecerlo sería ofrecer un control que no hace nada.
             return caps;
         case SourceKind::Video:
             // Los fps SÍ significan algo —son los del fichero, y dicen a qué
@@ -31,6 +36,12 @@ SourceCapabilities capabilitiesOf(SourceKind kind) {
 QString whyNotAdjustable(SourceKind kind) {
     switch (kind) {
         case SourceKind::Camera: return {};
+        case SourceKind::Photo:
+            return QCoreApplication::translate(
+                "pci::camera",
+                "Estás mirando una foto congelada. La cámara sigue conectada: vuelve al vídeo "
+                "en vivo para ajustar su brillo, exposición o enfoque, y congela otra vez "
+                "cuando la imagen te guste.");
         case SourceKind::Image:
             return QCoreApplication::translate(
                 "pci::camera",

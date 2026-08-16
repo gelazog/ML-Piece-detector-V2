@@ -29,20 +29,31 @@ class StillImageSource : public FrameSource {
     Q_OBJECT
 
 public:
+    // Desde un fichero: se lee al arrancar y se avisa si no se puede.
     explicit StillImageSource(QString path, QObject* parent = nullptr);
+
+    // Desde una imagen que ya se tiene en memoria — una FOTO recién congelada
+    // del vídeo. `label` es lo que se le enseña al operador («Foto 10:57:12»),
+    // porque aquí no hay nombre de fichero del que tirar.
+    StillImageSource(QImage frame, QString label, SourceKind kind,
+                     QObject* parent = nullptr);
 
     void start() override;
     void stop() override;
     [[nodiscard]] bool isRunning() const override { return timer_.isActive(); }
-    [[nodiscard]] SourceKind kind() const override { return SourceKind::Image; }
+    [[nodiscard]] SourceKind kind() const override { return kind_; }
     [[nodiscard]] QString describe() const override;
 
     // Cada cuánto se reemite. Público para que el test no tenga que esperar.
     static constexpr int kRepeatMs = 250;
 
 private:
+    void wire();
+
     QString path_;
+    QString label_;
     QImage frame_;
+    SourceKind kind_ = SourceKind::Image;
     QTimer timer_;
 };
 

@@ -46,6 +46,20 @@ QImage toQImage(const cv::Mat& frame) {
 
 StillImageSource::StillImageSource(QString path, QObject* parent)
     : FrameSource(parent), path_(std::move(path)) {
+    wire();
+}
+
+StillImageSource::StillImageSource(QImage frame, QString label, SourceKind kind, QObject* parent)
+    : FrameSource(parent), label_(std::move(label)), frame_(std::move(frame)), kind_(kind) {
+    // A RGB888 aquí y no al emitir: la conversión cuesta lo mismo una vez que
+    // cuatro veces por segundo.
+    if (!frame_.isNull() && frame_.format() != QImage::Format_RGB888) {
+        frame_ = frame_.convertToFormat(QImage::Format_RGB888);
+    }
+    wire();
+}
+
+void StillImageSource::wire() {
     timer_.setInterval(kRepeatMs);
     connect(&timer_, &QTimer::timeout, this, [this] {
         emit frameReady(frame_);
@@ -57,9 +71,25 @@ StillImageSource::StillImageSource(QString path, QObject* parent)
     });
 }
 
-QString StillImageSource::describe() const { return QFileInfo(path_).fileName(); }
+QString StillImageSource::describe() const {
+    return path_.isEmpty() ? label_ : QFileInfo(path_).fileName();
+}
 
 void StillImageSource::start() {
+    // Con la imagen ya en memoria —una foto congelada— no hay nada que leer.
+    if (path_.isEmpty()) {
+        if (frame_.isNull()) {
+            emit sourceError(tr("La foto llegó vacía: no hay nada que analizar."));
+            emit stopped();
+            return;
+        }
+        core::logInfo("Fuente: foto congelada (" + std::to_string(frame_.width()) + "x" +
+                      std::to_string(frame_.height()) + ")");
+        emit frameReady(frame_);
+        emit statsUpdated(0.0, frame_.width(), frame_.height());
+        timer_.start();
+        return;
+    }
     if (!frame_.load(path_)) {
         // El motivo tiene que ser accionable: el operador necesita saber si se
         // equivocó de fichero o si el formato no se lee.

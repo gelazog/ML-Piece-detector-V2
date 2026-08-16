@@ -115,6 +115,26 @@ Lo mismo con dos textos que habían dejado de ser ciertos:
   depende de la óptica y de la distancia al plano, y un fichero no garantiza
   ninguna de las dos, así que ahora lo dice tal cual.
 
+#### La foto: congelar el frame y trabajar sobre él
+
+Con el vídeo en vivo la pieza tiembla y la segmentación late, así que dibujar una
+herramienta encima es puntería. **Capturar foto** congela el frame actual y a
+partir de ahí se traza, se calibra y se mide con calma.
+
+Dos decisiones que no son evidentes:
+
+- **La cámara no se cierra, solo se deja de escuchar.** Volver al vídeo cuesta
+  cero, y sobre todo no hay que resondear controles ni relanzar el perfil de
+  exposición — que además cambiaría la imagen, justo lo que no se quiere de una
+  foto.
+- **`SourceKind::Photo` es un tipo distinto de `Image`, y la razón es la
+  calibración.** Una foto sale de esta cámara, con esta óptica y a esta distancia
+  del plano, así que los mm/px siguen valiendo exactamente igual que en vivo; un
+  fichero no garantiza ninguna de las tres. Tratarlas igual obligaría a elegir
+  entre dos errores: avisar de «calibración obsoleta» cada vez que alguien
+  congela —un aviso que se aprende a ignorar en dos días— o callarse también al
+  abrir un fichero, que es cuando de verdad hay que avisar.
+
 #### La barra de fuente, auditada
 
 El hallazgo que más importaba era de **orientación**: tras abrir `pieza.png` el

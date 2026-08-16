@@ -223,3 +223,72 @@ TEST(SourceCapabilities, EachSourcePromisesOnlyWhatItCanDo) {
         EXPECT_GT(why.size(), 30) << "un motivo de tres palabras no explica nada";
     }
 }
+
+// ---------------------------------------------------------------------------
+// La foto: congelar el frame actual (T3)
+// ---------------------------------------------------------------------------
+
+TEST(FrameSources, AFrozenPhotoDeliversTheImageItWasGiven) {
+    // No hay fichero de por medio: la foto llega ya en memoria, recién sacada
+    // del vídeo. Es lo que permite congelar sin pasar por disco.
+    QImage photo(200, 150, QImage::Format_RGB888);
+    photo.fill(Qt::darkCyan);
+
+    StillImageSource source(photo, QStringLiteral("Foto 10:57:12"), SourceKind::Photo);
+    QSignalSpy frames(&source, &pci::camera::FrameSource::frameReady);
+    source.start();
+
+    ASSERT_GE(frames.count(), 1);
+    const QImage first = frames.at(0).at(0).value<QImage>();
+    EXPECT_EQ(first.size(), QSize(200, 150));
+    EXPECT_EQ(first.format(), QImage::Format_RGB888);
+    EXPECT_EQ(source.kind(), SourceKind::Photo);
+    // El nombre lo pone quien la toma, porque aquí no hay fichero del que tirar.
+    EXPECT_EQ(source.describe(), QStringLiteral("Foto 10:57:12"));
+
+    EXPECT_TRUE(waitFor([&] { return frames.count() >= 3; }))
+        << "la foto dejó de emitir: los ajustes de detección no se verían aplicarse";
+    source.stop();
+}
+
+TEST(FrameSources, AnEmptyPhotoSaysSoInsteadOfShowingNothing) {
+    // Congelar antes de que llegue el primer frame es un caso real, y una
+    // pantalla en negro sin mensaje se lee como avería.
+    StillImageSource source(QImage(), QStringLiteral("Foto"), SourceKind::Photo);
+    QSignalSpy errors(&source, &pci::camera::FrameSource::sourceError);
+    QSignalSpy stopped(&source, &pci::camera::FrameSource::stopped);
+    source.start();
+    EXPECT_EQ(errors.count(), 1);
+    EXPECT_EQ(stopped.count(), 1);
+    EXPECT_FALSE(source.isRunning());
+}
+
+TEST(SourceCapabilities, APhotoIsNotAFileAndThatDistinctionIsAboutCalibration) {
+    // Las dos son una imagen fija y aun así son tipos distintos, porque la
+    // ESCALA no se comporta igual: una foto sale de esta cámara, con esta óptica
+    // y a esta distancia, así que los mm/px siguen valiendo. Un fichero no
+    // garantiza ninguna de las tres.
+    //
+    // Tratarlas igual obligaría a elegir entre dos errores: avisar de
+    // «calibración obsoleta» cada vez que alguien congela —un aviso que se
+    // aprende a ignorar en dos días— o callarse también al abrir un fichero, que
+    // es cuando de verdad hay que avisar.
+    EXPECT_NE(SourceKind::Photo, SourceKind::Image);
+
+    // En lo demás se comportan igual: nada que ajustar y sin fps que enseñar.
+    const auto photo = capabilitiesOf(SourceKind::Photo);
+    const auto image = capabilitiesOf(SourceKind::Image);
+    EXPECT_EQ(photo.adjustableControls, image.adjustableControls);
+    EXPECT_EQ(photo.selectableResolution, image.selectableResolution);
+    EXPECT_EQ(photo.focusable, image.focusable);
+    EXPECT_EQ(photo.meaningfulCaptureFps, image.meaningfulCaptureFps);
+
+    // Y su motivo es el suyo: con una foto la cámara SIGUE conectada, así que el
+    // texto tiene que decir cómo volver en vez de dar a entender que se perdió.
+    const QString why = whyNotAdjustable(SourceKind::Photo);
+    EXPECT_FALSE(why.isEmpty());
+    EXPECT_TRUE(why.contains(QStringLiteral("vivo"), Qt::CaseInsensitive))
+        << "no dice cómo volver al vídeo: " << why.toStdString();
+    EXPECT_NE(why, whyNotAdjustable(SourceKind::Image))
+        << "la foto y el fichero dan el mismo motivo, y no están en la misma situación";
+}
