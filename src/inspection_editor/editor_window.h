@@ -67,6 +67,8 @@ private slots:
     void onListRowChanged(int row);
     void onPanelEdited();
     void onDeleteClicked();
+    // Borrar TODAS, con confirmación que dice cuántas.
+    void onDeleteAllClicked();
     void onTestClicked();
     void onSaveClicked();
     void onRefreshFromCamera();  // recaptura una imagen fresca de la cámara (E1)
@@ -122,7 +124,6 @@ private:
     QComboBox* ref1Combo_ = nullptr;
     QLabel* ref2Label_ = nullptr;
     QComboBox* ref2Combo_ = nullptr;
-    QPushButton* deleteButton_ = nullptr;
     QLabel* statusLabel_ = nullptr;
     QPushButton* refreshButton_ = nullptr;  // "Actualizar desde cámara" (E1)
     QPushButton* contourButton_ = nullptr;  // "Ver contorno" (A4), conmutador

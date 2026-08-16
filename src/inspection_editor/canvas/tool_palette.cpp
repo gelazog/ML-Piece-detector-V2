@@ -114,6 +114,28 @@ QString fittedText(const QString& text, const QFontMetrics& metrics, int width, 
 
 }  // namespace
 
+void ToolPalette::setDeletable(int selected, int total) {
+    if (deleteButton_ == nullptr || deleteAllButton_ == nullptr) {
+        return;
+    }
+    deletableTotal_ = total;
+    // Deshabilitado CON MOTIVO: un botón vivo que no hace nada enseña a
+    // desconfiar de los botones, y uno apagado sin explicación deja pensando qué
+    // falta. El tooltip dice las dos cosas — qué hace y qué hace falta.
+    deleteButton_->setEnabled(selected > 0);
+    deleteButton_->setToolTip(
+        selected > 0
+            ? tr("Borrar la herramienta seleccionada (Supr). Se puede deshacer con Ctrl+Z.")
+            : tr("Borrar la herramienta seleccionada.\n\nElige una primero con Mover/Elegir."));
+
+    deleteAllButton_->setEnabled(total > 0);
+    deleteAllButton_->setToolTip(
+        total > 0 ? tr("Borrar las %n herramienta(s) de la pieza. Pregunta antes, y se puede "
+                       "deshacer con Ctrl+Z.",
+                       nullptr, total)
+                  : tr("Borrar todas las herramientas.\n\nNo hay ninguna dibujada."));
+}
+
 ToolPalette::ToolPalette(QWidget* parent) : QWidget(parent) {
     buildPanel();
     refreshButtons();
@@ -139,7 +161,41 @@ void ToolPalette::buildPanel() {
         tr("Mover/Elegir — clic para seleccionar; arrastra para mover; arrastra en\n"
            "vacío para un marco de selección múltiple."));
     connect(selectButton_, &QToolButton::clicked, this, [this] { activate(std::nullopt); });
-    column->addWidget(selectButton_);
+
+    // Borrar va JUNTO A MOVER/ELEGIR, y no suelto debajo del panel, porque es la
+    // continuación natural del mismo gesto: se elige una herramienta con
+    // Mover/Elegir y lo siguiente que se hace con ella es moverla o quitarla.
+    // Tenerlo a un palmo del sitio donde se selecciona ahorra el viaje de ida y
+    // vuelta que había hasta el borde del panel.
+    auto* selectRow = new QHBoxLayout();
+    selectRow->setContentsMargins(0, 0, 0, 0);
+    selectRow->setSpacing(kStripSpacing);
+    selectRow->addWidget(selectButton_, 1);
+
+    deleteButton_ = new QToolButton(this);
+    // Nombre estable: lo usan los tests para señalarlos sin confundirlos con los
+    // iconos de familia, que también son QToolButton sin texto.
+    deleteButton_->setObjectName(QStringLiteral("deleteTool"));
+    deleteButton_->setIcon(deleteIcon());
+    deleteButton_->setIconSize(QSize(kFamilyIconSize, kFamilyIconSize));
+    deleteButton_->setAutoRaise(true);
+    deleteButton_->setFocusPolicy(Qt::NoFocus);
+    deleteButton_->setEnabled(false);
+    connect(deleteButton_, &QToolButton::clicked, this, &ToolPalette::deleteRequested);
+    selectRow->addWidget(deleteButton_);
+
+    deleteAllButton_ = new QToolButton(this);
+    deleteAllButton_->setObjectName(QStringLiteral("deleteAllTools"));
+    deleteAllButton_->setIcon(deleteAllIcon());
+    deleteAllButton_->setIconSize(QSize(kFamilyIconSize, kFamilyIconSize));
+    deleteAllButton_->setAutoRaise(true);
+    deleteAllButton_->setFocusPolicy(Qt::NoFocus);
+    deleteAllButton_->setEnabled(false);
+    connect(deleteAllButton_, &QToolButton::clicked, this, &ToolPalette::deleteAllRequested);
+    selectRow->addWidget(deleteAllButton_);
+
+    column->addLayout(selectRow);
+    setDeletable(0, 0);
 
     // Franja de familias: exclusiva, solo iconos.
     auto* strip = new QHBoxLayout();
@@ -332,10 +388,19 @@ void ToolPalette::rebuildGrid() {
         button->setFocusPolicy(Qt::NoFocus);
         button->setFixedSize(kToolButtonSide, kToolButtonSide);
         button->setStyleSheet(checkedStyle());
-        // El nombre va en el tooltip Y en la línea de ayuda (P3). Aquí solo el
-        // nombre: la descripción entera en un tooltip que salta al pasar es
-        // ilegible.
-        button->setToolTip(label(type));
+        // El nombre Y la descripción entera.
+        //
+        // Antes aquí iba solo el nombre, con el razonamiento de que un tooltip
+        // largo que salta al pasar es ilegible. El razonamiento era bueno y la
+        // consecuencia mala: el nombre ya está en la línea de ayuda, así que
+        // este tooltip no aportaba nada, y la descripción completa quedaba solo
+        // en el tooltip de la línea de ayuda — un sitio donde nadie va a
+        // señalar. O sea que «cómo se traza esta herramienta» era inalcanzable.
+        //
+        // La línea de ayuda sigue dando el resumen al instante, que es para lo
+        // que sirve mientras eliges; el tooltip es para cuando te paras a leer.
+        // Son dos momentos distintos y ahora cada uno tiene su sitio.
+        button->setToolTip(label(type) + QStringLiteral("\n\n") + description(type));
         button->installEventFilter(this);
         connect(button, &QToolButton::clicked, this, [this, type] { activate(type); });
         toolButtons_.emplace_back(type, button);

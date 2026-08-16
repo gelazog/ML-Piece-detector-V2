@@ -614,7 +614,7 @@ TEST(ToolPaletteTest, EveryToolIsReachable) {
             for (const ToolType type : allToolTypes()) {
                 // Los botones de la rejilla son de solo icono: el nombre vive
                 // en el tooltip, y ahi es donde el operador lo lee.
-                if (button->toolTip() == QString::fromUtf8(toolTypeLabel(type))) {
+                if (button->toolTip().startsWith(QString::fromUtf8(toolTypeLabel(type)))) {
                     reachable.push_back(type);
                 }
             }
@@ -1002,7 +1002,7 @@ QStringList panelLabels(const ToolPalette& palette) {
 
 QToolButton* buttonFor(const ToolPalette& palette, ToolType type) {
     for (auto* button : palette.findChildren<QToolButton*>()) {
-        if (button->toolTip() == QString::fromUtf8(toolTypeLabel(type))) {
+        if (button->toolTip().startsWith(QString::fromUtf8(toolTypeLabel(type)))) {
             return button;
         }
     }
@@ -1204,7 +1204,7 @@ TEST(EditorPanel, TheEditorOpensWithThePanelAndReachesEveryTool) {
         palette->activateCategory(category);
         // Una de cada familia, elegida como lo haria el raton sobre la rejilla.
         for (auto* button : palette->findChildren<QToolButton*>()) {
-            if (button->toolTip() == QString::fromUtf8(toolTypeLabel(tools.front()))) {
+            if (button->toolTip().startsWith(QString::fromUtf8(toolTypeLabel(tools.front())))) {
                 button->click();
                 break;
             }
@@ -1314,7 +1314,7 @@ TEST(ToolPanelLooks, TheGridStepIsTheSameInEveryFamily) {
         std::vector<QToolButton*> row;
         for (const auto type : tools) {
             for (auto* button : palette.findChildren<QToolButton*>()) {
-                if (button->toolTip() == QString::fromUtf8(toolTypeLabel(type))) {
+                if (button->toolTip().startsWith(QString::fromUtf8(toolTypeLabel(type)))) {
                     row.push_back(button);
                     break;
                 }
@@ -1354,7 +1354,7 @@ TEST(ToolPanelLooks, TheShortcutLeavesTheViewTellingTheSameStory) {
 
         QToolButton* checkedTool = nullptr;
         for (auto* button : palette.findChildren<QToolButton*>()) {
-            if (button->toolTip() == QString::fromUtf8(toolTypeLabel(tools.front()))) {
+            if (button->toolTip().startsWith(QString::fromUtf8(toolTypeLabel(tools.front())))) {
                 checkedTool = button;
             }
         }
@@ -1457,4 +1457,116 @@ TEST(ToolHelpLine, ItShowsAsMuchAsFitsAndSaysWhenThereIsMore) {
     // Y que la inmensa mayoría se corte —son textos de 4 a 26 renglones— para
     // que este test siga vigilando el caso que importa.
     EXPECT_GT(marked, total - 3) << "casi ninguna se corta: ¿se acortaron las descripciones?";
+}
+
+// ---------------------------------------------------------------------------
+// Borrar: junto a Mover/Elegir, con icono, y el destructivo preguntando
+// ---------------------------------------------------------------------------
+
+TEST(ToolPaletteDelete, TheTwoDeleteButtonsLiveNextToMoveAndSayWhatTheyNeed) {
+    // Borrar es la continuación del mismo gesto que elegir: se selecciona con
+    // Mover/Elegir y lo siguiente que se hace con la herramienta es moverla o
+    // quitarla. Tenerlo al otro extremo del panel obligaba a un viaje de ida y
+    // vuelta con el ratón para el par de acciones más encadenado que hay.
+    ToolPalette palette;
+    palette.show();
+    // El `resize` no es decorativo: Qt difiere la disposición de un widget
+    // recién mostrado, así que sin esto todas las posiciones valen cero y el
+    // test no estaría mirando dónde están los botones.
+    palette.resize(240, 500);
+
+    // Se buscan por su POSICIÓN respecto a Mover/Elegir, que es lo que el test
+    // tiene que garantizar: que están al lado. Buscarlos por otra cosa dejaría
+    // pasar que alguien los mueva de sitio.
+    QToolButton* move = nullptr;
+    for (auto* button : palette.findChildren<QToolButton*>()) {
+        if (button->text().contains(QStringLiteral("Mover"))) {
+            move = button;
+        }
+    }
+    ASSERT_NE(move, nullptr);
+
+    // Se señalan por su nombre —los iconos de familia también son QToolButton
+    // sin texto— y lo que el test comprueba es DÓNDE están.
+    std::vector<QToolButton*> besideMove;
+    for (const auto* name : {"deleteTool", "deleteAllTools"}) {
+        auto* button = palette.findChild<QToolButton*>(QString::fromLatin1(name));
+        ASSERT_NE(button, nullptr) << name;
+        // «A su lado» es que sus franjas verticales se SOLAPEN y esté a la
+        // derecha, no que empiecen en el mismo píxel: el de Mover/Elegir lleva
+        // texto y es más alto, así que la fila los centra a distinta altura.
+        const bool sameRow = button->y() < move->y() + move->height() &&
+                             move->y() < button->y() + button->height();
+        EXPECT_TRUE(sameRow) << name << " no está en la fila de Mover/Elegir";
+        EXPECT_GT(button->x(), move->x()) << name << " no está a su derecha";
+        besideMove.push_back(button);
+    }
+    ASSERT_EQ(besideMove.size(), 2U);
+
+    // Sin nada dibujado los dos están apagados, y su tooltip dice QUÉ FALTA. Un
+    // botón apagado sin explicación deja pensando que la aplicación se rompió.
+    palette.setDeletable(0, 0);
+    for (auto* button : besideMove) {
+        EXPECT_FALSE(button->isEnabled());
+        EXPECT_FALSE(button->toolTip().isEmpty());
+    }
+
+    // Con herramientas dibujadas pero ninguna elegida: «borrar todas» se
+    // enciende y «borrar la seleccionada» no, porque no hay seleccionada.
+    palette.setDeletable(0, 7);
+    int enabled = 0;
+    for (auto* button : besideMove) {
+        if (button->isEnabled()) {
+            ++enabled;
+        }
+    }
+    EXPECT_EQ(enabled, 1) << "sin selección solo puede estar vivo el de borrar todas";
+
+    // Y con una elegida, los dos.
+    palette.setDeletable(1, 7);
+    for (auto* button : besideMove) {
+        EXPECT_TRUE(button->isEnabled());
+    }
+
+    // El tooltip de «borrar todas» dice CUÁNTAS se lleva: es lo que permite
+    // reconocer si es el trabajo que crees o el de otra pieza.
+    bool saysHowMany = false;
+    for (auto* button : besideMove) {
+        if (button->toolTip().contains(QStringLiteral("7"))) {
+            saysHowMany = true;
+        }
+    }
+    EXPECT_TRUE(saysHowMany) << "ninguno dice cuántas herramientas hay";
+    EXPECT_EQ(palette.deletableTotal(), 7);
+}
+
+TEST(ToolPaletteDelete, TheButtonsOnlyAskAndDoNotDeleteAnything) {
+    // La paleta no borra: no sabe qué hay dibujado ni tiene la pila de deshacer.
+    // Avisa, y quien manda decide — que es lo que permite que la ventana
+    // principal y el editor compartan los mismos botones haciendo cosas
+    // distintas por dentro.
+    ToolPalette palette;
+    palette.show();
+    palette.resize(240, 500);
+    palette.setDeletable(2, 5);
+
+    int deleteAsked = 0;
+    int deleteAllAsked = 0;
+    QObject::connect(&palette, &ToolPalette::deleteRequested, [&] { ++deleteAsked; });
+    QObject::connect(&palette, &ToolPalette::deleteAllRequested, [&] { ++deleteAllAsked; });
+
+    QToolButton* move = nullptr;
+    for (auto* button : palette.findChildren<QToolButton*>()) {
+        if (button->text().contains(QStringLiteral("Mover"))) {
+            move = button;
+        }
+    }
+    ASSERT_NE(move, nullptr);
+    for (const auto* name : {"deleteTool", "deleteAllTools"}) {
+        auto* button = palette.findChild<QToolButton*>(QString::fromLatin1(name));
+        ASSERT_NE(button, nullptr) << name;
+        button->click();
+    }
+    EXPECT_EQ(deleteAsked, 1);
+    EXPECT_EQ(deleteAllAsked, 1);
 }

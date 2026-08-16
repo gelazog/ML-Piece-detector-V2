@@ -543,10 +543,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         paramRow->addWidget(liveParamSpin_, 1);
         panelLayout->addLayout(paramRow);
 
-        deleteToolButton_ = new QPushButton(tr("Borrar herramienta"), toolsPanel);
-        deleteToolButton_->setToolTip(
-            tr("Elimina la herramienta seleccionada (Mover/Elegir)"));
-        panelLayout->addWidget(deleteToolButton_);
+        // «Borrar» ya no vive aquí: se mudó DENTRO de la paleta, junto a
+        // Mover/Elegir, que es donde se elige la herramienta sobre la que actúa.
+        // Tenerlo al final del panel obligaba a un viaje de ida y vuelta con el
+        // ratón para el gesto más encadenado que hay: elegir y quitar.
         panelLayout->addStretch(1);
 
         toolsDock_ = new QDockWidget(tr("Herramientas"), this);
@@ -675,7 +675,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(liveParamSpin_, &QSpinBox::valueChanged, this, &MainWindow::onLiveParamChanged);
     connect(calibrateFromToolButton_, &QPushButton::clicked, this,
             &MainWindow::onCalibrateFromToolClicked);
-    connect(deleteToolButton_, &QPushButton::clicked, this, &MainWindow::onDeleteToolClicked);
+    connect(toolPalette_, &inspection::ToolPalette::deleteRequested, this,
+            &MainWindow::onDeleteToolClicked);
+    connect(toolPalette_, &inspection::ToolPalette::deleteAllRequested, this,
+            &MainWindow::onDeleteAllToolsClicked);
     connect(anchorButton_, &QPushButton::toggled, this, &MainWindow::onAnchorButtonToggled);
     connect(video_, &inspection::EditorCanvas::pointPicked, this,
             &MainWindow::onAnchorPicked);
@@ -2306,6 +2309,48 @@ void MainWindow::onDeleteToolClicked() {
     video_->clearResults();
 }
 
+void MainWindow::onDeleteAllToolsClicked() {
+    const int total = static_cast<int>(liveTools_.size());
+    if (total == 0) {
+        return;
+    }
+
+    // Se pregunta, y la pregunta DICE CUÁNTAS. «¿Seguro?» a secas no informa de
+    // nada: quien lleva media hora dibujando necesita ver el número para
+    // reconocer si es el trabajo que cree o el de otra pieza que abrió sin
+    // darse cuenta. Es la misma regla que ya sigue el botón de insertar
+    // propuestas, que dice cuántas va a añadir.
+    //
+    // Y se dice que hay vuelta atrás: el miedo a un botón destructivo viene de
+    // no saber si se puede deshacer, y aquí se puede.
+    QMessageBox box(QMessageBox::Warning, tr("Borrar todas las herramientas"),
+                    tr("Se van a borrar las %n herramienta(s) de esta pieza.", nullptr, total),
+                    QMessageBox::NoButton, this);
+    box.setInformativeText(tr("Se puede deshacer con Ctrl+Z."));
+    auto* confirm = box.addButton(tr("Borrar las %n", nullptr, total), QMessageBox::DestructiveRole);
+    box.addButton(QMessageBox::Cancel);
+    box.setDefaultButton(QMessageBox::Cancel);  // el defecto NUNCA es el destructivo
+    box.exec();
+    if (box.clickedButton() != confirm) {
+        return;
+    }
+
+    for (const auto& tool : liveTools_) {
+        if (tool.config.id >= 0 && repos_.tools != nullptr) {
+            if (auto removed = repos_.tools->remove(tool.config.id); !removed.isOk()) {
+                statusBar()->showMessage(QString::fromStdString(removed.error().message));
+            }
+        }
+    }
+    liveTools_.clear();
+    commitUndoState();
+    video_->setSelectedIndex(-1);
+    onLiveSelectionChanged(-1);
+    video_->clearResults();
+    statusBar()->showMessage(
+        tr("%n herramienta(s) borrada(s). Ctrl+Z las devuelve.", nullptr, total));
+}
+
 // Marcar el rasgo distintivo: el siguiente clic sobre la pieza en el video
 // define el punto; se guarda de inmediato si hay una pieza seleccionada.
 void MainWindow::onAnchorButtonToggled(bool enabled) {
@@ -2695,6 +2740,11 @@ void MainWindow::onLiveSelectionChanged(int index) {
     liveParamSpin_->setEnabled(false);
     liveParamLabel_->setText(tr("Puntos:"));
     const bool valid = index >= 0 && index < static_cast<int>(liveTools_.size());
+    // Los dos botones de borrar saben si tienen algo que hacer. Se pasa el
+    // recuento de SELECCIONADAS y no un booleano porque el marco de selección
+    // múltiple puede llevarse varias, y el tooltip lo dice.
+    toolPalette_->setDeletable(static_cast<int>(video_->selectedIndices().size()),
+                               static_cast<int>(liveTools_.size()));
     // Calibrar con la medida: solo tiene sentido en herramientas de longitud.
     // Calibrar con la medida requiere una LONGITUD; Blob (conteo) y
     // Línea-Línea (grados) no sirven.
@@ -3966,7 +4016,6 @@ void MainWindow::onAutoToggled(bool enabled) {
         video_->setCreateType(std::nullopt);
         toolPalette_->showSelection(std::nullopt);
         toolPalette_->setEnabled(false);
-        deleteToolButton_->setEnabled(false);
         calibrateFromToolButton_->setEnabled(false);
         verdictBanner_->setStyleSheet(
             QStringLiteral("background:#444; color:white; font-size:16px; font-weight:bold;"));
@@ -3978,7 +4027,6 @@ void MainWindow::onAutoToggled(bool enabled) {
         autoTimer_.stop();
         video_->setEditingLocked(false);
         toolPalette_->setEnabled(true);
-        deleteToolButton_->setEnabled(true);
         onLiveSelectionChanged(video_->selectedIndex());  // reactiva calibrar/puntos
         verdictBanner_->setVisible(false);
         video_->clearResults();

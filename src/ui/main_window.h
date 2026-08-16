@@ -80,6 +80,9 @@ private slots:
     void onLiveToolCreated(const pci::inspection::ToolGeometry& geometry);
     void onLiveToolModified();
     void onDeleteToolClicked();
+    // Borrar TODAS. Va aparte y no como variante de la anterior porque necesita
+    // lo que la otra no: preguntar antes, y decir cuántas se lleva por delante.
+    void onDeleteAllToolsClicked();
     void onDuplicateToolClicked();
     void onSaveTemplateClicked();  // guarda liveTools_ en la plantilla activa (P1)
     void onUndo();
@@ -274,7 +277,6 @@ private:
     QPushButton* inspectButton_ = nullptr;
     // Fila 3: herramientas para dibujar sobre el video.
     inspection::ToolPalette* toolPalette_ = nullptr;
-    QPushButton* deleteToolButton_ = nullptr;
     QPushButton* anchorButton_ = nullptr;  // marcar el rasgo distintivo
     QLabel* liveParamLabel_ = nullptr;     // "Puntos" de la herramienta elegida
     QSpinBox* liveParamSpin_ = nullptr;

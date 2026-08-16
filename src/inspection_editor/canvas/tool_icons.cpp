@@ -127,6 +127,38 @@ QIcon moveModeIcon() {
     });
 }
 
+QIcon deleteIcon() {
+    return makeIcon([](QPainter& p, const QColor&) {
+        // Papelera: tapa, cuerpo y dos rayas. Se dibuja igual que el resto de
+        // los iconos —trazo del color del tema— para que no cante como pegado
+        // de otro sitio.
+        p.drawLine(7, 9, 21, 9);          // tapa
+        p.drawLine(12, 9, 12, 6);         // asa
+        p.drawLine(16, 9, 16, 6);
+        p.drawLine(12, 6, 16, 6);
+        p.drawLine(9, 9, 10, 23);         // cuerpo
+        p.drawLine(19, 9, 18, 23);
+        p.drawLine(10, 23, 18, 23);
+        p.drawLine(13, 12, 13, 20);       // rayas
+        p.drawLine(16, 12, 16, 20);
+    });
+}
+
+QIcon deleteAllIcon() {
+    return makeIcon([](QPainter& p, const QColor&) {
+        // La misma papelera, más pequeña y con un aspa al lado: «no una, todas».
+        p.drawLine(5, 9, 16, 9);
+        p.drawLine(9, 9, 9, 6);
+        p.drawLine(12, 9, 12, 6);
+        p.drawLine(9, 6, 12, 6);
+        p.drawLine(7, 9, 8, 22);
+        p.drawLine(15, 9, 14, 22);
+        p.drawLine(8, 22, 14, 22);
+        p.drawLine(19, 12, 25, 18);
+        p.drawLine(25, 12, 19, 18);
+    });
+}
+
 QIcon toolIcon(ToolType type) {
     switch (type) {
         case ToolType::Gear:

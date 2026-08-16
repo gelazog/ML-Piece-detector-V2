@@ -208,8 +208,9 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     }
     sideLayout->addLayout(form);
 
-    deleteButton_ = new QPushButton(tr("Eliminar herramienta"), this);
-    sideLayout->addWidget(deleteButton_);
+    // «Eliminar herramienta» se mudó DENTRO de la paleta, junto a Mover/Elegir:
+    // es la continuación del mismo gesto —eliges y quitas— y tenerlo al otro
+    // extremo de la columna obligaba a un viaje de ida y vuelta.
 
     refreshButton_ = new QPushButton(tr("Actualizar desde cámara"), this);
     refreshButton_->setToolTip(
@@ -274,7 +275,12 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
             &EditorWindow::onPanelEdited);
     connect(ref1Combo_, &QComboBox::currentIndexChanged, this, &EditorWindow::onPanelEdited);
     connect(ref2Combo_, &QComboBox::currentIndexChanged, this, &EditorWindow::onPanelEdited);
-    connect(deleteButton_, &QPushButton::clicked, this, &EditorWindow::onDeleteClicked);
+    // Los dos botones de borrar viven en la paleta, junto a Mover/Elegir, y son
+    // los mismos que en la ventana principal: es el mismo panel compartido, así
+    // que el gesto se aprende una vez.
+    connect(palette_, &ToolPalette::deleteRequested, this, &EditorWindow::onDeleteClicked);
+    connect(palette_, &ToolPalette::deleteAllRequested, this,
+            &EditorWindow::onDeleteAllClicked);
     connect(autoButton, &QPushButton::clicked, this, &EditorWindow::onAutoMeasureClicked);
     connect(contourButton_, &QPushButton::toggled, this,
             &EditorWindow::onShowContourToggled);
@@ -418,10 +424,19 @@ void EditorWindow::syncPanelFromSelection() {
     syncing_ = true;
     const int index = canvas_->selectedIndex();
     const bool hasSelection = index >= 0 && index < static_cast<int>(tools_.size());
+    // Los dos botones de borrar de la paleta saben si tienen algo que hacer.
+    // `tools_` guarda las borradas con una marca, así que se cuentan las vivas.
+    int alive = 0;
+    for (const auto& tool : tools_) {
+        if (!tool.deleted) {
+            ++alive;
+        }
+    }
+    palette_->setDeletable(static_cast<int>(canvas_->selectedIndices().size()), alive);
     nameEdit_->setEnabled(hasSelection);
     tolMin_->setEnabled(hasSelection);
     tolMax_->setEnabled(hasSelection);
-    deleteButton_->setEnabled(hasSelection);
+
     paramSpin_->setEnabled(false);
     paramLabel_->setText(tr("Puntos:"));
     if (hasSelection) {
@@ -853,6 +868,46 @@ void EditorWindow::onDeleteClicked() {
         if (index >= 0 && index < static_cast<int>(tools_.size())) {
             tools_[static_cast<std::size_t>(index)].deleted = true;
         }
+    }
+    commitUndoState();
+    canvas_->setSelectedIndex(-1);
+    canvas_->clearResults();
+    refreshList();
+    syncPanelFromSelection();
+}
+
+void EditorWindow::onDeleteAllClicked() {
+    int alive = 0;
+    for (const auto& tool : tools_) {
+        if (!tool.deleted) {
+            ++alive;
+        }
+    }
+    if (alive == 0) {
+        return;
+    }
+
+    // Se pregunta, y la pregunta DICE CUÁNTAS. «¿Seguro?» a secas no informa:
+    // quien lleva media hora dibujando necesita el número para reconocer si es
+    // el trabajo que cree o el de otra plantilla que abrió sin darse cuenta. Y
+    // se dice que hay vuelta atrás, porque el miedo a un botón destructivo viene
+    // de no saber si se puede deshacer.
+    QMessageBox box(QMessageBox::Warning, tr("Borrar todas las herramientas"),
+                    tr("Se van a borrar las %n herramienta(s) de esta plantilla.", nullptr,
+                       alive),
+                    QMessageBox::NoButton, this);
+    box.setInformativeText(tr("Se puede deshacer con Ctrl+Z."));
+    auto* confirm =
+        box.addButton(tr("Borrar las %n", nullptr, alive), QMessageBox::DestructiveRole);
+    box.addButton(QMessageBox::Cancel);
+    box.setDefaultButton(QMessageBox::Cancel);  // el defecto NUNCA es el destructivo
+    box.exec();
+    if (box.clickedButton() != confirm) {
+        return;
+    }
+
+    for (auto& tool : tools_) {
+        tool.deleted = true;
     }
     commitUndoState();
     canvas_->setSelectedIndex(-1);

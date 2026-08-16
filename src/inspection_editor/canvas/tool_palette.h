@@ -65,9 +65,27 @@ public:
     [[nodiscard]] static int gridColumnsFor(int width);
     [[nodiscard]] static int gridHeightFor(int toolCount, int width);
 
+    // Cuántas herramientas hay seleccionadas y cuántas en total, para que los
+    // dos botones de borrar sepan si tienen algo que hacer y para que la
+    // confirmación de «borrar todas» pueda decir CUÁNTAS se van.
+    void setDeletable(int selected, int total);
+    [[nodiscard]] int deletableTotal() const { return deletableTotal_; }
+
 signals:
     // Herramienta elegida por el operador; `type` vacío = Mover/Elegir.
     void toolChosen(std::optional<pci::inspection::ToolType> type);
+    // Borrar la seleccionada. La paleta no borra nada: no sabe qué hay dibujado
+    // ni tiene la pila de deshacer. Avisa, y quien manda decide.
+    void deleteRequested();
+    // Borrar todas. Quien lo reciba TIENE que confirmar antes: es la acción más
+    // destructiva de la ventana y la única que se lleva por delante un trabajo
+    // de media hora de un clic.
+    void deleteAllRequested();
+
+private:
+    QToolButton* deleteButton_ = nullptr;
+    QToolButton* deleteAllButton_ = nullptr;
+    int deletableTotal_ = 0;
 
 protected:
     // Los botones de la rejilla no tienen texto: el nombre y la explicación

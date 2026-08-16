@@ -23,5 +23,12 @@ QIcon toolIcon(ToolType type);
 QIcon categoryIcon(ToolCategory category);
 QIcon anchorIcon();
 QIcon regionIcon();
+// Papelera: borrar la herramienta seleccionada. El símbolo es universal a
+// propósito — un icono que haya que aprender no sirve para la acción que más
+// caro sale equivocar.
+QIcon deleteIcon();
+// Papelera con aspa: borrar TODAS. Se distingue de la anterior de un vistazo,
+// que es lo que hace falta cuando están una al lado de la otra.
+QIcon deleteAllIcon();
 
 }  // namespace pci::inspection
