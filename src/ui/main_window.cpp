@@ -1714,6 +1714,16 @@ void MainWindow::onStartStopClicked() {
     }
 }
 
+QString MainWindow::currentSourceLabel() const {
+    switch (sourceKind_) {
+        case camera::SourceKind::Camera: return tr("Frame actual de la cámara");
+        case camera::SourceKind::Photo: return tr("La foto capturada");
+        case camera::SourceKind::Image: return tr("La imagen abierta");
+        case camera::SourceKind::Video: return tr("Frame actual del vídeo");
+    }
+    return tr("Frame actual");
+}
+
 void MainWindow::toggleFrozenPhoto() {
     if (sourceKind_ == camera::SourceKind::Photo) {
         // Soltar la foto: se para la fuente y se vuelve a escuchar la cámara,
@@ -3639,9 +3649,13 @@ void MainWindow::loadToolsForSelectedPiece() {
 
 void MainWindow::onRegisterLiveClicked() {
     if (!streaming_ || lastFrame_.isNull()) {
-        QMessageBox::information(this, tr("Sin video"),
-                                 tr("Inicia la cámara primero (o usa el asistente para "
-                                    "registrar desde imágenes)."));
+        // Se nombran las tres puertas, no solo la cámara: desde que una imagen y
+        // un vídeo son fuentes, «inicia la cámara» deja fuera dos caminos que
+        // funcionan igual de bien y manda a buscar hardware a quien no lo tiene.
+        QMessageBox::information(
+            this, tr("Sin imagen"),
+            tr("Elige una fuente y ponla en marcha: una cámara, una imagen o un vídeo. "
+               "También puedes registrar desde imágenes sueltas con el asistente."));
         return;
     }
     if (repos_.pieces == nullptr) {
@@ -4102,8 +4116,11 @@ void MainWindow::onOpenEditorClicked() {
         QMessageBox box(QMessageBox::Question, tr("Editor de plantilla"),
                         tr("¿Sobre qué imagen quieres editar la plantilla?"),
                         QMessageBox::NoButton, this);
-        auto* current =
-            box.addButton(tr("Frame actual de la cámara"), QMessageBox::AcceptRole);
+        // El botón nombra la fuente que hay de verdad. «Frame actual de la
+        // cámara» era cierto cuando la cámara era lo único que había; con una
+        // foto congelada, una imagen o un vídeo abierto, le está diciendo al
+        // operador que va a usar algo distinto de lo que ve.
+        auto* current = box.addButton(currentSourceLabel(), QMessageBox::AcceptRole);
         auto* fromFile = box.addButton(tr("Abrir archivo…"), QMessageBox::ActionRole);
         box.addButton(QMessageBox::Cancel);
         box.exec();

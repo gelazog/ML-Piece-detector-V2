@@ -167,6 +167,11 @@ private:
     // vuelve a escuchar, para que volver cueste cero y no haya que resondear
     // controles ni relanzar el perfil de exposición.
     void toggleFrozenPhoto();
+    // Cómo se llama, para el operador, la imagen que hay ahora mismo. Existe
+    // porque varios diálogos ofrecían «Frame actual de la cámara» aunque la
+    // fuente fuera una foto, un fichero o un vídeo: nombrar una fuente que no es
+    // la que hay le dice al operador que va a usar algo distinto de lo que ve.
+    [[nodiscard]] QString currentSourceLabel() const;
     // ¿Va alguien a leer CUÁNTAS piezas se ven? La pieza espera más de una, o
     // el panel Configurar está abierto. Se pregunta en dos sitios —al montar el
     // análisis y al elegir la zona— y tienen que responder lo mismo, así que la
