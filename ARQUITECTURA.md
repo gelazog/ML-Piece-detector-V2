@@ -326,6 +326,39 @@ forma: `judgeProfile` los aprobaba, porque ninguno es asunto suyo.
   la cámara más lenta que el automático**. Sin esa red, 29,7 → 8,0 fps: el mismo
   desastre de 3,7× que este código existe para evitar.
 
+### Dar por bueno lo que no se ha visto
+
+La auditoría de las 32 herramientas destapó tres que devolvían **un número
+creíble sin haber medido**, que es la forma más cara de fallar que tiene esta
+aplicación: no falla, aprueba.
+
+**Borde liso y Rectitud daban 0,000 y veredicto OK sobre una mella de 26 px.**
+Las dos recorren el borde con escaneos perpendiculares de largo `scanLength`
+centrados en la línea trazada. Un defecto más hondo que media ventana cae FUERA
+del escaneo, así que esa estación no encuentra borde… y se descartaba en
+silencio. La recta se ajustaba solo con las estaciones buenas, y la herramienta
+declaraba perfecto justo el tramo donde estaba el defecto.
+
+«Rebabas y mellas» ya tenía la red —avisa del tramo ciego y manda subir el
+largo—; las otras dos no. Ahora la comparten las tres.
+
+**Y la red estaba mal medida**, cosa que solo se vio al llevarla a las otras dos.
+El corte era «tres escaneos seguidos sin borde», y eso significa cosas distintas
+según lo fino que se muestree: con 120 escaneos sobre 280 px son 4,7 px de borde
+ciego —ruido de binarización— y con 20 escaneos son 29 px, o sea una mella entera
+escondida. Con esa regla, **subir la resolución del muestreo hacía saltar el
+aviso y bajarla lo silenciaba**, que es exactamente al revés de lo que debe
+pasar. Ahora el umbral va en LONGITUD: un suelo de 3 px para el ruido de un
+escaneo suelto y un 2 % del tramo, porque en un borde largo un hueco pequeño pesa
+menos.
+
+**El Perfil de línea no tenía polaridad.** Era la única herramienta de silueta
+que binarizaba siempre con `THRESH_BINARY_INV`, o sea dando por hecho que la
+pieza es lo oscuro. Con el montaje contrario —contraluz, pieza clara sobre fondo
+negro— comparaba el nominal contra el **fondo** y devolvía 125,7 px de perfil con
+veredicto bueno. Ahora lleva `darkPiece` como sus ocho hermanas, y las plantillas
+guardadas antes conservan el valor de entonces para seguir midiendo igual.
+
 ### Qué hace utilizable una imagen: el contraste, no el brillo
 
 El juicio de calidad rechazaba **dos montajes estándar y opuestos**, los dos

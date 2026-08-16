@@ -168,6 +168,26 @@ bool withinTolerance(const ToolConfig& config, double value) {
     return value >= config.toleranceMin && value <= config.toleranceMax;
 }
 
+// ¿Queda un tramo del borde SIN VER lo bastante largo como para esconder un
+// defecto? Lo comparten las tres herramientas que recorren un borde a base de
+// escaneos perpendiculares: Borde liso, Rectitud y Rebabas y mellas.
+//
+// El umbral va en LONGITUD y no en número de escaneos, y esa es la corrección
+// que costó descubrir. Contando escaneos, «dos seguidos» significa cosas
+// distintas según lo fino que se muestree: con 120 escaneos sobre 280 px son
+// 4,7 px de borde ciego —ruido de binarización— y con 20 escaneos son 29 px, o
+// sea una mella entera escondida. Con la regla por recuento, subir la
+// resolución del muestreo hacía SALTAR el aviso y bajarla lo silenciaba, que es
+// exactamente al revés de lo que tiene que pasar.
+//
+// Lo que importa es cuánto borde te quedaste sin mirar, y eso se mide en
+// píxeles: un suelo absoluto para el ruido de un escaneo suelto, y un término
+// relativo al tramo, porque en un borde largo un hueco pequeño pesa menos.
+[[nodiscard]] bool blindStretchMatters(int longestGap, double step, double spanLength) {
+    const double blind = static_cast<double>(longestGap) * step;
+    return blind > std::max(3.0, spanLength * 0.02);
+}
+
 ToolRunResult baseResult(const ToolConfig& config) {
     ToolRunResult result;
     result.toolId = config.id;
@@ -1618,6 +1638,8 @@ ToolRunResult runEdgeFlaw(const cv::Mat& gray, const Fixture& fixture,
     // constante. La desviación máxima respecto a la recta ajustada es el flaw.
     std::vector<double> ts;
     std::vector<double> offsets;
+    int gap = 0;
+    int longestGap = 0;
     for (int k = 0; k < scans; ++k) {
         const float t = length * static_cast<float>(k) / static_cast<float>(scans - 1);
         const cv::Point2f base = p0 + u * t;
@@ -1625,8 +1647,11 @@ ToolRunResult runEdgeFlaw(const cv::Mat& gray, const Fixture& fixture,
         const cv::Point2f to = base + n * (g.scanLength / 2.0F);
         const auto edges = detectEdges(gray, from, to, 1.0F, 1);
         if (edges.empty()) {
+            ++gap;
+            longestGap = std::max(longestGap, gap);
             continue;
         }
+        gap = 0;
         ts.push_back(static_cast<double>(t));
         offsets.push_back(edges[0].position - static_cast<double>(g.scanLength) / 2.0);
         result.overlayPoints.push_back(edges[0].point);
@@ -1635,6 +1660,26 @@ ToolRunResult runEdgeFlaw(const cv::Mat& gray, const Fixture& fixture,
     if (ts.size() < static_cast<std::size_t>(scans) * 6 / 10) {
         result.detail = "Borde no detectado en suficientes escaneos (" +
                         std::to_string(ts.size()) + "/" + std::to_string(scans) + ")";
+        return result;
+    }
+    // Un hueco SEGUIDO no se puede dar por limpio, y esta herramienta lo hacía.
+    //
+    // Medido: sobre una mella de 26 px con el largo de escaneo en 16, devolvía
+    // 0,000 y veredicto OK. Los escaneos que caen sobre la mella no encuentran
+    // borde —está más allá de media ventana— y se descartaban en silencio, así
+    // que la recta se ajustaba solo con el tramo bueno. O sea que la herramienta
+    // daba por perfecto justo el sitio donde estaba el defecto.
+    //
+    // Es el mismo fallo que «Rebabas y mellas» ya tenía cubierto, con la misma
+    // salida: subir el largo de escaneo. Aquí faltaba.
+    const double step = static_cast<double>(length) / std::max(1, scans - 1);
+    if (blindStretchMatters(longestGap, step, static_cast<double>(length))) {
+        result.detail = "No se pudo ver el borde en un tramo de " +
+                        fmtLen(longestGap * step, fmt) +
+                        ": sube el largo de escaneo (ahora " +
+                        fmtLen(static_cast<double>(g.scanLength), fmt) +
+                        "). Un defecto más hondo que media ventana se sale de ella, y dar el "
+                        "borde por liso ahí sería el peor error posible";
         return result;
     }
 
@@ -2437,7 +2482,13 @@ ToolRunResult runProfile(const cv::Mat& gray, const Fixture& fixture,
     }
 
     cv::Mat binary;
-    cv::threshold(gray(bounds), binary, 0.0, 255.0, cv::THRESH_BINARY_INV | cv::THRESH_OTSU);
+    // Con la polaridad de la herramienta, como el resto de las de silueta. Antes
+    // era `THRESH_BINARY_INV` a secas, o sea «la pieza es siempre lo oscuro»: con
+    // el montaje contrario —contraluz, pieza clara sobre fondo negro— comparaba
+    // el nominal contra el FONDO y devolvía 125,7 px de perfil con veredicto
+    // bueno. No un aviso: un número con toda la pinta de ser una medida.
+    cv::threshold(gray(bounds), binary, 0.0, 255.0,
+                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
     std::vector<std::vector<cv::Point>> contours;
     cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
     if (contours.empty()) {
@@ -2952,20 +3003,40 @@ ToolRunResult runStraightness(const cv::Mat& gray, const Fixture& fixture,
 
     std::vector<cv::Point2f> edgePoints;
     edgePoints.reserve(static_cast<std::size_t>(scans));
+    int gap = 0;
+    int longestGap = 0;
     for (int k = 0; k < scans; ++k) {
         const float t = length * static_cast<float>(k) / static_cast<float>(scans - 1);
         const cv::Point2f base = p0 + u * t;
         const auto edges = detectEdges(gray, base - n * (g.scanLength / 2.0F),
                                        base + n * (g.scanLength / 2.0F), 1.0F, 1);
         if (edges.empty()) {
+            ++gap;
+            longestGap = std::max(longestGap, gap);
             continue;
         }
+        gap = 0;
         edgePoints.push_back(edges[0].point);
         result.overlayPoints.push_back(edges[0].point);
     }
     if (edgePoints.size() < static_cast<std::size_t>(scans) * 6 / 10) {
         result.detail = "Borde no detectado en suficientes escaneos (" +
                         std::to_string(edgePoints.size()) + "/" + std::to_string(scans) + ")";
+        return result;
+    }
+    // Y el mismo hueco seguido que se le escapaba al Borde liso. Aquí duele
+    // igual o más: la rectitud por zona mínima es un valor de plano, y darlo por
+    // bueno sobre un borde que no se ha visto entero es firmar una cota que
+    // nadie ha medido. Medido: sobre una mella de 26 px con el largo en 16
+    // devolvía 0,000.
+    const double step = static_cast<double>(length) / std::max(1, scans - 1);
+    if (blindStretchMatters(longestGap, step, static_cast<double>(length))) {
+        result.detail = "No se pudo ver el borde en un tramo de " +
+                        fmtLen(longestGap * step, fmt) +
+                        ": sube el largo de escaneo (ahora " +
+                        fmtLen(static_cast<double>(g.scanLength), fmt) +
+                        "). Con un tramo sin ver, la banda mínima se calcula sobre el borde "
+                        "que sí se vio y sale más recta de lo que la pieza es";
         return result;
     }
 
@@ -3200,10 +3271,14 @@ ToolRunResult runEdgeDefects(const cv::Mat& gray, const Fixture& fixture,
     // peligroso que puede tener esta herramienta: una rebaba más alta que media
     // ventana de escaneo hace que esos escaneos no encuentren borde, y con los
     // huecos ignorados la herramienta daría por limpio justo el tramo donde está
-    // el defecto GORDO. Se corta en tres escaneos seguidos: uno o dos son ruido
-    // de binarización, tres ya dibujan un tramo.
-    constexpr int kGapTolerated = 2;
-    if (longestGap > kGapTolerated) {
+    // el defecto GORDO.
+    //
+    // El corte iba en «tres escaneos seguidos», y eso significaba cosas
+    // distintas según lo fino que se muestreara: subir la resolución hacía
+    // saltar el aviso y bajarla lo silenciaba, al revés de lo que debe pasar.
+    // Ahora lo decide cuánto BORDE quedó sin ver, que es lo que de verdad
+    // importa. La misma regla en las tres herramientas de borde.
+    if (blindStretchMatters(longestGap, step, static_cast<double>(length))) {
         result.detail = "No se pudo ver el borde en un tramo de " +
                         fmtLen(longestGap * step, fmt) +
                         ": sube el largo de escaneo (ahora " +

@@ -1263,6 +1263,7 @@ std::string toJson(const ToolGeometry& geometry) {
                         fs << v.x << v.y;
                     }
                     fs << "]";
+                    fs << "dark" << (g.darkPiece ? 1 : 0);
                 });
             } else if constexpr (std::is_same_v<T, BoltPatternGeometry>) {
                 return writeJson([&](cv::FileStorage& fs) {
@@ -1662,6 +1663,10 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 if (g.nominal.size() < 3) {
                     return ResultT::err("Perfil sin nominal: hacen falta al menos 3 puntos");
                 }
+                // Las plantillas guardadas antes de que existiera este campo no
+                // lo traen, y su valor de entonces era «pieza oscura»: se
+                // conserva para que una plantilla vieja siga midiendo igual.
+                g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
                 return ResultT::ok(g);
             }
             case ToolType::BoltPattern: {

@@ -389,6 +389,16 @@ struct BoltPatternGeometry {
 // medir, así que medida y nominal llegan alineados y no hace falta ICP.
 struct ProfileGeometry {
     std::vector<cv::Point2f> nominal;  // contorno de la pieza buena, cerrado
+    // La pieza es lo OSCURO de la imagen. Lo llevan todas las herramientas de
+    // silueta —Región, Simetría, Lados, Holgura, Máx./mín., Chaflán, Acuerdo,
+    // Patrón— y esta era la única que no, así que binarizaba siempre suponiendo
+    // pieza oscura.
+    //
+    // Con el montaje contrario —pieza clara sobre fondo oscuro, que es el
+    // contraluz de toda la vida— comparaba el nominal contra el FONDO, y lo que
+    // devolvía no era un aviso: era un número de perfil de 125,7 px con toda la
+    // pinta de ser una medida.
+    bool darkPiece = true;
 };
 
 // Anchura mínima y máxima de la silueta (M1): la medida más grande y la más

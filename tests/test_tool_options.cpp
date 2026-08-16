@@ -1075,26 +1075,38 @@ TEST(ToolOptionsMissing, TheOnlyKnobThatSavesADeepNotchIsNotTheOneTheDescription
     std::printf("    largo 70 · escaneos  20 -> %s desv. %.3f\n",
                 longerWindow.ok ? "OK" : "NG", longerWindow.measured);
 
-    // El número que sale con la ventana corta no es «pequeño»: es CERO. La
-    // herramienta declara el borde perfectamente liso, con veredicto OK, en una
-    // pieza con una mella de 26 px. Ese es el daño exacto de que falte el campo.
-    EXPECT_LT(fewScans.measured, 0.5) << "la mella se sale de la ventana y no se ve";
-    EXPECT_TRUE(fewScans.ok) << "y encima sale OK";
+    // Con la ventana corta, la herramienta DECLARABA el borde perfectamente liso
+    // —desviación 0,000 y veredicto OK— sobre una pieza con una mella de 26 px.
+    // Los escaneos que caen sobre la mella no encuentran borde, porque está más
+    // allá de media ventana, y se descartaban en silencio.
+    //
+    // Ahora se niega y manda subir el largo. Sigue faltando el campo para
+    // tocarlo —que es lo que este test documenta— pero ya no se puede dar por
+    // buena una pieza mala sin que nadie se entere.
+    EXPECT_FALSE(fewScans.ok) << fewScans.detail;
+    EXPECT_NE(fewScans.detail.find("sube el largo de escaneo"), std::string::npos)
+        << fewScans.detail;
+
+    // Y subir los ESCANEOS sigue sin rescatarla: el knob que salva la pieza es
+    // el otro, que es justo lo que este test existe para demostrar.
+    EXPECT_FALSE(manyScans.ok) << manyScans.detail;
     EXPECT_LT(manyScans.measured, 0.5)
         << "subir los escaneos NO rescata la mella: " << manyScans.detail;
+
     EXPECT_GT(longerWindow.measured, 20.0)
         << "el largo sí la rescata: " << longerWindow.detail;
+    EXPECT_TRUE(longerWindow.ok) << longerWindow.detail;
 }
 
-TEST(ToolOptionsMissing, TheProfileToolAssumesADarkPieceAndHasNoWayToBeToldOtherwise) {
+TEST(ToolOptions, TheProfileToolNeedsToBeToldWhichSideThePieceIsOn) {
     // Todas las herramientas de silueta llevan «la pieza es lo oscuro»: Región,
     // Simetría, Lados, Holgura, Máx./mín., Chaflán, Acuerdo, Patrón. El Perfil
-    // de línea NO: binariza siempre con THRESH_BINARY_INV, o sea da por hecho
-    // que la pieza es la oscura.
+    // de línea era la ÚNICA que no: binarizaba siempre con THRESH_BINARY_INV, o
+    // sea daba por hecho que la pieza es la oscura.
     //
-    // Con una pieza clara sobre fondo oscuro —el otro montaje corriente— compara
-    // el nominal contra el FONDO, y lo que devuelve no es un aviso: es un número
-    // de perfil enorme con toda la pinta de ser una medida.
+    // Con una pieza clara sobre fondo oscuro —el contraluz de toda la vida—
+    // comparaba el nominal contra el FONDO, y lo que devolvía no era un aviso:
+    // era un número de perfil enorme con toda la pinta de ser una medida.
     std::vector<cv::Point2f> nominal;
     for (int k = 0; k < 180; ++k) {
         const double a = 2.0 * kPi * k / 180.0;
@@ -1116,7 +1128,21 @@ TEST(ToolOptionsMissing, TheProfileToolAssumesADarkPieceAndHasNoWayToBeToldOther
 
     EXPECT_LT(onDark.measured, 4.0) << "la pieza contra su propio contorno: " << onDark.detail;
     EXPECT_GT(onLight.measured, 5.0 * std::max(onDark.measured, 1.0))
-        << "si midiera la pieza clara igual de bien, este parámetro no haría falta";
+        << "con la polaridad equivocada tiene que salir un número claramente distinto";
+
+    // Y la mitad que faltaba: DICIÉNDOLE de qué lado está la pieza, la misma
+    // imagen clara mide igual de bien que la oscura. Sin esta comprobación, el
+    // campo podría existir y no hacer nada.
+    ProfileGeometry lightGeometry{nominal};
+    lightGeometry.darkPiece = false;
+    const ToolRunResult told = read(lightPiece, lightGeometry);
+    std::printf("  Perfil · pieza clara con polaridad puesta -> %s zona %.3f\n",
+                told.ok ? "OK" : "NG", told.measured);
+    EXPECT_LT(told.measured, 4.0)
+        << "con la polaridad correcta la pieza clara tiene que medirse como la oscura: "
+        << told.detail;
+    EXPECT_NEAR(told.measured, onDark.measured, 2.0)
+        << "la misma pieza, invertida y con la polaridad puesta, tiene que dar lo mismo";
 }
 
 TEST(ToolOptionsMissing, TheStraightnessWindowMattersJustAsMuchAndHasNoFieldEither) {
@@ -1130,14 +1156,24 @@ TEST(ToolOptionsMissing, TheStraightnessWindowMattersJustAsMuchAndHasNoFieldEith
 
     const ToolRunResult straightShort = read(gray, StraightnessGeometry{from, to, 16.0F, 60});
     const ToolRunResult straightLong = read(gray, StraightnessGeometry{from, to, 70.0F, 60});
-    expectKnobWorks("Rectitud · largo 16 -> 70", straightShort, straightLong, 15.0);
-    // Con la ventana corta la Rectitud da CERO —un borde perfecto según la
-    // norma— sobre un borde con una mella de 26 px, y su detalle no menciona
-    // ningún tramo ciego. Es el mismo agujero que el del Borde liso y con menos
-    // red: aquí la propia descripción tampoco avisa.
-    EXPECT_LT(straightShort.measured, 0.5) << straightShort.detail;
-    EXPECT_EQ(straightShort.detail.find("escaneo"), std::string::npos)
-        << "hoy no dice nada de la ventana: " << straightShort.detail;
+
+    // Con la ventana corta, la Rectitud DABA CERO —un borde perfecto según la
+    // norma— sobre un borde con una mella de 26 px, y su detalle no mencionaba
+    // ningún tramo ciego. Los escaneos que caen sobre la mella no encuentran
+    // borde, porque está más allá de media ventana, y se descartaban en
+    // silencio: la banda mínima se calculaba solo con el tramo bueno.
+    //
+    // Ahora se niega y dice qué hacer, igual que ya hacía «Rebabas y mellas».
+    // Sigue faltando el campo para tocar el largo, que es lo que este test
+    // documenta; lo que ya no falta es la red que impide firmar una cota que
+    // nadie ha medido.
+    EXPECT_FALSE(straightShort.ok) << straightShort.detail;
+    EXPECT_NE(straightShort.detail.find("sube el largo de escaneo"), std::string::npos)
+        << straightShort.detail;
+    // Y con la ventana larga sí mide, y mide la mella.
+    EXPECT_TRUE(straightLong.ok) << straightLong.detail;
+    EXPECT_GT(straightLong.measured, 15.0)
+        << "con ventana suficiente tiene que ver la mella de 26 px";
 
     const ToolRunResult defectsShort =
         read(gray, EdgeDefectsGeometry{from, to, 16.0F, 120, 1.5F, true});
