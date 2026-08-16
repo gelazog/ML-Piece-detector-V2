@@ -326,6 +326,30 @@ forma: `judgeProfile` los aprobaba, porque ninguno es asunto suyo.
   la cámara más lenta que el automático**. Sin esa red, 29,7 → 8,0 fps: el mismo
   desastre de 3,7× que este código existe para evitar.
 
+### La compresión JPEG, que es lo que trae toda imagen de fuera
+
+Todo el banco de imágenes usaba mapas de bits perfectos, y eso no es lo que
+llega: una foto de cámara o de móvil viene en JPEG, y sus artefactos se
+concentran en los **bordes de alto contraste** — justo donde se mide. Una
+calibración hecha sobre un PNG y aplicada a un JPEG podría estar midiendo otra
+cosa sin que nada avisara.
+
+No se simulan los artefactos: se generan pasando la imagen por el codificador de
+verdad (`imencode`/`imdecode`), porque el daño del JPEG no es ruido blanco — son
+bloques de 8×8 y campanas alrededor del borde.
+
+Medido, y es una buena noticia: **de calidad 100 a 15, el lado de un hexágono se
+mueve un 0,24 % y el diámetro de un disco un 0,04 %**, y la clase se reconoce
+igual en todo el rango. El JPEG mueve la medida menos que el propio rasterizado.
+
+Donde sí hace daño es con **poco contraste**, y tiene sentido: con un escalón de
+30 niveles entre pieza y fondo, el error de cuantización es del tamaño del
+escalón y el codificador se lo come. Ahí aguanta hasta **calidad 15** —muy por
+debajo de lo que da cualquier cámara— y en 5 la figura se sigue reconociendo
+como redonda pero ya no se propone su diámetro. El test afirma solo el lado
+bueno de esa frontera: pasado ese punto la respuesta correcta es «no se puede
+medir», y fijar una degradación concreta ataría el test al codificador.
+
 ### Dar por bueno lo que no se ha visto
 
 La auditoría de las 32 herramientas destapó tres que devolvían **un número

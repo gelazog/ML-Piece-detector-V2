@@ -31,6 +31,7 @@
 // deben poder romperse entre sí.
 #include <gtest/gtest.h>
 
+#include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
@@ -1005,4 +1006,136 @@ TEST(DiverseImagesNothing, DegenerateFramesFailCleanlyAndNothingThrows) {
     EXPECT_TRUE(
         proposeTools(grayOnly, cv::Mat(cv::Size(64, 64), CV_8UC1, cv::Scalar(0)), {}, everything())
             .empty());
+}
+
+// ===========================================================================
+// 7. Compresión JPEG: lo que trae CUALQUIER imagen que llegue de fuera
+// ===========================================================================
+
+namespace {
+
+// Pasa la imagen por un JPEG de verdad, ida y vuelta. No se simulan los
+// artefactos: se generan con el mismo codificador que usará la cámara o el
+// móvil del operador, porque el daño del JPEG no es ruido blanco — son bloques
+// de 8x8 y campanas alrededor de los bordes de alto contraste, que es
+// exactamente donde se mide.
+cv::Mat throughJpeg(const cv::Mat& gray, int quality) {
+    std::vector<uchar> buffer;
+    const std::vector<int> params{cv::IMWRITE_JPEG_QUALITY, quality};
+    if (!cv::imencode(".jpg", gray, buffer, params)) {
+        return {};
+    }
+    return cv::imdecode(buffer, cv::IMREAD_GRAYSCALE);
+}
+
+}  // namespace
+
+TEST(DiverseImagesJpeg, MeasurementsSurviveTheCompressionEveryRealImageArrivesWith) {
+    // Todo lo que el banco prueba hasta aquí son mapas de bits perfectos, y eso
+    // no es lo que llega: una foto de cámara o de móvil viene en JPEG, y sus
+    // artefactos se concentran en los bordes de alto contraste — justo donde se
+    // mide. Una calibración hecha sobre un PNG y aplicada a un JPEG mediría otra
+    // cosa sin que nada avisara.
+    const cv::Size size(640, 480);
+    const int radius = 150;
+    const double nominalSide = sideOfRegularPolygon(6, radius);
+
+    cv::Mat hexMask = emptyMask(size);
+    drawRegularPolygon(hexMask, 6, {320, 240}, radius);
+    const Scene hex = darkOnLight(hexMask);
+
+    cv::Mat discMask = emptyMask(size);
+    drawDisc(discMask, {320, 240}, radius);
+    const Scene disc = darkOnLight(discMask);
+
+    std::printf("\n=== compresión JPEG ===\n");
+    std::printf("%-9s | %-10s %5s %9s %8s | %-10s %9s %8s\n", "calidad", "hexágono", "lados",
+                "lado px", "error", "disco", "Ø px", "error");
+
+    double worstHexError = 0.0;
+    double worstDiscError = 0.0;
+    for (const int quality : {100, 95, 85, 70, 50, 30, 15}) {
+        const cv::Mat hexJpeg = throughJpeg(hex.gray, quality);
+        const cv::Mat discJpeg = throughJpeg(disc.gray, quality);
+        ASSERT_FALSE(hexJpeg.empty()) << "OpenCV no pudo codificar JPEG en esta máquina";
+
+        const Analysed h = runEverything(hexJpeg);
+        const Analysed d = runEverything(discJpeg);
+        ASSERT_TRUE(h.detected) << "calidad " << quality << ": " << h.error;
+        ASSERT_TRUE(d.detected) << "calidad " << quality << ": " << d.error;
+
+        const double side = measuredOf(h, "Lado ");
+        const double diameter = measuredOf(d, "Ø");
+        const double hexError = side > 0.0 ? std::abs(side - nominalSide) / nominalSide : 1.0;
+        const double discError = diameter > 0.0
+                                     ? std::abs(diameter - 2.0 * radius) / (2.0 * radius)
+                                     : 1.0;
+        worstHexError = std::max(worstHexError, hexError);
+        worstDiscError = std::max(worstDiscError, discError);
+
+        std::printf("%-9d | %-10s %5d %9.2f %7.2f %% | %-10s %9.2f %7.2f %%\n", quality,
+                    pci::vision::shapeKindName(h.shape.kind), h.shape.sides, side,
+                    100.0 * hexError, pci::vision::shapeKindName(d.shape.kind), diameter,
+                    100.0 * discError);
+
+        // La CLASE tiene que aguantar hasta la calidad más baja: si a un
+        // hexágono comprimido se le dejan de contar los lados, la medición
+        // automática le propondría otra cosa distinta y el operador vería una
+        // plantilla que no reconoce.
+        EXPECT_EQ(h.shape.kind, pci::vision::ShapeKind::Polygon) << "calidad " << quality;
+        EXPECT_EQ(h.shape.sides, 6) << "calidad " << quality << ": contó " << h.shape.sides;
+        EXPECT_EQ(d.shape.kind, pci::vision::ShapeKind::Circle) << "calidad " << quality;
+    }
+
+    std::printf("  peor error: hexágono %.2f %%, disco %.2f %%\n", 100.0 * worstHexError,
+                100.0 * worstDiscError);
+    // Las cotas se fijan con holgura sobre lo medido. Lo que se está afirmando
+    // es que el JPEG no mueve la medida más que el propio rasterizado.
+    EXPECT_LT(worstHexError, 0.03) << "el JPEG mueve el lado más de un 3 %";
+    EXPECT_LT(worstDiscError, 0.03) << "el JPEG mueve el diámetro más de un 3 %";
+}
+
+TEST(DiverseImagesJpeg, ALowContrastPieceIsWhereTheCompressionActuallyHurts) {
+    // Con mucho contraste el JPEG casi no molesta: el borde sigue siendo un
+    // escalón enorme. Donde de verdad hace daño es con POCO contraste, porque
+    // ahí el escalón es del tamaño del error de cuantización y el codificador se
+    // lo come. Es el caso de una pieza gris sobre una mesa gris, que es lo que
+    // pasa cuando la luz no es la que debería.
+    const cv::Size size(640, 480);
+    const int radius = 150;
+    cv::Mat mask = emptyMask(size);
+    drawDisc(mask, {320, 240}, radius);
+
+    // Pieza a 120 sobre fondo a 90: los mismos 30 niveles que ya usa el banco
+    // para el caso de contraste bajo.
+    cv::Mat gray(size, CV_8UC1, cv::Scalar(90));
+    gray.setTo(cv::Scalar(120), mask);
+
+    std::printf("\n=== JPEG con poco contraste (pieza 120 / fondo 90) ===\n");
+    int lastGood = 100;
+    for (const int quality : {95, 70, 50, 30, 15, 5}) {
+        const cv::Mat jpeg = throughJpeg(gray, quality);
+        ASSERT_FALSE(jpeg.empty());
+        const Analysed run = runEverything(jpeg);
+        const double diameter = measuredOf(run, "Ø");
+        std::printf("  calidad %3d -> %s  Ø=%.2f  %s\n", quality,
+                    run.detected ? pci::vision::shapeKindName(run.shape.kind) : "sin pieza",
+                    diameter, run.detected ? "" : run.error.c_str());
+        // «Aguanta» es que se pueda MEDIR, no solo que se reconozca la figura.
+        // A calidad 5 el disco se sigue clasificando como redondo y en cambio ya
+        // no se propone su diámetro: contar eso como bueno habría dejado el test
+        // afirmando algo más flojo de lo que parece.
+        if (run.detected && run.shape.kind == pci::vision::ShapeKind::Circle &&
+            diameter > 0.0) {
+            lastGood = quality;
+        }
+    }
+    std::printf("  aguanta hasta calidad %d\n", lastGood);
+
+    // Lo que se afirma es el lado bueno de la frontera: a calidad 70 —que es la
+    // que sale de casi cualquier cámara— una pieza de poco contraste todavía se
+    // mide. Por debajo no se afirma nada a propósito: la respuesta correcta ahí
+    // es «no se puede medir», y fijar una degradación concreta sería atar el
+    // test al codificador.
+    EXPECT_LE(lastGood, 70) << "aguanta menos de lo que aguanta cualquier cámara";
 }
