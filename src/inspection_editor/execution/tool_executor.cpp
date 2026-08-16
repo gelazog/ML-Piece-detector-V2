@@ -320,6 +320,24 @@ ToolRunResult runCaliper(const cv::Mat& gray, const Fixture& fixture,
     const cv::Point2f p1 = toImg(fixture, g.p1);
     result.overlaySegments.push_back({p0, p1});
 
+    // La banda promedia perpendicularmente al trazo para que el perfil no
+    // dependa de un solo píxel. Si es más ancha que la propia imagen deja de
+    // promediar el borde y pasa a promediar TODA la escena: medido, con una
+    // banda de 1000 px sobre una imagen de 300 devolvía 100,00 donde la zona que
+    // el operador cruzó mide 40,00 — un número creíble sacado de otra geometría.
+    //
+    // No se recorta en silencio. Una banda así es un error de la plantilla, no
+    // una preferencia, y corregirla por dentro dejaría al operador con un número
+    // que no es el de lo que trazó y sin nada que se lo diga.
+    const double maxBand = std::min(gray.cols, gray.rows);
+    if (!(g.bandWidth > 0.0F) || static_cast<double>(g.bandWidth) > maxBand) {
+        result.detail = "La banda del calíper (" + fmtLen(g.bandWidth, fmt) +
+                        ") no cabe en la imagen (" + std::to_string(gray.cols) + "x" +
+                        std::to_string(gray.rows) + "): con una banda así el perfil ya no "
+                        "es el del borde que cruzaste, es el de toda la escena";
+        return result;
+    }
+
     const auto edges = detectEdges(gray, p0, p1, g.bandWidth, 6);
     if (edges.size() < 2) {
         result.detail = "Se necesitan 2 bordes y se detectaron " +
@@ -1537,15 +1555,45 @@ ToolRunResult runGear(const cv::Mat& gray, const Fixture& fixture, const ToolCon
     const double tipDiameter = 2.0 * tipCircleRadius;
     const double rootDiameter = 2.0 * rootRadius;
 
+    // Los dos recuentos discrepan de DOS maneras distintas, y confundirlas
+    // cuesta caro en los dos sentidos.
+    //
+    // - **Un diente mellado**: el periodo aguanta —la correlación mira la vuelta
+    //   entera— y el recuento de picos pierde uno, porque el diente roto no
+    //   llega al umbral. Aquí el bueno es el periodo, y cambiar el recuento por
+    //   una mella sería decir que es otra rueda. Diferencia de uno o dos.
+    // - **Aliasing**: con pocos rayos por diente el periodo sale MÚLTIPLO del
+    //   verdadero y el recuento se divide. Medido: 180 rayos sobre una rueda de
+    //   40 dientes —4,5 rayos por diente— dan periodo 20 y picos 40. Aquí el
+    //   periodo es el malo, y era el que iba a la tolerancia mientras el aviso
+    //   se quedaba en el texto.
+    //
+    // Se distinguen por la FORMA de la discrepancia: el aliasing dobla, la mella
+    // resta uno. Cuando uno de los dos es al menos el doble del otro, no hay
+    // recuento que publicar — los dientes son la identidad de la rueda y uno de
+    // más o de menos ya no es la misma pieza.
+    const int larger = std::max(teeth, runs);
+    const int smaller = std::min(teeth, runs);
+    if (smaller > 0 && larger >= 2 * smaller) {
+        result.detail = "El recuento de dientes no es fiable: por periodicidad salen " +
+                        std::to_string(teeth) + " y contando picos " + std::to_string(runs) +
+                        ", y uno dobla al otro. Con pocos rayos por diente el periodo se "
+                        "alía; sube el número de rayos o ajusta los dos radios marcados para "
+                        "que abarquen solo los dientes";
+        return result;
+    }
+
     result.measured = teeth;  // los dientes son la identidad de la rueda
     result.ok = withinTolerance(config, result.measured);
     result.detail = "z=" + std::to_string(teeth) + " dientes, Ø cabeza=" +
                     fmtLen(tipDiameter, fmt) + ", Ø raíz=" + fmtLen(rootDiameter, fmt) +
                     ", excentricidad=" + fmtLen(runout, fmt);
 
+    // Una diferencia pequeña sí se publica, con su aviso: lo típico es un diente
+    // mellado, que no cambia cuántos dientes tiene la rueda.
     if (runs != teeth) {
         result.detail += " (¡ojo! contando picos salen " + std::to_string(runs) +
-                         ": revisa los radios marcados)";
+                         ": puede ser un diente dañado; revisa los radios marcados)";
     }
     if (period.confidence < 0.5) {
         result.detail += " (repetición débil: confianza " + fmt2(period.confidence) + ")";

@@ -543,21 +543,23 @@ TEST(ToolOptions, TheGearRadiiAndRayCountBothDecideWhetherTheTeethAreSeen) {
     EXPECT_NEAR(onTheCrown.measured, 40.0, 0.5) << onTheCrown.detail;
 
     // Y los rayos deciden si el recuento es CORRECTO, que es peor que decidir si
-    // se puede medir: con 180 rayos y 40 dientes salen 4,5 rayos por diente, el
-    // periodo se alía y la rueda se cuenta a la MITAD. El número principal —el
-    // que se compara con la tolerancia— sale 20 en una rueda de 40 dientes.
+    // se puede medir: con 180 rayos y 40 dientes salen 4,5 rayos por diente y el
+    // periodo se alía, dando la MITAD.
     //
-    // La herramienta no se calla: el detalle dice que contando picos salen 40 y
-    // manda revisar los radios. Pero el aviso va en el texto y el 20 va en la
-    // medida, y no hay ningún campo con el que subir los rayos.
+    // Antes ese 20 se publicaba como medida —era lo que se comparaba con la
+    // tolerancia— mientras el aviso se quedaba en el texto. Ahora no se publica
+    // ningún recuento cuando los dos métodos discrepan doblándose: los dientes
+    // son la identidad de la rueda y uno de más o de menos ya no es la misma
+    // pieza.
     const ToolRunResult few = read(wheel, GearGeometry{centre, 100.0F, 165.0F, 180});
     const ToolRunResult many = read(wheel, GearGeometry{centre, 100.0F, 165.0F, 1440});
-    expectKnobWorks("Engranaje · rayos 180 -> 1440", few, many, 1.0);
     EXPECT_NEAR(many.measured, 40.0, 0.5) << many.detail;
-    EXPECT_NEAR(few.measured, 20.0, 0.5)
-        << "con 4,5 rayos por diente el periodo se alía: " << few.detail;
-    EXPECT_NE(few.detail.find("contando picos salen 40"), std::string::npos)
-        << "al menos tiene que avisar de que el recuento no cuadra: " << few.detail;
+
+    EXPECT_FALSE(few.ok) << few.detail;
+    EXPECT_NE(few.detail.find("no es fiable"), std::string::npos) << few.detail;
+    // Y el motivo trae los DOS números, que es lo que permite entender qué pasó.
+    EXPECT_NE(few.detail.find("20"), std::string::npos) << few.detail;
+    EXPECT_NE(few.detail.find("40"), std::string::npos) << few.detail;
 }
 
 TEST(ToolOptions, TheScanLengthAndTheScanCountAreTwoDifferentKnobs) {
@@ -986,11 +988,16 @@ TEST(ToolOptionsDeadRange, TheScanCountSpinDoesNothingAboveTwoHundred) {
     EXPECT_DOUBLE_EQ(atOne.measured, atThree.measured);
 }
 
-TEST(ToolOptionsDeadRange, ABandWiderThanTheImageIsAcceptedWithoutAWord) {
-    // Nada acota la banda del calíper contra el tamaño de la imagen. Con 1000 px
-    // de banda en una imagen de 300, el promedio se hace sobre filas replicadas
-    // del borde: la herramienta sigue devolviendo un número, y el número ya no
-    // es de la zona que el operador cruzó.
+TEST(ToolOptionsDeadRange, ABandWiderThanTheImageIsRefusedWithItsReason) {
+    // La banda promedia perpendicularmente al trazo. Si es más ancha que la
+    // imagen deja de promediar el borde y promedia TODA la escena: medido, con
+    // 1000 px de banda sobre una imagen de 300 devolvía 100,00 donde la zona que
+    // el operador cruzó mide 40,00 — un número creíble sacado de otra geometría,
+    // y sin una palabra en el detalle.
+    //
+    // No se recorta en silencio: una banda así es un error de la plantilla, no
+    // una preferencia, y corregirla por dentro dejaría al operador con un número
+    // que no es el de lo que trazó.
     const cv::Mat gray = steppedBar();
     const cv::Point2f from(60.0F, 150.0F);
     const cv::Point2f to(240.0F, 150.0F);
@@ -1000,10 +1007,14 @@ TEST(ToolOptionsDeadRange, ABandWiderThanTheImageIsAcceptedWithoutAWord) {
     std::printf("  Caliper · banda 10 px -> %.3f | banda 1000 px (imagen de 300) -> %.3f\n",
                 sane.measured, absurd.measured);
     EXPECT_NEAR(sane.measured, 40.0, 1.5) << sane.detail;
-    EXPECT_GT(absurd.measured, 80.0)
-        << "con la banda mayor que la imagen se mide otra cosa: " << absurd.detail;
-    // Y ni una palabra en el detalle sobre que la banda se salió de la imagen.
-    EXPECT_EQ(absurd.detail.find("banda"), std::string::npos) << absurd.detail;
+
+    EXPECT_FALSE(absurd.ok) << absurd.detail;
+    EXPECT_NE(absurd.detail.find("banda"), std::string::npos)
+        << "se niega, pero sin decir que el problema es la banda: " << absurd.detail;
+    // Y una banda negativa tampoco se toma por su valor absoluto, que es lo que
+    // pasaba antes: daba el mismo número que la positiva.
+    const ToolRunResult negative = read(gray, CaliperGeometry{from, to, -12.0F});
+    EXPECT_FALSE(negative.ok) << negative.detail;
 }
 
 TEST(ToolOptionsDeadRange, AbsurdValuesAreSilentlyCorrectedInsteadOfRefused) {
