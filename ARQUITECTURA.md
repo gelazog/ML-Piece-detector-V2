@@ -359,6 +359,28 @@ negro— comparaba el nominal contra el **fondo** y devolvía 125,7 px de perfil
 veredicto bueno. Ahora lleva `darkPiece` como sus ocho hermanas, y las plantillas
 guardadas antes conservan el valor de entonces para seguir midiendo igual.
 
+### Quién decide qué mide una herramienta: el modelo, no el panel
+
+Cinco herramientas —Región, Ranura, Chaflán, Acuerdo y Máx./mín.— calculan de
+dos a seis números y **solo uno lleva la tolerancia**. El desplegable del editor
+estaba habilitado únicamente para la Región, porque el panel preguntaba «¿es una
+Región?», así que las otras cuatro vigilaban siempre la primera opción de su
+enum: el ancho de la ranura, el ángulo del chaflán, el radio del acuerdo y la
+anchura mínima. El operador veía los tres números en el detalle y no tenía forma
+de decir cuál era la cota.
+
+Es **exactamente el mismo error** que ya se corrigió con las referencias de
+GD&T, y con la misma causa: una pregunta sobre tipos concretos escrita en la
+interfaz. La solución es la misma que entonces — `measureChoicesOf(geometry)` y
+`setMeasureChoice(geometry, valor)` en el modelo — y su valor está en que la
+sexta herramienta que publique varios números no puede quedarse fuera en
+silencio: el panel ya no sabe cuáles son, pregunta.
+
+`setMeasureChoice` **rechaza** un valor que no sea del enum en vez de corregirlo:
+corregir en silencio es lo que hace que un fichero corrupto mida otra cosa sin
+que nadie se entere, y esta capa ya lo hace en otro sitio (el eje de la Posición
+cae a `Radial` ante cualquier número raro).
+
 ### Qué hace utilizable una imagen: el contraste, no el brillo
 
 El juicio de calidad rechazaba **dos montajes estándar y opuestos**, los dos

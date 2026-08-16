@@ -481,9 +481,17 @@ void EditorWindow::syncConstructionPanel(const EditedTool* tool) {
     const bool isConstruction =
         tool != nullptr && (tool->config.type == ToolType::ConstructedPoint ||
                             tool->config.type == ToolType::ConstructedLine);
-    const bool isRegion = tool != nullptr && tool->config.type == ToolType::Region;
-    constructionCombo_->setEnabled(isConstruction || isRegion);
-    choiceLabel_->setEnabled(isConstruction || isRegion);
+    // Qué medida elige esta herramienta lo dice el MODELO, no el panel. Antes
+    // aquí ponía «¿es una Región?», y con esa pregunta Ranura, Chaflán, Acuerdo
+    // y Máx./mín. se quedaban sin desplegable: publican de dos a tres números y
+    // la tolerancia vigilaba siempre el primero de su enum, sin forma de decir
+    // cuál era la cota. Es el mismo error que ya se corrigió con las
+    // referencias, y preguntando al modelo no puede repetirse con la siguiente.
+    const MeasureChoices measures =
+        tool != nullptr ? measureChoicesOf(tool->geometry) : MeasureChoices{};
+    const bool choosesMeasure = !measures.options.empty();
+    constructionCombo_->setEnabled(isConstruction || choosesMeasure);
+    choiceLabel_->setEnabled(isConstruction || choosesMeasure);
 
     // Qué referencias admite esta herramienta lo dice el MODELO, no el panel.
     // Antes lo decidía aquí preguntándose «¿es una construcción?», y con esa
@@ -498,15 +506,12 @@ void EditorWindow::syncConstructionPanel(const EditedTool* tool) {
     // La Región usa el mismo desplegable para elegir QUÉ mide. Es el mismo
     // gesto —una opción discreta de la herramienta— y darle un control propio
     // habría dejado dos filas que nunca se ven a la vez.
-    if (isRegion) {
+    if (choosesMeasure) {
         choiceLabel_->setText(tr("Medida:"));
-        const auto& g = std::get<RegionGeometry>(tool->geometry);
-        for (const auto measure : allRegionMeasures()) {
-            constructionCombo_->addItem(QString::fromUtf8(regionMeasureLabel(measure)),
-                                        static_cast<int>(measure));
+        for (const auto& option : measures.options) {
+            constructionCombo_->addItem(QString::fromStdString(option.label), option.value);
         }
-        constructionCombo_->setCurrentIndex(
-            constructionCombo_->findData(static_cast<int>(g.measure)));
+        constructionCombo_->setCurrentIndex(constructionCombo_->findData(measures.current));
     } else if (isConstruction) {
         choiceLabel_->setText(tr("Construcción:"));
         // Los modos que ofrece este tipo, con su valor guardado como dato para
@@ -573,18 +578,21 @@ void EditorWindow::applyConstructionPanel(EditedTool& tool) {
         return;
     }
     const int mode = constructionCombo_->currentData().toInt();
-    std::visit(
-        [mode](auto& g) {
-            using T = std::decay_t<decltype(g)>;
-            if constexpr (std::is_same_v<T, ConstructedPointGeometry>) {
-                g.mode = static_cast<PointConstruction>(mode);
-            } else if constexpr (std::is_same_v<T, ConstructedLineGeometry>) {
-                g.mode = static_cast<LineConstruction>(mode);
-            } else if constexpr (std::is_same_v<T, RegionGeometry>) {
-                g.measure = static_cast<RegionMeasure>(mode);
-            }
-        },
-        tool.geometry);
+    // La medida la escribe el modelo, que sabe cuál de las cinco herramientas
+    // es y valida que el valor sea suyo. Aquí solo quedan las construcciones,
+    // que son las que este desplegable comparte.
+    if (!setMeasureChoice(tool.geometry, mode)) {
+        std::visit(
+            [mode](auto& g) {
+                using T = std::decay_t<decltype(g)>;
+                if constexpr (std::is_same_v<T, ConstructedPointGeometry>) {
+                    g.mode = static_cast<PointConstruction>(mode);
+                } else if constexpr (std::is_same_v<T, ConstructedLineGeometry>) {
+                    g.mode = static_cast<LineConstruction>(mode);
+                }
+            },
+            tool.geometry);
+    }
     // Solo se tocan las referencias si esta herramienta las usa: la Región
     // comparte el desplegable de arriba pero no tiene referencias, y
     // escribirlas a ciegas las borraría.

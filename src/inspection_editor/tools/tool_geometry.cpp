@@ -375,6 +375,81 @@ std::array<OperandKind, 2> referenceOperandsOf(const ToolGeometry& geometry) {
         geometry);
 }
 
+namespace {
+
+// Las opciones de un enum de medida, con su etiqueta y su valor. Se comparte
+// entre las cinco herramientas que eligen, para que añadir una sexta sea una
+// línea y no un `if` más en la ventana.
+template <typename Enum, std::size_t N, typename LabelFn>
+MeasureChoices choicesFrom(const std::array<Enum, N>& all, LabelFn label, Enum current) {
+    MeasureChoices choices;
+    choices.options.reserve(N);
+    for (const auto option : all) {
+        choices.options.push_back({label(option), static_cast<int>(option)});
+    }
+    choices.current = static_cast<int>(current);
+    return choices;
+}
+
+// Pone `value` si es uno de los valores del enum. Si no lo es, NO lo corrige:
+// devuelve false y deja la herramienta como estaba. Corregir en silencio un
+// valor imposible es lo que hace que un fichero corrupto mida otra cosa sin que
+// nadie se entere.
+template <typename Enum, std::size_t N>
+bool assignIfKnown(const std::array<Enum, N>& all, Enum& target, int value) {
+    for (const auto option : all) {
+        if (static_cast<int>(option) == value) {
+            target = option;
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
+MeasureChoices measureChoicesOf(const ToolGeometry& geometry) {
+    return std::visit(
+        [](const auto& g) -> MeasureChoices {
+            using T = std::decay_t<decltype(g)>;
+            if constexpr (std::is_same_v<T, RegionGeometry>) {
+                return choicesFrom(allRegionMeasures(), regionMeasureLabel, g.measure);
+            } else if constexpr (std::is_same_v<T, GrooveGeometry>) {
+                return choicesFrom(allGrooveMeasures(), grooveMeasureLabel, g.measure);
+            } else if constexpr (std::is_same_v<T, ChamferGeometry>) {
+                return choicesFrom(allChamferMeasures(), chamferMeasureLabel, g.measure);
+            } else if constexpr (std::is_same_v<T, FilletGeometry>) {
+                return choicesFrom(allFilletMeasures(), filletMeasureLabel, g.measure);
+            } else if constexpr (std::is_same_v<T, ExtremesGeometry>) {
+                return choicesFrom(allExtremeMeasures(), extremeMeasureLabel, g.measure);
+            } else {
+                return {};
+            }
+        },
+        geometry);
+}
+
+bool setMeasureChoice(ToolGeometry& geometry, int value) {
+    return std::visit(
+        [value](auto& g) -> bool {
+            using T = std::decay_t<decltype(g)>;
+            if constexpr (std::is_same_v<T, RegionGeometry>) {
+                return assignIfKnown(allRegionMeasures(), g.measure, value);
+            } else if constexpr (std::is_same_v<T, GrooveGeometry>) {
+                return assignIfKnown(allGrooveMeasures(), g.measure, value);
+            } else if constexpr (std::is_same_v<T, ChamferGeometry>) {
+                return assignIfKnown(allChamferMeasures(), g.measure, value);
+            } else if constexpr (std::is_same_v<T, FilletGeometry>) {
+                return assignIfKnown(allFilletMeasures(), g.measure, value);
+            } else if constexpr (std::is_same_v<T, ExtremesGeometry>) {
+                return assignIfKnown(allExtremeMeasures(), g.measure, value);
+            } else {
+                return false;
+            }
+        },
+        geometry);
+}
+
 const char* operandKindLabel(OperandKind kind) {
     switch (kind) {
         // "con punto" y no "punto" porque un Círculo vale donde se pide un

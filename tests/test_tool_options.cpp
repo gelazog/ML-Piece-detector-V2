@@ -1372,3 +1372,73 @@ TEST(ToolOptionsDefaults, TheDefaultSearchBandOfACircleIsTiedToTheRadiusItWasDra
             << result.detail;
     }
 }
+
+// ---------------------------------------------------------------------------
+// Qué número vigila la tolerancia lo elige el operador, no el orden del enum
+// ---------------------------------------------------------------------------
+
+TEST(ToolOptions, EveryToolThatPublishesSeveralNumbersLetsYouPickTheOneWithTheTolerance) {
+    // Cinco herramientas calculan de dos a seis cosas y solo una lleva la
+    // tolerancia. El desplegable del editor estaba habilitado únicamente para la
+    // Región —el panel preguntaba «¿es una Región?»— así que Ranura, Chaflán,
+    // Acuerdo y Máx./mín. vigilaban SIEMPRE la primera de su enum: el ancho, el
+    // ángulo, el radio y la anchura mínima. El operador veía los tres números en
+    // el detalle y no tenía forma de decir cuál era la cota.
+    //
+    // Ahora lo responde el MODELO, igual que ya pasaba con las referencias. Este
+    // test recorre TODAS las geometrías para que la siguiente herramienta con
+    // varias medidas no se quede fuera en silencio.
+    struct Case {
+        const char* name;
+        ToolGeometry geometry;
+        std::size_t expected;
+    };
+    const std::vector<Case> cases{
+        {"Región", RegionGeometry{}, 6},
+        {"Ranura", GrooveGeometry{}, 3},
+        {"Chaflán", ChamferGeometry{}, 3},
+        {"Acuerdo", FilletGeometry{}, 2},
+        {"Máx./mín.", ExtremesGeometry{}, 2},
+    };
+
+    for (const auto& c : cases) {
+        const MeasureChoices choices = measureChoicesOf(c.geometry);
+        std::printf("  %-11s -> %zu medidas, la puesta es la %d\n", c.name,
+                    choices.options.size(), choices.current);
+        EXPECT_EQ(choices.options.size(), c.expected) << c.name;
+        for (const auto& option : choices.options) {
+            EXPECT_FALSE(option.label.empty()) << c.name << ": una opción sin nombre";
+        }
+
+        // Y se puede CAMBIAR: un desplegable que no escribe nada sería peor que
+        // no tenerlo.
+        ToolGeometry mutable_ = c.geometry;
+        for (const auto& option : choices.options) {
+            ASSERT_TRUE(setMeasureChoice(mutable_, option.value)) << c.name;
+            EXPECT_EQ(measureChoicesOf(mutable_).current, option.value) << c.name;
+        }
+    }
+
+    // Una herramienta que NO elige medida lo dice con una lista vacía, y así el
+    // panel puede preguntar en vez de saberlo.
+    EXPECT_TRUE(measureChoicesOf(RulerGeometry{}).options.empty());
+    EXPECT_TRUE(measureChoicesOf(CircleGeometry{}).options.empty());
+    ToolGeometry ruler = RulerGeometry{};
+    EXPECT_FALSE(setMeasureChoice(ruler, 0))
+        << "no se puede elegir medida en una herramienta que no tiene";
+}
+
+TEST(ToolOptions, AnUnknownMeasureIsRefusedInsteadOfSilentlyCorrected) {
+    // Un valor imposible NO se corrige en silencio. Es un pecado que esta capa
+    // ya cometía en otro sitio —el eje de la Posición cae a Radial ante
+    // cualquier número raro— y que hace que un fichero corrupto mida otra cosa
+    // sin que nadie se entere.
+    ToolGeometry groove = GrooveGeometry{};
+    ASSERT_TRUE(setMeasureChoice(groove, 2));
+    const int before = measureChoicesOf(groove).current;
+
+    EXPECT_FALSE(setMeasureChoice(groove, 99));
+    EXPECT_FALSE(setMeasureChoice(groove, -1));
+    EXPECT_EQ(measureChoicesOf(groove).current, before)
+        << "un valor desconocido movió la medida en vez de rechazarse";
+}

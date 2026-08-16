@@ -515,6 +515,32 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
                                   ExtremesGeometry, ChamferGeometry,
                                   FilletGeometry, GrooveGeometry>;
 
+// Qué NÚMERO vigila la tolerancia, para las herramientas que publican varios.
+//
+// Cinco herramientas —Región, Ranura, Chaflán, Acuerdo y Máx./mín.— calculan de
+// dos a seis cosas y solo una lleva la tolerancia. El desplegable del editor
+// estaba habilitado únicamente para la Región, así que las otras cuatro
+// vigilaban SIEMPRE la primera de su enum: el ancho de la ranura, el ángulo del
+// chaflán, el radio del acuerdo y la anchura mínima. El operador veía los tres
+// números en el detalle y no tenía forma de decir cuál era la cota.
+//
+// La respuesta la da el MODELO y no el panel, igual que ya pasa con
+// `referenceOperandsOf`: preguntar «¿es una Región?» desde la interfaz es lo
+// que dejó fuera a las otras cuatro, y volvería a dejar fuera a la siguiente.
+struct MeasureChoice {
+    std::string label;
+    int value = 0;
+};
+struct MeasureChoices {
+    std::vector<MeasureChoice> options;  // vacío = esta herramienta no elige
+    int current = 0;
+};
+[[nodiscard]] MeasureChoices measureChoicesOf(const ToolGeometry& geometry);
+// Deja puesta la opción `value`. False si esta herramienta no elige medida o si
+// el valor no es uno de los suyos — un valor desconocido no se corrige en
+// silencio, que es un pecado que esta capa ya cometía en otro sitio.
+bool setMeasureChoice(ToolGeometry& geometry, int value);
+
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
 // plantilla tienen que decir lo mismo.
