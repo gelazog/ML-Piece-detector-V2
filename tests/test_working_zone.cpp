@@ -476,3 +476,106 @@ TEST(WorkingZone, TheHandDrawnZoneStillLimitsTheCountBecauseTheOperatorSaidSo) {
     EXPECT_EQ(piecesSeen(scene, zone), 1);
     EXPECT_EQ(piecesSeen(scene, {}), 6);
 }
+
+// ---------------------------------------------------------------------------
+// La zona LIBRE: lo que un rectángulo no puede separar
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Dos piezas en diagonal. Es el caso que motiva la zona libre: NINGÚN rectángulo
+// puede contener a una sin tocar a la otra, porque sus envolventes se solapan.
+// En una mesa real esto es lo corriente — la pieza de al lado, el borde del
+// útil, la sombra pegada a un lado.
+cv::Mat twoDiagonalPieces() {
+    cv::Mat scene = emptyScene();
+    const cv::Rect wanted(360, 120, 200, 160);   // la que se quiere medir
+    const cv::Rect neighbour(200, 300, 200, 160);  // la de al lado, que estorba
+    for (const auto& piece : {wanted, neighbour}) {
+        const cv::Mat one = sceneWithPiece(piece);
+        one(piece).copyTo(scene(piece));
+    }
+    return scene;
+}
+
+}  // namespace
+
+TEST(WorkingZone, AFreeShapedZoneSeparatesWhatNoRectangleCan) {
+    const cv::Mat scene = twoDiagonalPieces();
+    const cv::Rect wanted(360, 120, 200, 160);
+    const cv::Rect neighbour(200, 300, 200, 160);
+
+    // Primero, que el caso sea el caso: cualquier rectángulo que contenga
+    // entera a la pieza buena toca también a la de al lado. Si esto no fuera
+    // cierto, el test no estaría probando nada que un rectángulo no resuelva.
+    ASSERT_GT((wanted & neighbour).area(), -1);
+    const cv::Rect hull = wanted | neighbour;
+    ASSERT_EQ(hull & neighbour, neighbour)
+        << "el rectángulo que abarca la pieza buena no llega a la vecina: mal montado";
+
+    // Sin zona: se ven las dos.
+    PipelineConfig plain;
+    const auto all = analyzeFrames(scene, plain);
+    ASSERT_TRUE(all.isOk()) << all.error().message;
+    EXPECT_EQ(all.value().size(), 2U) << "la escena tiene que tener dos piezas";
+
+    // Con zona LIBRE ceñida a la pieza buena: solo se ve una, y es la buena.
+    PipelineConfig free;
+    free.roiPolygon = {{350, 110}, {575, 110}, {575, 290}, {350, 290}};
+    const auto onlyWanted = analyzeFrames(scene, free);
+    ASSERT_TRUE(onlyWanted.isOk()) << onlyWanted.error().message;
+    ASSERT_EQ(onlyWanted.value().size(), 1U) << "la zona libre no dejó fuera a la vecina";
+    const cv::Rect got = cv::boundingRect(onlyWanted.value().front().contour.points);
+    EXPECT_LT(std::abs(got.x - wanted.x), 6) << "se quedó con la pieza equivocada";
+    EXPECT_LT(std::abs(got.y - wanted.y), 6);
+    std::printf("  [zona libre] caja medida (%d,%d,%d,%d) frente a la buena (%d,%d,%d,%d)\n",
+                got.x, got.y, got.width, got.height, wanted.x, wanted.y, wanted.width,
+                wanted.height);
+}
+
+TEST(WorkingZone, TheFreeZoneDoesNotMoveTheMeasurement) {
+    // La misma exigencia que ya se le hace a la zona rectangular: acotar dónde
+    // se mira no puede cambiar lo que se mide. Si el fixture saliera distinto,
+    // todas las herramientas se desplazarían.
+    const cv::Mat scene = sceneWithPiece(pieceAtStep(4));
+    const cv::Rect piece = pieceAtStep(4);
+
+    PipelineConfig plain;
+    const auto whole = analyzeFrame(scene, plain);
+    ASSERT_TRUE(whole.isOk()) << whole.error().message;
+
+    // Un polígono que contiene a la pieza con holgura, y que NO es un
+    // rectángulo: un hexágono alrededor, para que el recorte y la máscara sean
+    // de verdad distintos de la envolvente.
+    const cv::Point centre(piece.x + piece.width / 2, piece.y + piece.height / 2);
+    const int radius = std::max(piece.width, piece.height);
+    PipelineConfig free;
+    for (int k = 0; k < 6; ++k) {
+        const double a = 2.0 * CV_PI * k / 6.0;
+        free.roiPolygon.emplace_back(
+            static_cast<int>(centre.x + radius * std::cos(a)),
+            static_cast<int>(centre.y + radius * std::sin(a)));
+    }
+    const auto zoned = analyzeFrame(scene, free);
+    ASSERT_TRUE(zoned.isOk()) << zoned.error().message;
+
+    double worst = 0.0;
+    expectSameMeasurements(whole.value(), zoned.value(), "con zona libre hexagonal", &worst);
+    std::printf("  [zona libre] peor desfase del fixture: %.6f px\n", worst);
+}
+
+TEST(WorkingZone, APolygonWithFewerThanThreeCornersIsNotAZone) {
+    // Dos puntos no encierran nada. Lo correcto es comportarse como si no
+    // hubiera zona, no recortar a una línea y quedarse sin pieza.
+    const cv::Mat scene = sceneWithPiece(pieceAtStep(4));
+    PipelineConfig degenerate;
+    degenerate.roiPolygon = {{10, 10}, {200, 200}};
+    const auto result = analyzeFrame(scene, degenerate);
+    ASSERT_TRUE(result.isOk()) << result.error().message;
+
+    const auto plain = analyzeFrame(scene, PipelineConfig{});
+    ASSERT_TRUE(plain.isOk());
+    EXPECT_EQ(cv::boundingRect(result.value().contour.points),
+              cv::boundingRect(plain.value().contour.points))
+        << "un polígono imposible cambió lo que se mide";
+}

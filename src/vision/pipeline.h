@@ -25,6 +25,20 @@ struct PipelineConfig {
     // objetos fuera de la zona dejan de estorbar. Los resultados se devuelven
     // en coordenadas de la imagen completa.
     cv::Rect roi;
+    // Zona de detección LIBRE: un polígono en coordenadas de imagen. Cuando
+    // tiene al menos tres vértices manda sobre `roi` y solo se busca pieza
+    // dentro de él.
+    //
+    // Existe porque un rectángulo obliga a elegir entre dejar fuera parte de la
+    // pieza o dejar dentro lo que estorba, y en una mesa real lo que estorba
+    // —el borde del útil, la sombra pegada a un lado, la pieza de al lado— casi
+    // nunca cae en un rectángulo que no toque también a la pieza. Con un
+    // polígono se ciñe al hueco que de verdad ocupa.
+    //
+    // El rectángulo NO desaparece: la envolvente del polígono se sigue usando
+    // para recortar, así que la ganancia de velocidad de la zona se conserva y
+    // el polígono solo añade precisión. Las dos cosas suman en vez de competir.
+    std::vector<cv::Point> roiPolygon;
     // Cuántas piezas se esperan en la imagen (C5). No cambia la detección: la
     // usa quien juzga, para poder decir "esperaba 6, veo 5". 0 = no vigilar.
     int expectedPieces = 1;

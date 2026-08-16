@@ -15,6 +15,42 @@ namespace pci::vision {
 
 namespace {
 
+// La zona efectiva: el rectángulo con el que se recorta.
+//
+// Con polígono, es su envolvente — así el recorte y su ganancia de velocidad se
+// conservan tal cual, y el polígono solo añade precisión encima. Sin polígono,
+// el rectángulo que puso el operador.
+cv::Rect croppingRect(const PipelineConfig& config, const cv::Rect& frameRect) {
+    if (config.roiPolygon.size() >= 3) {
+        return cv::boundingRect(config.roiPolygon) & frameRect;
+    }
+    return config.roi & frameRect;
+}
+
+// Borra de la máscara todo lo que cae FUERA del polígono.
+//
+// Se aplica sobre la máscara ya segmentada y no sobre la imagen, y la
+// diferencia importa: recortar la imagen antes metería un borde artificial
+// —negro contra la pieza— que la segmentación tomaría por un contorno de
+// verdad. Sobre la máscara, lo de fuera simplemente deja de existir.
+void keepOnlyInsidePolygon(cv::Mat& mask, const PipelineConfig& config,
+                           const cv::Rect& crop, bool cropped) {
+    if (config.roiPolygon.size() < 3 || mask.empty()) {
+        return;
+    }
+    // El polígono viene en coordenadas de la imagen completa; la máscara está
+    // en las del recorte.
+    std::vector<cv::Point> local;
+    local.reserve(config.roiPolygon.size());
+    const cv::Point offset = cropped ? crop.tl() : cv::Point(0, 0);
+    for (const auto& point : config.roiPolygon) {
+        local.push_back(point - offset);
+    }
+    cv::Mat inside = cv::Mat::zeros(mask.size(), CV_8UC1);
+    cv::fillPoly(inside, std::vector<std::vector<cv::Point>>{local}, cv::Scalar(255));
+    cv::bitwise_and(mask, inside, mask);
+}
+
 // Convierte un contorno ya aceptado en un PieceAnalysis completo.
 //
 // La máscara limpia se construye **solo dentro de la envolvente de la pieza**:
@@ -81,7 +117,7 @@ core::Result<std::vector<PieceAnalysis>> analyzeFrames(const cv::Mat& image,
         return core::Result<std::vector<PieceAnalysis>>::err("Imagen vacía");
     }
     const cv::Rect frameRect(0, 0, image.cols, image.rows);
-    const cv::Rect roi = config.roi & frameRect;
+    const cv::Rect roi = croppingRect(config, frameRect);
     const bool useRoi = roi.area() > 0 && roi != frameRect;
     const cv::Mat working = useRoi ? image(roi) : image;
 
@@ -89,6 +125,7 @@ core::Result<std::vector<PieceAnalysis>> analyzeFrames(const cv::Mat& image,
     if (!mask.isOk()) {
         return core::Result<std::vector<PieceAnalysis>>::err(mask.error().message);
     }
+    keepOnlyInsidePolygon(mask.value(), config, roi, useRoi);
 
     auto contours =
         findPieceContours(mask.value(), config.minAreaFraction, config.maxAreaFraction);
@@ -141,7 +178,7 @@ core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image, const PipelineCon
     // Zona de detección: todo el pipeline trabaja sobre el recorte y al final
     // los resultados se llevan a coordenadas de la imagen completa.
     const cv::Rect frameRect(0, 0, image.cols, image.rows);
-    cv::Rect roi = config.roi & frameRect;
+    cv::Rect roi = croppingRect(config, frameRect);
     const bool useRoi = roi.area() > 0 && roi != frameRect;
     const cv::Mat working = useRoi ? image(roi) : image;
 
@@ -149,6 +186,7 @@ core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image, const PipelineCon
     if (!mask.isOk()) {
         return core::Result<PieceAnalysis>::err(mask.error().message);
     }
+    keepOnlyInsidePolygon(mask.value(), config, roi, useRoi);
     mark(timings != nullptr ? &timings->segment : nullptr);
 
     auto contour =

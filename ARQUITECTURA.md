@@ -679,6 +679,33 @@ reportara que «la zona de detección no funciona»:
   y solo lo primero alimenta al seguimiento. Dar algo por perdido sin haberlo
   mirado es afirmar lo que no se ha medido.
 
+#### La zona LIBRE: lo que un rectángulo no puede separar
+
+Un rectángulo obliga a elegir entre dejar fuera parte de la pieza o dejar dentro
+lo que estorba, y en una mesa real lo que estorba —el borde del útil, la sombra
+pegada a un lado, la pieza de al lado— casi nunca cae en un rectángulo que no
+toque también a la pieza. Con dos piezas en diagonal es imposible por
+construcción: sus envolventes se solapan, así que **ningún** rectángulo contiene
+a una sin tocar a la otra.
+
+`PipelineConfig::roiPolygon` es esa zona en forma libre. Dos decisiones:
+
+- **El rectángulo no desaparece.** La envolvente del polígono se sigue usando
+  para recortar, así que la ganancia de velocidad de la zona se conserva intacta
+  y el polígono solo añade precisión encima. Las dos cosas suman en vez de
+  competir.
+- **La máscara se recorta DESPUÉS de segmentar, no antes.** Recortar la imagen
+  metería un borde artificial —negro contra la pieza— que la segmentación
+  tomaría por un contorno de verdad. Sobre la máscara ya segmentada, lo de fuera
+  simplemente deja de existir.
+
+Medido: sobre dos piezas diagonales, la zona libre devuelve exactamente la caja
+de la pieza buena, y el desfase del fixture frente a analizar el frame entero es
+de **0,000000 px** — la misma exigencia que ya se le hacía a la zona
+rectangular, porque acotar dónde se mira no puede cambiar lo que se mide. Un
+polígono de menos de tres vértices no encierra nada y se comporta como si no
+hubiera zona, en vez de recortar a una línea y quedarse sin pieza.
+
 **El cuarto lo encontró el banco de pruebas** (`tests/test_working_zone.cpp`),
 y es el más instructivo porque el test que demuestra que recortar no cambia la
 medida **no podía verlo**: lo que el recorte se lleva por delante no es la
