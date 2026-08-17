@@ -1,0 +1,23 @@
+# Finales de línea normalizados a LF en el repositorio.
+#
+# Existe por un accidente concreto: varias ediciones automatizadas escribieron
+# los ficheros en modo texto sobre Windows, y eso convierte cada \n en \r\n. El
+# resultado fueron 33 ficheros que cambiaron ENTEROS en el historial sin que
+# cambiara una sola línea de código — commits imposibles de revisar, que es justo
+# lo que un historial existe para permitir.
+#
+# `text=auto eol=lf` hace que git normalice al guardar pase lo que pase en el
+# disco de quien edite, así que el mismo accidente ya no puede ensuciar el
+# historial otra vez.
+* text=auto eol=lf
+
+# Binarios: ni normalizar ni intentar diferenciar.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.bmp binary
+*.tif binary
+*.tiff binary
+*.onnx binary
+*.db binary
+*.ico binary
