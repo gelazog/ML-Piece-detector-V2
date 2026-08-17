@@ -2021,6 +2021,42 @@ inconveniente, perder la pieza es no medir nada.
 Verificado sobre una arandela dibujada con Ø380 y Ø160 px: medidos **379,9 y
 159,8** (0,02 % y 0,13 %).
 
+#### Las caras de una pieza de contorno libre
+
+Los lados solo se proponían para el **polígono** y el **polígono redondeado**.
+Una pieza de canto escalonado —un peine, una cremallera, un soporte con
+rebajes— cae en «contorno libre» y se quedaba **sin una sola cota de sus
+caras**, aunque la descomposición del contorno ya las tenía medidas y aunque sí
+recibía sus ángulos y su envolvente.
+
+Conviene decir de qué tamaño era el hueco, porque adivinarlo salió mal dos
+veces: el clasificador es **más tolerante** de lo que parece, y llama
+«redondeada» a bastante más de lo que su nombre sugiere.
+
+Ahora se proponen para cualquier forma que no sea redonda. La pieza redonda
+sigue fuera, y ahí la razón se mantiene: en un disco el «tramo recto» que
+aparece es un trozo de circunferencia mal ajustado, no una cara.
+
+Encontrar una pieza de prueba costó tres intentos, y el proceso vale más que el
+resultado. La primera fue una escuadra con una entalla y un extremo redondeado:
+el clasificador la llamó **«redondeada»**, así que ya recibía lados y el test no
+probaba nada. La segunda, con un rebaje semicircular en medio de una cara,
+también salió redondeada. Se sondearon nueve formas para ver **cuáles caen de
+verdad** en contorno libre:
+
+| Forma | Clase | Lados propuestos |
+|---|---|---|
+| Disco, arandela | redonda | 0 — correcto |
+| Hexágono, L, estrella | polígono | 6, 6, 10 |
+| Rectángulo redondeado | redondeado | 4 |
+| **Elipse** | **contorno libre** | **0** — correcto: no tiene caras |
+| **Canto escalonado** | **contorno libre** | **11** — antes 0 |
+| **Gota** (círculo con punta) | **contorno libre** | **2** — antes 0 |
+
+La elipse es la que impide que quitar la condición se convierta en inventar
+cotas: también es de contorno libre y no tiene ni una cara recta, así que tiene
+que seguir sin lados. Hay un test para cada lado de esa frontera.
+
 ### Catorce de quince cotas no podían fallar
 
 Lo destapó una sonda que no buscaba esto. Se propusieron las cotas de un

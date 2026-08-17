@@ -305,13 +305,26 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
     const auto primitives =
         vision::decomposeContour(contour, vision::decomposeOptionsFor(contour));
 
-    // Los lados, uno a uno. Esto es lo que le pone tolerancia y veredicto a
-    // cada cara: «Lados» dice cuántas hay y estas dicen cuánto mide cada una.
+    // Los lados, uno a uno: «Lados» dice cuántas caras hay y estas dicen cuánto
+    // mide cada una.
     //
-    // Vale igual para el polígono de esquina viva y para el redondeado, porque
-    // las dos formas tienen tramos rectos y la descomposición ya los ha
-    // separado de los redondeos.
-    if (shape.kind == vision::ShapeKind::Polygon || shape.kind == vision::ShapeKind::Rounded) {
+    // Se proponen para CUALQUIER forma que no sea redonda, no solo para el
+    // polígono y el redondeado. La condición anterior dejaba sin una sola cota
+    // de sus caras a las piezas «de contorno libre», aunque la descomposición ya
+    // las tuviera medidas y aunque sí recibieran sus ángulos y su envolvente.
+    //
+    // Qué cae ahí se midió, porque adivinarlo salió mal dos veces: una escuadra
+    // con entalla y extremo redondeado la clasifica como REDONDEADA, y un rebaje
+    // semicircular en medio de una cara, también. Las que sí caen en contorno
+    // libre teniendo caras rectas son, por ejemplo, un canto escalonado (once
+    // caras, antes ninguna) o un círculo rematado en punta (dos).
+    //
+    // La pieza REDONDA sigue fuera, y ahí la razón se mantiene: en un disco el
+    // «tramo recto» que aparece es un trozo de la circunferencia mal ajustado,
+    // no una cara. Y una ELIPSE, que también es de contorno libre, no recibe
+    // lados porque no tiene ninguno — esa es la frontera que impide que quitar
+    // la condición se convierta en inventar cotas.
+    if (!isRound) {
         int sideIndex = 0;
         for (const auto& primitive : primitives) {
             if (primitive.kind != vision::PrimitiveKind::Line ||

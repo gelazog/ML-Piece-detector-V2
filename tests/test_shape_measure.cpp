@@ -749,3 +749,87 @@ TEST(ShapeProposals, WhatDoesLookAtTheImageStillJudges) {
     EXPECT_NEAR(there.value().measured, 270.0, 6.0);
     EXPECT_FALSE(here.value().informative) << "un diámetro sí comprueba, y tiene que juzgar";
 }
+
+// ---------------------------------------------------------------------------
+// La pieza de contorno libre, que es casi toda pieza mecanizada de verdad
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Una escuadra con una entalla y un extremo redondeado: rectas de longitud
+// conocida, un redondeo y un rebaje. No es un polígono ni un polígono
+// redondeado, y es exactamente la clase de contorno que sale de una pieza real.
+// Una pieza con el canto escalonado —un peine, una cremallera, un soporte con
+// rebajes—: caras rectas de sobra y un contorno que ningún modelo de polígono
+// explica, así que cae en «contorno libre».
+//
+// El primer intento de esta pieza fue una escuadra con una entalla y un extremo
+// redondeado, y el clasificador la llamó «redondeada»: ya recibía lados y el
+// test no probaba nada. Se sondearon nueve formas para encontrar cuáles caen de
+// verdad en contorno libre.
+cv::Mat steppedPart(int size = 500) {
+    cv::Mat mask(size, size, CV_8UC1, cv::Scalar(0));
+    std::vector<cv::Point> outline{{100, 120}, {380, 120}, {380, 300}};
+    for (int x = 380; x >= 100; x -= 20) {
+        outline.emplace_back(x, (x / 20) % 2 == 0 ? 300 : 340);
+    }
+    outline.emplace_back(100, 300);
+    cv::fillPoly(mask, outline, cv::Scalar(255));
+    return mask;
+}
+
+}  // namespace
+
+TEST(ShapeProposals, AFreeFormPartGetsItsFacesMeasuredToo) {
+    // EL HUECO: los lados solo se proponían para el polígono y el redondeado.
+    // Una pieza de canto escalonado cae en «contorno libre» y se quedaba sin una
+    // sola cota de sus caras, aunque la descomposición del contorno ya las tenía
+    // medidas y aunque sí recibía sus ángulos y su envolvente.
+    const Scene scene = sceneFrom(steppedPart());
+    const auto shape = classOf(steppedPart());
+    ASSERT_EQ(shape.kind, ShapeKind::Irregular)
+        << "la pieza de prueba dejó de ser irregular: el test ya no prueba el caso";
+
+    const auto proposals = proposeTools(scene.gray, scene.mask, {}, everything());
+    const int sides = countNamed(proposals, "Lado ");
+    std::printf("  [contorno libre] %d cotas de lado sobre una pieza irregular\n", sides);
+    EXPECT_GT(sides, 2) << "una pieza de contorno libre sigue sin cotas de sus caras";
+
+    // Y las que salen tienen que medir de verdad: el lado largo de arriba va de
+    // x=100 a x=380, o sea 280 px. Alguna propuesta tiene que rondarlo.
+    double closest = 1e9;
+    for (const auto& p : proposals) {
+        if (p.config.name.rfind("Lado ", 0) == 0) {
+            closest = std::min(closest, std::abs(p.measured - 280.0));
+        }
+    }
+    std::printf("  [contorno libre] la cota mas cercana a los 280 px reales discrepa %.1f px\n",
+                closest);
+    EXPECT_LT(closest, 12.0) << "ninguna cota de lado corresponde a la cara larga real";
+}
+
+TEST(ShapeProposals, AShapeWithoutStraightFacesGetsNoSidesEvenIfItIsFreeForm) {
+    // El otro lado de la moneda, y es lo que impide que quitar la condición se
+    // convierta en inventar cotas: una ELIPSE también es de contorno libre, y no
+    // tiene ni una cara recta. Tiene que seguir sin lados.
+    const Scene scene = sceneFrom(ellipseMask());
+    ASSERT_EQ(classOf(ellipseMask()).kind, ShapeKind::Irregular);
+    const auto proposals = proposeTools(scene.gray, scene.mask, {}, everything());
+    EXPECT_EQ(countNamed(proposals, "Lado "), 0)
+        << "se le inventaron lados rectos a una elipse";
+}
+
+TEST(ShapeProposals, ARoundPieceStillGetsNoSides) {
+    // La otra mitad: en un disco, el «tramo recto» que aparece es un trozo de
+    // circunferencia mal ajustado, no una cara. Proponerlo sería inventar una
+    // cota que la pieza no tiene.
+    const Scene scene = sceneFrom(disc());
+    const auto proposals = proposeTools(scene.gray, scene.mask, {}, everything());
+    EXPECT_EQ(countNamed(proposals, "Lado "), 0)
+        << "a una pieza redonda se le propusieron lados";
+
+    const Scene ring = sceneFrom(washer());
+    const auto ringProposals = proposeTools(ring.gray, ring.mask, {}, everything());
+    EXPECT_EQ(countNamed(ringProposals, "Lado "), 0)
+        << "a una arandela se le propusieron lados";
+}

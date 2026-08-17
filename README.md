@@ -299,7 +299,12 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    | **Una arandela** | **Ø exterior**, **Ø interior** y la redondez |
    | **Un polígono** | **cada lado** con su propia cota, el **recuento de lados** y **cada ángulo** |
    | **Un polígono redondeado** | cada tramo recto, el **radio de cada redondeo** y el largo/ancho |
-   | Cualquier otra | largo y ancho, un círculo por agujero, un espesor por cada par de caras paralelas y un ángulo por esquina |
+   | Cualquier otra | **cada cara recta** que tenga, largo y ancho, un círculo por agujero, un espesor por cada par de caras paralelas y un ángulo por esquina |
+
+   Las caras rectas salen **para cualquier forma que no sea redonda**, no solo
+   para los polígonos: una pieza de canto escalonado se quedaba antes sin una
+   sola cota de sus caras. Una elipse sigue sin recibir lados, y eso también es
+   correcto: no tiene ninguno.
 
    A una pieza redonda **ya no le propone el largo y el ancho**: en un disco esos
    dos números son el mismo que el diámetro, y una lista con la misma cota tres
