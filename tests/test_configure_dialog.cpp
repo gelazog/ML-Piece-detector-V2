@@ -4,6 +4,7 @@
 // una pestaña se queda vacía o un control deja de leer su valor sin que nadie
 // lo note.
 #include <gtest/gtest.h>
+#include "vision/pipeline.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -838,4 +839,54 @@ TEST(SetupGuide, ItDoesNotTellYouToFocusAPhotograph) {
         EXPECT_TRUE(hint.contains(QStringLiteral("píxeles")))
             << "no dice qué pasa si no calibras: " << hint.toStdString();
     }
+}
+
+// ---------------------------------------------------------------------------
+// Restablecer una pestaña sin tocar el resto
+// ---------------------------------------------------------------------------
+
+TEST(DetectionPageDefaults, RestoringGivesBackTheFactoryValuesAndNotACopy) {
+    // Los valores de fábrica salen de construir por defecto las propias
+    // estructuras del modelo, no de una copia escrita en la página. Este test
+    // compara contra esas estructuras justamente para que, si alguien cambia un
+    // valor por defecto en el modelo, la página lo siga o el test falle — nunca
+    // que diverjan en silencio.
+    pci::vision::SegmentationOptions tangled;
+    tangled.manualThreshold = 200;
+    tangled.polarity = pci::vision::SegmentationPolarity::LightPiece;
+    tangled.blurKernel = 11;
+    tangled.morphKernel = 9;
+
+    pci::ui::DetectionPage page(tangled, nullptr, nullptr, 0, 0.05, 0.5);
+    page.resize(500, 600);
+    ASSERT_EQ(page.options().manualThreshold, 200) << "la pagina no arranco enredada";
+
+    page.restoreDefaults();
+
+    const pci::vision::SegmentationOptions factory;
+    const pci::vision::PipelineConfig defaults;
+    EXPECT_EQ(page.options().manualThreshold, factory.manualThreshold)
+        << "el umbral no volvio al automatico";
+    EXPECT_EQ(page.options().polarity, factory.polarity);
+    EXPECT_EQ(page.options().blurKernel, factory.blurKernel);
+    EXPECT_EQ(page.options().morphKernel, factory.morphKernel);
+    EXPECT_NEAR(page.minAreaFraction(), defaults.minAreaFraction, 1e-4);
+    EXPECT_NEAR(page.maxAreaFraction(), defaults.maxAreaFraction, 1e-4);
+    // Y sin perfil: un perfil es una eleccion del operador, y dejarlo puesto
+    // sobre unos controles que ya no le corresponden seria mentir sobre que se
+    // esta usando.
+    EXPECT_EQ(page.selectedProfileId(), 0);
+}
+
+TEST(DetectionPageDefaults, TheThresholdGoesBackToAutomaticAndNotToANumber) {
+    // El umbral automatico es -1, y es un ESTADO distinto de «un numero
+    // cualquiera»: -1 significa que lo decide Otsu mirando la imagen. Volver a
+    // 128 dejaria la deteccion clavada a un valor que nadie eligio.
+    pci::vision::SegmentationOptions manual;
+    manual.manualThreshold = 77;
+    pci::ui::DetectionPage page(manual, nullptr, nullptr, 0, 0.05, 0.5);
+    page.resize(500, 600);
+    page.restoreDefaults();
+    EXPECT_LT(page.options().manualThreshold, 0)
+        << "el umbral se quedo en un numero en vez de volver a Otsu";
 }

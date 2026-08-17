@@ -124,8 +124,46 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
     connect(shortcutsButton, &QPushButton::clicked, this,
             &ConfigureDialog::shortcutsRequested);
 
-    auto* buttons = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Apply | QDialogButtonBox::Close, this);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Apply |
+                                             QDialogButtonBox::RestoreDefaults |
+                                             QDialogButtonBox::Close,
+                                         this);
+    // `RestoreDefaults` y no un botón propio: es el papel que Qt ya tiene para
+    // esto, así que sale colocado donde el operador lo espera en su sistema y
+    // con el texto de su idioma.
+    //
+    // Restablece LA PESTAÑA QUE SE ESTÁ VIENDO, no todo. Restablecer entero es
+    // otra cosa y vive en Archivo, con su propia confirmación: quien viene aquí
+    // a desenredar el umbral no quiere perder la calibración de la máquina.
+    auto* restore = buttons->button(QDialogButtonBox::RestoreDefaults);
+    connect(restore, &QPushButton::clicked, this, [this, restore] {
+        if (detection_ == nullptr || tabs_ == nullptr ||
+            tabs_->currentWidget() != detection_) {
+            return;
+        }
+        detection_->restoreDefaults();
+        emit applied();
+        // Se dice qué se ha hecho: un formulario que cambia solo bajo el cursor,
+        // sin decir por qué, parece que se ha estropeado.
+        restore->setToolTip(tr("Detección devuelta a los valores de fábrica."));
+    });
+    // Encendido SOLO donde hay algo que restablecer, y apagado con su motivo en
+    // el resto: un botón vivo que no hace nada enseña a desconfiar de los
+    // botones, y uno apagado sin explicación deja pensando qué falta.
+    const auto updateRestore = [this, restore] {
+        const bool canRestore = detection_ != nullptr && tabs_ != nullptr &&
+                                tabs_->currentWidget() == detection_;
+        restore->setEnabled(canRestore);
+        restore->setToolTip(canRestore
+                                ? tr("Devuelve esta pestaña a los valores de fábrica.\n"
+                                     "Para restablecerlo todo: Archivo ▸ Restablecer "
+                                     "configuración de fábrica…")
+                                : tr("Esta pestaña no tiene valores de fábrica que "
+                                     "restablecer.\nPara restablecerlo todo: Archivo ▸ "
+                                     "Restablecer configuración de fábrica…"));
+    };
+    connect(tabs_, &QTabWidget::currentChanged, this, [updateRestore](int) { updateRestore(); });
+    updateRestore();
     root->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::accepted, this, [this] {
         emit applied();

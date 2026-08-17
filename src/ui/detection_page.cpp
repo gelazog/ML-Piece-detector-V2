@@ -1,5 +1,7 @@
 #include "ui/detection_page.h"
 
+#include "vision/pipeline.h"
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -153,6 +155,21 @@ void DetectionPage::applyOptions(const vision::SegmentationOptions& options) {
     polarity_->setCurrentIndex(static_cast<int>(options.polarity));
     blur_->setValue(options.blurKernel);
     morph_->setValue(options.morphKernel);
+}
+
+void DetectionPage::restoreDefaults() {
+    // Construidas por defecto: los valores de fábrica son los inicializadores
+    // de miembro de las propias estructuras, no una copia escrita aquí.
+    applyOptions(vision::SegmentationOptions{});
+    const vision::PipelineConfig factory;
+    minArea_->setValue(factory.minAreaFraction * 100.0);
+    maxArea_->setValue(factory.maxAreaFraction * 100.0);
+    // Y sin perfil: un perfil es una elección del operador, así que restablecer
+    // vuelve a «ajustes sueltos» en vez de dejar puesto uno que ya no
+    // corresponde a lo que enseñan los controles.
+    if (profileCombo_ != nullptr) {
+        profileCombo_->setCurrentIndex(0);
+    }
 }
 
 void DetectionPage::onProfileChosen(int index) {

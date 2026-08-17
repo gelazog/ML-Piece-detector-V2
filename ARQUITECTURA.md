@@ -2707,6 +2707,33 @@ Y se dice qué **queda por aplicarse**: lo que se lee una sola vez al arrancar
 —los atajos, la disposición de las ventanas— no puede rehacerse sin volver a
 abrir, y callárselo dejaría al operador creyendo que el restablecido falló.
 
+#### Y por pestaña, sin tocar el resto
+
+El panel *Configurar* estrena **Restablecer** (el papel `RestoreDefaults` de Qt,
+para que salga colocado donde el operador lo espera en su sistema y con el texto
+de su idioma). Restablece **la pestaña que se está viendo**, no todo: quien viene
+aquí a desenredar el umbral no quiere perder la calibración de la máquina — para
+eso está la entrada de *Archivo*, con su propia confirmación.
+
+Los valores de fábrica **no se escriben en la página**: salen de construir por
+defecto las propias estructuras del modelo, `SegmentationOptions{}` y
+`PipelineConfig{}`, que es donde ya vivían como inicializadores de miembro. Es la
+misma regla que gobierna `forget()`, aplicada a la otra capa — escribir aquí una
+copia crearía dos listas que mantener, y a la primera divergencia «restablecer»
+dejaría la página en un estado que no es ni el suyo ni el de fábrica. El test lo
+compara contra esas estructuras a propósito: si alguien cambia un valor por
+defecto en el modelo, la página lo sigue o el test falla, nunca divergen en
+silencio.
+
+Un detalle que parece menor y no lo es: el umbral vuelve a **automático (−1)**,
+no a un número. Son dos estados distintos — −1 significa que lo decide Otsu
+mirando la imagen, y dejarlo en 128 clavaría la detección a un valor que nadie
+eligió.
+
+El botón está encendido **solo donde hay algo que restablecer**, y apagado con su
+motivo en el resto: un botón vivo que no hace nada enseña a desconfiar de los
+botones, y uno apagado sin explicación deja pensando qué falta.
+
 ### Volver a donde lo dejaste
 
 Lo que el operador coloca una vez tiene que seguir colocado mañana. Lo contrario

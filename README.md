@@ -988,6 +988,11 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    Y todo lo que se puede hacer desde la barra tiene ahora su entrada de menú:
    una acción que solo vive en un botón no la encuentra quien va con el teclado.
 
+   **Restablecer una pestaña** (panel *Configurar*, botón **Restablecer**):
+   devuelve solo la pestaña que estás viendo a sus valores de fábrica. Quien
+   viene a desenredar el umbral no quiere perder la calibración de la máquina.
+   El umbral vuelve a **automático**, no a un número: son dos cosas distintas.
+
    **Restablecer de fábrica** (menú **Archivo** ▸ *Restablecer configuración de
    fábrica…*): devuelve la máquina al estado de recién instalada. Te dice antes
    **qué se lleva** —calibración, ajustes y perfiles de detección, zona de

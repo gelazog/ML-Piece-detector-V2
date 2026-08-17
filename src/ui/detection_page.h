@@ -42,6 +42,16 @@ public:
     // Perfil elegido al aceptar: 0 = ninguno (ajustes sueltos, como antes).
     [[nodiscard]] std::int64_t selectedProfileId() const;
 
+    // Devolver la página a los valores de FÁBRICA.
+    //
+    // Los valores no se escriben aquí: salen de construir por defecto las
+    // propias estructuras del modelo —`SegmentationOptions{}` y
+    // `PipelineConfig{}`—, que es donde ya vivían. Escribir aquí una copia
+    // crearía dos listas que mantener, y a la primera que alguien cambiara una
+    // sola, «restablecer» dejaría la página en un estado que no es ni el suyo
+    // ni el de fábrica. Es la misma regla que gobierna `SettingsRepository::forget`.
+    void restoreDefaults();
+
 private slots:
     void onAutoThresholdToggled(bool automatic);
     void onThresholdMoved(int value);
