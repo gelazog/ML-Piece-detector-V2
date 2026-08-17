@@ -2040,6 +2040,19 @@ TEST(MainToolbar, TheZoneIsOneControlWithItsThreeActionsNamed) {
     EXPECT_FALSE(clear->isEnabled()) << "«" << clear->text().toStdString()
                                      << "» está vivo sin zona que quitar";
     EXPECT_FALSE(clear->toolTip().isEmpty()) << "apagado y sin decir por qué";
+
+    // Y las de DIBUJAR no son marcables. Una acción marcable se marca al
+    // pulsarla, y pulsar «Dibujar zona» solo empieza el gesto: todavía no hay
+    // zona. El menú quedaba afirmando que sí, y si el operador no llegaba a
+    // arrastrar, seguía mintiendo.
+    for (auto* action : zone->menu()->actions()) {
+        if (action->isSeparator() || action == clear) {
+            continue;
+        }
+        EXPECT_FALSE(action->isCheckable())
+            << "«" << action->text().toStdString()
+            << "» se marca al pulsarla, antes de que exista la zona";
+    }
 }
 
 TEST(MainToolbar, TheDropdownsDoNotEatTheRow) {

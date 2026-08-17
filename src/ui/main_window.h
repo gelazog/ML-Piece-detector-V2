@@ -330,6 +330,11 @@ private:
     QPushButton* measurePieceButton_ = nullptr;
     // Ruta del fichero abierto como fuente, para recordarlo entre sesiones.
     QString lastSourcePath_;
+    // Fuente elegida mientras otra seguía en marcha. Parar es asíncrono, así
+    // que la nueva arranca en  y no en el acto: arrancarla
+    // antes de que la anterior suelte la cámara es la forma más rápida de
+    // quedarse sin ninguna.
+    std::optional<int> pendingSourceChoice_;
     QLabel* calibLabel_ = nullptr;  // estado de la escala en la barra inferior
     // Fila 2: pieza y flujo.
     QComboBox* pieceCombo_ = nullptr;

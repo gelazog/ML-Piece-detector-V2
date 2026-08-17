@@ -373,7 +373,22 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // fichero— y un botón que no anuncia su efecto se pulsa con recelo.
     connect(cameraCombo_, &QComboBox::currentIndexChanged, this, [this](int) {
         if (streaming_) {
-            return;  // mientras hay fuente, el botón es «Detener»/«Cerrar»
+            // Con una fuente en marcha, elegir otra la CAMBIA. Antes esto no
+            // podía pasar porque el desplegable estaba apagado, y para abrir una
+            // imagen había que saber que primero hay que pulsar «Detener».
+            //
+            // El cambio no es inmediato: parar la fuente es asíncrono (une el
+            // hilo de captura), así que se apunta la elección y se aplica en
+            // `onStreamStopped`. Arrancar la nueva antes de que la anterior
+            // suelte la cámara es la forma más rápida de quedarse sin ninguna.
+            const QVariant choice = cameraCombo_->currentData();
+            if (!choice.isValid() || choice.toInt() == kSourceOpenedFile) {
+                return;  // el propio fichero abierto: no hay nada que cambiar
+            }
+            pendingSourceChoice_ = choice.toInt();
+            statusBar()->showMessage(tr("Cambiando de fuente…"));
+            onStartStopClicked();  // detiene; la nueva arranca al terminar
+            return;
         }
         const QVariant choice = cameraCombo_->currentData();
         const bool opensAFile = choice.isValid() && (choice.toInt() == kSourceOpenImage ||
@@ -1378,13 +1393,17 @@ void MainWindow::updateRoiButton() {
     const bool hasRect = pipelineConfig_.roi.area() > 0;
     const bool hasFree = pipelineConfig_.roiPolygon.size() >= 3;
 
-    // El botón dice siempre lo mismo y el ESTADO se lee en el menú: la zona
-    // activa marcada, y «Quitar» apagado cuando no hay ninguna. Antes había que
-    // deducirlo de dos etiquetas que cambiaban de verbo.
-    rectZoneAction_->setCheckable(true);
-    rectZoneAction_->setChecked(hasRect);
-    freeZoneAction_->setCheckable(true);
-    freeZoneAction_->setChecked(hasFree);
+    // Las dos acciones de dibujar NO son marcables, y eso costó un fallo.
+    //
+    // Marcarlas parecía buena idea —enseñar cuál está activa— pero una acción
+    // marcable se marca AL PULSARLA, y pulsar «Dibujar zona rectangular» solo
+    // empieza el gesto: todavía no hay zona. El menú quedaba afirmando que
+    // había una, y si el operador no llegaba a arrastrar, seguía mintiendo.
+    //
+    // El estado se lee donde no puede desincronizarse: en el texto del propio
+    // botón, que se pone desde la configuración y no desde el clic.
+    rectZoneAction_->setCheckable(false);
+    freeZoneAction_->setCheckable(false);
     clearZoneAction_->setEnabled(hasRect || hasFree);
     // Deshabilitado CON MOTIVO: un «Quitar» vivo sin nada que quitar enseña a
     // desconfiar de los menús.
@@ -2130,7 +2149,11 @@ void MainWindow::onStartStopClicked() {
     loadCachedResolutions();  // lista sondeada antes para ESTA cámara
     startStopButton_->setText(tr("Detener"));
     freezeButton_->setEnabled(true);
-    cameraCombo_->setEnabled(false);
+    // El desplegable NO se apaga: cambiar de fuente se decide mirando lo que
+    // hay. Apagarlo dejaba «Abrir imagen…» inalcanzable con la cámara en
+    // marcha, sin decir por qué — el operador veía la opción y no podía
+    // llegar a ella.
+    cameraCombo_->setEnabled(true);
     refreshAction_->setEnabled(false);
     statusBar()->showMessage(tr("Transmitiendo desde %1")
                                  .arg(QString::fromStdString(cameras_[comboIndex].name)));
@@ -2257,7 +2280,11 @@ bool MainWindow::startFileSource(camera::SourceKind kind) {
     cameraCombo_->insertItem(0, fileSource_->describe(), QVariant(kSourceOpenedFile));
     cameraCombo_->setCurrentIndex(0);
     startStopButton_->setText(tr("Cerrar"));
-    cameraCombo_->setEnabled(false);
+    // El desplegable NO se apaga: cambiar de fuente se decide mirando lo que
+    // hay. Apagarlo dejaba «Abrir imagen…» inalcanzable con la cámara en
+    // marcha, sin decir por qué — el operador veía la opción y no podía
+    // llegar a ella.
+    cameraCombo_->setEnabled(true);
     refreshAction_->setEnabled(false);
     statusBar()->showMessage(wantsImage ? tr("Analizando la imagen %1").arg(fileSource_->describe())
                                         : tr("Reproduciendo %1").arg(fileSource_->describe()));
@@ -2612,6 +2639,17 @@ void MainWindow::onStreamStopped() {
     // de mentir; al volver a abrirlo se reconstruye con lo que haya.
     if (configureDialog_ != nullptr) {
         configureDialog_->close();
+    }
+
+    // La fuente que se pidió mientras la anterior seguía en marcha.
+    if (pendingSourceChoice_.has_value()) {
+        const int wanted = *pendingSourceChoice_;
+        pendingSourceChoice_.reset();
+        if (const int index = cameraCombo_->findData(QVariant(wanted)); index >= 0) {
+            QSignalBlocker blocker(cameraCombo_);
+            cameraCombo_->setCurrentIndex(index);
+        }
+        onStartStopClicked();
     }
     updateBoardReadout();      // "sin pieza detectada" al cortar la transmisión
     updateStatusIndicators();  // cámara vuelve a rojo (S4)
