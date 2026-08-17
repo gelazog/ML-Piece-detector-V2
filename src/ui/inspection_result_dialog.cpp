@@ -1,7 +1,12 @@
 #include "ui/inspection_result_dialog.h"
 
+#include <QClipboard>
+#include <QFileDialog>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QMessageBox>
+#include <QSaveFile>
 #include <QLabel>
 #include <QPainter>
 #include <QPushButton>
@@ -12,6 +17,7 @@
 #include <utility>
 
 #include "camera/frame_utils.h"
+#include "inspection_editor/execution/measurement_report.h"
 #include "ui/video_widget.h"
 
 namespace pci::ui {
@@ -20,7 +26,11 @@ InspectionResultDialog::InspectionResultDialog(
     const QImage& frame, engine::InspectionEngine::Outcome outcome,
     engine::InspectionEngine* engine, std::int64_t pieceId, const QImage& referenceThumb,
     domain::ScaleCalibration calibration, QWidget* parent)
-    : QDialog(parent), outcome_(std::move(outcome)), engine_(engine), pieceId_(pieceId) {
+    : QDialog(parent),
+      outcome_(std::move(outcome)),
+      calibration_(calibration),
+      engine_(engine),
+      pieceId_(pieceId) {
     setWindowTitle(tr("Resultado de inspección"));
     resize(1000, 680);
 
@@ -168,6 +178,24 @@ InspectionResultDialog::InspectionResultDialog(
     auto* bottomLayout = new QHBoxLayout();
     learnStatus_ = new QLabel(this);
     bottomLayout->addWidget(learnStatus_, 1);
+
+    // Las dos salidas, y son dos porque sirven para cosas distintas: el CSV va
+    // a una hoja de cálculo y el portapapeles a un correo o a un parte. Dar
+    // solo una obligaría a la mitad de la gente a reformatear a mano.
+    auto* copyButton = new QPushButton(tr("Copiar medidas"), this);
+    copyButton->setToolTip(
+        tr("Copia la tabla como texto alineado, listo para pegar en un correo o\n"
+           "en un parte de inspección."));
+    bottomLayout->addWidget(copyButton);
+    auto* exportButton = new QPushButton(tr("Exportar CSV…"), this);
+    exportButton->setToolTip(
+        tr("Guarda las medidas con su unidad, sus píxeles y su tolerancia, en\n"
+           "columnas que una hoja de cálculo puede sumar y promediar."));
+    bottomLayout->addWidget(exportButton);
+    connect(copyButton, &QPushButton::clicked, this,
+            &InspectionResultDialog::onCopyMeasurementsClicked);
+    connect(exportButton, &QPushButton::clicked, this,
+            &InspectionResultDialog::onExportMeasurementsClicked);
     learnButton_ = new QPushButton(tr("Actualizar referencia (aprender)"), this);
     learnButton_->setEnabled(engine_ != nullptr && outcome_.verdict.ok &&
                              !outcome_.embedding.empty());
@@ -236,6 +264,49 @@ void InspectionResultDialog::onLearnClicked() {
         learnStatus_->setText(QString::fromStdString(version.error().message));
         learnButton_->setEnabled(true);
     }
+}
+
+// Las filas del informe salen de un solo sitio (`measurementRows`), y por eso
+// el CSV, el portapapeles y la tabla de arriba dicen lo mismo. Tenerlo por
+// duplicado acabaría con tres respuestas distintas para la misma medida, que es
+// exactamente el fallo que se acaba de arreglar en el rotulado.
+void InspectionResultDialog::onCopyMeasurementsClicked() {
+    const auto rows = inspection::measurementRows(outcome_.toolResults,
+                                                  calibration_.mmPerPixel,
+                                                  inspection::LengthUnit::Auto);
+    QGuiApplication::clipboard()->setText(
+        QString::fromStdString(inspection::measurementsToText(rows)));
+    learnStatus_->setStyleSheet(QStringLiteral("color:#22cc44;"));
+    learnStatus_->setText(tr("%n medida(s) copiadas al portapapeles.", nullptr,
+                             static_cast<int>(rows.size())));
+}
+
+void InspectionResultDialog::onExportMeasurementsClicked() {
+    const QString path = QFileDialog::getSaveFileName(
+        this, tr("Exportar medidas"), QStringLiteral("medidas.csv"),
+        tr("CSV (*.csv);;Todos (*)"));
+    if (path.isEmpty()) {
+        return;  // cancelar no es un error
+    }
+    const auto rows = inspection::measurementRows(outcome_.toolResults,
+                                                  calibration_.mmPerPixel,
+                                                  inspection::LengthUnit::Auto);
+    const std::string csv = inspection::measurementsToCsv(rows);
+    // `QSaveFile` y no `QFile`: escribe a un temporal y renombra al cerrar, así
+    // que un fallo a mitad de escritura no deja el fichero anterior destruido y
+    // medio sobrescrito.
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text) ||
+        file.write(csv.data(), static_cast<qint64>(csv.size())) < 0 || !file.commit()) {
+        QMessageBox::warning(this, tr("No se pudo exportar"),
+                             tr("No se pudo escribir en %1: %2")
+                                 .arg(path, file.errorString()));
+        return;
+    }
+    learnStatus_->setStyleSheet(QStringLiteral("color:#22cc44;"));
+    learnStatus_->setText(tr("%n medida(s) exportadas a %1.", nullptr,
+                             static_cast<int>(rows.size()))
+                              .arg(path));
 }
 
 }  // namespace pci::ui

@@ -554,3 +554,95 @@ TEST(ShapeClassBasics, ASimplifiedContourIsNotMistakenForACircle) {
         << "con el contorno simplificado dijo: " << fromSimple.reason;
     EXPECT_EQ(fromSimple.sides, 4) << "con el contorno simplificado contó " << fromSimple.sides;
 }
+
+// ---------------------------------------------------------------------------
+// El recorte por el tope: qué se pierde cuando hay que perder algo
+// ---------------------------------------------------------------------------
+
+TEST(ShapeProposals, TheCutNeverWipesOutAWholeKindOfMeasurement) {
+    // EL FALLO, con las opciones REALES y no con `everything()`: un hexágono
+    // genera unas dieciocho propuestas y el tope está en doce. Como se ordenaba
+    // «primero las longitudes de mayor a menor y los ángulos al final», el
+    // recorte se llevaba los SEIS ángulos, todos.
+    //
+    // Y era invisible para el resto del banco justamente porque el resto usa
+    // `everything()` para no medir el tope. El tope es lo que corre en
+    // producción.
+    const Scene scene = sceneFrom(regularPolygon(6));
+    ProposeOptions realOptions;  // maxProposals = 12, lo que ve el operador
+    int dropped = 0;
+    const auto proposals =
+        proposeTools(scene.gray, scene.mask, {}, realOptions, 0.0, &dropped);
+
+    ASSERT_LE(static_cast<int>(proposals.size()), realOptions.maxProposals);
+    const int angles = countType(proposals, ToolType::Angle);
+    const int rulers = countType(proposals, ToolType::Ruler);
+    std::printf("  [recorte] %zu propuestas (tope %d): %d angulos, %d longitudes, "
+                "%d descartadas\n",
+                proposals.size(), realOptions.maxProposals, angles, rulers, dropped);
+
+    EXPECT_GT(angles, 0) << "el recorte se llevó TODOS los ángulos del hexágono";
+    EXPECT_GT(rulers, 0) << "el recorte se llevó todas las longitudes";
+
+    // Sin tope hay más de las que caben: si no, este test no estaría
+    // reproduciendo el caso que importa.
+    const auto everythingElse = proposeTools(scene.gray, scene.mask, {}, everything());
+    ASSERT_GT(static_cast<int>(everythingElse.size()), realOptions.maxProposals)
+        << "el hexágono ya no genera más propuestas que el tope: el test dejó de "
+           "probar el recorte";
+}
+
+TEST(ShapeProposals, WhatTheCutLeavesOutIsSaidAndNotSwallowed) {
+    // Descartar cotas en silencio deja al operador creyendo que la pieza no
+    // tenía más, que es exactamente lo contrario de lo que pasó.
+    const Scene scene = sceneFrom(regularPolygon(6));
+    ProposeOptions few;
+    few.maxProposals = 5;
+    int dropped = 0;
+    const auto proposals = proposeTools(scene.gray, scene.mask, {}, few, 0.0, &dropped);
+
+    EXPECT_EQ(static_cast<int>(proposals.size()), few.maxProposals);
+    EXPECT_GT(dropped, 0) << "se recortó y no se dijo cuánto";
+
+    // El número tiene que cuadrar con lo que había: propuestas + descartadas.
+    const auto all = proposeTools(scene.gray, scene.mask, {}, everything());
+    EXPECT_EQ(static_cast<int>(proposals.size()) + dropped,
+              static_cast<int>(all.size()))
+        << "la cuenta de descartadas no cuadra con las que había";
+
+    // Y sin recorte, no se inventa ninguna descartada.
+    int none = -1;
+    const auto ignored = proposeTools(scene.gray, scene.mask, {}, everything(), 0.0, &none);
+    (void)ignored;
+    EXPECT_EQ(none, 0);
+}
+
+TEST(ShapeProposals, TheCutTakesTheSmallestOfEachKindAndNotTheLast) {
+    // La otra mitad de la regla: dentro de cada clase se conserva lo GRANDE.
+    // Un recorte que se llevara los lados mayores y dejara los menores sería
+    // igual de malo que llevarse una categoría entera.
+    const Scene scene = sceneFrom(lShape());
+    ProposeOptions few;
+    few.maxProposals = 6;
+    const auto kept = proposeTools(scene.gray, scene.mask, {}, few);
+    const auto all = proposeTools(scene.gray, scene.mask, {}, everything());
+
+    // El lado más largo de todos tiene que seguir estando.
+    double longestOfAll = 0.0;
+    for (const auto& p : all) {
+        if (p.config.type == ToolType::Ruler) {
+            longestOfAll = std::max(longestOfAll, p.measured);
+        }
+    }
+    ASSERT_GT(longestOfAll, 0.0);
+    double longestKept = 0.0;
+    for (const auto& p : kept) {
+        if (p.config.type == ToolType::Ruler) {
+            longestKept = std::max(longestKept, p.measured);
+        }
+    }
+    std::printf("  [recorte] lado mayor de todos %.1f px; conservado %.1f px\n", longestOfAll,
+                longestKept);
+    EXPECT_DOUBLE_EQ(longestKept, longestOfAll)
+        << "el recorte se llevó el lado más largo de la pieza";
+}

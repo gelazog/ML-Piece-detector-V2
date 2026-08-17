@@ -59,9 +59,14 @@ struct ProposeOptions {
 // consigue medir sobre esta pieza, se descarta en vez de ofrecérsela al
 // operador. Lo que llega a la lista ya funciona, y su tolerancia sugerida sale
 // de una medida real y no de una estimación geométrica.
+// `dropped`, si se pasa, recibe cuántas propuestas se quedaron fuera por el
+// tope. Existe para poder DECIRLO: descartar cotas en silencio deja al operador
+// creyendo que la pieza no tenía más, que es exactamente lo contrario de lo que
+// pasó.
 [[nodiscard]] std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
                                                      const vision::Fixture& fixture,
                                                      const ProposeOptions& options = {},
-                                                     double mmPerPixel = 0.0);
+                                                     double mmPerPixel = 0.0,
+                                                     int* dropped = nullptr);
 
 }  // namespace pci::inspection

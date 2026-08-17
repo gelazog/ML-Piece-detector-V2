@@ -1913,8 +1913,31 @@ Tres reglas que hacen que la lista sea revisable:
   descarta si otra ya aceptada mide lo mismo en el mismo sitio.
 - **Con el porqué y con tope.** Cada una lleva una frase explicando por qué se
   propone; sin eso, doce propuestas no se revisan, se aceptan todas o se
-  descartan todas. Y se cortan en doce, ordenadas por tamaño del rasgo:
-  cincuenta son tan inútiles como ninguna.
+  descartan todas. Y se cortan en doce: cincuenta son tan inútiles como ninguna.
+
+#### El recorte se llevaba una categoría entera
+
+El orden con el que se cortaba era «primero las longitudes de mayor a menor y
+los ángulos al final». El razonamiento de mandar los ángulos al final era bueno
+—su medida está en grados y no se compara con una longitud— y la consecuencia,
+desastrosa: un hexágono genera unas dieciocho propuestas y con el tope en doce
+**perdía sus seis ángulos, todos**.
+
+Ordenar por categoría y cortar por el final no recorta lo pequeño: **borra una
+categoría entera**. Ahora se ordena dentro de cada clase de medida
+(`MeasuredKind`) y se van tomando por turnos, así que el recorte se lleva lo más
+pequeño de cada clase y ninguna desaparece. Medido sobre el hexágono con las
+opciones reales: 6 longitudes, 5 ángulos y el recuento de lados, con 3
+descartadas.
+
+Y **lo que queda fuera se dice**. Descartar cotas en silencio deja al operador
+creyendo que la pieza no tenía más, que es exactamente lo contrario de lo que
+pasó.
+
+El fallo era invisible para el banco de pruebas y merece la pena saber por qué:
+todos los tests de propuestas usan `everything()` —tope de cien— justamente para
+no medir el tope. El tope es lo que corre en producción. Ahora hay tres tests
+que usan las opciones **reales**.
 
 **El botón abre una revisión, no inserta a lo loco** (decisión confirmada con el
 usuario). Insertar directamente es más rápido de programar y peor de usar: deja
@@ -1929,6 +1952,41 @@ haberlas dibujado a mano.
 Verificado sobre piezas de medidas conocidas: agujeros de Ø70 y Ø100 se proponen
 como Ø70,1 y Ø100,0; las cuatro esquinas de radio 45 salen como cuatro Arcos; un
 pinchazo de 6 px no genera propuesta.
+
+### Sacar las medidas
+
+Se podían exportar los **puntos** del contorno a CSV y el historial de
+veredictos, pero no las cotas: los números que el operador acaba de medir vivían
+en una tabla que solo se podía mirar. Una medición que no se puede sacar no entra
+en un informe de calidad, no se compara con la del turno anterior y no se manda a
+nadie — que son las tres cosas para las que se mide.
+
+`inspection::measurementRows` resuelve las filas una sola vez y de ahí salen las
+dos formas: **CSV** para la hoja de cálculo y **texto alineado** al portapapeles
+para un correo o un parte. Son dos porque sirven para cosas distintas; dar solo
+una obligaría a la mitad de la gente a reformatear a mano.
+
+Cuatro decisiones del formato, y las cuatro se pagan si se hacen al revés:
+
+- **El valor es un número y la unidad va en su propia columna.** Escribir
+  «50,00 mm (200,0 px)» en una celda convierte la columna en texto, y una
+  exportación cuyas columnas no se pueden sumar ni promediar no es una
+  exportación: es una captura de pantalla en letras.
+- **Cada fila lleva su unidad**, porque las filas no son de la misma clase — en
+  la misma tabla conviven longitudes, ángulos, recuentos y fracciones.
+- **Los píxeles no se pierden**, van en su propia columna. La escala puede
+  resultar estar mal más tarde, y con ellos se rehace la conversión sin volver a
+  medir la pieza.
+- **Los textos se entrecomillan.** Los detalles llevan comas a menudo, y una
+  sola coma sin escapar desplaza todas las columnas siguientes de esa fila — un
+  fallo que no se ve hasta que alguien abre la hoja y encuentra la tolerancia en
+  la columna del estado.
+
+Separador decimal con punto a la fuerza (locale clásico), igual que la
+exportación del contorno: en un Windows en español el separador por defecto es
+la coma, y un CSV con «12,50» en una columna separada por comas no lo abre nadie.
+Sin tolerancias conocidas las columnas van **vacías** y no a cero, porque un cero
+parece una tolerancia de cero, que es la más estricta que existe.
 
 ### Ver y exportar el contorno
 

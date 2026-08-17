@@ -293,6 +293,17 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    hacer que la detección de la pieza falle antes de llegar a medir: ahí lo que
    hay que arreglar es la luz.
 
+   La lista se corta en **doce**, porque cincuenta propuestas no se revisan. Lo
+   que quede fuera **se te dice**: descartar cotas en silencio te dejaría
+   creyendo que la pieza no tenía más. Y el corte se lleva lo más pequeño **de
+   cada tipo**, no un tipo entero — antes, un hexágono perdía sus seis ángulos.
+
+   **Sacar las medidas**: en el resultado de una inspección tienes **Copiar
+   medidas** (texto alineado, para pegar en un correo o en un parte) y
+   **Exportar CSV…** (columnas que una hoja de cálculo puede sumar y promediar).
+   Cada fila lleva su valor, **su unidad**, los píxeles crudos por si luego
+   recalibras, el estado y la tolerancia. Sin calibración da píxeles y lo dice.
+
    **Ver contorno** (mismo panel) dibuja encima el contorno detectado con su
    descomposición: los tramos **rectos en azul**, los **arcos en naranja** con su
    radio escrito al lado y los **agujeros en magenta**, sobre el contorno crudo

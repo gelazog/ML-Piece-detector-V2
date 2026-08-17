@@ -31,11 +31,18 @@ public:
 
 private slots:
     void onLearnClicked();
+    // Sacar las medidas de la aplicación. Una medición que no se puede sacar
+    // no entra en un informe de calidad, no se compara con la del turno
+    // anterior y no se manda a nadie — que son las tres cosas para las que se
+    // mide.
+    void onExportMeasurementsClicked();
+    void onCopyMeasurementsClicked();
 
 private:
     [[nodiscard]] QImage annotatedFrame(const QImage& frame) const;
 
     engine::InspectionEngine::Outcome outcome_;
+    domain::ScaleCalibration calibration_;
     engine::InspectionEngine* engine_ = nullptr;
     std::int64_t pieceId_ = -1;
 

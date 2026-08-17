@@ -630,12 +630,23 @@ void EditorWindow::onAutoMeasureClicked() {
     // del análisis: las herramientas se guardan en coordenadas de pieza, y si
     // se usara otro sistema las propuestas quedarían desplazadas respecto a las
     // que ya hay en la plantilla.
+    int dropped = 0;
     const auto proposals = proposeTools(image, analysis.value().mask, fixture_, {},
-                                        calibration_.mmPerPixel);
+                                        calibration_.mmPerPixel, &dropped);
     if (proposals.empty()) {
         statusLabel_->setText(
             tr("No se encontró ninguna cota que proponer sobre esta imagen."));
         return;
+    }
+    // Y si el tope dejó cotas fuera, se dice. Descartarlas en silencio deja al
+    // operador creyendo que la pieza no tenía más, que es lo contrario de lo
+    // que pasó.
+    if (dropped > 0) {
+        statusLabel_->setText(
+            tr("Se proponen las %1 cotas mayores; otras %2 más pequeñas se han dejado "
+               "fuera para que la lista se pueda revisar.")
+                .arg(proposals.size())
+                .arg(dropped));
     }
 
     AutoMeasureDialog dialog(proposals, calibration_.mmPerPixel, this);

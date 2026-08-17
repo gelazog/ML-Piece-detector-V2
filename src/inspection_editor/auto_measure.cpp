@@ -120,7 +120,11 @@ bool measureProposal(const cv::Mat& gray, const vision::Fixture& fixture, double
 
 std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
                                        const vision::Fixture& fixture,
-                                       const ProposeOptions& options, double mmPerPixel) {
+                                       const ProposeOptions& options, double mmPerPixel,
+                                       int* dropped) {
+    if (dropped != nullptr) {
+        *dropped = 0;
+    }
     std::vector<AutoProposal> proposals;
     if (gray.empty() || mask.empty()) {
         return proposals;
@@ -474,20 +478,53 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
     }
 
     // --- Recorte final -----------------------------------------------------
-    // Se ordenan por tamaño del rasgo medido: lo grande define la pieza y lo
-    // pequeño suele ser detalle. Los ángulos van al final porque su "medida"
-    // está en grados y no compara con las longitudes.
-    std::stable_sort(proposals.begin(), proposals.end(),
-                     [](const AutoProposal& a, const AutoProposal& b) {
-                         const bool aAngle = a.config.type == ToolType::Angle;
-                         const bool bAngle = b.config.type == ToolType::Angle;
-                         if (aAngle != bAngle) {
-                             return !aAngle;
-                         }
-                         return a.measured > b.measured;
-                     });
+    //
+    // Antes se ordenaba «primero las longitudes de mayor a menor y los ángulos
+    // al final», y luego se cortaba por el tope. El razonamiento de mandar los
+    // ángulos al final era bueno —su medida está en grados y no se compara con
+    // una longitud— pero la consecuencia era desastrosa: con el tope de doce, un
+    // hexágono genera unas dieciocho propuestas y **perdía sus seis ángulos**,
+    // todos. Ordenar por categoría y cortar por el final no recorta lo pequeño:
+    // borra una categoría entera.
+    //
+    // Ahora se ordena DENTRO de cada clase de medida y se van tomando por
+    // turnos. El recorte se lleva lo más pequeño de cada clase, que es lo que se
+    // quería desde el principio, y ninguna desaparece por completo.
+    std::vector<std::vector<AutoProposal>> byKind(5);
+    for (auto& proposal : proposals) {
+        byKind[static_cast<std::size_t>(proposal.kind)].push_back(std::move(proposal));
+    }
+    for (auto& group : byKind) {
+        std::stable_sort(group.begin(), group.end(),
+                         [](const AutoProposal& a, const AutoProposal& b) {
+                             return a.measured > b.measured;
+                         });
+    }
+
+    const std::size_t total = proposals.size();
+    std::vector<AutoProposal> ordered;
+    ordered.reserve(total);
+    for (std::size_t round = 0; ordered.size() < total; ++round) {
+        bool tookAny = false;
+        for (auto& group : byKind) {
+            if (round < group.size()) {
+                ordered.push_back(std::move(group[round]));
+                tookAny = true;
+            }
+        }
+        if (!tookAny) {
+            break;  // no quedaba nada en ninguna clase
+        }
+    }
+    proposals = std::move(ordered);
+
     if (static_cast<int>(proposals.size()) > options.maxProposals) {
+        if (dropped != nullptr) {
+            *dropped = static_cast<int>(proposals.size()) - options.maxProposals;
+        }
         proposals.resize(static_cast<std::size_t>(options.maxProposals));
+    } else if (dropped != nullptr) {
+        *dropped = 0;
     }
     return proposals;
 }

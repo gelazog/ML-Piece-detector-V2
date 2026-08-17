@@ -24,6 +24,7 @@ add_executable(pci_tests
   test_frame_utils.cpp
   test_inspection.cpp
   test_measure_units.cpp
+  test_measurement_report.cpp
   test_ml.cpp
   test_periodicity.cpp
   test_profiles.cpp
