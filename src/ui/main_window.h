@@ -274,6 +274,9 @@ private:
     QAction* registerWizardAction_ = nullptr;
     QAction* managePiecesAction_ = nullptr;
     QAction* editorAction_ = nullptr;
+    // Espejo en el menú del botón de auto-inspección de la barra: una acción
+    // que solo existe en la barra no la encuentra quien navega con el teclado.
+    QAction* autoInspectAction_ = nullptr;
     QAction* showContourAction_ = nullptr;   // Ver > Mostrar contorno (checkable)
     QAction* trackRotationAction_ = nullptr;  // Ver > Seguir rotación (checkable)
     QActionGroup* unitGroup_ = nullptr;      // Ver > Unidad (Auto/mm/cm/px)

@@ -975,6 +975,19 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    texto se desplaza en vez de recortarse. La rejilla no se mueve al pasar el
    ratón, que es lo que el alto fijo protegía.
 
+   **Los menús están ordenados por lo que contestan**, no por dónde vive el
+   código: **Archivo** (exportar, importar, restablecer), **Fuente** (cámaras y
+   *Configurar…*), **Medida** (calibrar la escala, marcador ArUco, unidad, medir
+   la pieza y su modo), **Pieza** (registrar, gestionar, plantillas),
+   **Inspección** (inspeccionar, auto-inspección, editor, historial), **Ver**
+   (capas: contorno, tablero, regla) y **Ayuda**.
+
+   Antes, para preparar una medición en milímetros había que pasar por dos menús
+   que no hablan de medir: *Calibrar escala* estaba en **Fuente** junto a
+   «Buscar cámaras», y *Unidad de medida* en **Ver** junto a «Mostrar contorno».
+   Y todo lo que se puede hacer desde la barra tiene ahora su entrada de menú:
+   una acción que solo vive en un botón no la encuentra quien va con el teclado.
+
    **Restablecer de fábrica** (menú **Archivo** ▸ *Restablecer configuración de
    fábrica…*): devuelve la máquina al estado de recién instalada. Te dice antes
    **qué se lleva** —calibración, ajustes y perfiles de detección, zona de

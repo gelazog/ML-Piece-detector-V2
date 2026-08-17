@@ -2609,6 +2609,38 @@ Todo lo que no está ligado a una pieza se puede **exportar e importar en JSON**
 para clonar la puesta a punto a otra PC de la línea. Las plantillas de
 herramientas se exportan aparte, para copiarlas entre piezas.
 
+### Los menús: dónde busca uno cada cosa
+
+Dos entradas estaban colocadas por su implementación y no por su significado, y
+juntas convertían la tarea más común en una búsqueda:
+
+- **«Calibrar escala (mm)…»** vivía en *Fuente*, junto a «Buscar cámaras».
+- **«Unidad de medida»** vivía en *Ver*, junto a «Mostrar contorno» — como si
+  elegir milímetros o píxeles fuera cuestión de aspecto, cuando cambia el número
+  que se apunta en el parte.
+
+Para preparar una medición en milímetros había que visitar **dos menús que no
+hablan de medir**. Lo que las une es la pregunta que contestan —con qué se
+mide— así que ahora hay un menú **Medida** con la calibración, el marcador
+ArUco, la unidad, «Medir pieza» y el modo de medición de la pieza. No quedan
+duplicadas en su sitio anterior: dos caminos a lo mismo son dos cosas que
+mantener, y a la primera divergencia una de las dos miente.
+
+La otra mitad: **varias acciones existían solo en la barra**. «Inspeccionar»,
+«Auto-inspección», «Medir pieza» y «Guardar plantilla» no estaban en ningún
+menú, y una acción que solo vive en la barra no la encuentra quien navega con el
+teclado — a los menús se va justo cuando no se reconoce el icono. Ahora todas
+tienen su entrada, y la de auto-inspección es un **espejo en los dos sentidos**
+del botón: si dijeran cosas distintas, el operador no sabría a cuál creer.
+
+Un hallazgo del banco que conviene no perder: el test que iba a comprobar ese
+espejo **colgó la suite cinco minutos** hasta que hubo que matar el proceso.
+Encender la auto-inspección sin cámara ni pieza abre un `QMessageBox` **modal**,
+y sin pantalla eso bloquea para siempre. Queda apuntado como deuda de interfaz:
+un conmutador que abre un diálogo modal para decir que no se puede encender es
+peor que un conmutador apagado con su motivo en el tooltip — que es justo lo que
+este proyecto ya hace en los botones de borrar.
+
 ### La barra de la ventana: trece botones sin jerarquía
 
 La barra había ido creciendo hasta **trece botones repartidos en tres filas**,

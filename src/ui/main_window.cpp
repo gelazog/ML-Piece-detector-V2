@@ -1109,10 +1109,22 @@ void MainWindow::buildMenuBar() {
         tr("Cámara e imagen, detección, escala, preferencias y atajos, todo en el\n"
            "mismo sitio. Se abre sin bloquear el vídeo: lo que ajustes se ve al\n"
            "momento sobre la pieza."));
-    calibrateAction_ = cameraMenu->addAction(tr("Calibrar escala (mm)…"), this,
+    // --- Medida ---
+    //
+    // Menú nuevo, y no por gusto de tener uno más: para preparar una medición en
+    // milímetros había que visitar DOS menús que no hablan de medir. «Calibrar
+    // escala» vivía en *Fuente*, junto a «Buscar cámaras», y «Unidad de medida»
+    // en *Ver*, junto a «Mostrar contorno» — como si elegir milímetros o píxeles
+    // fuera una cuestión de aspecto, cuando cambia el número que se apunta en el
+    // parte.
+    //
+    // Lo que las une es la pregunta que contestan: con qué se mide. Quien busca
+    // cualquiera de las dos va al mismo sitio.
+    auto* measureMenu = menuBar()->addMenu(tr("&Medida"));
+    calibrateAction_ = measureMenu->addAction(tr("Calibrar escala (mm)…"), this,
                                              &MainWindow::onCalibrateClicked);
-    cameraMenu->addSeparator();
-    auto* arucoAction = cameraMenu->addAction(tr("Escala por marcador ArUco (en vivo)"));
+    measureMenu->addSeparator();
+    auto* arucoAction = measureMenu->addAction(tr("Escala por marcador ArUco (en vivo)"));
     arucoAction->setCheckable(true);
     arucoAction->setChecked(arucoLiveScale_);
     arucoAction->setToolTip(
@@ -1144,16 +1156,54 @@ void MainWindow::buildMenuBar() {
         maybeStartAnalysis();
     });
 
+
+    auto* unitMenu = measureMenu->addMenu(tr("Unidad de medida"));
+    unitGroup_ = new QActionGroup(this);
+    const std::pair<QString, int> units[] = {
+        {tr("Automática (mm/cm)"), 0}, {tr("Milímetros"), 1},
+        {tr("Centímetros"), 2}, {tr("Píxeles"), 3}};
+    for (const auto& [label, value] : units) {
+        auto* action = unitMenu->addAction(label);
+        action->setCheckable(true);
+        action->setData(value);
+        unitGroup_->addAction(action);
+        if (value == 0) {
+            action->setChecked(true);
+        }
+    }
+    measureMenu->addSeparator();
+    // La acción de la barra, también aquí: un botón que solo existe en la barra
+    // no lo encuentra quien navega con el teclado, y a los menús se va justo
+    // cuando no se reconoce el icono.
+    measureMenu->addAction(tr("Medir pieza"), this, &MainWindow::onMeasurePieceClicked);
+    measureMenu->addAction(tr("Modo de medición de la pieza…"), this,
+                           &MainWindow::onMeasurementModeClicked);
+
     auto* pieceMenu = menuBar()->addMenu(tr("&Pieza"));
     registerWizardAction_ = pieceMenu->addAction(tr("Registrar con asistente…"), this,
                                                  &MainWindow::onRegisterWizardClicked);
     managePiecesAction_ = pieceMenu->addAction(tr("Gestionar piezas…"), this,
                                                &MainWindow::onManagePiecesClicked);
     pieceMenu->addSeparator();
-    pieceMenu->addAction(tr("Modo de medición…"), this,
-                         &MainWindow::onMeasurementModeClicked);
+    // Las plantillas son de la pieza, así que sus acciones viven aquí y no solo
+    // en la barra.
+    pieceMenu->addAction(tr("Gestionar plantillas…"), this,
+                         &MainWindow::onManageTemplatesClicked);
+    pieceMenu->addAction(tr("Guardar plantilla"), this,
+                         &MainWindow::onSaveTemplateClicked);
 
     auto* inspectionMenu = menuBar()->addMenu(tr("&Inspección"));
+    inspectionMenu->addAction(tr("Inspeccionar"), this, &MainWindow::onInspectClicked);
+    autoInspectAction_ = inspectionMenu->addAction(tr("Auto-inspección"));
+    autoInspectAction_->setCheckable(true);
+    // Espejo del botón de la barra, en los dos sentidos: si el menú dijera una
+    // cosa y el botón otra, el operador no sabría cuál se cree.
+    connect(autoInspectAction_, &QAction::toggled, this, [this](bool on) {
+        if (autoInspectButton_ != nullptr && autoInspectButton_->isChecked() != on) {
+            autoInspectButton_->setChecked(on);
+        }
+    });
+    inspectionMenu->addSeparator();
     editorAction_ = inspectionMenu->addAction(tr("Editor de plantilla…"), this,
                                               &MainWindow::onOpenEditorClicked);
     inspectionMenu->addAction(tr("Ver historial…"), this,
@@ -1290,20 +1340,6 @@ void MainWindow::buildMenuBar() {
         updateBoardReadout();
     });
 
-    auto* unitMenu = viewMenu->addMenu(tr("Unidad de medida"));
-    unitGroup_ = new QActionGroup(this);
-    const std::pair<QString, int> units[] = {
-        {tr("Automática (mm/cm)"), 0}, {tr("Milímetros"), 1},
-        {tr("Centímetros"), 2}, {tr("Píxeles"), 3}};
-    for (const auto& [label, value] : units) {
-        auto* action = unitMenu->addAction(label);
-        action->setCheckable(true);
-        action->setData(value);
-        unitGroup_->addAction(action);
-        if (value == 0) {
-            action->setChecked(true);
-        }
-    }
     connect(unitGroup_, &QActionGroup::triggered, this, &MainWindow::onUnitChanged);
 
     auto* helpMenu = menuBar()->addMenu(tr("A&yuda"));
@@ -4556,12 +4592,20 @@ void MainWindow::finishLiveRegistration() {
 // --- Auto-inspección ---------------------------------------------------------
 
 void MainWindow::onAutoToggled(bool enabled) {
+    // El menú refleja al botón, y no solo al revés: si dijeran cosas distintas
+    // el operador no sabría a cuál creer. Se hace aquí y no en la conexión
+    // porque este slot también revierte el botón cuando faltan condiciones, y
+    // el menú tiene que revertir con él.
+    if (autoInspectAction_ != nullptr && autoInspectAction_->isChecked() != enabled) {
+        QSignalBlocker blocker(autoInspectAction_);
+        autoInspectAction_->setChecked(enabled);
+    }
     if (enabled) {
         if (repos_.engine == nullptr || selectedPieceId() < 0 || !streaming_) {
             QMessageBox::information(
                 this, tr("Auto-inspección"),
                 tr("Necesitas video en vivo y una pieza registrada seleccionada."));
-            autoInspectButton_->setChecked(false);
+            autoInspectButton_->setChecked(false);  // arrastra al menú por el slot
             return;
         }
         autoInspecting_ = true;

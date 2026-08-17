@@ -15,6 +15,7 @@
 #include <QPointF>
 #include <QString>
 #include <QMenu>
+#include <QMenuBar>
 #include <QStringList>
 #include <QToolBox>
 #include <QLabel>
@@ -2057,4 +2058,117 @@ TEST(MainToolbar, TheDropdownsDoNotEatTheRow) {
         EXPECT_LT(combo->width(), 700)
             << "un desplegable se está comiendo la fila con una ventana de 1600 px";
     }
+}
+
+TEST(MainMenus, EveryToolbarActionIsAlsoReachableFromAMenu) {
+    // Una acción que solo existe en la barra no la encuentra quien navega con
+    // el teclado, y a los menús se va justo cuando no se reconoce el icono.
+    pci::ui::MainWindow window;
+    window.resize(1400, 800);
+
+    QStringList inMenus;
+    for (auto* menu : window.menuBar()->findChildren<QMenu*>()) {
+        for (auto* action : menu->actions()) {
+            if (!action->isSeparator()) {
+                inMenus << action->text();
+            }
+        }
+    }
+    ASSERT_FALSE(inMenus.isEmpty());
+
+    // Las acciones de la barra que tienen que estar también en un menú. Se
+    // nombran a mano y no se barre la barra entera a propósito: «Iniciar» o
+    // «Capturar foto» son del vídeo que se está viendo y no tienen sentido
+    // fuera de él.
+    for (const QString& needed :
+         {QStringLiteral("Inspeccionar"), QStringLiteral("Auto-inspección"),
+          QStringLiteral("Medir pieza"), QStringLiteral("Guardar plantilla")}) {
+        bool found = false;
+        for (const QString& text : inMenus) {
+            if (text.startsWith(needed)) {
+                found = true;
+            }
+        }
+        EXPECT_TRUE(found) << "«" << needed.toStdString()
+                           << "» solo existe en la barra";
+    }
+}
+
+TEST(MainMenus, ScaleAndUnitLiveInTheSamePlace) {
+    // Para preparar una medición en milímetros había que visitar DOS menús que
+    // no hablan de medir: «Calibrar escala» estaba en Fuente, junto a «Buscar
+    // cámaras», y «Unidad de medida» en Ver, junto a «Mostrar contorno» — como
+    // si elegir milímetros o píxeles fuera cuestión de aspecto.
+    pci::ui::MainWindow window;
+    window.resize(1400, 800);
+
+    QMenu* measure = nullptr;
+    for (auto* menu : window.menuBar()->findChildren<QMenu*>()) {
+        if (menu->title().contains(QStringLiteral("Medida"))) {
+            measure = menu;
+        }
+    }
+    ASSERT_NE(measure, nullptr) << "no hay menú de Medida";
+
+    bool calibration = false;
+    bool unit = false;
+    for (auto* action : measure->actions()) {
+        if (action->text().contains(QStringLiteral("Calibrar"))) {
+            calibration = true;
+        }
+        if (action->text().contains(QStringLiteral("Unidad"))) {
+            unit = true;
+        }
+    }
+    EXPECT_TRUE(calibration) << "calibrar la escala sigue fuera del menú de Medida";
+    EXPECT_TRUE(unit) << "la unidad sigue fuera del menú de Medida";
+
+    // Y ya no están donde estaban: dejarlas en los dos sitios sería peor que
+    // no moverlas — dos caminos a lo mismo que hay que mantener a la vez.
+    for (auto* menu : window.menuBar()->findChildren<QMenu*>()) {
+        if (menu == measure || menu->title().isEmpty()) {
+            continue;
+        }
+        for (auto* action : menu->actions()) {
+            EXPECT_FALSE(action->text().contains(QStringLiteral("Calibrar escala")))
+                << "«Calibrar escala» sigue duplicada en " << menu->title().toStdString();
+        }
+    }
+}
+
+TEST(MainMenus, TheAutoInspectionMenuAndButtonStartInAgreement) {
+    // Si el menú dijera una cosa y el botón otra, el operador no sabría a cuál
+    // creer. Aquí solo se comprueba el estado inicial y que el espejo exista:
+    // ENCENDERLO no se puede probar, y el motivo es en sí un hallazgo — sin
+    // cámara ni pieza, `onAutoToggled` abre un QMessageBox modal que sin
+    // pantalla bloquea para siempre. El primer intento de este test colgó el
+    // banco cinco minutos hasta que hubo que matar el proceso.
+    //
+    // Queda apuntado: un conmutador que abre un diálogo modal para decir que no
+    // se puede encender es peor que un conmutador apagado con su motivo en el
+    // tooltip, que es justo lo que este proyecto ya hace en los botones de
+    // borrar.
+    pci::ui::MainWindow window;
+    window.resize(1400, 800);
+
+    QAction* menuAction = nullptr;
+    for (auto* menu : window.menuBar()->findChildren<QMenu*>()) {
+        for (auto* action : menu->actions()) {
+            if (action->text().startsWith(QStringLiteral("Auto-inspección"))) {
+                menuAction = action;
+            }
+        }
+    }
+    ASSERT_NE(menuAction, nullptr) << "la auto-inspección no llegó al menú";
+    EXPECT_TRUE(menuAction->isCheckable()) << "en el menú tiene que verse encendida o apagada";
+
+    QPushButton* button = nullptr;
+    for (auto* candidate : window.findChildren<QPushButton*>()) {
+        if (candidate->text().startsWith(QStringLiteral("Auto-inspección"))) {
+            button = candidate;
+        }
+    }
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(menuAction->isChecked(), button->isChecked())
+        << "el menú y el botón arrancan diciendo cosas distintas";
 }
