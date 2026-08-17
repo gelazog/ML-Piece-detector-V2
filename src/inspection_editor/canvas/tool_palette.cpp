@@ -103,10 +103,14 @@ void ToolPalette::buildPanel() {
     selectButton_->setIcon(moveModeIcon());
     selectButton_->setIconSize(QSize(kFamilyIconSize, kFamilyIconSize));
     selectButton_->setText(tr("Mover/Elegir"));
+    // Alcanzable con el tabulador. Es la forma de SALIR del modo de dibujo, así
+    // que dejarla fuera del recorrido del teclado deja a quien navega así
+    // atrapado dibujando — y un recorrido sin salida es lo que las guías llaman
+    // una trampa de foco.
+    selectButton_->setFocusPolicy(Qt::StrongFocus);
     selectButton_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     selectButton_->setCheckable(true);
     selectButton_->setChecked(true);
-    selectButton_->setFocusPolicy(Qt::NoFocus);
     selectButton_->setStyleSheet(checkedStyle());
     selectButton_->setToolTip(
         tr("Mover/Elegir — clic para seleccionar; arrastra para mover; arrastra en\n"

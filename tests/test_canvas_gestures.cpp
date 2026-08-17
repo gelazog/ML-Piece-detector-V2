@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <QApplication>
+#include <QAbstractButton>
 #include <QColor>
 #include <QComboBox>
 #include <QImage>
@@ -2211,4 +2212,72 @@ TEST(MainMenus, TheAutoInspectionMenuAndButtonStartInAgreement) {
     ASSERT_NE(button, nullptr);
     EXPECT_EQ(menuAction->isChecked(), button->isChecked())
         << "el menú y el botón arrancan diciendo cosas distintas";
+}
+
+TEST(MainKeyboard, TheCanvasCanTakeFocusBecauseItIsWhereOneWorks) {
+    // Estaba en NoFocus: era el ÚNICO sitio de la ventana al que el teclado no
+    // podía llegar, y es donde se trabaja. No había forma de saber si el lienzo
+    // estaba activo, y cualquier tecla que quisiera atender no le llegaría.
+    pci::ui::MainWindow window;
+    window.resize(1400, 800);
+
+    auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+    EXPECT_NE(canvas->focusPolicy(), Qt::NoFocus) << "el lienzo sigue fuera del teclado";
+    // StrongFocus y no ClickFocus: a quien navega con el teclado hay que
+    // dejarle llegar hasta aquí, no solo a quien usa el ratón.
+    EXPECT_TRUE((canvas->focusPolicy() & Qt::TabFocus) != 0)
+        << "al lienzo solo se llega con el ratón";
+}
+
+TEST(MainKeyboard, LeavingDrawingModeIsReachableWithTheKeyboard) {
+    // «Mover/Elegir» es la forma de SALIR del modo de dibujo. Dejarla fuera del
+    // recorrido del teclado deja atrapado dibujando a quien navega así, que es
+    // lo que las guías llaman una trampa de foco.
+    ToolPalette palette;
+    palette.resize(260, 700);
+    palette.show();
+
+    QAbstractButton* select = nullptr;
+    for (auto* button : palette.findChildren<QAbstractButton*>()) {
+        if (button->text().startsWith(QStringLiteral("Mover"))) {
+            select = button;
+        }
+    }
+    ASSERT_NE(select, nullptr);
+    EXPECT_NE(select->focusPolicy(), Qt::NoFocus)
+        << "no se puede salir del modo de dibujo con el teclado";
+}
+
+TEST(MainKeyboard, WhatStaysOutOfTheTabOrderHasItsOwnShortcut) {
+    // Los botones de la barra de zoom se quedan fuera del recorrido a propósito:
+    // añadirían cuatro paradas para acciones que YA tienen atajo, y un recorrido
+    // largo se abandona. Lo que este test vigila es que la excusa siga siendo
+    // cierta — si alguien quita el atajo, la acción se queda sin teclado.
+    pci::ui::MainWindow window;
+    window.resize(1400, 800);
+    window.show();
+    QApplication::processEvents();
+
+    QStringList outside;
+    for (auto* button : window.findChildren<QAbstractButton*>()) {
+        if (button->isVisible() && !button->text().isEmpty() &&
+            button->focusPolicy() == Qt::NoFocus) {
+            outside << button->text();
+        }
+    }
+    std::printf("  [teclado] fuera del tabulador: %s\n",
+                outside.join(QStringLiteral(", ")).toStdString().c_str());
+
+    // Todos los que queden fuera tienen que ser de zoom, y el zoom tiene sus
+    // cuatro atajos entre las acciones de la ventana.
+    int zoomShortcuts = 0;
+    for (auto* action : window.actions()) {
+        if (!action->shortcut().isEmpty()) {
+            ++zoomShortcuts;
+        }
+    }
+    EXPECT_GT(zoomShortcuts, 4) << "no hay atajos que justifiquen dejar botones fuera";
+    EXPECT_LE(outside.size(), 4)
+        << "hay más botones sin teclado que los de zoom: " << outside.join(", ").toStdString();
 }

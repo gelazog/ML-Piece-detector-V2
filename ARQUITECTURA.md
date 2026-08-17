@@ -2658,6 +2658,29 @@ seguir siendo posible o quedaría encendida sin forma de pararla.
 Queda una red de seguridad dentro del slot, sin modal: si algo cambia entre que
 se lee el estado y se pulsa, se revierte y se dice en la barra de estado.
 
+### El teclado: dos huecos que solo se ven midiendo
+
+Se contaron los botones visibles con texto y su política de foco. De 24, cinco
+quedaban fuera del recorrido del tabulador, y **el lienzo estaba en `NoFocus`**.
+
+El lienzo es el peor de los dos: era el **único sitio de la ventana al que el
+teclado no podía llegar**, y es donde se trabaja. Sin foco no hay forma de saber
+si está activo, y cualquier tecla que quisiera atender no le llegaría nunca. Pasa
+a `StrongFocus` —por tabulador y por clic— y no a `ClickFocus`: a quien navega
+con el teclado hay que dejarle llegar hasta ahí, no solo a quien usa el ratón.
+
+El segundo era **«Mover/Elegir»**, y el detalle importa: es la forma de SALIR del
+modo de dibujo. Dejarla fuera del recorrido deja atrapado dibujando a quien
+navega así — una **trampa de foco** en el sentido literal de las guías. Estaba
+puesto a `NoFocus` una línea después de crearse.
+
+Los cuatro que **siguen fuera a propósito** son los de la barra de zoom.
+Añadirían cuatro paradas al recorrido para acciones que ya tienen atajo, y un
+recorrido largo se abandona. Hay un test que vigila que la excusa siga siendo
+cierta: si alguien quitara esos atajos, las acciones se quedarían sin teclado y
+el test lo diría. La misma lógica cubre los botones de la paleta, que se eligen
+con *familia + dígito*.
+
 ### La barra de la ventana: trece botones sin jerarquía
 
 La barra había ido creciendo hasta **trece botones repartidos en tres filas**,

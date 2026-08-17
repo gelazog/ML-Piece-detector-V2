@@ -88,6 +88,16 @@ EditorCanvas::EditorCanvas(QWidget* parent) : QWidget(parent) {
     setMinimumSize(480, 360);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     setMouseTracking(false);
+    // El lienzo puede recibir el foco: por tabulador y al hacer clic.
+    //
+    // Estaba en `NoFocus`, así que era el ÚNICO sitio de la ventana al que el
+    // teclado no podía llegar — y es donde se trabaja. Se notaba en dos cosas:
+    // no había forma de saber si el lienzo estaba activo, y cualquier tecla que
+    // el lienzo quisiera atender no le habría llegado nunca.
+    //
+    // `StrongFocus` y no `ClickFocus`: al operador que navega con el teclado hay
+    // que dejarle llegar hasta aquí, no solo al que usa el ratón.
+    setFocusPolicy(Qt::StrongFocus);
 }
 
 QSize EditorCanvas::sizeHint() const {
