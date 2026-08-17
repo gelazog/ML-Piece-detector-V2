@@ -2633,13 +2633,30 @@ teclado — a los menús se va justo cuando no se reconoce el icono. Ahora todas
 tienen su entrada, y la de auto-inspección es un **espejo en los dos sentidos**
 del botón: si dijeran cosas distintas, el operador no sabría a cuál creer.
 
-Un hallazgo del banco que conviene no perder: el test que iba a comprobar ese
-espejo **colgó la suite cinco minutos** hasta que hubo que matar el proceso.
-Encender la auto-inspección sin cámara ni pieza abre un `QMessageBox` **modal**,
-y sin pantalla eso bloquea para siempre. Queda apuntado como deuda de interfaz:
-un conmutador que abre un diálogo modal para decir que no se puede encender es
-peor que un conmutador apagado con su motivo en el tooltip — que es justo lo que
-este proyecto ya hace en los botones de borrar.
+#### El conmutador que contestaba con un modal
+
+Lo destapó el banco, y de la peor manera: el test que iba a comprobar ese espejo
+**colgó la suite cinco minutos** hasta que hubo que matar el proceso. Encender la
+auto-inspección sin cámara ni pieza abría un `QMessageBox` **modal**, y sin
+pantalla eso bloquea para siempre.
+
+El coste visible era peor que el del test. El operador encendía el conmutador, le
+saltaba un diálogo diciendo que no, y el conmutador se apagaba solo: **tres pasos
+para enterarse de algo que se podía ver antes de tocar nada**. Y la comprobación
+vivía *después* de pulsar, que es el sitio equivocado.
+
+Ahora está **apagado con su motivo en el tooltip** —«No se puede empezar todavía:
+no hay ninguna pieza registrada seleccionada, no hay ninguna fuente en marcha»—
+que es exactamente lo que este proyecto ya hace en los botones de borrar. Se lee
+antes de pulsar, el botón y su acción de menú dicen lo mismo, y **se puede
+probar**: un control que no se puede probar es un control que nadie prueba.
+
+Con la auto-inspección **en marcha** el conmutador no se deshabilita aunque
+falten condiciones, y eso es deliberado: si la fuente se cae, apagarla tiene que
+seguir siendo posible o quedaría encendida sin forma de pararla.
+
+Queda una red de seguridad dentro del slot, sin modal: si algo cambia entre que
+se lee el estado y se pulsa, se revierte y se dice en la barra de estado.
 
 ### La barra de la ventana: trece botones sin jerarquía
 

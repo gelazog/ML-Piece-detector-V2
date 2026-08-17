@@ -2136,6 +2136,46 @@ TEST(MainMenus, ScaleAndUnitLiveInTheSamePlace) {
     }
 }
 
+TEST(MainMenus, TheAutoInspectionSaysWhyItCannotStartInsteadOfOpeningAModal) {
+    // Este test no se pudo escribir la primera vez: encender la auto-inspección
+    // sin cámara ni pieza abría un QMessageBox MODAL, y sin pantalla eso bloquea
+    // para siempre — el banco se colgó cinco minutos hasta que hubo que matar el
+    // proceso. Un control que no se puede probar es un control que nadie prueba.
+    //
+    // Ahora está apagado con su motivo, así que se lee ANTES de pulsar y además
+    // se puede comprobar.
+    pci::ui::MainWindow window;
+    window.resize(1400, 800);
+
+    QPushButton* button = nullptr;
+    for (auto* candidate : window.findChildren<QPushButton*>()) {
+        if (candidate->text().startsWith(QStringLiteral("Auto-inspección"))) {
+            button = candidate;
+        }
+    }
+    ASSERT_NE(button, nullptr);
+    // Recién abierta no hay fuente ni pieza: no se puede empezar.
+    EXPECT_FALSE(button->isEnabled()) << "se ofrece empezar algo que no puede empezar";
+    EXPECT_FALSE(button->toolTip().isEmpty()) << "apagado y sin decir por qué";
+    EXPECT_TRUE(button->toolTip().contains(QStringLiteral("fuente")))
+        << "el motivo no menciona lo que falta: " << button->toolTip().toStdString();
+    std::printf("  [auto] apagada, y dice: %s\n", button->toolTip().toStdString().c_str());
+
+    // Y el menú dice lo mismo: si uno estuviera vivo y el otro no, el operador
+    // no sabría a cuál creer.
+    QAction* menuAction = nullptr;
+    for (auto* menu : window.menuBar()->findChildren<QMenu*>()) {
+        for (auto* action : menu->actions()) {
+            if (action->text().startsWith(QStringLiteral("Auto-inspección"))) {
+                menuAction = action;
+            }
+        }
+    }
+    ASSERT_NE(menuAction, nullptr);
+    EXPECT_EQ(menuAction->isEnabled(), button->isEnabled());
+    EXPECT_EQ(menuAction->toolTip(), button->toolTip());
+}
+
 TEST(MainMenus, TheAutoInspectionMenuAndButtonStartInAgreement) {
     // Si el menú dijera una cosa y el botón otra, el operador no sabría a cuál
     // creer. Aquí solo se comprueba el estado inicial y que el espejo exista:

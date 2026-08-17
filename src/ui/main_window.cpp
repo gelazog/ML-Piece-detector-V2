@@ -982,6 +982,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     updateBoardReadout();
 
     buildMenuBar();  // crea las acciones de menú (incluidas unidad y contorno)
+    // El menú se construye DESPUÉS de la primera actualización de estado, así
+    // que su acción de auto-inspección se quedaba sin el motivo que sí tenía el
+    // botón: uno apagado con explicación y el otro vivo. Se pone al día aquí.
+    updateAutoInspectAvailability();
 
     // Unidad de medida elegida por el operador (persistida).
     if (repos_.settings != nullptr) {
@@ -1817,7 +1821,52 @@ void MainWindow::onRedo() {
     }
 }
 
+// Si la auto-inspección se puede encender AHORA, y si no, por qué no.
+//
+// Antes esto se comprobaba DESPUÉS de pulsar y se contestaba con un
+// `QMessageBox` modal: el operador encendía el conmutador, le saltaba un diálogo
+// diciendo que no, y el conmutador se apagaba solo. Tres pasos para enterarse de
+// algo que se podía ver antes de tocar nada.
+//
+// Y el modal tenía un segundo coste, que apareció al escribir su test: sin
+// pantalla bloquea para siempre, así que el banco se colgó cinco minutos hasta
+// que hubo que matar el proceso. Un control que no se puede probar es un control
+// que nadie va a probar.
+//
+// Ahora está apagado con su motivo en el tooltip, que es lo que este proyecto ya
+// hace en los botones de borrar: se lee antes de pulsar, y se puede comprobar.
+void MainWindow::updateAutoInspectAvailability() {
+    if (autoInspectButton_ == nullptr) {
+        return;
+    }
+    QStringList missing;
+    if (repos_.engine == nullptr) {
+        missing << tr("no hay motor de inspección");
+    }
+    if (selectedPieceId() < 0) {
+        missing << tr("no hay ninguna pieza registrada seleccionada");
+    }
+    if (!streaming_) {
+        missing << tr("no hay ninguna fuente en marcha");
+    }
+    // Mientras está en marcha no se deshabilita: apagar el conmutador tiene que
+    // seguir siendo posible aunque la fuente se haya caído, o la auto-inspección
+    // quedaría encendida sin forma de pararla.
+    const bool usable = missing.isEmpty() || autoInspecting_;
+    const QString why =
+        missing.isEmpty()
+            ? tr("Inspecciona continuamente el vídeo contra la pieza seleccionada.")
+            : tr("No se puede empezar todavía: %1.").arg(missing.join(tr(", ")));
+    autoInspectButton_->setEnabled(usable);
+    autoInspectButton_->setToolTip(why);
+    if (autoInspectAction_ != nullptr) {
+        autoInspectAction_->setEnabled(usable);
+        autoInspectAction_->setToolTip(why);
+    }
+}
+
 void MainWindow::updateStatusIndicators() {
+    updateAutoInspectAvailability();
     // Punto de color + leyenda por indicador (rich text: sin assets externos).
     auto set = [](QLabel* label, const QString& caption, bool ok, const QString& okText,
                   const QString& badText) {
@@ -4602,10 +4651,14 @@ void MainWindow::onAutoToggled(bool enabled) {
     }
     if (enabled) {
         if (repos_.engine == nullptr || selectedPieceId() < 0 || !streaming_) {
-            QMessageBox::information(
-                this, tr("Auto-inspección"),
-                tr("Necesitas video en vivo y una pieza registrada seleccionada."));
+            // Red de seguridad, no el aviso: el conmutador ya está apagado con
+            // su motivo, así que llegar aquí significa que algo cambió entre
+            // medias. Se revierte y se dice en la barra de estado, sin un modal
+            // que hay que cerrar para seguir trabajando.
             autoInspectButton_->setChecked(false);  // arrastra al menú por el slot
+            statusBar()->showMessage(
+                tr("La auto-inspección necesita una fuente en marcha y una pieza "
+                   "seleccionada."));
             return;
         }
         autoInspecting_ = true;

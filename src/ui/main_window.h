@@ -152,6 +152,10 @@ private:
     void updateCalibrationLabel();
     void persistCalibration();     // sella resolución/cámara y guarda en Settings
     void updateStatusIndicators();  // pone al día los iconos de estado (S4)
+    // Enciende o apaga la auto-inspección según se pueda empezar, y dice por
+    // qué no cuando no. Antes se contestaba con un diálogo modal DESPUÉS de
+    // pulsar, que además colgaba el banco de pruebas sin pantalla.
+    void updateAutoInspectAvailability();
     void updateZoomIndicator();     // porcentaje y botones de la barra de zoom (Z3)
     void onBoardOriginChanged(QAction* action);  // origen del tablero (T2)
     void updateBoardReadout();  // lectura en vivo de desviacion y giro (T3)
