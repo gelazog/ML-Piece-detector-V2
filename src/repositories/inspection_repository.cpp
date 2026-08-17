@@ -86,15 +86,23 @@ core::Result<std::int64_t> InspectionRepository::saveInspection(
             }
             const std::int64_t toolResultId = db_.lastInsertId();
 
+            // La unidad se guarda de VERDAD. Antes iba «px» fija para todo, con
+            // ángulos y recuentos incluidos: una columna que siempre dice lo
+            // mismo no es un dato, y esta además mentía. El histórico existe
+            // para poder releerlo, y un valor sin su unidad correcta no se
+            // puede releer.
             auto measurement = db_.prepare(
                 "INSERT INTO Measurements (tool_result_id, name, value, unit) "
-                "VALUES (?, 'medida', ?, 'px');");
+                "VALUES (?, 'medida', ?, ?);");
             if (!measurement.isOk()) {
                 return core::Result<void>::err(measurement.error().message);
             }
             auto& m = measurement.value();
             if (auto b = m.bindInt(1, toolResultId); !b.isOk()) return b;
             if (auto b = m.bindDouble(2, tool.measured); !b.isOk()) return b;
+            if (auto b = m.bindText(3, inspection::measuredUnitKey(tool.kind)); !b.isOk()) {
+                return b;
+            }
             if (auto step = m.step(); !step.isOk()) {
                 return core::Result<void>::err(step.error().message);
             }

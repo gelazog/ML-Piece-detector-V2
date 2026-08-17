@@ -298,7 +298,7 @@ TEST(LineToLine, MeasuresAngleBetweenLines) {
     auto result = runTool(gray, kIdentity,
                           makeConfig(ToolType::LineToLine, ToolGeometry(g), 43, 47));
     ASSERT_TRUE(result.isOk()) << result.error().message;
-    EXPECT_TRUE(result.value().measuredIsAngle);
+    EXPECT_EQ(result.value().kind, MeasuredKind::Angle);
     EXPECT_NEAR(result.value().measured, 45.0, 1e-3);
     EXPECT_TRUE(result.value().ok);  // 45 dentro de [43, 47].
 
@@ -330,7 +330,7 @@ TEST(Angle, MeasuresCornerAngle) {
     auto result =
         runTool(gray, kIdentity, makeConfig(ToolType::Angle, ToolGeometry(right), 88, 92));
     ASSERT_TRUE(result.isOk()) << result.error().message;
-    EXPECT_TRUE(result.value().measuredIsAngle);
+    EXPECT_EQ(result.value().kind, MeasuredKind::Angle);
     EXPECT_NEAR(result.value().measured, 90.0, 1e-3);
     EXPECT_TRUE(result.value().ok);
 
@@ -2918,7 +2918,7 @@ TEST(Constructions, ALineThroughTwoPointsHasTheAnalyticAngle) {
     ASSERT_TRUE(result.ok) << result.detail;
     EXPECT_EQ(result.derived.kind, DerivedKind::Line);
     EXPECT_NEAR(result.measured, 45.0, 1e-3);
-    EXPECT_TRUE(result.measuredIsAngle);
+    EXPECT_EQ(result.kind, MeasuredKind::Angle);
     EXPECT_NEAR(cv::norm(result.derived.direction), 1.0, 1e-5) << "la dirección va unitaria";
 }
 
@@ -5196,7 +5196,7 @@ TEST(Chamfer, TheTwoAnglesAreTheOnesItWasDrawnWith) {
         const bool matches = std::abs(a - c.fromHorizontal) < 2.0 ||
                              std::abs(a - other) < 2.0;
         EXPECT_TRUE(matches) << "ninguno de los dos ángulos es el dibujado: " << detail;
-        EXPECT_TRUE(result.value().measuredIsAngle);
+        EXPECT_EQ(result.value().kind, MeasuredKind::Angle);
     }
 }
 
@@ -5334,7 +5334,7 @@ TEST(Fillet, ATangentFilletDeviatesLittleAndABrokenOneDeviatesTheAngleItWasGiven
     ASSERT_TRUE(tangent.isOk());
     std::printf("  tangente        -> %s\n", tangent.value().detail.c_str());
     EXPECT_LT(tangent.value().measured, 6.0) << tangent.value().detail;
-    EXPECT_TRUE(tangent.value().measuredIsAngle);
+    EXPECT_EQ(tangent.value().kind, MeasuredKind::Angle);
 
     for (const double tilt : {12.0, 22.0}) {
         const auto broken = runTool(filletedCorner(50.0, tilt), kIdentity,

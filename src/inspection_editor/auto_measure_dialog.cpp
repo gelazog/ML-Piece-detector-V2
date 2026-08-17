@@ -24,8 +24,9 @@ constexpr int kColumnReason = 4;
 
 }  // namespace
 
-AutoMeasureDialog::AutoMeasureDialog(std::vector<AutoProposal> proposals, QWidget* parent)
-    : QDialog(parent), proposals_(std::move(proposals)) {
+AutoMeasureDialog::AutoMeasureDialog(std::vector<AutoProposal> proposals, double mmPerPixel,
+                                     QWidget* parent)
+    : QDialog(parent), proposals_(std::move(proposals)), mmPerPixel_(mmPerPixel) {
     setWindowTitle(tr("Medición automática"));
     resize(820, 420);
 
@@ -64,14 +65,36 @@ AutoMeasureDialog::AutoMeasureDialog(std::vector<AutoProposal> proposals, QWidge
         // El detalle completo de la herramienta (con unidades y avisos) va en el
         // tooltip: en la celda solo cabe el número, pero un aviso de condiciones
         // de medida no se puede esconder.
-        auto* value = new QTableWidgetItem(QString::number(proposal.measured, 'f', 2));
+        //
+        // El número lleva SU unidad. Antes esta columna era un `QString::number`
+        // pelado, y en ella convivían píxeles, grados y recuentos: un hexágono
+        // decía «6.00» donde el de al lado decía «203.15», y ninguno de los dos
+        // decía de qué. La unidad estaba solo en el tooltip, que es tanto como
+        // no estar.
+        ToolRunResult reading;
+        reading.measured = proposal.measured;
+        reading.kind = proposal.kind;
+        reading.type = proposal.config.type;
+        auto* value = new QTableWidgetItem(
+            QString::fromStdString(formatMeasure(reading, mmPerPixel_, LengthUnit::Auto)));
         value->setToolTip(QString::fromStdString(proposal.detail));
         table_->setItem(row, kColumnMeasured, value);
 
-        table_->setItem(row, kColumnTolerance,
-                        new QTableWidgetItem(QStringLiteral("%1 … %2")
-                                                 .arg(proposal.config.toleranceMin, 0, 'f', 1)
-                                                 .arg(proposal.config.toleranceMax, 0, 'f', 1)));
+        // La tolerancia va en la misma unidad que la medida, por lo mismo: una
+        // banda «5.4 … 6.6» junto a un valor en milímetros se lee en
+        // milímetros, y para un recuento de lados no lo era.
+        ToolRunResult low = reading;
+        low.measured = proposal.config.toleranceMin;
+        ToolRunResult high = reading;
+        high.measured = proposal.config.toleranceMax;
+        table_->setItem(
+            row, kColumnTolerance,
+            new QTableWidgetItem(
+                QStringLiteral("%1 … %2")
+                    .arg(QString::fromStdString(
+                        formatMeasure(low, mmPerPixel_, LengthUnit::Auto, true)))
+                    .arg(QString::fromStdString(
+                        formatMeasure(high, mmPerPixel_, LengthUnit::Auto, true)))));
         table_->setItem(row, kColumnReason,
                         new QTableWidgetItem(QString::fromStdString(proposal.reason)));
     }

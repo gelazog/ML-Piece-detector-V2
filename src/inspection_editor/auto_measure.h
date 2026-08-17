@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "inspection_editor/execution/tool_executor.h"
 #include "inspection_editor/tools/tool_geometry.h"
 #include "inspection_editor/tools/tool_types.h"
 #include "vision/types.h"
@@ -24,6 +25,11 @@ struct AutoProposal {
     ToolConfig config;      // tipo, nombre y tolerancias ya sugeridas
     ToolGeometry geometry;  // en coordenadas de PIEZA, como todas
     double measured = 0.0;  // lo que mide sobre esta pieza
+    // De qué clase es ese número. Sin esto, la tabla de propuestas escribía
+    // «6.00» en la misma columna para un diámetro en píxeles, un ángulo en
+    // grados y un recuento de lados — tres unidades distintas presentadas como
+    // si fueran la misma.
+    MeasuredKind kind = MeasuredKind::Length;
     std::string detail;     // la lectura completa, tal como la da la herramienta
     // Por qué se propone, en una frase. Es lo que permite al operador decidir
     // rápido: una lista de doce herramientas sin explicación no se revisa, se

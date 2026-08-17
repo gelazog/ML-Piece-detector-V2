@@ -638,7 +638,7 @@ void EditorWindow::onAutoMeasureClicked() {
         return;
     }
 
-    AutoMeasureDialog dialog(proposals, this);
+    AutoMeasureDialog dialog(proposals, calibration_.mmPerPixel, this);
     if (dialog.exec() != QDialog::Accepted) {
         statusLabel_->setText(tr("Medición automática cancelada."));
         return;
@@ -1037,18 +1037,16 @@ void EditorWindow::onTestClicked() {
 
     QStringList lines;
     for (const auto& result : results) {
-        QString measure;
-        if (result.measuredIsAngle) {
-            measure = QStringLiteral("%1°").arg(result.measured, 0, 'f', 1);
-        } else if (result.informative) {
-            // Un punto construido no tiene medida: sus coordenadas van en el
-            // detalle. Escribir "0,0 px" sería un número inventado.
-            measure = QStringLiteral("—");
-        } else if (result.type == ToolType::Blob) {
-            measure = QString::number(result.measured, 'f', 0);
-        } else {
-            measure = QString::fromStdString(calibration_.formatLength(result.measured));
-        }
+        // Un punto construido no tiene medida: sus coordenadas van en el
+        // detalle. Escribir "0,0 px" sería un número inventado. Todo lo demás
+        // lo rotula `formatMeasure`, que es el único sitio donde se decide la
+        // unidad — aquí se decidía aparte, y se decidía mal: un Blob poligonal
+        // salía formateado como una longitud.
+        const QString measure =
+            result.informative
+                ? QStringLiteral("—")
+                : QString::fromStdString(formatMeasure(result, calibration_.mmPerPixel,
+                                                       LengthUnit::Auto));
         // Una construcción que salió bien no es un OK: no ha juzgado nada. Que
         // sí falle es otra cosa, y eso se dice.
         const QString state = (result.informative && result.ok) ? QStringLiteral("—")

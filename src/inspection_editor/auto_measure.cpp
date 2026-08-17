@@ -109,6 +109,7 @@ bool measureProposal(const cv::Mat& gray, const vision::Fixture& fixture, double
         return false;
     }
     proposal.measured = result.value().measured;
+    proposal.kind = result.value().kind;
     proposal.detail = result.value().detail;
     suggestTolerances(proposal.config.type, proposal.measured, proposal.config.toleranceMin,
                       proposal.config.toleranceMax);

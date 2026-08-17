@@ -23,6 +23,7 @@ add_executable(pci_tests
   test_fps_counter.cpp
   test_frame_utils.cpp
   test_inspection.cpp
+  test_measure_units.cpp
   test_ml.cpp
   test_periodicity.cpp
   test_profiles.cpp

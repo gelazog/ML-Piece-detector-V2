@@ -2388,16 +2388,9 @@ void MainWindow::onLiveToolCreated(const inspection::ToolGeometry& geometry) {
             inspection::suggestTolerances(tool.config.type, result.value().measured,
                                           tool.config.toleranceMin,
                                           tool.config.toleranceMax);
-            QString measure;
-            if (result.value().measuredIsAngle) {
-                measure = QStringLiteral("%1°").arg(result.value().measured, 0, 'f', 1);
-            } else if (tool.config.type == inspection::ToolType::Blob ||
-                       tool.config.type == inspection::ToolType::PolyBlob) {
-                measure = QString::number(result.value().measured, 'f', 0);
-            } else {
-                measure = QString::fromStdString(
-                    calibration_.formatLength(result.value().measured));
-            }
+            // La unidad la decide `formatMeasure`, no esta pantalla.
+            const QString measure = QString::fromStdString(inspection::formatMeasure(
+                result.value(), calibration_.mmPerPixel, currentUnit()));
             hint = tr("%1 — midió %2; tolerancias sugeridas [%3, %4]")
                        .arg(QString::fromStdString(tool.config.name), measure)
                        .arg(tool.config.toleranceMin, 0, 'f', 1)

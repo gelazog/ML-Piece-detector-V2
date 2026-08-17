@@ -531,7 +531,7 @@ ToolRunResult runPosition(const Fixture& fixture, const ToolConfig& config,
 ToolRunResult runLineToLine(const Fixture& fixture, const ToolConfig& config,
                             const LineToLineGeometry& g, const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
-    result.measuredIsAngle = true;
+    result.kind = MeasuredKind::Angle;
     const cv::Point2f a0 = toImg(fixture, g.a0);
     const cv::Point2f a1 = toImg(fixture, g.a1);
     const cv::Point2f b0 = toImg(fixture, g.b0);
@@ -573,7 +573,7 @@ ToolRunResult runLineToLine(const Fixture& fixture, const ToolConfig& config,
 ToolRunResult runAngle(const Fixture& fixture, const ToolConfig& config,
                        const AngleGeometry& g, const Fmt& /*fmt*/) {
     ToolRunResult result = baseResult(config);
-    result.measuredIsAngle = true;
+    result.kind = MeasuredKind::Angle;
     const cv::Point2f vertex = toImg(fixture, g.vertex);
     const cv::Point2f end0 = toImg(fixture, g.end0);
     const cv::Point2f end1 = toImg(fixture, g.end1);
@@ -1584,6 +1584,7 @@ ToolRunResult runGear(const cv::Mat& gray, const Fixture& fixture, const ToolCon
     }
 
     result.measured = teeth;  // los dientes son la identidad de la rueda
+    result.kind = MeasuredKind::Count;
     result.ok = withinTolerance(config, result.measured);
     result.detail = "z=" + std::to_string(teeth) + " dientes, Ø cabeza=" +
                     fmtLen(tipDiameter, fmt) + ", Ø raíz=" + fmtLen(rootDiameter, fmt) +
@@ -1839,6 +1840,7 @@ ToolRunResult runBlob(const cv::Mat& gray, const Fixture& fixture, const ToolCon
         return result;
     }
     result.measured = count;
+    result.kind = MeasuredKind::Count;
     result.ok = withinTolerance(config, result.measured);
     result.detail = std::to_string(count) + " blob(s), área=" + fmtArea(totalArea, fmt);
     return result;
@@ -1864,6 +1866,7 @@ ToolRunResult runPolyBlob(const cv::Mat& gray, const Fixture& fixture, const Too
         return result;
     }
     result.measured = count;
+    result.kind = MeasuredKind::Count;
     result.ok = withinTolerance(config, result.measured);
     result.detail = std::to_string(count) + " blob(s), área=" + fmtArea(totalArea, fmt);
     return result;
@@ -1999,7 +2002,7 @@ ToolRunResult runConstructedLine(const Fixture& fixture, const ToolConfig& confi
         angle += 180.0;
     }
     result.measured = angle;
-    result.measuredIsAngle = true;
+    result.kind = MeasuredKind::Angle;
     result.detail = std::string(constructionLabel(g.mode)) + ": " + fmt2(angle) + "° por " +
                     fmtPieceCoords(point);
 
@@ -2126,7 +2129,7 @@ ToolRunResult runFillet(const cv::Mat& gray, const Fixture& fixture,
         case FilletMeasure::Radius: result.measured = arc.radius; break;
         case FilletMeasure::Tangency:
             result.measured = worst;
-            result.measuredIsAngle = true;
+            result.kind = MeasuredKind::Angle;
             break;
     }
     result.ok = withinTolerance(config, result.measured);
@@ -2361,7 +2364,7 @@ ToolRunResult runChamfer(const cv::Mat& gray, const Fixture& fixture,
     switch (g.measure) {
         case ChamferMeasure::Angle:
             result.measured = angleLong;
-            result.measuredIsAngle = true;
+            result.kind = MeasuredKind::Angle;
             break;
         case ChamferMeasure::LegLong: result.measured = legLong; break;
         case ChamferMeasure::LegShort: result.measured = legShort; break;
@@ -2679,6 +2682,7 @@ ToolRunResult runBoltPattern(const cv::Mat& gray, const Fixture& fixture,
         // Que falte (o sobre) un agujero ES el defecto: no se sigue midiendo un
         // reparto angular que ya no tiene sentido.
         result.measured = found;
+        result.kind = MeasuredKind::Count;
         result.detail = "se esperaban " + std::to_string(g.expectedHoles) +
                         " agujeros y se ven " + std::to_string(found);
         return result;
@@ -3414,6 +3418,7 @@ ToolRunResult runEdgeDefects(const cv::Mat& gray, const Fixture& fixture,
     }
 
     result.measured = static_cast<double>(defects.size());
+    result.kind = MeasuredKind::Count;
     result.ok = withinTolerance(config, result.measured);
 
     if (defects.empty()) {
@@ -3529,6 +3534,7 @@ ToolRunResult runPolygon(const cv::Mat& gray, const Fixture& fixture,
     const int sidesHalf = static_cast<int>(sidesAt(epsilon * 0.5).size());
     const int sidesDouble = static_cast<int>(sidesAt(epsilon * 2.0).size());
     result.measured = sides;
+    result.kind = MeasuredKind::Count;
     if (sidesHalf != sides || sidesDouble != sides) {
         result.detail = "No es un polígono claro: " + std::to_string(sides) + " lados con " +
                         "este epsilon, " + std::to_string(sidesHalf) + " con la mitad y " +
@@ -3726,6 +3732,7 @@ ToolRunResult runSymmetry(const cv::Mat& gray, const Fixture& fixture,
         symmetryOverlap(binary, centroid, (bestAngleDeg + 90.0) * kDegToRad);
 
     result.measured = bestScore;
+    result.kind = MeasuredKind::Fraction;
     result.ok = withinTolerance(config, result.measured);
     result.detail = "grado=" + fmt2(bestScore) + " en un eje a " + fmt2(bestAngleDeg) +
                     "°, y " + fmt2(crossScore) + " en el perpendicular";
@@ -3851,12 +3858,29 @@ ToolRunResult runRegion(const cv::Mat& gray, const Fixture& fixture, const ToolC
     const double aspect = shortSide > 1e-6 ? longSide / shortSide : 0.0;
 
     switch (g.measure) {
-        case RegionMeasure::Area: result.measured = netArea; break;
+        case RegionMeasure::Area:
+            result.measured = netArea;
+            // px CUADRADOS: la escala entra al cuadrado. Pintar esto como una
+            // longitud daba un número falso además de una unidad falsa.
+            result.kind = MeasuredKind::Area;
+            break;
         case RegionMeasure::Perimeter: result.measured = perimeter; break;
-        case RegionMeasure::Solidity: result.measured = solidity; break;
-        case RegionMeasure::Circularity: result.measured = circularity; break;
-        case RegionMeasure::AspectRatio: result.measured = aspect; break;
-        case RegionMeasure::HoleCount: result.measured = holes; break;
+        case RegionMeasure::Solidity:
+            result.measured = solidity;
+            result.kind = MeasuredKind::Fraction;
+            break;
+        case RegionMeasure::Circularity:
+            result.measured = circularity;
+            result.kind = MeasuredKind::Fraction;
+            break;
+        case RegionMeasure::AspectRatio:
+            result.measured = aspect;
+            result.kind = MeasuredKind::Fraction;
+            break;
+        case RegionMeasure::HoleCount:
+            result.measured = holes;
+            result.kind = MeasuredKind::Count;
+            break;
     }
     result.ok = withinTolerance(config, result.measured);
 
@@ -4337,6 +4361,56 @@ std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture&
 
 std::string formatLength(double px, double mmPerPixel, LengthUnit unit) {
     return fmtLen(px, Fmt{mmPerPixel, unit, cv::Mat()});
+}
+
+const char* measuredUnitKey(MeasuredKind kind) {
+    switch (kind) {
+        case MeasuredKind::Length: return "px";
+        case MeasuredKind::Angle: return "°";
+        case MeasuredKind::Count: return "n";
+        case MeasuredKind::Fraction: return "—";
+        case MeasuredKind::Area: return "px²";
+    }
+    return "px";
+}
+
+std::string formatMeasure(const ToolRunResult& result, double mmPerPixel, LengthUnit unit,
+                          bool compact) {
+    const Fmt fmt{mmPerPixel, unit, cv::Mat()};
+    char buffer[64];
+    switch (result.kind) {
+        case MeasuredKind::Angle:
+            std::snprintf(buffer, sizeof(buffer), "%.1f°", result.measured);
+            return buffer;
+        case MeasuredKind::Count:
+            // Un recuento es un entero. Escribirlo con decimales —«6,00»— ya
+            // invitaba a leerlo como una medida continua, y con «mm» detrás lo
+            // era del todo.
+            std::snprintf(buffer, sizeof(buffer), "n=%.0f", result.measured);
+            return buffer;
+        case MeasuredKind::Fraction:
+            // Sin unidad porque no tiene: una circularidad de 0,93 no son 0,93
+            // de nada. Tres decimales porque el rango útil vive entre 0 y 1.
+            std::snprintf(buffer, sizeof(buffer), "%.3f", result.measured);
+            return buffer;
+        case MeasuredKind::Area: {
+            const std::string text = fmtArea(result.measured, fmt);
+            if (!compact) {
+                return text;
+            }
+            const auto tail = text.find(" (");
+            return tail == std::string::npos ? text : text.substr(0, tail);
+        }
+        case MeasuredKind::Length: {
+            const std::string text = fmtLen(result.measured, fmt);
+            if (!compact) {
+                return text;
+            }
+            const auto tail = text.find(" (");
+            return tail == std::string::npos ? text : text.substr(0, tail);
+        }
+    }
+    return fmtLen(result.measured, fmt);
 }
 
 }  // namespace pci::inspection

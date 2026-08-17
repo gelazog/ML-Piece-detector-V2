@@ -19,13 +19,31 @@ namespace pci::inspection {
 // Unidad elegida por el operador para mostrar las medidas.
 enum class LengthUnit { Auto, Millimeters, Centimeters, Pixels };
 
+// Qué CLASE de magnitud es `measured`. Lo decide quien mide, que es el único
+// que puede saberlo: la Región mide seis cosas distintas con el mismo tipo de
+// herramienta, así que preguntarle al tipo no basta.
+//
+// Existe porque sin ello la interfaz rotulaba en milímetros todo lo que no
+// fuera un ángulo, y eso son medidas falsas con aspecto de buenas: un hexágono
+// se pintaba como «Lados (6): 6,00 mm», un área en px² se multiplicaba por la
+// escala LINEAL —número equivocado y unidad equivocada— y una circularidad,
+// que no tiene unidades, salía en milímetros. Un número con la unidad
+// equivocada es peor que no dar el número.
+enum class MeasuredKind {
+    Length,    // píxeles, convertibles a mm/cm con la escala
+    Angle,     // grados
+    Count,     // un recuento: dientes, agujeros, defectos, lados
+    Fraction,  // adimensional (circularidad, solidez, simetría, proporción)
+    Area,      // píxeles CUADRADOS: la escala entra al cuadrado, no lineal
+};
+
 struct ToolRunResult {
     std::int64_t toolId = -1;
     std::string name;
     ToolType type = ToolType::Caliper;
     bool ok = false;
-    double measured = 0.0;  // valor principal (px, conteo o grados)
-    bool measuredIsAngle = false;  // true = 'measured' está en grados
+    double measured = 0.0;  // valor principal (px, px², conteo, grados o fracción)
+    MeasuredKind kind = MeasuredKind::Length;
     std::string detail;
     // De qué pieza del frame es esta medida (C6). 0 = la pieza principal, que
     // es el único caso cuando se inspecciona de una en una. Viaja en el propio
@@ -90,5 +108,26 @@ std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture&
 
 // Formatea una longitud en píxeles según la escala y la unidad elegida.
 std::string formatLength(double px, double mmPerPixel, LengthUnit unit);
+
+// El valor medido, con su unidad, sea de la clase que sea. **Único sitio** donde
+// se decide cómo se rotula una medida.
+//
+// Antes lo decidía cada pantalla por su cuenta —el lienzo, el diálogo de
+// resultados, la ventana principal y el editor— y las cuatro se equivocaban
+// igual: convertían a milímetros todo lo que no fuera un ángulo. Cuatro copias
+// de la misma regla es cuatro sitios donde arreglar el mismo fallo, y por eso
+// aquí hay una sola.
+//
+// `compact` recorta el sufijo en píxeles («12,34 mm» en vez de «12,34mm
+// (49,4px)»): sirve para la etiqueta que se pinta encima de la pieza, donde el
+// sitio es el que es.
+[[nodiscard]] std::string formatMeasure(const ToolRunResult& result, double mmPerPixel,
+                                        LengthUnit unit, bool compact = false);
+
+// La unidad con la que se guarda esta medida («px», «px²», «°», «n», «—»). La
+// base de datos escribía «px» para todo, ángulos y recuentos incluidos, y una
+// columna que siempre dice lo mismo no es un dato: es un adorno que además
+// miente.
+[[nodiscard]] const char* measuredUnitKey(MeasuredKind kind);
 
 }  // namespace pci::inspection

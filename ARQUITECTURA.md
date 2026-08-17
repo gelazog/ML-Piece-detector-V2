@@ -2169,6 +2169,41 @@ uniformidad de sus lados y diagonales: mide cuán perpendicular está la cámara
 plano. Con la cámara muy inclinada, una escala única deja de ser fiable lejos
 del marcador y el indicador lo dice.
 
+### No todo lo que se mide es una longitud
+
+Una escala px→mm solo sirve para longitudes, y durante mucho tiempo la
+aplicación se la aplicó a todo. Cuatro pantallas distintas —el lienzo, el
+diálogo de resultados, la ventana principal y el editor— decidían por su cuenta
+cómo rotular una medida, y las cuatro aplicaban la misma regla equivocada: «todo
+lo que no sea un ángulo va en milímetros». El resultado eran números falsos con
+aspecto de buenos:
+
+| Lo que se medía | Lo que se pintaba | Lo que era |
+|---|---|---|
+| Lados de un hexágono | `Lados (6): 6,00 mm` | un recuento |
+| Área de una región | `mm` con la escala **lineal** | px², la escala entra al **cuadrado** |
+| Circularidad, solidez, simetría | `0,93 mm` | adimensional |
+| Dientes de un engranaje, agujeros, defectos | `mm` | recuentos |
+
+La corrección no fue alargar la lista de excepciones de cada pantalla, porque el
+problema no era la lista: era preguntárselo al **tipo de herramienta** en vez de
+a la **medida**. La Región lo demuestra sola — mide seis cosas de tres clases
+distintas con un solo tipo, así que el tipo no puede saberlo.
+
+`ToolRunResult::kind` (`MeasuredKind`: longitud, ángulo, recuento, fracción,
+área) lo decide **quien mide**, que es el único que lo sabe, y
+`inspection::formatMeasure` es el **único sitio** donde se decide cómo se rotula.
+Cuatro copias de una regla son cuatro sitios donde arreglar el mismo fallo.
+
+Sin calibración se dan píxeles y se dicen; inventar milímetros sin escala sería
+la peor salida de todas. Un recuento no depende de la escala y no cambia con
+ella. Una fracción no lleva unidad, y esa ausencia es la respuesta, no un olvido.
+
+De paso se arregló la columna `unit` de la tabla `Measurements`, que guardaba
+`'px'` literal para toda medida —ángulos y recuentos incluidos—. Una columna que
+siempre dice lo mismo no es un dato; esta además mentía, y el histórico existe
+para poder releerse.
+
 ### La prueba que faltaba: la ida y vuelta
 
 Hasta ahora no había ninguna prueba de que la calibración sirviera. Se comprobaba

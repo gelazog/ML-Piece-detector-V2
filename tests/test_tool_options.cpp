@@ -680,8 +680,8 @@ TEST(ToolOptions, EveryMeasureSelectorPicksADifferentNumber) {
                 angle.measured, legLong.measured, legShort.measured);
     EXPECT_NEAR(legLong.measured, 80.0, 5.0) << legLong.detail;
     EXPECT_NEAR(legShort.measured, 30.0, 5.0) << legShort.detail;
-    EXPECT_TRUE(angle.measuredIsAngle);
-    EXPECT_FALSE(legLong.measuredIsAngle);
+    EXPECT_EQ(angle.kind, MeasuredKind::Angle);
+    EXPECT_NE(legLong.kind, MeasuredKind::Angle);
 
     const cv::Mat fillet = filletedCorner(50.0);
     const ToolRunResult radius =
@@ -694,7 +694,7 @@ TEST(ToolOptions, EveryMeasureSelectorPicksADifferentNumber) {
                 tangency.measured);
     EXPECT_NEAR(radius.measured, 50.0, 6.0) << radius.detail;
     EXPECT_LT(tangency.measured, 8.0) << tangency.detail;
-    EXPECT_TRUE(tangency.measuredIsAngle);
+    EXPECT_EQ(tangency.kind, MeasuredKind::Angle);
 
     const cv::Mat rect = turnedRectangle(200.0, 80.0, 30.0);
     const ToolRunResult narrow =

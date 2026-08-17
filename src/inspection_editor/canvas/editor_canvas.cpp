@@ -1633,13 +1633,14 @@ bool EditorCanvas::hasResultFor(const ToolConfig& config) const {
 }
 
 QString EditorCanvas::measureText(const ToolRunResult& result) const {
-    if (result.measuredIsAngle) {
-        return QStringLiteral("%1°").arg(result.measured, 0, 'f', 1);
-    }
-    // Blob y Blob poligonal miden un CONTEO, no una longitud: mostrarlo en mm
-    // era sencillamente una medida equivocada.
-    if (result.type == ToolType::Blob || result.type == ToolType::PolyBlob) {
-        return QStringLiteral("n=%1").arg(result.measured, 0, 'f', 0);
+    // Quién decide la unidad NO es esta pantalla. Antes lo hacía, y la regla que
+    // aplicaba —«todo lo que no sea un ángulo va en milímetros»— pintaba un
+    // hexágono como «Lados (6): 6,00 mm» y un área en px² multiplicada por la
+    // escala lineal. La lista de excepciones nunca se acababa, porque el
+    // problema no era la lista: era preguntárselo al TIPO de herramienta en vez
+    // de a la medida.
+    if (result.kind != MeasuredKind::Length) {
+        return QString::fromStdString(formatMeasure(result, mmPerPixel_, unit_, true));
     }
     if (mmPerPixel_ > 0.0 && unit_ != LengthUnit::Pixels) {
         const double mm = result.measured * mmPerPixel_;

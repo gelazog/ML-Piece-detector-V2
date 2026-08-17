@@ -127,19 +127,14 @@ InspectionResultDialog::InspectionResultDialog(
         const auto& result = outcome_.toolResults[static_cast<std::size_t>(row)];
         table->setItem(row, 0,
                        new QTableWidgetItem(QString::fromStdString(result.name)));
-        QString measure;
-        if (result.measuredIsAngle) {
-            measure = QStringLiteral("%1°").arg(result.measured, 0, 'f', 1);
-        } else if (result.informative) {
-            // Un punto construido no tiene medida: sus coordenadas van en el
-            // detalle. Escribir "0,0 px" sería un número inventado.
-            measure = QStringLiteral("—");
-        } else if (result.type == inspection::ToolType::Blob ||
-                   result.type == inspection::ToolType::PolyBlob) {
-            measure = QString::number(result.measured, 'f', 0);
-        } else {
-            measure = QString::fromStdString(calibration.formatLength(result.measured));
-        }
+        // Un punto construido no tiene medida: sus coordenadas van en el
+        // detalle. Escribir "0,0 px" sería un número inventado. El resto lo
+        // rotula `formatMeasure`: la unidad se decide en un solo sitio.
+        const QString measure =
+            result.informative
+                ? QStringLiteral("—")
+                : QString::fromStdString(inspection::formatMeasure(
+                      result, calibration.mmPerPixel, inspection::LengthUnit::Auto));
         table->setItem(row, 1, new QTableWidgetItem(measure));
         // Una construcción que salió bien no es un OK verde: no ha juzgado
         // nada, solo ha calculado el datum. Que falle sí es un NG, porque deja
