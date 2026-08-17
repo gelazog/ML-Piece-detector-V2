@@ -154,3 +154,73 @@ TEST(SessionState, WithoutAPlaceToSaveNothingBreaks) {
     EXPECT_EQ(dialog.height(), 500);
     EXPECT_NO_THROW(pci::ui::rememberDialogSize(dialog, nullptr, "prueba"));
 }
+
+// ---------------------------------------------------------------------------
+// Restablecer: OLVIDAR, no escribir valores de fábrica
+// ---------------------------------------------------------------------------
+
+TEST(SessionState, ResettingForgetsInsteadOfWritingDefaults) {
+    // La diferencia parece de matiz y es la que impide que esto se
+    // desincronice. Cada sitio que LEE un ajuste lleva su valor por defecto en
+    // la propia llamada, así que borrando la clave el programa vuelve
+    // exactamente a lo que hace recién instalado. Escribir aqui una segunda
+    // copia de esos valores crearia dos listas que mantener a la vez.
+    SettingsFixture fixture;
+    auto* settings = fixture.settings();
+    ASSERT_NE(settings, nullptr);
+
+    settings->setInt("det_blur", 9);
+    settings->setInt("det_morph", 11);
+    settings->setString("work_zone_mode", "fixed");
+
+    const auto forgotten = settings->forget();
+    ASSERT_TRUE(forgotten.isOk()) << forgotten.error().message;
+    EXPECT_EQ(forgotten.value(), 3) << "no dijo cuantos ajustes se llevo";
+
+    // La clave no existe: la lectura devuelve el valor por defecto de QUIEN LEE.
+    // Dos lectores con defectos distintos siguen obteniendo el suyo, que es
+    // justo lo que se perderia escribiendo un valor.
+    EXPECT_EQ(settings->getInt("det_blur", 5).value(), 5);
+    EXPECT_EQ(settings->getInt("det_blur", 7).value(), 7);
+    EXPECT_EQ(settings->getString("work_zone_mode", "auto").value(), "auto");
+
+    auto rows = settings->listAll();
+    ASSERT_TRUE(rows.isOk());
+    EXPECT_TRUE(rows.value().empty()) << "quedaron ajustes despues de restablecer";
+}
+
+TEST(SessionState, ResettingByFamilyLeavesTheOthersAlone) {
+    // Restablecer una pestaña no puede llevarse la calibracion de la maquina.
+    SettingsFixture fixture;
+    auto* settings = fixture.settings();
+    settings->setInt("det_blur", 9);
+    settings->setInt("det_morph", 11);
+    settings->setDouble("calib_mm_per_px", 0.25);
+    settings->setInt("pref_auto_interval_ms", 2000);
+
+    const auto forgotten = settings->forget("det_");
+    ASSERT_TRUE(forgotten.isOk()) << forgotten.error().message;
+    EXPECT_EQ(forgotten.value(), 2);
+
+    EXPECT_EQ(settings->getInt("det_blur", 5).value(), 5);
+    EXPECT_DOUBLE_EQ(settings->getDouble("calib_mm_per_px", 0.0).value(), 0.25)
+        << "restablecer la deteccion se llevo la calibracion";
+    EXPECT_EQ(settings->getInt("pref_auto_interval_ms", 1000).value(), 2000);
+}
+
+TEST(SessionState, ResettingNothingIsNotAnError) {
+    // «No habia nada que restablecer» es una respuesta distinta de un fallo, y
+    // el operador tiene que poder distinguirlas.
+    SettingsFixture fixture;
+    const auto forgotten = fixture.settings()->forget();
+    ASSERT_TRUE(forgotten.isOk()) << forgotten.error().message;
+    EXPECT_EQ(forgotten.value(), 0);
+
+    // Y un prefijo que no casa con nada tampoco lo es.
+    fixture.settings()->setInt("det_blur", 9);
+    const auto none = fixture.settings()->forget("no_existe_");
+    ASSERT_TRUE(none.isOk());
+    EXPECT_EQ(none.value(), 0);
+    EXPECT_EQ(fixture.settings()->getInt("det_blur", 5).value(), 9)
+        << "un prefijo que no casa se llevo algo por delante";
+}

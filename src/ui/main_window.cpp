@@ -1037,6 +1037,11 @@ void MainWindow::buildMenuBar() {
                         &MainWindow::onExportConfigClicked);
     fileMenu->addAction(tr("Importar configuración…"), this,
                         &MainWindow::onImportConfigClicked);
+    fileMenu->addSeparator();
+    // Separada de las otras dos por lo que hace, no por estética: exportar e
+    // importar copian ajustes de una máquina a otra; esta los borra.
+    fileMenu->addAction(tr("Restablecer configuración de fábrica…"), this,
+                        &MainWindow::onResetConfigClicked);
 
     auto* cameraMenu = menuBar()->addMenu(tr("&Fuente"));
     refreshAction_ = cameraMenu->addAction(tr("Buscar cámaras de nuevo"), this,
@@ -3517,6 +3522,85 @@ void MainWindow::wireCameraPage(CameraImagePage* page) {
 // Exportar/importar la configuración de la máquina (O4): calibración, ajustes
 // y perfiles de detección, atajos y preferencias. No incluye piezas ni
 // plantillas a propósito (esas se comparten con el export de plantillas).
+void MainWindow::onResetConfigClicked() {
+    if (repos_.settings == nullptr) {
+        statusBar()->showMessage(tr("No hay ajustes guardados que restablecer."));
+        return;
+    }
+
+    // Se pregunta ANTES, y la pregunta dice las dos cosas que hacen falta para
+    // contestarla: qué se lleva por delante y qué NO toca. Un «¿Está seguro?» a
+    // secas no se puede contestar — el operador no sabe si va a perder sus
+    // piezas registradas.
+    QMessageBox confirm(this);
+    confirm.setIcon(QMessageBox::Warning);
+    confirm.setWindowTitle(tr("Restablecer configuración de fábrica"));
+    confirm.setText(tr("<b>Se olvidarán todos los ajustes de esta máquina.</b>"));
+    confirm.setInformativeText(
+        tr("Se restablecen: la calibración de escala, los ajustes y perfiles de "
+           "detección, la zona de trabajo, las preferencias, los atajos de teclado, "
+           "los controles de cámara guardados, las capas de la vista y el tamaño de "
+           "las ventanas.\n\n"
+           "NO se toca: las piezas registradas, sus plantillas de herramientas ni el "
+           "historial de inspecciones.\n\n"
+           "Esto no se puede deshacer. Si quieres conservar la puesta a punto, "
+           "cancela y usa antes «Exportar configuración…»."));
+    auto* reset = confirm.addButton(tr("Restablecer"), QMessageBox::DestructiveRole);
+    confirm.addButton(tr("Cancelar"), QMessageBox::RejectRole);
+    // El botón por defecto es Cancelar: en un diálogo destructivo, la tecla
+    // Intro no puede ser la que borra.
+    confirm.setDefaultButton(qobject_cast<QPushButton*>(confirm.buttons().last()));
+    confirm.exec();
+    if (confirm.clickedButton() != reset) {
+        return;
+    }
+
+    const auto forgotten = repos_.settings->forget();
+    if (!forgotten.isOk()) {
+        QMessageBox::warning(this, tr("No se pudo restablecer"),
+                             QString::fromStdString(forgotten.error().message));
+        return;
+    }
+
+    // Los ajustes ya están olvidados; lo que queda en memoria es de la sesión
+    // que se acaba de restablecer. Se devuelven a fábrica los que se ven en el
+    // acto, para que la ventana no siga enseñando lo que ya no existe.
+    pipelineConfig_ = vision::PipelineConfig{};
+    zoneMode_ = vision::WorkingZoneMode::Automatic;
+    autoRoi_.reset();
+    calibration_ = domain::ScaleCalibration{};
+    calibratedCameraKey_.clear();
+    boardConfig_ = vision::BoardConfig{};
+    boardVisible_ = false;
+    rulerVisible_ = false;
+    measureStages_ = false;
+    stageStats_.clear();
+    video_->setMmPerPixel(0.0);
+    video_->setBoardConfig(boardConfig_);
+    video_->setBoardVisible(boardVisible_);
+    video_->setRulerVisible(rulerVisible_);
+    if (repos_.engine != nullptr) {
+        repos_.engine->setBoardConfig(boardConfig_);
+    }
+    updateCalibrationLabel();
+    updateRoiButton();
+    updateStatusIndicators();
+
+    // Y se dice qué queda por aplicarse. Lo que se lee una sola vez al arrancar
+    // —los atajos, la disposición de la ventana— no puede rehacerse sin volver
+    // a abrir, y callárselo dejaría al operador creyendo que el restablecido no
+    // funcionó.
+    QMessageBox::information(
+        this, tr("Configuración restablecida"),
+        tr("Se han olvidado %n ajuste(s).\n\n"
+           "La detección, la calibración, la zona y las capas de la vista ya están "
+           "como de fábrica. Los atajos de teclado y la disposición de las ventanas "
+           "se aplican al volver a abrir el programa.",
+           nullptr, forgotten.value()));
+    statusBar()->showMessage(tr("Configuración de fábrica restablecida."));
+    maybeStartAnalysis();
+}
+
 void MainWindow::onExportConfigClicked() {
     if (repos_.settings == nullptr || repos_.detectionProfiles == nullptr) {
         QMessageBox::warning(this, tr("Sin base de datos"),

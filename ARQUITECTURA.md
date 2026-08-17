@@ -2609,6 +2609,37 @@ Todo lo que no está ligado a una pieza se puede **exportar e importar en JSON**
 para clonar la puesta a punto a otra PC de la línea. Las plantillas de
 herramientas se exportan aparte, para copiarlas entre piezas.
 
+### Restablecer es OLVIDAR, no escribir los valores de fábrica
+
+La diferencia parece de matiz y es la que impide que la función se
+desincronice. Cada sitio que **lee** un ajuste lleva su valor por defecto en la
+propia llamada —`getInt("det_blur", 5)`—, así que borrando la clave el programa
+vuelve exactamente a lo que hace en una máquina recién instalada.
+
+Escribir en el restablecido una segunda copia de esos valores crearía **dos
+listas que mantener a la vez**, y a la primera que alguien cambiara una sola,
+«restablecer» dejaría la aplicación en un estado que no es ni el suyo ni el de
+fábrica. La idea ya estaba escrita en `SettingsRepository::remove` —«olvidar un
+ajuste NO es lo mismo que ponerlo a su valor por defecto»— y `forget()` la lleva
+hasta el final: con prefijo vacío olvida todo; con un prefijo (`det_`, `cam_`)
+solo esa familia, que es lo que permite restablecer una pestaña sin tocar la
+calibración de la máquina.
+
+Devuelve **cuántos** ajustes olvidó, porque «no había nada que restablecer» es
+una respuesta distinta de «se restablecieron catorce cosas», y ninguna de las
+dos es un error.
+
+La confirmación dice las dos cosas que hacen falta para poder contestarla: **qué
+se lleva** (calibración, detección, zona, preferencias, atajos, controles de
+cámara, capas, tamaños de ventana) y **qué no toca** (piezas, plantillas,
+historial). Un «¿está seguro?» a secas no se puede contestar — el operador no
+sabe si va a perder sus piezas registradas. El botón por omisión es *Cancelar*:
+en un diálogo destructivo, la tecla Intro no puede ser la que borra.
+
+Y se dice qué **queda por aplicarse**: lo que se lee una sola vez al arrancar
+—los atajos, la disposición de las ventanas— no puede rehacerse sin volver a
+abrir, y callárselo dejaría al operador creyendo que el restablecido falló.
+
 ### Volver a donde lo dejaste
 
 Lo que el operador coloca una vez tiene que seguir colocado mañana. Lo contrario

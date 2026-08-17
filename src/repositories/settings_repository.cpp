@@ -6,6 +6,29 @@
 
 namespace pci::repositories {
 
+core::Result<int> SettingsRepository::forget(const std::string& prefix) {
+    using ResultT = core::Result<int>;
+    // Se cuentan primero y se borran después, en vez de fiarse de `changes()`:
+    // el número que se le enseña al operador tiene que ser el de ajustes que
+    // había, y una consulta que cuente lo mismo que borra no deja lugar a dudas.
+    auto listed = listAll();
+    if (!listed.isOk()) {
+        return ResultT::err(listed.error().message);
+    }
+    int forgotten = 0;
+    for (const auto& [key, value] : listed.value()) {
+        (void)value;
+        if (!prefix.empty() && key.rfind(prefix, 0) != 0) {
+            continue;
+        }
+        if (auto removed = remove(key); !removed.isOk()) {
+            return ResultT::err(removed.error().message);
+        }
+        ++forgotten;
+    }
+    return ResultT::ok(forgotten);
+}
+
 core::Result<void> SettingsRepository::remove(const std::string& key) {
     auto stmt = db_.prepare("DELETE FROM Settings WHERE key = ?;");
     if (!stmt.isOk()) {

@@ -975,6 +975,17 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    texto se desplaza en vez de recortarse. La rejilla no se mueve al pasar el
    ratón, que es lo que el alto fijo protegía.
 
+   **Restablecer de fábrica** (menú **Archivo** ▸ *Restablecer configuración de
+   fábrica…*): devuelve la máquina al estado de recién instalada. Te dice antes
+   **qué se lleva** —calibración, ajustes y perfiles de detección, zona de
+   trabajo, preferencias, atajos, controles de cámara, capas de la vista y
+   tamaños de ventana— y **qué no toca**: tus piezas registradas, sus plantillas
+   y el historial siguen ahí. No se puede deshacer, así que si quieres conservar
+   la puesta a punto, exporta antes.
+
+   Los atajos y la disposición de las ventanas se aplican al volver a abrir el
+   programa, y la app te lo dice en vez de dejarte pensando que no funcionó.
+
    **Clonar la configuración a otra PC** (menú **Archivo**): *Exportar
    configuración…* vuelca a un `.json` la calibración, los ajustes y perfiles de
    detección, los atajos y las preferencias; *Importar configuración…* los

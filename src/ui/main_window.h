@@ -125,6 +125,9 @@ private slots:
     void onShowHistoryClicked();      // pantalla de historial (S1)
     void onConfigureClicked();        // panel Configurar, un solo sitio (C1)
     void onExportConfigClicked();     // exportar configuración (O4)
+    // Volver a los valores de fábrica. Es irreversible, así que pregunta
+    // antes y dice exactamente qué se lleva y qué no toca.
+    void onResetConfigClicked();
     void onImportConfigClicked();
     void onControlsProbed(const std::vector<pci::camera::CameraControlState>& controls);
     void onResolutionsProbed(const std::vector<pci::camera::CameraResolution>& available,
