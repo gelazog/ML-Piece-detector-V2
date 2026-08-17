@@ -26,8 +26,11 @@
 
 #include <algorithm>
 #include <functional>
+#include <sstream>
+#include <string>
 #include <type_traits>
 #include <variant>
+#include <vector>
 
 #include "camera/camera_enumerator.h"
 #include "camera/file_sources.h"
@@ -88,8 +91,47 @@ constexpr int kSourceOpenVideo = -2;
 // registrar— dependen de con qué imagen se está trabajando.
 constexpr int kSourceOpenedFile = -3;
 const char* const kSettingLastSourceDir = "last_source_dir";
+const char* const kSettingFreeZone = "det_roi_poly";
 constexpr int kCaptureTarget = 30;
 constexpr int kCaptureMinimum = 5;
+
+// La zona libre se guarda como texto «x,y x,y …». Una zona son unos pocos
+// vértices después de simplificar, y darle una tabla propia en la base sería un
+// esquema nuevo para un dato que cabe en una línea.
+std::string encodeZonePolygon(const std::vector<cv::Point>& polygon) {
+    std::string text;
+    for (const auto& point : polygon) {
+        if (!text.empty()) {
+            text.push_back(' ');
+        }
+        text += std::to_string(point.x) + "," + std::to_string(point.y);
+    }
+    return text;
+}
+
+// Lo contrario, y a prueba de basura: cualquier par que no se entienda se salta
+// en vez de tumbar el arranque. Un ajuste corrupto tiene que costar una zona,
+// no una aplicación que no abre.
+std::vector<cv::Point> decodeZonePolygon(const std::string& text) {
+    std::vector<cv::Point> polygon;
+    std::istringstream stream(text);
+    std::string token;
+    while (stream >> token) {
+        const auto comma = token.find(',');
+        if (comma == std::string::npos) {
+            continue;
+        }
+        try {
+            polygon.emplace_back(std::stoi(token.substr(0, comma)),
+                                 std::stoi(token.substr(comma + 1)));
+        } catch (const std::exception&) {
+            continue;
+        }
+    }
+    // Menos de tres vértices no es una zona; devolver «casi una» sería dejar que
+    // el resto del programa tuviera que acordarse de comprobarlo.
+    return polygon.size() >= 3 ? polygon : std::vector<cv::Point>{};
+}
 
 // Corre en un hilo del pool de QtConcurrent; solo toca datos propios.
 // El ancla (si la pieza tiene rasgo distintivo) fija la orientación del
@@ -335,6 +377,23 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
            "objetos fuera de la zona dejan de estorbar. Vuelve a pulsarlo para\n"
            "quitar la zona."));
     cameraLayout->addWidget(roiButton_);
+
+    // La zona LIBRE va al lado de la rectangular porque es la misma decisión
+    // —dónde mira el programa— con otra forma. Separarlas en menús distintos
+    // obligaría a saber que existe la segunda para encontrarla.
+    freeZoneButton_ = new QPushButton(tr("Zona libre"), central);
+    freeZoneButton_->setCheckable(true);
+    freeZoneButton_->setIcon(inspection::freeZoneIcon());
+    freeZoneButton_->setToolTip(
+        tr("La misma zona, sin la obligación de que sea un rectángulo. Rodea el área\n"
+           "arrastrando el ratón, o marca las esquinas a clics y cierra sobre la\n"
+           "primera (o con doble clic). El botón derecho deshace el último vértice.\n\n"
+           "Sirve para lo que un rectángulo no puede: el borde del útil pegado a la\n"
+           "pieza, la sombra de un lado, la pieza de al lado en diagonal. Lo que quede\n"
+           "fuera se oscurece en el vídeo, para que se vea qué está mirando el\n"
+           "programa.\n\n"
+           "Vuelve a pulsarlo para quitarla."));
+    cameraLayout->addWidget(freeZoneButton_);
     cameraLayout->addStretch(0);
     rootLayout->addLayout(cameraLayout);
 
@@ -704,6 +763,12 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(roiButton_, &QPushButton::toggled, this, &MainWindow::onRoiButtonToggled);
     connect(video_, &inspection::EditorCanvas::regionPicked, this,
             &MainWindow::onRegionPicked);
+    connect(freeZoneButton_, &QPushButton::toggled, this,
+            &MainWindow::onFreeZoneButtonToggled);
+    connect(video_, &inspection::EditorCanvas::freeZonePicked, this,
+            &MainWindow::onFreeZonePicked);
+    connect(video_, &inspection::EditorCanvas::freeZoneCancelled, this,
+            &MainWindow::onFreeZoneCancelled);
     connect(inspectButton_, &QPushButton::clicked, this, &MainWindow::onInspectClicked);
     connect(&inspectionWatcher_,
             &QFutureWatcher<core::Result<engine::InspectionEngine::Outcome>>::finished, this,
@@ -772,6 +837,14 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         // manda; lo único que se corrige es la incoherencia a la baja.
         if (zoneMode_ == vision::WorkingZoneMode::Fixed &&
             pipelineConfig_.roi.area() <= 0) {
+            zoneMode_ = vision::WorkingZoneMode::Off;
+        }
+        pipelineConfig_.roiPolygon = decodeZonePolygon(
+            repos_.settings->getString(kSettingFreeZone, std::string()).value());
+        // Y lo mismo para la libre, por el mismo motivo: el modo guardado puede
+        // apuntar a un dibujo que ya no está.
+        if (zoneMode_ == vision::WorkingZoneMode::Free &&
+            pipelineConfig_.roiPolygon.size() < 3) {
             zoneMode_ = vision::WorkingZoneMode::Off;
         }
         pipelineConfig_.autoOrient = repos_.settings->getInt("track_rotation", 0).value() != 0;
@@ -1119,6 +1192,8 @@ void MainWindow::persistPipelineConfig() {
     repos_.settings->setInt("det_roi_y", pipelineConfig_.roi.y);
     repos_.settings->setInt("det_roi_w", pipelineConfig_.roi.width);
     repos_.settings->setInt("det_roi_h", pipelineConfig_.roi.height);
+    repos_.settings->setString(kSettingFreeZone,
+                               encodeZonePolygon(pipelineConfig_.roiPolygon));
     repos_.settings->setDouble("det_min_area", pipelineConfig_.minAreaFraction);
     repos_.settings->setDouble("det_max_area", pipelineConfig_.maxAreaFraction);
     repos_.settings->setInt("track_rotation", pipelineConfig_.autoOrient ? 1 : 0);
@@ -1130,6 +1205,17 @@ void MainWindow::updateRoiButton() {
     QSignalBlocker blocker(roiButton_);
     roiButton_->setChecked(false);
     roiButton_->setText(hasRoi ? tr("Quitar zona") : tr("Zona de detección"));
+    updateFreeZoneButton();
+}
+
+void MainWindow::updateFreeZoneButton() {
+    if (freeZoneButton_ == nullptr) {
+        return;
+    }
+    const bool hasZone = pipelineConfig_.roiPolygon.size() >= 3;
+    QSignalBlocker blocker(freeZoneButton_);
+    freeZoneButton_->setChecked(false);
+    freeZoneButton_->setText(hasZone ? tr("Quitar zona libre") : tr("Zona libre"));
 }
 
 bool MainWindow::countingPieces() const {
@@ -1150,7 +1236,14 @@ bool MainWindow::countingPieces() const {
 
 cv::Rect MainWindow::effectiveWorkingZone() const {
     return vision::effectiveWorkingZone(zoneMode_, pipelineConfig_.roi, autoRoi_.roi(),
-                                        countingPieces());
+                                        countingPieces(), pipelineConfig_.roiPolygon);
+}
+
+vision::PipelineConfig MainWindow::inspectionConfig() const {
+    vision::PipelineConfig config = pipelineConfig_;
+    config.roiPolygon =
+        vision::effectiveWorkingPolygon(zoneMode_, pipelineConfig_.roiPolygon);
+    return config;
 }
 
 void MainWindow::setWorkingZoneMode(vision::WorkingZoneMode mode) {
@@ -1169,7 +1262,8 @@ void MainWindow::setWorkingZoneMode(vision::WorkingZoneMode mode) {
     // así que si está abierto se le pone al día. `showMode` no reemite.
     if (configureDialog_ != nullptr) {
         if (auto* page = configureDialog_->performancePage(); page != nullptr) {
-            page->showMode(zoneMode_, pipelineConfig_.roi.area() > 0);
+            page->showMode(zoneMode_, pipelineConfig_.roi.area() > 0,
+                           pipelineConfig_.roiPolygon.size() >= 3);
         }
     }
     updateWorkingZoneOverlay();
@@ -1179,8 +1273,14 @@ void MainWindow::setWorkingZoneMode(vision::WorkingZoneMode mode) {
 // operador no tiene forma de saber por dónde está mirando el programa cuando
 // algo falla.
 void MainWindow::updateWorkingZoneOverlay() {
+    const auto polygon =
+        vision::effectiveWorkingPolygon(zoneMode_, pipelineConfig_.roiPolygon);
     const cv::Rect zone = effectiveWorkingZone();
-    video_->setDetectionRegion(zone.area() > 0, zone);
+    // Con la zona libre en uso se pinta el polígono y NO su envolvente: el
+    // recuadro es solo cómo se recorta por dentro, y dibujarlo diría que se
+    // analiza un rectángulo que el operador rechazó a propósito.
+    video_->setFreeZone(!polygon.empty(), polygon);
+    video_->setDetectionRegion(polygon.empty() && zone.area() > 0, zone);
 }
 
 void MainWindow::applyPiecesPage(PiecesPage* page) {
@@ -1295,6 +1395,50 @@ void MainWindow::onRegionPicked(const cv::Rect& imageRect) {
     updateRoiButton();
     statusBar()->showMessage(
         tr("Zona de detección activa: el contorno solo se busca dentro del recuadro."));
+}
+
+void MainWindow::onFreeZoneButtonToggled(bool enabled) {
+    if (!enabled) {
+        video_->setFreeZonePickMode(false);
+        return;
+    }
+    if (pipelineConfig_.roiPolygon.size() >= 3) {
+        // Segundo uso del botón: quitar la zona libre activa.
+        pipelineConfig_.roiPolygon.clear();
+        setWorkingZoneMode(vision::modeAfterFreeZoneChanged(zoneMode_, false));
+        persistPipelineConfig();
+        updateRoiButton();
+        statusBar()->showMessage(
+            tr("Zona libre eliminada: vuelve a mirarse todo lo de antes."));
+        return;
+    }
+    if (lastFrame_.isNull()) {
+        statusBar()->showMessage(tr("Inicia la fuente para dibujar la zona libre."));
+        QSignalBlocker blocker(freeZoneButton_);
+        freeZoneButton_->setChecked(false);
+        return;
+    }
+    video_->setFreeZonePickMode(true);
+    statusBar()->showMessage(
+        tr("Rodea la zona arrastrando el ratón, o marca las esquinas a clics y cierra "
+           "sobre la primera. Botón derecho: deshacer el último vértice."));
+}
+
+void MainWindow::onFreeZonePicked(const std::vector<cv::Point>& imagePolygon) {
+    pipelineConfig_.roiPolygon = imagePolygon;
+    setWorkingZoneMode(vision::modeAfterFreeZoneChanged(zoneMode_, true));
+    persistPipelineConfig();
+    updateRoiButton();
+    // El número de vértices no es decoración: es lo que permite notar que un
+    // trazo de doce esquinas se guardó con cuatro, o al revés.
+    statusBar()->showMessage(tr("Zona libre activa (%1 vértices): se analiza solo lo de "
+                                "dentro, y lo de fuera se oscurece.")
+                                 .arg(imagePolygon.size()));
+}
+
+void MainWindow::onFreeZoneCancelled() {
+    updateRoiButton();
+    statusBar()->showMessage(tr("Zona libre cancelada: sigue la de antes."));
 }
 
 // Acciones con atajo configurable: el valor por defecto puede sobreescribirse
@@ -2011,6 +2155,8 @@ void MainWindow::maybeStartAnalysis() {
     // fuera por construcción—, con seis piezas delante del operador.
     vision::PipelineConfig working = pipelineConfig_;
     working.roi = effectiveWorkingZone();
+    working.roiPolygon =
+        vision::effectiveWorkingPolygon(zoneMode_, pipelineConfig_.roiPolygon);
     const bool countPieces = countingPieces();
     analysisWatcher_.setFuture(QtConcurrent::run(
         [frame, anchor, offset = currentOrientationOffset_, configs = std::move(configs),
@@ -2990,6 +3136,20 @@ void MainWindow::rescalePixelSettings(const QSize& from, const QSize& to) {
         updateRoiButton();
         adjusted << tr("la zona de detección");
     }
+    if (pipelineConfig_.roiPolygon.size() >= 3) {
+        // Vértice a vértice, por lo mismo que el rectángulo: una zona dibujada
+        // sobre 640×480 señala otro sitio en 1920×1080, y una zona que se
+        // desplaza sola es peor que ninguna.
+        for (auto& vertex : pipelineConfig_.roiPolygon) {
+            const cv::Point2f moved = vision::rescalePoint(
+                cv::Point2f(static_cast<float>(vertex.x), static_cast<float>(vertex.y)),
+                before, after);
+            vertex = cv::Point(cvRound(moved.x), cvRound(moved.y));
+        }
+        persistPipelineConfig();
+        updateRoiButton();
+        adjusted << tr("la zona libre");
+    }
     if (boardConfig_.origin == vision::BoardOrigin::FixedPoint) {
         boardConfig_.fixedPoint = vision::rescalePoint(boardConfig_.fixedPoint, before, after);
         video_->setBoardConfig(boardConfig_);
@@ -3305,6 +3465,7 @@ void MainWindow::onConfigureClicked() {
     inputs.zoneMode = zoneMode_;
     inputs.expectedPieces = expectedPieces_;
     inputs.hasFixedZone = pipelineConfig_.roi.area() > 0;
+    inputs.hasFreeZone = pipelineConfig_.roiPolygon.size() >= 3;
     inputs.settings = repos_.settings;
 
     auto* dialog = new ConfigureDialog(std::move(inputs), this);
@@ -3798,7 +3959,7 @@ void MainWindow::onRegisterLiveClicked() {
     // El rasgo distintivo marcado (si hay) fija la orientación de las 30
     // capturas de referencia y se guarda con la pieza.
     liveSession_ = std::make_shared<engine::RegistrationSession>(
-        repos_.embedFn, kCaptureTarget, kCaptureMinimum, currentAnchor_, pipelineConfig_,
+        repos_.embedFn, kCaptureTarget, kCaptureMinimum, currentAnchor_, inspectionConfig(),
         currentOrientationOffset_);
     captureProgress_ = new QProgressDialog(
         tr("Capturando referencias de '%1'…\nMantén la pieza a la vista.")
@@ -4044,7 +4205,7 @@ void MainWindow::onAutoTick() {
     }
     inspectedFrame_ = lastFrame_;
     auto* engine = repos_.engine;
-    engine->setPipelineConfig(pipelineConfig_);
+    engine->setPipelineConfig(inspectionConfig());
     engine->setMmPerPixel(calibration_.mmPerPixel);
     engine->setUnit(currentUnit());
     engine->setTemplateName(activeTemplate());
@@ -4219,7 +4380,7 @@ void MainWindow::onOpenEditorClicked() {
     inspection::EditorWindow editor(reference, analysis.value().fixture, pieceId,
                                     pieceId >= 0 ? repos_.tools : nullptr, calibration_,
                                     activeTemplate(), this, &liveTools_,
-                                    live ? &controller_ : nullptr, pipelineConfig_);
+                                    live ? &controller_ : nullptr, inspectionConfig());
     editor.exec();
 
     // Devolver las herramientas editadas a la vista en vivo (ida y vuelta), en
@@ -4267,7 +4428,7 @@ void MainWindow::onInspectClicked() {
     inspectButton_->setEnabled(false);
     statusBar()->showMessage(tr("Inspeccionando…"));
     auto* engine = repos_.engine;
-    engine->setPipelineConfig(pipelineConfig_);
+    engine->setPipelineConfig(inspectionConfig());
     engine->setMmPerPixel(calibration_.mmPerPixel);
     engine->setUnit(currentUnit());
     engine->setTemplateName(activeTemplate());

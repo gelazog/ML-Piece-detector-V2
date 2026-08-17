@@ -197,6 +197,29 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    pestaña *Rendimiento* sirve para cambiar de modo o ver qué se está
    procesando ahora mismo.
 
+   **Zona libre** (el botón de al lado): la misma idea sin la obligación de que
+   sea un rectángulo. Es para lo que un rectángulo no puede separar — el borde
+   del útil pegado a la pieza, la sombra de un lado, la pieza de al lado en
+   diagonal: con dos piezas en diagonal **ningún** rectángulo contiene a una sin
+   tocar a la otra, porque sus envolventes se solapan.
+
+   Se dibuja de dos maneras, las dos con el mismo botón:
+
+   - **Arrastrando**, rodeando la zona a pulso. Rápido.
+   - **A clics**, marcando las esquinas y cerrando sobre la primera (o con doble
+     clic). Exacto, para seguir un borde.
+
+   El **botón derecho deshace** el último vértice; sin vértices, cancela. Lo que
+   quede fuera de la zona **se oscurece sobre el vídeo**, para que veas qué está
+   mirando el programa: en un rectángulo el dentro y el fuera se leen solos, en
+   un contorno irregular no.
+
+   No pierdes velocidad: por dentro se sigue recortando por la envolvente del
+   polígono, y el contorno solo añade precisión encima. El trazo se guarda
+   simplificado —cientos de puntos a pulso no aportan nada que la mano pueda
+   sostener— con la garantía de que el borde no se mueve más de un píxel y pico:
+   medido, 0,93 px sobre un círculo de 300 px de diámetro.
+
    En la pestaña *Detección* están además el **área mínima y máxima de pieza**
    (en % de la imagen): deciden qué se acepta como pieza y antes estaban fijas
    en el código. Con piezas pequeñas, el 0,5 % por defecto es justo la frontera

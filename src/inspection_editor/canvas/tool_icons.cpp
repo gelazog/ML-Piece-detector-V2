@@ -4,6 +4,7 @@
 #include <QPainter>
 #include <QPalette>
 #include <QPixmap>
+#include <QPolygonF>
 
 #include <functional>
 
@@ -634,6 +635,30 @@ QIcon regionIcon() {
         p.drawLine(5, 6, 9, 6);
         p.drawLine(19, 22, 23, 22);
         p.drawLine(23, 22, 23, 18);
+    });
+}
+
+QIcon freeZoneIcon() {
+    return makeIcon([](QPainter& p, const QColor&) {
+        QPen dashed = p.pen();
+        dashed.setStyle(Qt::DashLine);
+        dashed.setWidthF(1.8);
+        p.setPen(dashed);
+        // Un polígono irregular, no un rectángulo: la diferencia con la zona de
+        // al lado tiene que verse en el icono, porque es la única diferencia.
+        const QPolygonF zone({QPointF(5, 12), QPointF(11, 4), QPointF(21, 6),
+                              QPointF(24, 16), QPointF(16, 24), QPointF(7, 20)});
+        p.drawPolygon(zone);
+        QPen solid = p.pen();
+        solid.setStyle(Qt::SolidLine);
+        solid.setWidthF(1.4);
+        p.setPen(solid);
+        p.setBrush(p.pen().color());
+        // Los vértices marcados: se dibuja punto a punto.
+        for (const QPointF& vertex : zone) {
+            p.drawEllipse(vertex, 1.4, 1.4);
+        }
+        p.setBrush(Qt::NoBrush);
     });
 }
 

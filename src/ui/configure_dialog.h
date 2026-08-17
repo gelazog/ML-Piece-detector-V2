@@ -75,6 +75,7 @@ public:
         double kSigma = 3.0;
         vision::WorkingZoneMode zoneMode = vision::WorkingZoneMode::Off;
         bool hasFixedZone = false;
+        bool hasFreeZone = false;
         int expectedPieces = 1;
         repositories::SettingsRepository* settings = nullptr;
     };

@@ -1570,3 +1570,199 @@ TEST(ToolPaletteDelete, TheButtonsOnlyAskAndDoNotDeleteAnything) {
     EXPECT_EQ(deleteAsked, 1);
     EXPECT_EQ(deleteAllAsked, 1);
 }
+
+// ---------------------------------------------------------------------------
+// Zona libre: el mismo modo admite el pulso y los clics
+// ---------------------------------------------------------------------------
+
+namespace {
+
+void rightPress(QWidget* w, QPointF pos) {
+    QMouseEvent e(QEvent::MouseButtonPress, pos, w->mapToGlobal(pos), Qt::RightButton,
+                  Qt::RightButton, Qt::NoModifier);
+    QApplication::sendEvent(w, &e);
+}
+
+void doubleClick(QWidget* w, QPointF pos) {
+    QMouseEvent e(QEvent::MouseButtonDblClick, pos, w->mapToGlobal(pos), Qt::LeftButton,
+                  Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(w, &e);
+}
+
+// Banco de la zona libre: el canvas conectado como lo hace la ventana, y lo
+// último que emitió guardado para poder mirarlo.
+class FreeZoneGestureTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        canvas.resize(kWidgetWidth, kWidgetHeight);
+        canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+        QObject::connect(&canvas, &EditorCanvas::freeZonePicked,
+                         [this](const std::vector<cv::Point>& polygon) {
+                             picked = polygon;
+                             ++pickedTimes;
+                         });
+        QObject::connect(&canvas, &EditorCanvas::freeZoneCancelled,
+                         [this] { ++cancelledTimes; });
+        QObject::connect(&canvas, &EditorCanvas::traceRejected,
+                         [this](const QString& r) { rejection = r; });
+        canvas.setFreeZonePickMode(true);
+    }
+
+    // Un punto de la imagen en coordenadas de pantalla, con la vista sin zoom.
+    [[nodiscard]] static QPointF at(double x, double y) {
+        return toScreen(viewAt(1.0), cv::Point2f(static_cast<float>(x),
+                                                 static_cast<float>(y)));
+    }
+
+    EditorCanvas canvas;
+    std::vector<cv::Point> picked;
+    int pickedTimes = 0;
+    int cancelledTimes = 0;
+    QString rejection;
+};
+
+}  // namespace
+
+TEST_F(FreeZoneGestureTest, DraggingTracesTheZoneFreehand) {
+    // El gesto rápido: rodear la pieza sin levantar el ratón. Se traza un
+    // rombo, que no es un rectángulo ni por casualidad — si el resultado
+    // saliera rectangular, la zona libre no estaría siendo libre.
+    const std::vector<cv::Point2f> path{{600, 200}, {900, 500}, {600, 800}, {300, 500}};
+    press(&canvas, at(path.front().x, path.front().y));
+    for (std::size_t i = 1; i <= path.size(); ++i) {
+        const cv::Point2f from = path[i - 1];
+        const cv::Point2f to = path[i % path.size()];
+        for (int s = 1; s <= 40; ++s) {
+            const double t = static_cast<double>(s) / 40.0;
+            moveTo(&canvas, at(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t));
+        }
+    }
+    release(&canvas, at(path.front().x, path.front().y));
+
+    ASSERT_EQ(pickedTimes, 1) << "el trazo a pulso no se cerró como zona";
+    ASSERT_GE(picked.size(), 4U);
+    std::printf("  [gesto] rombo a pulso -> %zu vertices\n", picked.size());
+
+    // Los cuatro vértices del rombo tienen que estar donde se trazaron.
+    for (const auto& corner : path) {
+        double best = 1e9;
+        for (const auto& vertex : picked) {
+            best = std::min(best, cv::norm(cv::Point2f(vertex) - corner));
+        }
+        EXPECT_LT(best, 12.0) << "el vértice (" << corner.x << "," << corner.y
+                              << ") no sobrevivió al trazo";
+    }
+    // Y la zona tiene que ser un rombo de verdad: su área es la mitad de la de
+    // su envolvente, no la envolvente entera.
+    const double area = std::abs(cv::contourArea(picked));
+    const double hull = cv::boundingRect(picked).area();
+    std::printf("  [gesto] area %.0f px2 sobre una envolvente de %.0f px2 (%.0f %%)\n", area,
+                hull, 100.0 * area / hull);
+    EXPECT_LT(area, hull * 0.65) << "la zona salió con forma de rectángulo";
+
+    EXPECT_FALSE(canvas.freeZonePickMode()) << "el modo tiene que apagarse solo al cerrar";
+}
+
+TEST_F(FreeZoneGestureTest, ClickingMarksCornersAndClosingOnTheFirstFinishes) {
+    // El gesto exacto: cuatro clics y cierre sobre el primero. Ni uno de ellos
+    // puede cerrar antes de tiempo.
+    const std::vector<cv::Point2f> corners{{400, 200}, {900, 260}, {860, 700}, {380, 640}};
+    for (const auto& corner : corners) {
+        press(&canvas, at(corner.x, corner.y));
+        release(&canvas, at(corner.x, corner.y));
+        EXPECT_EQ(pickedTimes, 0) << "un clic suelto cerró la zona antes de tiempo";
+    }
+    // Cierre sobre el primero, con la puntería que se tiene de verdad: unos
+    // píxeles al lado, no encima.
+    press(&canvas, at(corners.front().x + 3, corners.front().y - 3));
+    release(&canvas, at(corners.front().x + 3, corners.front().y - 3));
+
+    ASSERT_EQ(pickedTimes, 1) << "cerrar sobre el primer vértice no terminó la zona";
+    ASSERT_EQ(picked.size(), corners.size());
+    for (std::size_t i = 0; i < corners.size(); ++i) {
+        EXPECT_LT(cv::norm(cv::Point2f(picked[i]) - corners[i]), 3.0)
+            << "el vértice " << i << " no está donde se hizo clic";
+    }
+    EXPECT_FALSE(canvas.freeZonePickMode());
+}
+
+TEST_F(FreeZoneGestureTest, ADoubleClickAlsoCloses) {
+    // El atajo que ya espera cualquiera que haya dibujado un polígono en otro
+    // programa, y la salida cuando el primer vértice queda lejos de la mano.
+    for (const auto& corner : std::vector<cv::Point2f>{{300, 300}, {800, 320}, {700, 800}}) {
+        press(&canvas, at(corner.x, corner.y));
+        release(&canvas, at(corner.x, corner.y));
+    }
+    ASSERT_EQ(pickedTimes, 0);
+    doubleClick(&canvas, at(700, 800));
+    EXPECT_EQ(pickedTimes, 1) << "el doble clic no cerró la zona";
+    EXPECT_GE(picked.size(), 3U);
+}
+
+TEST_F(FreeZoneGestureTest, RightClickUndoesAVertexAndThenCancels) {
+    // La salida del gesto. Sin ella, un trazo mal empezado solo se podía
+    // terminar mal.
+    for (const auto& corner : std::vector<cv::Point2f>{{300, 300}, {800, 320}, {700, 800}}) {
+        press(&canvas, at(corner.x, corner.y));
+        release(&canvas, at(corner.x, corner.y));
+    }
+    rightPress(&canvas, at(500, 500));  // deshace el tercero
+    rightPress(&canvas, at(500, 500));  // el segundo
+    rightPress(&canvas, at(500, 500));  // el primero
+    EXPECT_EQ(cancelledTimes, 0) << "cancelar antes de quedarse sin vértices";
+    EXPECT_TRUE(canvas.freeZonePickMode());
+
+    rightPress(&canvas, at(500, 500));  // ya no queda ninguno: cancela
+    EXPECT_EQ(cancelledTimes, 1) << "sin vértices, el botón derecho tiene que cancelar";
+    EXPECT_FALSE(canvas.freeZonePickMode());
+    EXPECT_EQ(pickedTimes, 0) << "cancelar no puede dejar una zona puesta";
+}
+
+TEST_F(FreeZoneGestureTest, ATraceThatEnclosesNothingIsRejectedOutLoud) {
+    // Nada se descarta en silencio: si el operador traza y no aparece nada,
+    // tiene que saber por qué. Y el modo sigue encendido, porque lo que falló
+    // fue el trazo y no la intención.
+    press(&canvas, at(300, 400));
+    for (int x = 310; x <= 900; x += 10) {
+        moveTo(&canvas, at(x, 400));
+    }
+    for (int x = 900; x >= 300; x -= 10) {
+        moveTo(&canvas, at(x, 400));
+    }
+    release(&canvas, at(300, 400));
+
+    EXPECT_EQ(pickedTimes, 0) << "un trazo sin área no puede convertirse en zona";
+    EXPECT_FALSE(rejection.isEmpty()) << "se descartó el trazo sin decir por qué";
+    EXPECT_TRUE(canvas.freeZonePickMode())
+        << "el modo se apagó: habría que volver a pulsar el botón para reintentar";
+}
+
+TEST_F(FreeZoneGestureTest, TheGestureMeansTheSameAtAnyZoom) {
+    // Distinguir un clic de un trazo se decide en píxeles de PANTALLA. Al 800 %
+    // de zoom, tres píxeles de mano son veinticuatro de imagen: si el umbral
+    // fuera en coordenadas de imagen, el mismo gesto significaría dos cosas
+    // según por dónde se estuviera mirando.
+    for (int i = 0; i < 14; ++i) {
+        canvas.zoomIn();
+    }
+    ASSERT_GT(canvas.zoomFactor(), 5.0);
+
+    // Un temblor de 2 px de PANTALLA sigue siendo un clic, no un trazo.
+    const QPointF spot = at(960, 540);
+    press(&canvas, spot);
+    moveTo(&canvas, spot + QPointF(2.0, 1.0));
+    release(&canvas, spot + QPointF(2.0, 1.0));
+    EXPECT_EQ(pickedTimes, 0);
+
+    // Y con tres clics más y el cierre, la zona sale: el primero contó como
+    // vértice, que es lo que se esperaba de él.
+    const std::vector<QPointF> rest{spot + QPointF(120, 0), spot + QPointF(120, 90),
+                                    spot + QPointF(0, 90)};
+    for (const auto& point : rest) {
+        press(&canvas, point);
+        release(&canvas, point);
+    }
+    press(&canvas, spot + QPointF(2.0, 1.0));
+    release(&canvas, spot + QPointF(2.0, 1.0));
+    EXPECT_EQ(pickedTimes, 1) << "al zoom alto el gesto dejó de significar lo mismo";
+}

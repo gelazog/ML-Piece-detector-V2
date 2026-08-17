@@ -67,6 +67,20 @@ public:
     void setRegionPickMode(bool enabled);
     void setDetectionRegion(bool visible, const cv::Rect& imageRect = {});
 
+    // --- zona LIBRE (contorno a mano alzada) ---
+    // El mismo trabajo que la zona rectangular, sin la obligación de que sea un
+    // rectángulo. Con el modo activo se dibuja de dos maneras, y las dos son el
+    // mismo gesto: **arrastrando** se traza a pulso, y **a clics** se van
+    // marcando vértices que se cierran haciendo clic sobre el primero (o con un
+    // doble clic). Se ofrecen las dos porque resuelven casos distintos —el pulso
+    // es rápido para rodear una mesa, los clics son exactos para seguir el borde
+    // de un útil— y elegir por el operador habría estorbado a la mitad de ellos.
+    //
+    // El botón derecho deshace el último vértice; sin vértices, cancela.
+    void setFreeZonePickMode(bool enabled);
+    [[nodiscard]] bool freeZonePickMode() const { return freeZonePick_; }
+    void setFreeZone(bool visible, const std::vector<cv::Point>& imagePolygon = {});
+
     // --- selección de rasgo distintivo ---
     // Con el modo activo, el siguiente clic sobre la pieza emite pointPicked
     // (coords de imagen) y el modo se desactiva solo.
@@ -149,6 +163,12 @@ signals:
     void toolModified();
     void pointPicked(const cv::Point2f& imagePoint);
     void regionPicked(const cv::Rect& imageRect);
+    // Zona libre terminada, ya simplificada, en coordenadas de imagen.
+    void freeZonePicked(const std::vector<cv::Point>& imagePolygon);
+    // El operador se echó atrás. Existe porque quien encendió el modo tiene un
+    // botón pulsado, y un botón que se queda hundido después de cancelar dice
+    // que el programa sigue esperando un trazo que ya nadie va a hacer.
+    void freeZoneCancelled();
     void toolRightClicked(int index);
     // Un gesto claramente intencionado que no pudo convertirse en herramienta.
     // Existe para que nada se descarte en silencio: si el operador traza y no
@@ -204,6 +224,10 @@ private:
     // activa).
     [[nodiscard]] QString measureText(const ToolRunResult& result) const;
     void paintCreationPreview(QPainter& painter) const;
+    void paintFreeZone(QPainter& painter) const;
+    // Cierra el trazo: lo simplifica, y si no encierra área lo dice en vez de
+    // descartarlo en silencio.
+    void finishFreeZone(const std::vector<cv::Point>& trace);
     void paintLiveOverlay(QPainter& painter) const;
     void paintBoard(QPainter& painter) const;
     void paintContourReport(QPainter& painter) const;
@@ -291,6 +315,16 @@ private:
     bool regionDrag_ = false;
     bool regionVisible_ = false;
     cv::Rect regionRect_;
+
+    // Zona libre: la guardada y la que se está trazando ahora.
+    bool freeZonePick_ = false;
+    bool freeZoneVisible_ = false;
+    std::vector<cv::Point> freeZone_;      // la activa, coords de imagen
+    std::vector<cv::Point> freeVertices_;  // vértices marcados a clic, en curso
+    std::vector<cv::Point> freeTrace_;     // trazo a pulso, en curso
+    bool freeDragging_ = false;
+    bool freeLasso_ = false;
+    QPointF freePressWidget_;
 };
 
 }  // namespace pci::inspection

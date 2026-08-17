@@ -23,7 +23,7 @@ class PerformancePage : public QWidget {
 
 public:
     PerformancePage(vision::WorkingZoneMode mode, bool hasFixedZone,
-                    QWidget* parent = nullptr);
+                    bool hasFreeZone = false, QWidget* parent = nullptr);
 
     [[nodiscard]] vision::WorkingZoneMode mode() const;
 
@@ -31,7 +31,8 @@ public:
     // falta porque dibujar una zona sobre el vídeo cambia el modo por sí solo:
     // si el panel estuviera abierto y no se enterara, enseñaría un modo y el
     // programa estaría usando otro.
-    void showMode(vision::WorkingZoneMode mode, bool hasFixedZone);
+    void showMode(vision::WorkingZoneMode mode, bool hasFixedZone,
+                  bool hasFreeZone = false);
 
     // Estado en vivo de la zona: qué se está procesando ahora mismo y, si el
     // seguimiento se rindió, por qué. Un recorte que aparece y desaparece sin
@@ -52,6 +53,7 @@ private:
     QRadioButton* off_ = nullptr;
     QRadioButton* automatic_ = nullptr;
     QRadioButton* fixed_ = nullptr;
+    QRadioButton* free_ = nullptr;
     QLabel* status_ = nullptr;
     QCheckBox* measureStages_ = nullptr;
     QLabel* stageBreakdown_ = nullptr;

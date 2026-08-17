@@ -1,8 +1,11 @@
 #include "vision/auto_roi.h"
 
+#include <opencv2/imgproc.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <string_view>
+#include <vector>
 
 namespace pci::vision {
 
@@ -34,6 +37,7 @@ const char* workingZoneModeKey(WorkingZoneMode mode) {
         case WorkingZoneMode::Off: return "off";
         case WorkingZoneMode::Automatic: return "auto";
         case WorkingZoneMode::Fixed: return "fixed";
+        case WorkingZoneMode::Free: return "free";
     }
     return "off";
 }
@@ -48,6 +52,9 @@ WorkingZoneMode workingZoneModeFromKey(const char* key) {
     }
     if (name == "fixed") {
         return WorkingZoneMode::Fixed;
+    }
+    if (name == "free") {
+        return WorkingZoneMode::Free;
     }
     // Cualquier cosa que no se reconozca cae al modo más conservador: procesar
     // la imagen entera nunca da un resultado equivocado, solo uno más lento.
@@ -68,7 +75,8 @@ const char* giveUpReason(AutoRoiGiveUp reason) {
 }
 
 cv::Rect effectiveWorkingZone(WorkingZoneMode mode, const cv::Rect& fixedZone,
-                              const cv::Rect& automaticZone, bool countingPieces) {
+                              const cv::Rect& automaticZone, bool countingPieces,
+                              const std::vector<cv::Point>& freeZone) {
     switch (mode) {
         case WorkingZoneMode::Off: return {};
         case WorkingZoneMode::Automatic:
@@ -78,8 +86,21 @@ cv::Rect effectiveWorkingZone(WorkingZoneMode mode, const cv::Rect& fixedZone,
             // puede cambiar una respuesta.
             return countingPieces ? cv::Rect{} : automaticZone;
         case WorkingZoneMode::Fixed: return fixedZone;
+        case WorkingZoneMode::Free:
+            // Como la fija: el operador dijo «mira solo aquí», y eso vale
+            // también cuando se cuenta. La diferencia con la automática es que
+            // esta no es una optimización, es una respuesta.
+            return freeZone.size() >= 3 ? cv::boundingRect(freeZone) : cv::Rect{};
     }
     return {};
+}
+
+std::vector<cv::Point> effectiveWorkingPolygon(WorkingZoneMode mode,
+                                               const std::vector<cv::Point>& freeZone) {
+    if (mode != WorkingZoneMode::Free || freeZone.size() < 3) {
+        return {};
+    }
+    return freeZone;
 }
 
 WorkingZoneMode modeAfterFixedZoneChanged(WorkingZoneMode current, bool hasFixedZone) {
@@ -88,9 +109,51 @@ WorkingZoneMode modeAfterFixedZoneChanged(WorkingZoneMode current, bool hasFixed
         // acaba de dibujar dónde mirar quiere que se mire ahí.
         return WorkingZoneMode::Fixed;
     }
-    // Sin zona, «fija» no puede seguir siendo el modo. Los otros dos no
-    // dependen de ella y se quedan como estaban.
+    // Sin zona, «fija» no puede seguir siendo el modo. Los otros no dependen de
+    // ella y se quedan como estaban — incluida la libre, que tiene su propio
+    // dibujo y no se entera de que la rectangular ha desaparecido.
     return current == WorkingZoneMode::Fixed ? WorkingZoneMode::Off : current;
+}
+
+WorkingZoneMode modeAfterFreeZoneChanged(WorkingZoneMode current, bool hasFreeZone) {
+    if (hasFreeZone) {
+        return WorkingZoneMode::Free;
+    }
+    return current == WorkingZoneMode::Free ? WorkingZoneMode::Off : current;
+}
+
+double zoneSimplifyTolerancePx(double tracePerimeterPx) {
+    // Relativa al perímetro, con suelo absoluto.
+    //
+    // El 0,15 % salió de medir, y de que el primer intento (0,4 %) fuera
+    // demasiado: sobre un círculo de radio 150 dejaba 17 vértices y mordía 2,6
+    // px hacia dentro. Bajarlo a 0,15 % lo deja en algo más de un píxel, que es
+    // el grano de la propia imagen — por debajo de eso no hay nada que
+    // conservar, y por eso el suelo es de un píxel: en un trazo corto, el
+    // porcentaje no llega a uno y no simplificaría nada.
+    constexpr double kEpsilonFraction = 0.0015;
+    constexpr double kMinEpsilonPx = 1.0;
+    return std::max(kMinEpsilonPx, kEpsilonFraction * tracePerimeterPx);
+}
+
+std::vector<cv::Point> zonePolygonFromTrace(const std::vector<cv::Point>& trace,
+                                            double minAreaPx) {
+    if (trace.size() < 3) {
+        return {};
+    }
+    const double perimeter = cv::arcLength(trace, /*closed=*/true);
+    const double epsilon = zoneSimplifyTolerancePx(perimeter);
+    std::vector<cv::Point> simplified;
+    cv::approxPolyDP(trace, simplified, epsilon, /*closed=*/true);
+    if (simplified.size() < 3) {
+        // Un trazo casi recto se simplifica hasta desaparecer como área. Vale
+        // como respuesta: una línea no es una zona.
+        return {};
+    }
+    if (std::abs(cv::contourArea(simplified)) < minAreaPx) {
+        return {};
+    }
+    return simplified;
 }
 
 void AutoRoiTracker::reset() {

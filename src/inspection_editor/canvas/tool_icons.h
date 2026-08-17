@@ -23,6 +23,10 @@ QIcon toolIcon(ToolType type);
 QIcon categoryIcon(ToolCategory category);
 QIcon anchorIcon();
 QIcon regionIcon();
+// Zona libre: el mismo trazo discontinuo, pero con forma de polígono irregular
+// y los vértices marcados. Al lado del rectangular tiene que distinguirse sin
+// leer el texto, porque van uno junto al otro.
+QIcon freeZoneIcon();
 // Papelera: borrar la herramienta seleccionada. El símbolo es universal a
 // propósito — un icono que haya que aprender no sirve para la acción que más
 // caro sale equivocar.

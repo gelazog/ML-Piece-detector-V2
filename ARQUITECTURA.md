@@ -706,6 +706,68 @@ rectangular, porque acotar dónde se mira no puede cambiar lo que se mide. Un
 polígono de menos de tres vértices no encierra nada y se comporta como si no
 hubiera zona, en vez de recortar a una línea y quedarse sin pieza.
 
+##### El gesto: un solo modo para el pulso y para los clics
+
+Se dibuja de dos maneras y las dos son el mismo modo. **Arrastrando** se traza a
+pulso, para rodear rápido; **a clics** se marcan vértices y se cierra sobre el
+primero o con un doble clic, para seguir un borde con exactitud. Se ofrecen las
+dos porque resuelven casos distintos y elegir por el operador habría estorbado a
+la mitad de ellos. El botón derecho deshace el último vértice y, sin vértices,
+cancela: sin esa salida, un trazo mal empezado solo se podía terminar mal.
+
+Qué es un clic y qué es un trazo se decide en **píxeles de pantalla**, no de
+imagen. Al 800 % de zoom, tres píxeles de mano son veinticuatro de imagen, y con
+el umbral en coordenadas de imagen el mismo gesto significaría dos cosas según
+por dónde se estuviera mirando. Es la misma regla que ya gobierna las manijas y
+la tolerancia de agarre.
+
+Sobre el vídeo, **lo que queda fuera de la zona se oscurece**. En un rectángulo
+el dentro y el fuera se leen solos; en un contorno irregular no, y confundirlos
+es creer que se está midiendo algo que el programa ni mira.
+
+##### Simplificar el trazo: la garantía es una distancia, no un área
+
+Un trazo a pulso trae cientos de puntos separados por un píxel, y guardarlos
+todos no añade precisión — la mano no tiene esa resolución.
+`vision::zonePolygonFromTrace` los simplifica con una tolerancia **proporcional
+al perímetro**, no absoluta: así una zona pequeña no se come sus esquinas y una
+grande no se guarda con mil vértices. Medido, la misma forma a radio 200 y a
+radio 2000 sale con **32 vértices las dos**.
+
+El primer intento de probarlo exigía que el área se conservara dentro del 1 %, y
+salía un 1,45 %. La explicación que se escribió entonces —«es el temblor de la
+mano»— era **falsa**, y medirla por separado lo demostró: el temblor cuesta un
+0,6 % y la simplificación un 1,5 %. El motivo es geométrico y no se arregla con
+umbrales: los vértices que sobreviven están **sobre** el trazo, así que cada
+cuerda corta por dentro y un polígono inscrito siempre encierra menos que la
+curva. Es un sesgo en una sola dirección, no ruido.
+
+Lo que sí está acotado —y es lo que el algoritmo garantiza de verdad— es
+**cuánto se mueve el borde**. La tolerancia se expone (`zoneSimplifyTolerancePx`)
+justo por eso: una garantía que no se puede consultar no se puede comprobar. Con
+el 0,15 % del perímetro y suelo de un píxel, un círculo de 400 puntos se guarda
+con 32 vértices, el borde se mueve **0,93 px como mucho** frente a una tolerancia
+de 1,44 px, y pierde el **0,29 %** del área. Con la mano temblando, la zona
+guardada discrepa un 0,628 % del círculo que se quería dibujar, frente al 0,597 %
+que ya pone el pulso: simplificar no añade casi nada por encima del temblor.
+
+El suelo de un píxel rompe a propósito la invariancia de escala en las zonas
+diminutas. Por debajo del píxel no hay información que conservar, así que una
+zona pequeña se simplifica relativamente más — y eso está apuntado en un test
+para que no parezca un descuido cuando alguien vea que un círculo de radio 40
+sale con menos vértices que uno de radio 400.
+
+##### La zona guardada no puede recortar con su modo apagado
+
+`WorkingZoneMode::Free` es un cuarto modo junto a «imagen entera», «automática»
+y «fija», y `vision::effectiveWorkingPolygon` es quien decide si el polígono
+guardado se aplica. Sin esa función, una zona dibujada otro día seguiría tapando
+media imagen con el operador viéndola apagada en el panel: la peor clase de
+fallo que puede tener una zona, porque el programa mide bien dentro de un sitio
+que nadie eligió. Dibujar la libre la pone en uso y borrarla apaga su modo
+(`modeAfterFreeZoneChanged`), igual que con la rectangular, y las dos conviven —
+la del rectángulo sigue guardada mientras manda la libre.
+
 **El cuarto lo encontró el banco de pruebas** (`tests/test_working_zone.cpp`),
 y es el más instructivo porque el test que demuestra que recortar no cambia la
 medida **no podía verlo**: lo que el recorte se lleva por delante no es la

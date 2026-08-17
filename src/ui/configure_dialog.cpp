@@ -92,7 +92,8 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
     tabs_->addTab(pieces_, tr("Piezas"));
 
     // --- Rendimiento ---
-    performance_ = new PerformancePage(inputs.zoneMode, inputs.hasFixedZone, this);
+    performance_ = new PerformancePage(inputs.zoneMode, inputs.hasFixedZone,
+                                       inputs.hasFreeZone, this);
     tabs_->addTab(performance_, tr("Rendimiento"));
 
     // --- Escala (asistente) ---

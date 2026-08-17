@@ -3,8 +3,11 @@
 #include "inspection_editor/canvas/canvas_geometry.h"
 
 #include <QFontMetrics>
+#include <QLineF>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
+#include <QPolygonF>
 #include <QWheelEvent>
 
 #include <algorithm>
@@ -12,6 +15,7 @@
 #include <limits>
 
 #include "inspection_editor/execution/edge_detection.h"
+#include "vision/auto_roi.h"
 #include "vision/fitting.h"
 #include "vision/position_fixture.h"
 
@@ -171,6 +175,41 @@ void EditorCanvas::setDetectionRegion(bool visible, const cv::Rect& imageRect) {
     regionVisible_ = visible;
     regionRect_ = imageRect;
     update();
+}
+
+void EditorCanvas::setFreeZonePickMode(bool enabled) {
+    freeZonePick_ = enabled;
+    freeDragging_ = false;
+    freeLasso_ = false;
+    freeVertices_.clear();
+    freeTrace_.clear();
+    setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
+    update();
+}
+
+void EditorCanvas::setFreeZone(bool visible, const std::vector<cv::Point>& imagePolygon) {
+    freeZoneVisible_ = visible;
+    freeZone_ = imagePolygon;
+    update();
+}
+
+void EditorCanvas::finishFreeZone(const std::vector<cv::Point>& trace) {
+    const auto polygon = vision::zonePolygonFromTrace(trace);
+    freeVertices_.clear();
+    freeTrace_.clear();
+    freeLasso_ = false;
+    if (polygon.empty()) {
+        // El modo sigue encendido a propósito: lo que falló fue el trazo, no la
+        // intención, y apagarlo obligaría a volver a pulsar el botón para
+        // repetir el gesto que se acaba de intentar.
+        update();
+        emit traceRejected(
+            tr("Ese trazo no encierra ninguna zona: rodea el área con el ratón, o "
+               "marca al menos tres esquinas a clics y cierra sobre la primera."));
+        return;
+    }
+    setFreeZonePickMode(false);
+    emit freeZonePicked(polygon);
 }
 
 void EditorCanvas::setPickMode(bool enabled) {
@@ -376,7 +415,8 @@ QPointF EditorCanvas::clampedPan(const QPointF& pan) const {
 }
 
 void EditorCanvas::restoreCursor() {
-    setCursor(createType_.has_value() ? Qt::CrossCursor : Qt::ArrowCursor);
+    const bool aiming = createType_.has_value() || regionPick_ || freeZonePick_ || pickMode_;
+    setCursor(aiming ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
 void EditorCanvas::resetView() {
@@ -475,7 +515,18 @@ void EditorCanvas::mouseDoubleClickEvent(QMouseEvent* event) {
     // tablero o la zona de detección también son clics. En esos modos, un doble
     // clic añadía vértices y además reencuadraba la vista de golpe. Mientras hay
     // un modo de clic activo, el doble clic no toca la vista.
-    const bool clickDrivenMode = pickMode_ || regionPick_ || createType_.has_value();
+    //
+    // Con la zona libre en marcha el doble clic tiene además un significado
+    // propio: cerrar el polígono. Es el atajo que ya espera cualquiera que haya
+    // dibujado un polígono en otro programa, y evita tener que acertar sobre el
+    // primer vértice cuando queda lejos de donde acabó la mano.
+    if (event->button() == Qt::LeftButton && freeZonePick_ && freeVertices_.size() >= 3) {
+        finishFreeZone(freeVertices_);
+        event->accept();
+        return;
+    }
+    const bool clickDrivenMode =
+        pickMode_ || regionPick_ || freeZonePick_ || createType_.has_value();
     if (event->button() == Qt::LeftButton && !image_.isNull() && !clickDrivenMode) {
         resetView();
         event->accept();
@@ -604,6 +655,20 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
 
     const cv::Point2f pressPoint = widgetToImage(event->position());
 
+    // Clic derecho trazando la zona libre: deshace el último vértice y, sin
+    // vértices que deshacer, cancela. Es la salida del gesto — sin ella, un
+    // trazo mal empezado solo se podía terminar mal.
+    if (event->button() == Qt::RightButton && freeZonePick_) {
+        if (!freeVertices_.empty()) {
+            freeVertices_.pop_back();
+            update();
+        } else {
+            setFreeZonePickMode(false);
+            emit freeZoneCancelled();
+        }
+        return;
+    }
+
     // Clic derecho sobre una herramienta: borrado rápido (aunque la edición
     // esté bloqueada por inspección, borrar sigue permitido salvo bloqueo).
     if (event->button() == Qt::RightButton) {
@@ -619,7 +684,7 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
         return;
     }
     // En inspección no se dibuja ni se mueve: solo se lee la pieza.
-    if (editingLocked_ && !regionPick_ && !pickMode_) {
+    if (editingLocked_ && !regionPick_ && !freeZonePick_ && !pickMode_) {
         return;
     }
 
@@ -629,6 +694,19 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
         dragStart_ = pressPoint;
         dragCurrent_ = pressPoint;
         regionDrag_ = true;
+        return;
+    }
+
+    // Zona libre: todavía no se sabe si esto es un trazo o un clic. Se decide al
+    // mover —o al no moverse—, así que aquí solo se abre el gesto.
+    if (freeZonePick_) {
+        dragStart_ = pressPoint;
+        dragCurrent_ = pressPoint;
+        freePressWidget_ = event->position();
+        freeDragging_ = true;
+        freeLasso_ = false;
+        freeTrace_.clear();
+        freeTrace_.emplace_back(cvRound(pressPoint.x), cvRound(pressPoint.y));
         return;
     }
 
@@ -681,7 +759,10 @@ void EditorCanvas::mouseMoveEvent(QMouseEvent* event) {
     // Coordenadas bajo el cursor (T4). El seguimiento del ratón solo está
     // activo con el tablero encendido, así que fuera de ese modo esto no
     // añade repintados.
-    if ((boardVisible_ || rulerVisible_) && !image_.isNull()) {
+    // Trazando la zona libre a clics hace falta seguir el cursor aunque el
+    // tablero esté apagado: sin eso no hay línea elástica, y marcar vértices a
+    // ciegas es dibujar un polígono que solo se ve cuando ya está cerrado.
+    if ((boardVisible_ || rulerVisible_ || freeZonePick_) && !image_.isNull()) {
         cursorWidget_ = event->position();
         update();
     }
@@ -690,10 +771,35 @@ void EditorCanvas::mouseMoveEvent(QMouseEvent* event) {
         update();
         return;
     }
-    if (!creating_ && !moving_ && !marquee_ && !regionDrag_ && !draggingHandle_) {
+    if (!creating_ && !moving_ && !marquee_ && !regionDrag_ && !freeDragging_ &&
+        !draggingHandle_) {
         return;
     }
     const cv::Point2f p = widgetToImage(event->position());
+
+    if (freeDragging_) {
+        // Que esto sea un trazo o un clic se decide en píxeles de PANTALLA, no
+        // de imagen: al 800 % de zoom, tres píxeles de mano son veinticuatro de
+        // imagen, y el mismo gesto significaría dos cosas distintas según por
+        // dónde se estuviera mirando.
+        constexpr double kLassoStartsAt = 6.0;
+        if (!freeLasso_ &&
+            QLineF(freePressWidget_, event->position()).length() > kLassoStartsAt) {
+            freeLasso_ = true;
+        }
+        if (freeLasso_) {
+            const cv::Point q(cvRound(p.x), cvRound(p.y));
+            // Un punto por píxel de imagen recorrido es todo lo que hay que
+            // guardar: el ratón emite decenas de eventos sobre el mismo píxel y
+            // el resto son copias.
+            if (freeTrace_.empty() || q != freeTrace_.back()) {
+                freeTrace_.push_back(q);
+            }
+        }
+        dragCurrent_ = p;
+        update();
+        return;
+    }
 
     if (draggingHandle_ && tools_ != nullptr && selected_ >= 0 &&
         selected_ < static_cast<int>(tools_->size())) {
@@ -787,6 +893,28 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         return;
     }
     const cv::Point2f p = widgetToImage(event->position());
+
+    if (freeDragging_) {
+        freeDragging_ = false;
+        if (freeLasso_) {
+            finishFreeZone(freeTrace_);
+            return;
+        }
+        // No se movió: fue un clic. O cierra el polígono, o pone un vértice.
+        // La tolerancia del cierre también va en píxeles de pantalla, por lo
+        // mismo que la del trazo.
+        constexpr double kCloseOnScreen = 12.0;
+        if (freeVertices_.size() >= 3 &&
+            cv::norm(cv::Point2f(static_cast<float>(freeVertices_.front().x),
+                                 static_cast<float>(freeVertices_.front().y)) -
+                     p) < pickTolerance(kCloseOnScreen, displayScale())) {
+            finishFreeZone(freeVertices_);
+            return;
+        }
+        freeVertices_.emplace_back(cvRound(p.x), cvRound(p.y));
+        update();
+        return;
+    }
 
     if (regionDrag_) {
         regionDrag_ = false;
@@ -2236,6 +2364,103 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
         painter.setBrush(QColor(255, 210, 0, 25));
         painter.drawRect(QRectF(imageToWidget(dragStart_), imageToWidget(dragCurrent_))
                              .normalized());
+    }
+    paintFreeZone(painter);
+}
+
+// La zona libre: la activa y la que se está trazando.
+//
+// Mismo ámbar que la rectangular, a propósito: son la misma idea —dónde mira el
+// programa— y darles colores distintos las convertiría en dos cosas que hay que
+// aprender por separado.
+void EditorCanvas::paintFreeZone(QPainter& painter) const {
+    const QColor zoneColor(255, 210, 0);
+    const auto toWidget = [this](const cv::Point& point) {
+        return imageToWidget(
+            {static_cast<float>(point.x), static_cast<float>(point.y)});
+    };
+
+    if (freeZoneVisible_ && freeZone_.size() >= 3) {
+        QPolygonF poly;
+        for (const auto& point : freeZone_) {
+            poly << toWidget(point);
+        }
+        // Además del contorno se APAGA lo de fuera. En un rectángulo el dentro y
+        // el fuera se leen solos; en un contorno irregular no, y confundirlos es
+        // creer que se está midiendo algo que el programa ni siquiera mira.
+        QPainterPath outside;
+        outside.addRect(QRectF(rect()));
+        QPainterPath inside;
+        inside.addPolygon(poly);
+        painter.fillPath(outside.subtracted(inside), QColor(0, 0, 0, 70));
+
+        QPen pen(zoneColor);
+        pen.setStyle(Qt::DashLine);
+        pen.setWidthF(2.0);
+        pen.setCosmetic(true);
+        painter.setPen(pen);
+        painter.setBrush(Qt::NoBrush);
+        painter.drawPolygon(poly);
+    }
+
+    if (!freeZonePick_) {
+        return;
+    }
+    QPen pen(zoneColor);
+    pen.setWidthF(2.0);
+    pen.setCosmetic(true);
+    painter.setPen(pen);
+    painter.setBrush(Qt::NoBrush);
+
+    if (freeLasso_ && freeTrace_.size() >= 2) {
+        QPolygonF trace;
+        for (const auto& point : freeTrace_) {
+            trace << toWidget(point);
+        }
+        painter.drawPolyline(trace);
+        // El cierre se insinúa desde el principio: la zona será el trazo MÁS
+        // esta línea, y verla evita la sorpresa de un cierre por donde no se
+        // esperaba.
+        QPen closing(zoneColor);
+        closing.setStyle(Qt::DotLine);
+        closing.setCosmetic(true);
+        painter.setPen(closing);
+        painter.drawLine(trace.back(), trace.front());
+        painter.setPen(pen);
+    }
+
+    if (!freeVertices_.empty()) {
+        QPolygonF marks;
+        for (const auto& point : freeVertices_) {
+            marks << toWidget(point);
+        }
+        if (marks.size() >= 2) {
+            painter.drawPolyline(marks);
+        }
+        // Línea elástica hasta el cursor: enseña el lado que se está a punto de
+        // fijar antes de fijarlo.
+        if (cursorWidget_.has_value()) {
+            QPen rubber(zoneColor);
+            rubber.setStyle(Qt::DotLine);
+            rubber.setCosmetic(true);
+            painter.setPen(rubber);
+            painter.drawLine(marks.back(), *cursorWidget_);
+            if (freeVertices_.size() >= 2) {
+                painter.drawLine(*cursorWidget_, marks.front());
+            }
+            painter.setPen(pen);
+        }
+        painter.setBrush(zoneColor);
+        for (const auto& mark : marks) {
+            painter.drawEllipse(mark, 2.5, 2.5);
+        }
+        // El primero se resalta solo cuando cerrar es posible: un blanco verde
+        // desde el primer vértice prometería un cierre que aún no existe.
+        if (freeVertices_.size() >= 3) {
+            painter.setBrush(QColor(0, 220, 0));
+            painter.drawEllipse(marks.front(), 4.5, 4.5);
+        }
+        painter.setBrush(Qt::NoBrush);
     }
 }
 

@@ -2,6 +2,8 @@
 
 #include <opencv2/core.hpp>
 
+#include <vector>
+
 namespace pci::vision {
 
 // Zona de trabajo automática: el rectángulo dentro del cual merece la pena
@@ -23,6 +25,7 @@ enum class WorkingZoneMode {
     Off,        // la imagen entera, siempre
     Automatic,  // el recorte que sigue a la pieza
     Fixed,      // la zona de detección dibujada a mano
+    Free,       // la zona LIBRE: un contorno a mano alzada, no un rectángulo
 };
 
 [[nodiscard]] const char* workingZoneModeKey(WorkingZoneMode mode);
@@ -102,9 +105,24 @@ private:
 // sigue recortando el recuento, porque ahí el operador dijo «mira solo aquí» y
 // esa es su respuesta; la automática es una optimización, y una optimización
 // que cambia la respuesta no es una optimización, es un fallo.
+// `freeZone` es el contorno a mano alzada, en coordenadas de imagen. En modo
+// LIBRE lo que se devuelve es su envolvente: el recorte sigue siendo un
+// rectángulo —ahí está la velocidad— y el polígono solo recorta después.
 [[nodiscard]] cv::Rect effectiveWorkingZone(WorkingZoneMode mode, const cv::Rect& fixedZone,
                                             const cv::Rect& automaticZone,
-                                            bool countingPieces = false);
+                                            bool countingPieces = false,
+                                            const std::vector<cv::Point>& freeZone = {});
+
+// El polígono con el que se filtra este frame: el dibujado solo en modo LIBRE,
+// y vacío en cualquier otro.
+//
+// Va aparte de `effectiveWorkingZone` porque son dos preguntas distintas —dónde
+// recortar y qué forma respetar— y porque sin esta función el polígono guardado
+// seguiría filtrando con el modo en «imagen entera» o en «automática»: mandaría
+// una zona que el operador cree apagada, que es la peor clase de fallo de todos
+// los que puede tener una zona.
+[[nodiscard]] std::vector<cv::Point> effectiveWorkingPolygon(
+    WorkingZoneMode mode, const std::vector<cv::Point>& freeZone);
 
 // Modo que corresponde después de dibujar o de quitar la zona fija.
 //
@@ -116,5 +134,40 @@ private:
 // no quedaría apuntando a un rectángulo que ya no existe.
 [[nodiscard]] WorkingZoneMode modeAfterFixedZoneChanged(WorkingZoneMode current,
                                                         bool hasFixedZone);
+
+// Lo mismo para la zona libre: dibujarla es usarla, y borrarla apaga el modo
+// que la usaba. Las dos zonas conviven —la rectangular sigue guardada mientras
+// manda la libre— porque son dos respuestas a la misma pregunta y quitar la de
+// arriba tiene que dejar a la vista la de abajo, no dejar al operador sin
+// ninguna.
+[[nodiscard]] WorkingZoneMode modeAfterFreeZoneChanged(WorkingZoneMode current,
+                                                       bool hasFreeZone);
+
+// Convierte un trazo —los puntos por los que pasó el ratón, o los vértices que
+// se fueron marcando a clics— en un polígono utilizable como zona.
+//
+// Un trazo a mano alzada trae cientos de puntos separados por un píxel, y
+// guardarlos todos no añade ni una pizca de precisión: la mano no es capaz de
+// esa resolución. Se simplifica con una tolerancia proporcional al PERÍMETRO
+// del trazo, no absoluta, para que una zona pequeña no se coma sus propias
+// esquinas y una grande no se guarde con mil vértices inútiles.
+//
+// La simplificación ENCOGE la zona, y conviene saberlo: los vértices que
+// sobreviven están sobre el trazo, así que cada cuerda corta por dentro de la
+// curva. No es ruido, es un sesgo en una sola dirección. Está acotado por la
+// tolerancia —ningún punto del trazo queda más lejos que eso del borde
+// guardado— y por eso la tolerancia se puede consultar: es la garantía.
+//
+// Devuelve vacío si el trazo no encierra un área: menos de tres vértices, o un
+// garabato tan estrecho que no deja nada dentro. Una zona vacía por accidente
+// no filtraría nada, filtraría TODO, y el operador vería la detección morir sin
+// saber por qué.
+[[nodiscard]] std::vector<cv::Point> zonePolygonFromTrace(
+    const std::vector<cv::Point>& trace, double minAreaPx = 64.0);
+
+// Cuánto puede moverse el borde de la zona al simplificar un trazo de este
+// perímetro, en píxeles. Una garantía que no se puede consultar no se puede
+// comprobar, así que vive aquí en vez de escondida en una constante.
+[[nodiscard]] double zoneSimplifyTolerancePx(double tracePerimeterPx);
 
 }  // namespace pci::vision

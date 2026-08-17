@@ -11,6 +11,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include <cstdio>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -578,4 +579,264 @@ TEST(WorkingZone, APolygonWithFewerThanThreeCornersIsNotAZone) {
     EXPECT_EQ(cv::boundingRect(result.value().contour.points),
               cv::boundingRect(plain.value().contour.points))
         << "un polígono imposible cambió lo que se mide";
+}
+
+// ---------------------------------------------------------------------------
+// Del trazo a la zona: qué se conserva al simplificar
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Qué parte del área discrepa entre dos polígonos, en tanto por uno del
+// original. Es la medida honesta: comparar solo las áreas totales dejaría pasar
+// una zona del mismo tamaño desplazada a otro sitio.
+double areaMismatch(const std::vector<cv::Point>& a, const std::vector<cv::Point>& b) {
+    cv::Rect box = cv::boundingRect(a) | cv::boundingRect(b);
+    box += cv::Size(4, 4);
+    const auto draw = [&box](const std::vector<cv::Point>& poly) {
+        cv::Mat mask = cv::Mat::zeros(box.size(), CV_8UC1);
+        std::vector<cv::Point> local;
+        local.reserve(poly.size());
+        for (const auto& point : poly) {
+            local.push_back(point - box.tl());
+        }
+        cv::fillPoly(mask, std::vector<std::vector<cv::Point>>{local}, cv::Scalar(255));
+        return mask;
+    };
+    const cv::Mat first = draw(a);
+    const cv::Mat second = draw(b);
+    cv::Mat different;
+    cv::bitwise_xor(first, second, different);
+    const double reference = cv::countNonZero(first);
+    return reference > 0.0 ? cv::countNonZero(different) / reference : 1.0;
+}
+
+// Un círculo trazado A PULSO: el punto exacto más el temblor de la mano. El
+// temblor lleva semilla fija para que el número que salga hoy sea el mismo
+// mañana.
+std::vector<cv::Point> handDrawnCircle(cv::Point centre, int radius, double jitterPx,
+                                       int samples = 400) {
+    std::mt19937 noise(20260816U);
+    std::uniform_real_distribution<double> wobble(-jitterPx, jitterPx);
+    std::vector<cv::Point> trace;
+    trace.reserve(static_cast<std::size_t>(samples));
+    for (int k = 0; k < samples; ++k) {
+        const double angle = 2.0 * CV_PI * k / samples;
+        const double r = radius + (jitterPx > 0.0 ? wobble(noise) : 0.0);
+        trace.emplace_back(static_cast<int>(std::lround(centre.x + r * std::cos(angle))),
+                           static_cast<int>(std::lround(centre.y + r * std::sin(angle))));
+    }
+    return trace;
+}
+
+}  // namespace
+
+TEST(FreeZoneTrace, TheFrontierNeverMovesFurtherThanTheStatedTolerance) {
+    // La garantía de la zona es una DISTANCIA, no un área, y este test costó
+    // aprenderlo. El primer intento exigía que el área se conservara dentro del
+    // 1 % y salía un 1,45 %: la explicación que escribí —«es el temblor de la
+    // mano»— era falsa. Medido aparte, el temblor cuesta un 0,6 % y la
+    // simplificación un 1,5 %.
+    //
+    // El motivo es geométrico y no se arregla con umbrales: los vértices que
+    // sobreviven están SOBRE el trazo, así que cada cuerda corta por dentro y
+    // un polígono inscrito siempre encierra menos que la curva. Es un sesgo en
+    // una sola dirección, y lo que sí está acotado es cuánto se mueve el borde.
+    const auto trace = handDrawnCircle({300, 300}, 150, 0.0);
+    const auto zone = zonePolygonFromTrace(trace);
+    ASSERT_GE(zone.size(), 3U);
+
+    const double tolerance = zoneSimplifyTolerancePx(cv::arcLength(trace, true));
+    double worst = 0.0;
+    for (const auto& point : trace) {
+        // Distancia con signo al polígono: negativa fuera, positiva dentro.
+        const double inside = cv::pointPolygonTest(zone, cv::Point2f(point), true);
+        worst = std::max(worst, -inside);
+    }
+    std::printf("  [zona libre] %zu puntos -> %zu vertices; el borde se mueve %.2f px como "
+                "mucho (tolerancia %.2f px); pierde el %.2f %% del area\n",
+                trace.size(), zone.size(), worst, tolerance,
+                100.0 * areaMismatch(trace, zone));
+    EXPECT_LE(worst, tolerance + 1.0)
+        << "el borde guardado se alejó del trazo más de lo prometido";
+    EXPECT_LT(zone.size(), trace.size() / 4)
+        << "no simplificó nada: se guardarían cientos de vértices que no informan";
+}
+
+TEST(FreeZoneTrace, TheTremorOfTheHandCostsLessThanTheTolerance) {
+    // Y la otra mitad de la pregunta: con la mano temblando, ¿la zona guardada
+    // se parece a la que el operador quería dibujar? Se compara contra el
+    // círculo pretendido, no contra el trazo, que es lo único que responde.
+    const auto ideal = handDrawnCircle({300, 300}, 150, 0.0, 2000);
+    const auto shaky = handDrawnCircle({300, 300}, 150, 1.0);
+    const auto zone = zonePolygonFromTrace(shaky);
+    ASSERT_GE(zone.size(), 3U);
+
+    const double handError = areaMismatch(ideal, shaky);
+    const double zoneError = areaMismatch(ideal, zone);
+    std::printf("  [zona libre] frente al circulo pretendido: el pulso discrepa %.3f %%, "
+                "la zona guardada %.3f %% (%zu vertices)\n",
+                100.0 * handError, 100.0 * zoneError, zone.size());
+    EXPECT_LT(zoneError, 0.01)
+        << "la zona guardada no se parece a la que se quiso dibujar";
+}
+
+TEST(FreeZoneTrace, TheCornersOfADrawnShapeSurvive) {
+    // Lo contrario del test anterior: en una forma con esquinas, simplificar no
+    // puede redondearlas. Una zona en «L» es justo la que se dibuja para rodear
+    // una pieza dejando fuera lo de al lado.
+    const std::vector<cv::Point> corners{{100, 100}, {400, 100}, {400, 220},
+                                         {220, 220}, {220, 400}, {100, 400}};
+    std::vector<cv::Point> trace;
+    for (std::size_t i = 0; i < corners.size(); ++i) {
+        const cv::Point from = corners[i];
+        const cv::Point to = corners[(i + 1) % corners.size()];
+        constexpr int kSteps = 60;
+        for (int s = 0; s < kSteps; ++s) {
+            const double t = static_cast<double>(s) / kSteps;
+            trace.emplace_back(
+                static_cast<int>(std::lround(from.x + (to.x - from.x) * t)),
+                static_cast<int>(std::lround(from.y + (to.y - from.y) * t)));
+        }
+    }
+
+    const auto zone = zonePolygonFromTrace(trace);
+    ASSERT_EQ(zone.size(), corners.size())
+        << "la «L» perdió o inventó esquinas al simplificarse";
+    for (const auto& corner : corners) {
+        double best = 1e9;
+        for (const auto& vertex : zone) {
+            best = std::min(best, cv::norm(corner - vertex));
+        }
+        EXPECT_LT(best, 2.0) << "la esquina (" << corner.x << "," << corner.y
+                             << ") se movió al simplificar";
+    }
+}
+
+TEST(FreeZoneTrace, TheAnswerDoesNotDependOnHowBigTheZoneIs) {
+    // La tolerancia es una fracción del perímetro, no un número de píxeles, y
+    // esto es lo que compra: la misma forma dibujada diez veces más grande se
+    // guarda con los mismos vértices. Con una tolerancia absoluta, una zona
+    // pequeña perdería sus esquinas y una grande guardaría cientos de puntos.
+    //
+    // Los dos radios están elegidos POR ENCIMA del suelo de un píxel a
+    // propósito: ahí abajo manda el grano de la imagen y no la regla relativa,
+    // y eso se comprueba en el test siguiente en vez de mezclarlo con este.
+    const auto medium = zonePolygonFromTrace(handDrawnCircle({300, 300}, 200, 0.0, 2000));
+    const auto huge = zonePolygonFromTrace(handDrawnCircle({3000, 3000}, 2000, 0.0, 2000));
+    std::printf("  [zona libre] r=200 -> %zu vertices; r=2000 -> %zu vertices\n",
+                medium.size(), huge.size());
+    ASSERT_GE(medium.size(), 3U);
+    ASSERT_GE(huge.size(), 3U);
+    const std::size_t difference =
+        std::max(medium.size(), huge.size()) - std::min(medium.size(), huge.size());
+    EXPECT_LE(difference, 2U)
+        << "el número de vértices depende del tamaño: la tolerancia no es relativa";
+}
+
+TEST(FreeZoneTrace, BelowOnePixelTheImageGrainTakesOver) {
+    // El suelo de un píxel rompe la invariancia de escala en las zonas
+    // pequeñas, y hace bien: por debajo del píxel no hay información que
+    // conservar, así que una zona diminuta se simplifica RELATIVAMENTE más.
+    // Lo apunta este test para que no parezca un descuido cuando alguien vea
+    // que un círculo de radio 40 sale con menos vértices que uno de radio 400.
+    const auto tiny = handDrawnCircle({100, 100}, 40, 0.0, 400);
+    const double perimeter = cv::arcLength(tiny, true);
+    EXPECT_DOUBLE_EQ(zoneSimplifyTolerancePx(perimeter), 1.0)
+        << "con perímetro " << perimeter << " la fracción no llega al píxel: manda el suelo";
+    EXPECT_GT(zoneSimplifyTolerancePx(4000.0), 1.0)
+        << "en una zona grande el suelo no puede seguir mandando";
+}
+
+TEST(FreeZoneTrace, AScribbleThatEnclosesNothingIsNotAZone) {
+    // Un trazo de ida y vuelta por la misma línea: tiene cientos de puntos y no
+    // encierra nada. Devolverlo como zona dejaría la detección sin nada dentro,
+    // y el operador vería morir la detección sin motivo visible.
+    std::vector<cv::Point> line;
+    for (int x = 100; x < 400; ++x) {
+        line.emplace_back(x, 200);
+    }
+    for (int x = 399; x >= 100; --x) {
+        line.emplace_back(x, 200);
+    }
+    EXPECT_TRUE(zonePolygonFromTrace(line).empty());
+
+    // Y un garabato diminuto tampoco: 6x6 px de zona es un clic tembloroso, no
+    // una intención.
+    const std::vector<cv::Point> speck{{50, 50}, {56, 50}, {56, 56}, {50, 56}};
+    EXPECT_TRUE(zonePolygonFromTrace(speck).empty());
+
+    // Dos puntos no son un área por definición.
+    EXPECT_TRUE(zonePolygonFromTrace({{0, 0}, {10, 10}}).empty());
+}
+
+// ---------------------------------------------------------------------------
+// La regla del modo: qué zona manda
+// ---------------------------------------------------------------------------
+
+TEST(FreeZoneMode, DrawingTheFreeZoneUsesItAndErasingItLetsGo) {
+    EXPECT_EQ(modeAfterFreeZoneChanged(WorkingZoneMode::Off, true), WorkingZoneMode::Free);
+    EXPECT_EQ(modeAfterFreeZoneChanged(WorkingZoneMode::Automatic, true),
+              WorkingZoneMode::Free);
+    EXPECT_EQ(modeAfterFreeZoneChanged(WorkingZoneMode::Fixed, true), WorkingZoneMode::Free);
+    EXPECT_EQ(modeAfterFreeZoneChanged(WorkingZoneMode::Free, false), WorkingZoneMode::Off);
+    // Borrar la libre no puede tocar a los modos que no la usaban.
+    EXPECT_EQ(modeAfterFreeZoneChanged(WorkingZoneMode::Automatic, false),
+              WorkingZoneMode::Automatic);
+    EXPECT_EQ(modeAfterFreeZoneChanged(WorkingZoneMode::Fixed, false),
+              WorkingZoneMode::Fixed);
+    // Y dibujar la rectangular no puede dejar la libre a medias.
+    EXPECT_EQ(modeAfterFixedZoneChanged(WorkingZoneMode::Free, true), WorkingZoneMode::Fixed);
+    EXPECT_EQ(modeAfterFixedZoneChanged(WorkingZoneMode::Free, false), WorkingZoneMode::Free);
+}
+
+TEST(FreeZoneMode, ASavedFreeZoneDoesNotCropWhileItsModeIsOff) {
+    // El fallo que esta función existe para impedir: la zona sigue guardada de
+    // otro día, el operador la ve apagada en el panel, y estaría recortando.
+    const std::vector<cv::Point> drawn{{10, 10}, {200, 10}, {200, 200}, {10, 200}};
+    EXPECT_TRUE(effectiveWorkingPolygon(WorkingZoneMode::Off, drawn).empty());
+    EXPECT_TRUE(effectiveWorkingPolygon(WorkingZoneMode::Automatic, drawn).empty());
+    EXPECT_TRUE(effectiveWorkingPolygon(WorkingZoneMode::Fixed, drawn).empty());
+    EXPECT_EQ(effectiveWorkingPolygon(WorkingZoneMode::Free, drawn), drawn);
+    // Con el modo puesto pero sin dibujo, tampoco hay polígono que aplicar.
+    EXPECT_TRUE(effectiveWorkingPolygon(WorkingZoneMode::Free, {{0, 0}, {5, 5}}).empty());
+
+    // Y lo mismo comprobado de punta a punta: la escena de dos piezas en
+    // diagonal, con la zona guardada y el modo apagado, tiene que seguir viendo
+    // las dos.
+    const cv::Mat scene = twoDiagonalPieces();
+    PipelineConfig config;
+    config.roiPolygon = effectiveWorkingPolygon(
+        WorkingZoneMode::Off, {{350, 110}, {575, 110}, {575, 290}, {350, 290}});
+    const auto seen = analyzeFrames(scene, config);
+    ASSERT_TRUE(seen.isOk()) << seen.error().message;
+    EXPECT_EQ(seen.value().size(), 2U) << "una zona guardada recortó con su modo apagado";
+}
+
+TEST(FreeZoneMode, TheCropIsTheHullOfTheFreeZoneAndTheCountStillRespectsIt) {
+    const std::vector<cv::Point> drawn{{40, 60}, {300, 30}, {320, 250}, {60, 280}};
+    const cv::Rect hull = cv::boundingRect(drawn);
+    EXPECT_EQ(effectiveWorkingZone(WorkingZoneMode::Free, cv::Rect(), cv::Rect(), false, drawn),
+              hull);
+    // Como la fija: contar no la suelta. El operador dijo «mira solo aquí» y esa
+    // es su respuesta, no una optimización que pueda cederse.
+    EXPECT_EQ(effectiveWorkingZone(WorkingZoneMode::Free, cv::Rect(), cv::Rect(), true, drawn),
+              hull);
+    // Sin polígono utilizable, no hay recorte que valga.
+    EXPECT_EQ(effectiveWorkingZone(WorkingZoneMode::Free, cv::Rect(10, 10, 50, 50),
+                                   cv::Rect(), false)
+                  .area(),
+              0);
+}
+
+TEST(FreeZoneMode, TheModeSurvivesBeingSavedAndRead) {
+    // Se persiste por nombre justo para que añadir un modo no rompa lo guardado.
+    for (const auto mode : {WorkingZoneMode::Off, WorkingZoneMode::Automatic,
+                            WorkingZoneMode::Fixed, WorkingZoneMode::Free}) {
+        EXPECT_EQ(workingZoneModeFromKey(workingZoneModeKey(mode)), mode);
+    }
+    EXPECT_EQ(workingZoneModeFromKey("free"), WorkingZoneMode::Free);
+    // Lo que no se reconoce cae al modo más conservador, no al nuevo.
+    EXPECT_EQ(workingZoneModeFromKey("libre"), WorkingZoneMode::Off);
+    EXPECT_EQ(workingZoneModeFromKey(nullptr), WorkingZoneMode::Off);
 }

@@ -11,7 +11,7 @@
 namespace pci::ui {
 
 PerformancePage::PerformancePage(vision::WorkingZoneMode mode, bool hasFixedZone,
-                                 QWidget* parent)
+                                 bool hasFreeZone, QWidget* parent)
     : QWidget(parent) {
     auto* root = new QVBoxLayout(this);
     auto* intro = new QLabel(
@@ -41,7 +41,20 @@ PerformancePage::PerformancePage(vision::WorkingZoneMode mode, bool hasFixedZone
         fixed_->setToolTip(fixed_->toolTip() + tr("\n\nNo hay ninguna zona dibujada "
                                                   "todavía."));
     }
-    for (auto* button : {off_, automatic_, fixed_}) {
+    free_ = new QRadioButton(tr("Zona libre"), this);
+    free_->setToolTip(
+        tr("Usa el contorno que dibujaste con «Zona libre», que no tiene por qué\n"
+           "ser un rectángulo.\n"
+           "Es la respuesta para lo que un rectángulo no puede separar: el borde del\n"
+           "útil pegado a la pieza, la sombra de un lado, la pieza de al lado en\n"
+           "diagonal. Recorta igual de rápido —por dentro sigue usando la envolvente—\n"
+           "y además descarta lo que quede fuera del contorno."));
+    free_->setEnabled(hasFreeZone);
+    if (!hasFreeZone) {
+        free_->setToolTip(free_->toolTip() +
+                          tr("\n\nNo hay ninguna zona libre dibujada todavía."));
+    }
+    for (auto* button : {off_, automatic_, fixed_, free_}) {
         group->addButton(button);
         root->addWidget(button);
     }
@@ -50,6 +63,9 @@ PerformancePage::PerformancePage(vision::WorkingZoneMode mode, bool hasFixedZone
         case vision::WorkingZoneMode::Automatic: automatic_->setChecked(true); break;
         case vision::WorkingZoneMode::Fixed:
             (hasFixedZone ? fixed_ : off_)->setChecked(true);
+            break;
+        case vision::WorkingZoneMode::Free:
+            (hasFreeZone ? free_ : off_)->setChecked(true);
             break;
     }
 
@@ -93,24 +109,31 @@ PerformancePage::PerformancePage(vision::WorkingZoneMode mode, bool hasFixedZone
     connect(off_, &QRadioButton::toggled, this, emitMode);
     connect(automatic_, &QRadioButton::toggled, this, emitMode);
     connect(fixed_, &QRadioButton::toggled, this, emitMode);
+    connect(free_, &QRadioButton::toggled, this, emitMode);
 }
 
-void PerformancePage::showMode(vision::WorkingZoneMode mode, bool hasFixedZone) {
+void PerformancePage::showMode(vision::WorkingZoneMode mode, bool hasFixedZone,
+                               bool hasFreeZone) {
     if (off_ == nullptr) {
         return;
     }
     fixed_->setEnabled(hasFixedZone);
-    // Los tres botones se bloquean a la vez: marcar uno desmarca otro, y cada
+    free_->setEnabled(hasFreeZone);
+    // Los botones se bloquean a la vez: marcar uno desmarca otro, y cada
     // `toggled` dispararía `modeChanged` de vuelta hacia quien nos está
     // sincronizando.
     const QSignalBlocker blockOff(off_);
     const QSignalBlocker blockAuto(automatic_);
     const QSignalBlocker blockFixed(fixed_);
+    const QSignalBlocker blockFree(free_);
     switch (mode) {
         case vision::WorkingZoneMode::Off: off_->setChecked(true); break;
         case vision::WorkingZoneMode::Automatic: automatic_->setChecked(true); break;
         case vision::WorkingZoneMode::Fixed:
             (hasFixedZone ? fixed_ : off_)->setChecked(true);
+            break;
+        case vision::WorkingZoneMode::Free:
+            (hasFreeZone ? free_ : off_)->setChecked(true);
             break;
     }
 }
@@ -121,6 +144,9 @@ vision::WorkingZoneMode PerformancePage::mode() const {
     }
     if (fixed_ != nullptr && fixed_->isChecked()) {
         return vision::WorkingZoneMode::Fixed;
+    }
+    if (free_ != nullptr && free_->isChecked()) {
+        return vision::WorkingZoneMode::Free;
     }
     return vision::WorkingZoneMode::Off;
 }

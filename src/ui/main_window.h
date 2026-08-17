@@ -110,6 +110,9 @@ private slots:
     void onCalibrateClicked();
     void onRoiButtonToggled(bool enabled);
     void onRegionPicked(const cv::Rect& imageRect);
+    void onFreeZoneButtonToggled(bool enabled);
+    void onFreeZonePicked(const std::vector<cv::Point>& imagePolygon);
+    void onFreeZoneCancelled();
     void onUnitChanged();
     void onTemplateChanged(int index);
     void onNewTemplateClicked();
@@ -186,9 +189,17 @@ private:
     [[nodiscard]] cv::Rect effectiveWorkingZone() const;
     void setWorkingZoneMode(pci::vision::WorkingZoneMode mode);
     void updateWorkingZoneOverlay();
+    // La configuración con la que INSPECCIONAR. La zona libre solo recorta si
+    // su modo está activo: una guardada de otro día, con el modo apagado, no
+    // puede seguir tapando media imagen sin que nadie lo haya pedido.
+    [[nodiscard]] vision::PipelineConfig inspectionConfig() const;
     void applyPreferencesPage(PreferencesPage* page);
     void wireCameraPage(CameraImagePage* page);
     void updateRoiButton();
+    // Los dos botones de zona y el dibujo sobre el vídeo, siempre a la vez: son
+    // tres caras del mismo estado y actualizarlos por separado fue justo el
+    // fallo que documenta `modeAfterFixedZoneChanged`.
+    void updateFreeZoneButton();
     void rotatePieceView(double deltaDeg);
     void loadPieceList(std::int64_t selectId = -1);
     void loadTemplateList(const QString& selectName = QString());
@@ -265,6 +276,7 @@ private:
     QComboBox* cameraCombo_ = nullptr;
     QPushButton* startStopButton_ = nullptr;
     QPushButton* roiButton_ = nullptr;
+    QPushButton* freeZoneButton_ = nullptr;
     QLabel* calibLabel_ = nullptr;  // estado de la escala en la barra inferior
     // Fila 2: pieza y flujo.
     QComboBox* pieceCombo_ = nullptr;
