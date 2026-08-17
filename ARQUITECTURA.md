@@ -153,6 +153,52 @@ justo lo que no puede pasar cuando el color no debe cargar solo con el
 significado. Ahora dice **Cám / Img / Víd**. Y el diálogo de fichero vuelve a la
 última carpeta usada, porque quien revisa casos abre diez de la misma.
 
+### La tira de capturas: las fotos tienen que coexistir
+
+«Capturar foto» congelaba el frame y ahí se quedaba: tomar la siguiente tiraba la
+anterior. Eso vale para medir UNA pieza y no vale para las tres cosas que se
+piden de un montón de fotos —tener historial, comparar unas con otras, alimentar
+el aprendizaje— porque **las tres necesitan que las fotos coexistan**.
+
+`ui::CaptureTray` las guarda juntas durante la sesión y las vuelca a disco cuando
+el operador lo pide. **No se guarda sola a cada disparo**, y es deliberado: en
+una puesta a punto se disparan veinte fotos de las que interesan tres, y una
+carpeta con diecisiete descartes es peor que no tener carpeta.
+
+El panel va **a la izquierda**: la derecha ya es de las herramientas, y se lee de
+izquierda a derecha — primero lo que has recogido, después sobre qué trabajas.
+Al elegir una miniatura, la foto pasa a ser la fuente actual, así que todo lo que
+ya funciona —medir, dibujar, inspeccionar— vale igual sin un camino nuevo que
+mantener.
+
+Cuatro decisiones del guardado, todas con su prueba:
+
+- **PNG y no JPEG.** Estas fotos son para volver a medir sobre ellas, y el JPEG
+  inventa bordes donde no los hay. Este proyecto ya midió lo que le cuesta eso a
+  la detección.
+- **`<pieza>_<AAAAMMDD-HHMMSS>_<nn>.png`.** La fecha en ese orden hace que el
+  orden **alfabético** de la carpeta sea el **cronológico**; con
+  `HH-MM-SS_DD-MM-AAAA` se ordena por hora del día y mezcla semanas, y el fallo
+  no se ve hasta que hay dos días de fotos.
+- **El número al final** porque en una ráfaga entran varias fotos en el mismo
+  segundo, y sin él la segunda pisaría a la primera sin que nadie se enterara.
+- **Nunca sobrescribe.** Perder una captura anterior por repetir un nombre es el
+  peor fallo posible aquí: no se nota hasta que se va a buscar.
+
+Un nombre de pieza como `Eje 3/4"` es razonable y es un nombre de fichero
+imposible. Se limpia en vez de fallar al guardar: perder la captura por un
+carácter sería castigar al operador por escribir bien.
+
+El dock es **nuevo**, así que cae en el caso que ya documenta la sección de la
+paleta: ninguna disposición guardada hasta hoy sabe de él, y `restoreState` lo
+dejaría oculto. Lleva la misma salvaguarda — quien actualice y no lo viera no
+tendría forma de adivinar que le falta un panel.
+
+**Lo que todavía no hace:** conectar esas capturas con el aprendizaje incremental
+de la referencia, que ya existe (`updateReference`). Falta decidir antes el
+criterio, y no es un detalle: **solo deben entrar piezas confirmadas como
+buenas**, o la referencia aprende defectos.
+
 ### El vídeo se controla, no solo se reproduce
 
 `VideoFileSource` reproducía en bucle y no exponía nada más, así que para volver

@@ -272,6 +272,25 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    número de frame: colocar el pulgar sin saber el total sería inventarse dónde
    va el vídeo.
 
+   **La tira de capturas** (panel *Capturas*, a la izquierda): cada vez que
+   pulsas **Capturar foto**, la foto se queda ahí en vez de sustituir a la
+   anterior. Así puedes juntar varias de la misma pieza —o de piezas distintas—
+   para compararlas, guardarlas como historial y reutilizarlas después.
+
+   Clic en una miniatura para trabajar sobre ella (medir, dibujar, inspeccionar:
+   todo funciona igual que sobre el vídeo). **Guardar todas…** las vuelca a una
+   carpeta y **Vaciar** limpia la tira sin tocar lo ya guardado.
+
+   Se guardan en **PNG** y con el nombre `pieza_AAAAMMDD-HHMMSS_nn.png`. Los dos
+   detalles tienen motivo: PNG porque estas fotos son para volver a medir sobre
+   ellas y el JPEG inventa bordes donde no los hay; y la fecha en ese orden para
+   que **el orden alfabético de la carpeta sea el cronológico**. Nunca sobrescribe
+   una foto anterior.
+
+   No se guardan solas a cada disparo, y es a propósito: en una puesta a punto se
+   disparan veinte fotos de las que interesan tres, y una carpeta con diecisiete
+   descartes es peor que no tener carpeta.
+
 3. **Medir pieza** (botón de la barra): la respuesta a *¿cuánto mide esto?*, de
    una vez y sin rodeos. Mira el contorno de lo que tengas delante y te da:
 

@@ -9,6 +9,7 @@
 #include <optional>
 #include <vector>
 
+#include "ui/capture_tray.h"
 #include "ui/rate_readout.h"
 #include "ui/setup_guide.h"
 #include "ui/setup_guide.h"
@@ -38,6 +39,7 @@ class QCheckBox;
 class QComboBox;
 class QDockWidget;
 class QLabel;
+class QListWidget;
 class QProgressDialog;
 class QPushButton;
 class QSlider;
@@ -333,6 +335,18 @@ private:
     // Barra de transporte del vídeo. Solo aparece con un vídeo abierto: con una
     // cámara no hay nada que rebobinar, y una barra muerta bajo la imagen es
     // ruido que además invita a pulsarla.
+    // Tira de capturas, a la IZQUIERDA. Va ahí y no a la derecha porque la
+    // derecha ya es de las herramientas, y porque se lee de izquierda a
+    // derecha: primero lo que has recogido, después sobre qué trabajas.
+    QDockWidget* captureDock_ = nullptr;
+    QListWidget* captureList_ = nullptr;
+    QLabel* captureCountLabel_ = nullptr;
+    CaptureTray captureTray_;
+    void buildCaptureDock();
+    void refreshCaptureList();
+    void onSaveCapturesClicked();
+    void onCaptureChosen(int row);
+
     QWidget* videoBar_ = nullptr;
     QToolButton* playPauseButton_ = nullptr;
     QToolButton* stepButton_ = nullptr;

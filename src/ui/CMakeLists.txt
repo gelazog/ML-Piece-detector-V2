@@ -1,6 +1,7 @@
 add_library(pci_ui STATIC
   calibration_dialog.cpp
   camera_image_page.cpp
+  capture_tray.cpp
   configure_dialog.cpp
   detection_page.cpp
   dialog_geometry.cpp

@@ -11,6 +11,10 @@
 #include <gtest/gtest.h>
 
 #include <QDialog>
+#include "ui/capture_tray.h"
+#include <QImage>
+#include <QTemporaryDir>
+#include <QDir>
 
 #include <cstdint>
 #include <filesystem>
@@ -223,4 +227,115 @@ TEST(SessionState, ResettingNothingIsNotAnError) {
     EXPECT_EQ(none.value(), 0);
     EXPECT_EQ(fixture.settings()->getInt("det_blur", 5).value(), 9)
         << "un prefijo que no casa se llevo algo por delante";
+}
+
+// ---------------------------------------------------------------------------
+// La bandeja de capturas
+// ---------------------------------------------------------------------------
+
+namespace {
+
+QImage solidImage(int w = 40, int h = 30, QColor color = Qt::red) {
+    QImage image(w, h, QImage::Format_RGB888);
+    image.fill(color);
+    return image;
+}
+
+pci::ui::Capture captureAt(const QString& when) {
+    pci::ui::Capture capture;
+    capture.image = solidImage();
+    capture.taken = QDateTime::fromString(when, Qt::ISODate);
+    capture.source = QStringLiteral("camara");
+    return capture;
+}
+
+}  // namespace
+
+TEST(CaptureTray, TheNameSortsChronologicallyByItself) {
+    // La fecha va en orden AAAAMMDD-HHMMSS para que el orden ALFABÉTICO de la
+    // carpeta sea el cronológico. Con HH-MM-SS_DD-MM-AAAA la carpeta se ordena
+    // por hora del día y mezcla semanas — el fallo no se ve hasta que hay dos
+    // días de fotos.
+    const QString lunes = pci::ui::CaptureTray::fileNameFor(
+        captureAt(QStringLiteral("2026-08-17T09:30:00")), QStringLiteral("eje"), 0);
+    const QString martes = pci::ui::CaptureTray::fileNameFor(
+        captureAt(QStringLiteral("2026-08-18T08:00:00")), QStringLiteral("eje"), 0);
+    std::printf("  [bandeja] %s < %s\n", lunes.toStdString().c_str(),
+                martes.toStdString().c_str());
+    EXPECT_LT(lunes, martes)
+        << "una foto de ayer por la tarde se ordena después de una de hoy por la mañana";
+}
+
+TEST(CaptureTray, TwoShotsInTheSameSecondDoNotOverwriteEachOther) {
+    // En una ráfaga entran varias fotos en el mismo segundo. Sin el número, la
+    // segunda pisaría a la primera y nadie se enteraría.
+    const auto capture = captureAt(QStringLiteral("2026-08-17T09:30:00"));
+    EXPECT_NE(pci::ui::CaptureTray::fileNameFor(capture, QStringLiteral("eje"), 0),
+              pci::ui::CaptureTray::fileNameFor(capture, QStringLiteral("eje"), 1));
+}
+
+TEST(CaptureTray, APieceNameWithAwkwardCharactersStillProducesAFile) {
+    // «Eje 3/4"» es un nombre razonable de pieza y un nombre de fichero
+    // imposible. Se limpia en vez de fallar al guardar: perder la captura por un
+    // carácter sería castigar al operador por escribir bien.
+    const QString name = pci::ui::CaptureTray::fileNameFor(
+        captureAt(QStringLiteral("2026-08-17T09:30:00")), QStringLiteral("Eje 3/4\""), 0);
+    std::printf("  [bandeja] «Eje 3/4\"» -> %s\n", name.toStdString().c_str());
+    for (const QChar bad : {QChar(u'/'), QChar(u'\\'), QChar(u':'), QChar(u'"'), QChar(u'*')}) {
+        EXPECT_FALSE(name.contains(bad)) << "el nombre lleva un carácter prohibido: "
+                                         << name.toStdString();
+    }
+    EXPECT_TRUE(name.endsWith(QStringLiteral(".png")));
+}
+
+TEST(CaptureTray, SavingWritesEveryCaptureAndSaysHowMany) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    pci::ui::CaptureTray tray;
+    EXPECT_TRUE(tray.empty());
+
+    tray.add(solidImage(), QStringLiteral("camara"),
+             QDateTime::fromString(QStringLiteral("2026-08-17T09:30:00"), Qt::ISODate));
+    tray.add(solidImage(60, 40, Qt::blue), QStringLiteral("camara"),
+             QDateTime::fromString(QStringLiteral("2026-08-17T09:30:00"), Qt::ISODate));
+    EXPECT_EQ(tray.count(), 2);
+
+    const auto saved = tray.saveAll(dir.path(), QStringLiteral("eje"));
+    ASSERT_TRUE(saved.isOk()) << saved.error().message;
+    EXPECT_EQ(saved.value(), 2);
+
+    const QStringList files = QDir(dir.path()).entryList(QDir::Files);
+    EXPECT_EQ(files.size(), 2) << "no hay un fichero por captura";
+    // Y lo escrito se puede volver a leer: una captura que no se relee no sirve
+    // ni para comparar ni para entrenar.
+    for (const QString& file : files) {
+        QImage back(QDir(dir.path()).filePath(file));
+        EXPECT_FALSE(back.isNull()) << "no se pudo releer " << file.toStdString();
+    }
+}
+
+TEST(CaptureTray, SavingTwiceDoesNotDestroyWhatWasThere) {
+    // Perder una captura anterior por repetir un nombre es el peor fallo
+    // posible aquí: no se nota hasta que se va a buscar.
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    pci::ui::CaptureTray tray;
+    tray.add(solidImage(), QStringLiteral("camara"),
+             QDateTime::fromString(QStringLiteral("2026-08-17T09:30:00"), Qt::ISODate));
+
+    ASSERT_TRUE(tray.saveAll(dir.path(), QStringLiteral("eje")).isOk());
+    ASSERT_TRUE(tray.saveAll(dir.path(), QStringLiteral("eje")).isOk());
+    EXPECT_EQ(QDir(dir.path()).entryList(QDir::Files).size(), 2)
+        << "la segunda vez pisó a la primera";
+}
+
+TEST(CaptureTray, AnEmptyCaptureIsNotACapture) {
+    pci::ui::CaptureTray tray;
+    tray.add(QImage(), QStringLiteral("camara"));
+    EXPECT_EQ(tray.count(), 0) << "se guardó una imagen vacía";
+    // Y guardar una bandeja vacía no es un error: es cero.
+    QTemporaryDir dir;
+    const auto saved = tray.saveAll(dir.path(), QStringLiteral("eje"));
+    ASSERT_TRUE(saved.isOk());
+    EXPECT_EQ(saved.value(), 0);
 }

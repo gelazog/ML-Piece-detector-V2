@@ -13,6 +13,10 @@
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
+#include <QListView>
+#include <QPixmap>
+#include <QIcon>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -998,6 +1002,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     updateModeChip();  // el indicador arranca con el modo por defecto (M3)
     updateBoardReadout();
 
+    buildCaptureDock();  // antes de restaurar la disposición, o no se colocaría
     buildMenuBar();  // crea las acciones de menú (incluidas unidad y contorno)
     // El menú se construye DESPUÉS de la primera actualización de estado, así
     // que su acción de auto-inspección se quedaba sin el motivo que sí tenía el
@@ -1033,6 +1038,16 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         toolsDock_->show();
         core::logInfo("El dock de herramientas no estaba en la disposición guardada: "
                       "se coloca a la derecha");
+    }
+    // La tira de capturas es un dock NUEVO, así que cae exactamente en el caso
+    // que describe el párrafo de arriba: ninguna disposición guardada hasta hoy
+    // sabe de ella. Sin esto, quien ya usaba el programa actualizaría y no la
+    // vería nunca — y no tendría forma de adivinar que le falta un panel.
+    if (captureDock_ != nullptr && captureDock_->isHidden()) {
+        addDockWidget(Qt::LeftDockWidgetArea, captureDock_);
+        captureDock_->show();
+        core::logInfo("La tira de capturas no estaba en la disposición guardada: "
+                      "se coloca a la izquierda");
     }
 
     refreshCameras();
@@ -2209,6 +2224,11 @@ void MainWindow::toggleFrozenPhoto() {
     disconnect(cameraFrames_);
     const QString label =
         tr("Foto %1").arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss")));
+    // La foto se queda EN LA TIRA además de congelarse. Antes cada captura
+    // tiraba la anterior, así que no había forma de reunir varias para
+    // comparar, guardar un historial ni alimentar el aprendizaje.
+    captureTray_.add(lastFrame_, currentSourceLabel());
+    refreshCaptureList();
     fileSource_ = std::make_unique<camera::StillImageSource>(lastFrame_, label,
                                                              camera::SourceKind::Photo);
     connect(fileSource_.get(), &camera::FrameSource::frameReady, this, &MainWindow::onFrame);
@@ -2393,6 +2413,150 @@ void MainWindow::onVideoPosition(qint64 frame, qint64 total, double fps) {
     };
     videoTimeLabel_->setText(placeable ? tr("%1 / %2").arg(asTime(frame), asTime(total - 1))
                                        : tr("frame %1").arg(frame));
+}
+
+
+// La tira de capturas, a la izquierda.
+//
+// «Capturar foto» congelaba el frame y ahí se quedaba: tomar la siguiente
+// tiraba la anterior. Eso vale para medir UNA pieza y no vale para lo que se
+// pide de un montón de fotos —historial, comparar unas con otras, alimentar el
+// aprendizaje— porque las tres necesitan que coexistan.
+//
+// A la izquierda y no a la derecha: la derecha ya es de las herramientas, y se
+// lee de izquierda a derecha — primero lo que has recogido, después sobre qué
+// trabajas.
+void MainWindow::buildCaptureDock() {
+    captureDock_ = new QDockWidget(tr("Capturas"), this);
+    captureDock_->setObjectName(QStringLiteral("captureDock"));
+    auto* panel = new QWidget(captureDock_);
+    auto* column = new QVBoxLayout(panel);
+
+    captureCountLabel_ = new QLabel(panel);
+    captureCountLabel_->setWordWrap(true);
+    column->addWidget(captureCountLabel_);
+
+    captureList_ = new QListWidget(panel);
+    captureList_->setViewMode(QListView::IconMode);
+    captureList_->setIconSize(QSize(112, 84));
+    captureList_->setResizeMode(QListView::Adjust);
+    captureList_->setMovement(QListView::Static);
+    captureList_->setSpacing(4);
+    captureList_->setToolTip(
+        tr("Las fotos tomadas en esta sesión. Haz clic en una para trabajar sobre\n"
+           "ella; con Supr se quita de la tira."));
+    column->addWidget(captureList_, 1);
+
+    auto* buttons = new QHBoxLayout();
+    auto* save = new QPushButton(tr("Guardar todas…"), panel);
+    save->setToolTip(
+        tr("Escribe las capturas en una carpeta, en PNG y con el nombre de la pieza\n"
+           "y la fecha por delante, para que la carpeta se ordene sola por tiempo.\n\n"
+           "En PNG y no JPEG a propósito: estas fotos son para volver a medir sobre\n"
+           "ellas, y el JPEG inventa bordes donde no los hay."));
+    buttons->addWidget(save);
+    auto* clear = new QPushButton(tr("Vaciar"), panel);
+    clear->setToolTip(tr("Quita todas las capturas de la tira. No borra lo ya guardado."));
+    buttons->addWidget(clear);
+    column->addLayout(buttons);
+
+    captureDock_->setWidget(panel);
+    addDockWidget(Qt::LeftDockWidgetArea, captureDock_);
+
+    connect(save, &QPushButton::clicked, this, &MainWindow::onSaveCapturesClicked);
+    connect(clear, &QPushButton::clicked, this, [this] {
+        if (captureTray_.empty()) {
+            return;
+        }
+        // Se pregunta: vaciar es lo único aquí que no se puede deshacer.
+        const auto answer = QMessageBox::question(
+            this, tr("Vaciar la tira"),
+            tr("Se quitarán las %n captura(s) de la tira. Las que ya hayas guardado en "
+               "disco no se tocan.", nullptr, captureTray_.count()));
+        if (answer == QMessageBox::Yes) {
+            captureTray_.clear();
+            refreshCaptureList();
+        }
+    });
+    connect(captureList_, &QListWidget::currentRowChanged, this,
+            &MainWindow::onCaptureChosen);
+    refreshCaptureList();
+}
+
+void MainWindow::refreshCaptureList() {
+    if (captureList_ == nullptr) {
+        return;
+    }
+    QSignalBlocker blocker(captureList_);
+    captureList_->clear();
+    for (int i = 0; i < captureTray_.count(); ++i) {
+        const Capture& capture = captureTray_.at(i);
+        auto* item = new QListWidgetItem(QIcon(QPixmap::fromImage(capture.image)),
+                                         capture.taken.toString(QStringLiteral("HH:mm:ss")));
+        // De dónde salió: sin esto, dos fotos de dos montajes distintos son
+        // indistinguibles una semana después, que es cuando se miran.
+        item->setToolTip(tr("%1 — %2")
+                             .arg(capture.taken.toString(QStringLiteral("dd/MM/yyyy HH:mm:ss")),
+                                  capture.source));
+        captureList_->addItem(item);
+    }
+    captureCountLabel_->setText(
+        captureTray_.empty()
+            ? tr("Sin capturas. Pulsa «Capturar foto» y se irán juntando aquí.")
+            : tr("%n captura(s) en esta sesión.", nullptr, captureTray_.count()));
+}
+
+void MainWindow::onCaptureChosen(int row) {
+    if (row < 0 || row >= captureTray_.count()) {
+        return;
+    }
+    // Se trabaja sobre ella como sobre cualquier foto: la fuente pasa a ser esa
+    // imagen. Así todo lo que ya funciona —medir, dibujar, inspeccionar— vale
+    // igual sin un camino nuevo que mantener.
+    const Capture& capture = captureTray_.at(row);
+    fileSource_ = std::make_unique<camera::StillImageSource>(
+        capture.image, capture.source, camera::SourceKind::Photo);
+    connect(fileSource_.get(), &camera::FrameSource::frameReady, this, &MainWindow::onFrame);
+    connect(fileSource_.get(), &camera::FrameSource::stopped, this,
+            &MainWindow::onStreamStopped);
+    sourceKind_ = camera::SourceKind::Photo;
+    streaming_ = true;
+    showVideoBar(false);
+    fileSource_->start();
+    statusBar()->showMessage(tr("Trabajando sobre la captura de las %1.")
+                                 .arg(capture.taken.toString(QStringLiteral("HH:mm:ss"))));
+}
+
+void MainWindow::onSaveCapturesClicked() {
+    if (captureTray_.empty()) {
+        statusBar()->showMessage(tr("No hay capturas que guardar."));
+        return;
+    }
+    QString startDir;
+    if (repos_.settings != nullptr) {
+        startDir = QString::fromStdString(
+            repos_.settings->getString("last_capture_dir", std::string()).value());
+    }
+    const QString folder = QFileDialog::getExistingDirectory(
+        this, tr("Guardar las capturas en…"), startDir);
+    if (folder.isEmpty()) {
+        return;  // cancelar no es un error
+    }
+    if (repos_.settings != nullptr) {
+        repos_.settings->setString("last_capture_dir", folder.toStdString());
+    }
+
+    const QString piece = pieceCombo_ != nullptr && !pieceCombo_->currentText().isEmpty()
+                              ? pieceCombo_->currentText()
+                              : tr("pieza");
+    const auto saved = captureTray_.saveAll(folder, piece);
+    if (!saved.isOk()) {
+        QMessageBox::warning(this, tr("No se pudieron guardar"),
+                             QString::fromStdString(saved.error().message));
+        return;
+    }
+    statusBar()->showMessage(tr("%n captura(s) guardadas en %1.", nullptr, saved.value())
+                                 .arg(folder));
 }
 
 void MainWindow::onFrame(const QImage& frame) {
