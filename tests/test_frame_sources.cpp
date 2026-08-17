@@ -12,6 +12,7 @@
 #include <QEventLoop>
 #include <QImage>
 #include <QSignalSpy>
+#include <QTest>
 #include <QTemporaryDir>
 #include <QTimer>
 
@@ -291,4 +292,112 @@ TEST(SourceCapabilities, APhotoIsNotAFileAndThatDistinctionIsAboutCalibration) {
         << "no dice cómo volver al vídeo: " << why.toStdString();
     EXPECT_NE(why, whyNotAdjustable(SourceKind::Image))
         << "la foto y el fichero dan el mismo motivo, y no están en la misma situación";
+}
+
+// ---------------------------------------------------------------------------
+// Control de reproducción: pausa, salto y paso a paso
+// ---------------------------------------------------------------------------
+//
+// Un vídeo sin esto no sirve para lo que se abre un vídeo: encontrar EL frame en
+// el que la pieza se ve bien y trabajar sobre él. Antes había que reabrirlo y
+// esperar a que el bucle volviera a pasar por donde uno quería.
+
+TEST(VideoControls, PausingStopsTheFramesAndResumingBringsThemBack) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = writeVideo(QDir(dir.path()), QStringLiteral("pieza.avi"), 30, 160, 120);
+    if (path.isEmpty()) {
+        GTEST_SKIP() << "OpenCV no tiene con qué escribir MJPG en esta máquina";
+    }
+
+    VideoFileSource source(path);
+    QSignalSpy frames(&source, &pci::camera::FrameSource::frameReady);
+    source.start();
+    ASSERT_TRUE(waitFor([&] { return frames.count() > 2; })) << "el vídeo no arrancó";
+
+    source.setPaused(true);
+    EXPECT_TRUE(source.isPaused());
+    // Se deja pasar tiempo de sobra para varios frames: si siguieran llegando,
+    // la pausa no estaría pausando nada.
+    QTest::qWait(220);
+    const int afterPause = frames.count();
+    QTest::qWait(220);
+    EXPECT_EQ(frames.count(), afterPause) << "en pausa siguieron llegando frames";
+
+    source.setPaused(false);
+    EXPECT_TRUE(waitFor([&] { return frames.count() > afterPause; }))
+        << "al reanudar no volvieron los frames";
+
+    // Y parar tiene que funcionar CON EL VÍDEO EN PAUSA, que es justo cuando más
+    // se cierra: si el bucle durmiera de una sola vez, cerrar tardaría lo que
+    // durase la siesta.
+    source.setPaused(true);
+    source.stop();
+    EXPECT_FALSE(source.isRunning()) << "no se pudo parar el vídeo en pausa";
+}
+
+TEST(VideoControls, SteppingAdvancesOneFrameAndLeavesItPaused) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = writeVideo(QDir(dir.path()), QStringLiteral("pieza.avi"), 30, 160, 120);
+    if (path.isEmpty()) {
+        GTEST_SKIP() << "OpenCV no tiene con qué escribir MJPG en esta máquina";
+    }
+
+    VideoFileSource source(path);
+    QSignalSpy frames(&source, &pci::camera::FrameSource::frameReady);
+    source.start();
+    ASSERT_TRUE(waitFor([&] { return frames.count() > 2; }));
+    source.setPaused(true);
+    QTest::qWait(200);
+    const int paused = frames.count();
+
+    // Un paso: exactamente UNO. Con la barra no se puede elegir el frame — un
+    // píxel de barra son varios frames en un vídeo largo.
+    source.stepOneFrame();
+    EXPECT_TRUE(waitFor([&] { return frames.count() == paused + 1; }))
+        << "el paso no dio exactamente un frame: " << frames.count() - paused;
+    QTest::qWait(220);
+    EXPECT_EQ(frames.count(), paused + 1) << "tras el paso siguió reproduciendo";
+    EXPECT_TRUE(source.isPaused()) << "el paso dejó el vídeo en marcha";
+
+    source.stop();
+}
+
+TEST(VideoControls, SeekingMovesWhereItIsToldAndSaysWhereItIs) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = writeVideo(QDir(dir.path()), QStringLiteral("pieza.avi"), 40, 160, 120);
+    if (path.isEmpty()) {
+        GTEST_SKIP() << "OpenCV no tiene con qué escribir MJPG en esta máquina";
+    }
+
+    VideoFileSource source(path);
+    QSignalSpy position(&source, &VideoFileSource::positionChanged);
+    source.start();
+    ASSERT_TRUE(waitFor([&] { return position.count() > 2; })) << "no informa de su posición";
+
+    // El total tiene que ser creíble: sin él la barra no puede colocarse.
+    const auto total = position.last().at(1).toLongLong();
+    std::printf("  [video] el fichero declara %lld frames\n", static_cast<long long>(total));
+    ASSERT_GT(total, 1) << "el contenedor no dice cuántos frames tiene";
+
+    source.seekToFraction(0.75);
+    // Se espera a que el bucle aplique el salto y reporte desde allí.
+    EXPECT_TRUE(waitFor([&] {
+        return !position.isEmpty() &&
+               position.last().at(0).toLongLong() > total / 2;
+    })) << "el salto no movió la reproducción";
+    std::printf("  [video] tras saltar al 75 %%: frame %lld de %lld\n",
+                static_cast<long long>(position.last().at(0).toLongLong()),
+                static_cast<long long>(total));
+
+    // Y al principio: saltar hacia atrás también tiene que funcionar, o solo
+    // serviría para adelantar.
+    source.seekToFraction(0.0);
+    EXPECT_TRUE(waitFor([&] {
+        return !position.isEmpty() && position.last().at(0).toLongLong() < total / 2;
+    })) << "no se pudo volver atrás";
+
+    source.stop();
 }

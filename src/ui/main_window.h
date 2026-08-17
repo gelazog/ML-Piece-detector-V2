@@ -40,6 +40,8 @@ class QDockWidget;
 class QLabel;
 class QProgressDialog;
 class QPushButton;
+class QSlider;
+class QVBoxLayout;
 class QSpinBox;
 class QToolButton;
 
@@ -328,6 +330,20 @@ private:
     QAction* freeZoneAction_ = nullptr;
     QAction* clearZoneAction_ = nullptr;
     QPushButton* measurePieceButton_ = nullptr;
+    // Barra de transporte del vídeo. Solo aparece con un vídeo abierto: con una
+    // cámara no hay nada que rebobinar, y una barra muerta bajo la imagen es
+    // ruido que además invita a pulsarla.
+    QWidget* videoBar_ = nullptr;
+    QToolButton* playPauseButton_ = nullptr;
+    QToolButton* stepButton_ = nullptr;
+    QSlider* videoSlider_ = nullptr;
+    QLabel* videoTimeLabel_ = nullptr;
+    // Mientras el operador arrastra, la barra NO se recoloca sola: el vídeo
+    // sigue informando de su posición y el pulgar daría saltos bajo el dedo.
+    bool videoSliderHeld_ = false;
+    void buildVideoBar(QWidget* parent, QVBoxLayout* root);
+    void showVideoBar(bool visible);
+    void onVideoPosition(qint64 frame, qint64 total, double fps);
     // Ruta del fichero abierto como fuente, para recordarlo entre sesiones.
     QString lastSourcePath_;
     // Fuente elegida mientras otra seguía en marcha. Parar es asíncrono, así

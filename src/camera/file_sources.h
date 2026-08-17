@@ -78,12 +78,44 @@ public:
     [[nodiscard]] SourceKind kind() const override { return SourceKind::Video; }
     [[nodiscard]] QString describe() const override;
 
+    // --- Control de reproducción ---
+    //
+    // Un vídeo sin pausa ni barra de tiempo no se puede usar para lo que se
+    // abre un vídeo: encontrar EL frame en el que la pieza se ve bien y trabajar
+    // sobre él. Sin esto había que reabrirlo y esperar a que el bucle volviera a
+    // pasar por donde uno quería.
+    //
+    // Todo lo que cruza al hilo de reproducción va en atómicos: el bucle vive en
+    // su propio hilo y la interfaz lo toca desde el suyo.
+    void setPaused(bool paused);
+    [[nodiscard]] bool isPaused() const { return paused_.load(); }
+    // Salta a una fracción del vídeo (0 = principio, 1 = final). Se pide y se
+    // aplica en el bucle: mover el `VideoCapture` desde otro hilo mientras está
+    // leyendo es pedir una corrupción.
+    void seekToFraction(double fraction);
+    // Avanza UN frame y se queda en pausa. Es lo que hace falta para elegir el
+    // frame exacto, y con la barra no se puede: un píxel de barra son varios
+    // frames en un vídeo largo.
+    void stepOneFrame();
+
+signals:
+    // Dónde va la reproducción. `total` es 0 cuando el contenedor no sabe
+    // cuántos frames tiene —pasa, y más de lo que parece—, y entonces la barra
+    // no puede colocarse: quien la pinta debe apagarla en vez de inventar una
+    // posición.
+    void positionChanged(qint64 frame, qint64 total, double fps);
+
 private:
     void playLoop();
 
     QString path_;
     std::thread worker_;
     std::atomic<bool> running_{false};
+    std::atomic<bool> paused_{false};
+    // −1 = sin salto pendiente. Se usa un doble porque la petición viene en
+    // fracción y el número de frames solo se conoce dentro del bucle.
+    std::atomic<double> seekRequest_{-1.0};
+    std::atomic<bool> stepRequest_{false};
 };
 
 // Convierte un frame de OpenCV (BGR o gris) a QImage RGB888, con los datos

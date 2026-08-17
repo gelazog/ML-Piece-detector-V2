@@ -153,6 +153,40 @@ justo lo que no puede pasar cuando el color no debe cargar solo con el
 significado. Ahora dice **Cám / Img / Víd**. Y el diálogo de fichero vuelve a la
 última carpeta usada, porque quien revisa casos abre diez de la misma.
 
+### El vídeo se controla, no solo se reproduce
+
+`VideoFileSource` reproducía en bucle y no exponía nada más, así que para volver
+a un frame había que esperar a que el bucle pasara otra vez por ahí. Un vídeo así
+no sirve para lo que se abre un vídeo: **encontrar EL frame en el que la pieza se
+ve bien y trabajar sobre él**.
+
+Ahora tiene pausa, salto por fracción y paso a paso. Todo lo que cruza al hilo de
+reproducción va en **atómicos**, y las dos operaciones que tocan el
+`VideoCapture` —saltar y leer— se aplican **dentro del bucle**: moverlo desde el
+hilo de la interfaz mientras está leyendo es pedir una corrupción.
+
+Tres decisiones que costaron pensarlas:
+
+- **En pausa se sigue atendiendo.** El bucle espera a trozos de 20 ms en vez de
+  dormir de una vez, porque parar y saltar tienen que funcionar con el vídeo
+  detenido — que es justo cuando más se usan. Con una siesta larga, cerrar
+  tardaría lo que durase.
+- **El paso deja el vídeo en pausa.** Es lo que se pide cuando se busca un frame
+  concreto, y con la barra no se puede: en un vídeo largo, un píxel de barra son
+  varios frames.
+- **Sin total, la barra se apaga.** Hay contenedores que no dicen cuántos frames
+  tienen. Colocar el pulgar sin saberlo sería inventarse dónde va el vídeo, así
+  que se informa 0 y quien pinta la barra la deshabilita y enseña el número de
+  frame.
+
+En la interfaz, la barra **solo aparece con un vídeo abierto**: con una cámara no
+hay nada que rebobinar, y una barra muerta bajo la imagen es ruido que además
+invita a pulsarla. Mientras el operador arrastra el pulgar, la barra deja de
+seguir al vídeo — si no, saltaría bajo el dedo cada vez que llega una posición.
+
+Medido: saltar al 75 % de un vídeo de 40 frames aterriza en el **frame 30**, y el
+paso da exactamente **un** frame y se queda.
+
 ### El banco sin cámara: `pci_probe`
 
 Un ejecutable de consola (`tools/probe_main.cpp`, sin Qt) que corre el pipeline

@@ -18,6 +18,7 @@
 #include <QMessageBox>
 #include <QProgressDialog>
 #include <QPushButton>
+#include <QSlider>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QTime>
@@ -615,6 +616,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     video_ = new inspection::EditorCanvas(central);
     video_->setTools(&liveTools_);
     rootLayout->addWidget(video_, 1);
+    buildVideoBar(central, rootLayout);
 
     setCentralWidget(central);
 
@@ -2267,6 +2269,13 @@ bool MainWindow::startFileSource(camera::SourceKind kind) {
     connect(fileSource_.get(), &camera::FrameSource::stopped, this,
             &MainWindow::onStreamStopped);
 
+    if (auto* video = dynamic_cast<camera::VideoFileSource*>(fileSource_.get())) {
+        connect(video, &camera::VideoFileSource::positionChanged, this,
+                &MainWindow::onVideoPosition);
+        playPauseButton_->setText(tr("Pausa"));
+    }
+    showVideoBar(kind == camera::SourceKind::Video);
+
     sourceKind_ = kind;
     lastSourcePath_ = path;
     streaming_ = true;
@@ -2292,6 +2301,98 @@ bool MainWindow::startFileSource(camera::SourceKind kind) {
     updateStatusIndicators();
     fileSource_->start();
     return true;
+}
+
+
+// Barra de transporte del vídeo: reproducir/pausar, un paso, y dónde va.
+//
+// Un vídeo sin esto no sirve para lo que se abre un vídeo — encontrar EL frame
+// en el que la pieza se ve bien y trabajar sobre él. Antes reproducía en bucle
+// sin más, así que para volver a un frame había que esperar a que el bucle
+// pasara otra vez por ahí.
+void MainWindow::buildVideoBar(QWidget* parent, QVBoxLayout* root) {
+    videoBar_ = new QWidget(parent);
+    auto* row = new QHBoxLayout(videoBar_);
+    row->setContentsMargins(0, 0, 0, 0);
+
+    playPauseButton_ = new QToolButton(videoBar_);
+    playPauseButton_->setText(tr("Pausa"));
+    playPauseButton_->setToolTip(tr("Pausar o seguir. Con el vídeo parado se puede dibujar\n"
+                                    "una herramienta sin que la pieza tiemble."));
+    row->addWidget(playPauseButton_);
+
+    stepButton_ = new QToolButton(videoBar_);
+    stepButton_->setText(tr("▶|"));
+    stepButton_->setToolTip(tr("Avanzar un frame y quedarse ahí. Con la barra no se puede\n"
+                               "elegir el frame: en un vídeo largo, un píxel son varios."));
+    row->addWidget(stepButton_);
+
+    videoSlider_ = new QSlider(Qt::Horizontal, videoBar_);
+    videoSlider_->setRange(0, 1000);
+    videoSlider_->setToolTip(tr("Dónde va el vídeo. Arrastra para buscar."));
+    row->addWidget(videoSlider_, 1);
+
+    videoTimeLabel_ = new QLabel(videoBar_);
+    videoTimeLabel_->setMinimumWidth(110);
+    videoTimeLabel_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    row->addWidget(videoTimeLabel_);
+
+    root->addWidget(videoBar_);
+    videoBar_->setVisible(false);
+
+    connect(playPauseButton_, &QToolButton::clicked, this, [this] {
+        auto* video = dynamic_cast<camera::VideoFileSource*>(fileSource_.get());
+        if (video == nullptr) {
+            return;
+        }
+        const bool pausing = !video->isPaused();
+        video->setPaused(pausing);
+        playPauseButton_->setText(pausing ? tr("Seguir") : tr("Pausa"));
+    });
+    connect(stepButton_, &QToolButton::clicked, this, [this] {
+        if (auto* video = dynamic_cast<camera::VideoFileSource*>(fileSource_.get())) {
+            video->stepOneFrame();
+            playPauseButton_->setText(tr("Seguir"));  // el paso deja en pausa
+        }
+    });
+    // Mientras se arrastra, la barra deja de seguir al vídeo: si no, el pulgar
+    // daría saltos bajo el dedo cada vez que llega una posición nueva.
+    connect(videoSlider_, &QSlider::sliderPressed, this,
+            [this] { videoSliderHeld_ = true; });
+    connect(videoSlider_, &QSlider::sliderReleased, this, [this] {
+        videoSliderHeld_ = false;
+        if (auto* video = dynamic_cast<camera::VideoFileSource*>(fileSource_.get())) {
+            video->seekToFraction(videoSlider_->value() / 1000.0);
+        }
+    });
+}
+
+void MainWindow::showVideoBar(bool visible) {
+    if (videoBar_ != nullptr) {
+        videoBar_->setVisible(visible);
+    }
+}
+
+void MainWindow::onVideoPosition(qint64 frame, qint64 total, double fps) {
+    if (videoSlider_ == nullptr || videoTimeLabel_ == nullptr) {
+        return;
+    }
+    // Sin total no se puede colocar el pulgar, y colocarlo donde sea sería
+    // inventarse dónde va el vídeo. La barra se apaga y el rótulo lo dice.
+    const bool placeable = total > 1;
+    videoSlider_->setEnabled(placeable);
+    if (placeable && !videoSliderHeld_) {
+        QSignalBlocker blocker(videoSlider_);
+        videoSlider_->setValue(static_cast<int>(1000.0 * frame / (total - 1)));
+    }
+    const auto asTime = [fps](qint64 f) {
+        const double seconds = fps > 0.0 ? f / fps : 0.0;
+        return QStringLiteral("%1:%2")
+            .arg(static_cast<int>(seconds) / 60, 2, 10, QLatin1Char('0'))
+            .arg(static_cast<int>(seconds) % 60, 2, 10, QLatin1Char('0'));
+    };
+    videoTimeLabel_->setText(placeable ? tr("%1 / %2").arg(asTime(frame), asTime(total - 1))
+                                       : tr("frame %1").arg(frame));
 }
 
 void MainWindow::onFrame(const QImage& frame) {
@@ -2628,6 +2729,7 @@ void MainWindow::onStreamStopped() {
     startStopButton_->setEnabled(true);
     cameraCombo_->setEnabled(true);
     refreshAction_->setEnabled(true);
+    showVideoBar(false);
     statsLabel_->clear();
     pendingAnalysisFrame_ = QImage();
     lastFrame_ = QImage();

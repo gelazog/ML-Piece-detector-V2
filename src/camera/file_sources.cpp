@@ -4,6 +4,7 @@
 
 #include <opencv2/imgproc.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <utility>
 
@@ -156,6 +157,20 @@ void VideoFileSource::stop() {
     emit stopped();
 }
 
+void VideoFileSource::setPaused(bool paused) {
+    paused_.store(paused);
+}
+
+void VideoFileSource::seekToFraction(double fraction) {
+    // Se apunta y se aplica en el bucle. Guardarlo acotado evita que un valor
+    // fuera de rango llegue a `CAP_PROP_POS_FRAMES`.
+    seekRequest_.store(std::clamp(fraction, 0.0, 1.0));
+}
+
+void VideoFileSource::stepOneFrame() {
+    stepRequest_.store(true);
+}
+
 void VideoFileSource::playLoop() {
     cv::VideoCapture capture(path_.toStdString());
     if (!capture.isOpened()) {
@@ -180,9 +195,36 @@ void VideoFileSource::playLoop() {
     }
     const auto period = std::chrono::microseconds(static_cast<long long>(1e6 / fps));
 
+    // Cuántos frames tiene. Puede no saberse —hay contenedores que no lo
+    // dicen— y en ese caso se informa 0: quien pinte la barra tiene que
+    // apagarla, no inventar una posición.
+    const auto totalFrames =
+        static_cast<qint64>(std::max(0.0, capture.get(cv::CAP_PROP_FRAME_COUNT)));
+
     cv::Mat frame;
     while (running_.load()) {
         const auto tick = std::chrono::steady_clock::now();
+
+        // El salto se aplica AQUÍ y no donde se pide: mover el `VideoCapture`
+        // desde el hilo de la interfaz mientras este lee es pedir una
+        // corrupción.
+        if (const double wanted = seekRequest_.exchange(-1.0); wanted >= 0.0) {
+            if (totalFrames > 0) {
+                const double target = std::clamp(wanted, 0.0, 1.0) * (totalFrames - 1);
+                capture.set(cv::CAP_PROP_POS_FRAMES, target);
+            }
+        }
+
+        // En pausa se sigue atendiendo: parar y saltar tienen que funcionar con
+        // el vídeo detenido, que es justo cuando más se usan. Se espera a
+        // trozos cortos en vez de dormir de una vez, o cerrar tardaría lo que
+        // durase la siesta.
+        const bool stepping = stepRequest_.exchange(false);
+        if (paused_.load() && !stepping) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            continue;
+        }
+
         if (!capture.read(frame) || frame.empty()) {
             // Fin del fichero: se vuelve al principio. Un vídeo parado en el
             // último frame obligaría a reabrirlo para volver a mirar, y de un
@@ -195,6 +237,15 @@ void VideoFileSource::playLoop() {
         }
         emit frameReady(toQImage(frame));
         emit statsUpdated(fps, frame.cols, frame.rows);
+        emit positionChanged(
+            static_cast<qint64>(std::max(0.0, capture.get(cv::CAP_PROP_POS_FRAMES))),
+            totalFrames, fps);
+        if (stepping) {
+            // Un paso deja el vídeo parado en el frame nuevo: es lo que se pide
+            // cuando se está buscando EL frame.
+            paused_.store(true);
+            continue;
+        }
         std::this_thread::sleep_until(tick + period);
     }
 

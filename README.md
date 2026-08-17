@@ -260,6 +260,18 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    principal. Si tus piezas llegan giradas y quieres que las herramientas las
    sigan al rotar, activa **Ver ▸ Seguir rotación de la pieza** (ahí sí
    aplican el rasgo distintivo y la anisotropía).
+   **Con un vídeo abierto** aparece debajo una barra de reproducción: **Pausa /
+   Seguir**, un **paso a paso** (`▶|`) que avanza un solo frame y se queda ahí, y
+   una **barra de tiempo** para buscar. Sirve para lo que se abre un vídeo:
+   encontrar EL frame en el que la pieza se ve bien y trabajar sobre él —
+   pausado, la pieza no tiembla y dibujar una herramienta deja de ser puntería.
+
+   El paso a paso existe porque con la barra no se puede elegir el frame: en un
+   vídeo largo, un píxel de barra son varios frames. Y si el fichero no dice
+   cuántos frames tiene —pasa más de lo que parece— la barra se apaga y verás el
+   número de frame: colocar el pulgar sin saber el total sería inventarse dónde
+   va el vídeo.
+
 3. **Medir pieza** (botón de la barra): la respuesta a *¿cuánto mide esto?*, de
    una vez y sin rodeos. Mira el contorno de lo que tengas delante y te da:
 
