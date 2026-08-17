@@ -8,6 +8,7 @@
 #include <QCloseEvent>
 #include <QDockWidget>
 #include <QFileDialog>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLabel>
@@ -336,12 +337,35 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     auto* central = new QWidget(this);
     auto* rootLayout = new QVBoxLayout(central);
 
+    // Separador vertical entre grupos de la barra.
+    //
+    // Trece botones repartidos en tres filas, todos del mismo peso y a la misma
+    // distancia unos de otros, se leen como una lista de trece cosas sin
+    // relación. Con una línea entre grupos se leen como tres decisiones: qué
+    // miro, qué mido y qué hago. No es adorno — es lo único que dice dónde
+    // acaba un grupo y empieza el siguiente.
+    const auto separator = [central] {
+        auto* line = new QFrame(central);
+        line->setFrameShape(QFrame::VLine);
+        line->setFrameShadow(QFrame::Sunken);
+        return line;
+    };
+
     // --- Fila 1: cámara ---
     auto* cameraLayout = new QHBoxLayout();
     cameraLayout->addWidget(new QLabel(tr("Fuente:"), central));
     cameraCombo_ = new QComboBox(central);
     cameraCombo_->setMinimumWidth(200);
-    cameraLayout->addWidget(cameraCombo_, 1);
+    // Ancho ACOTADO, y no estirado hasta donde llegue.
+    //
+    // Con factor de estiramiento, el desplegable se quedaba con todo el hueco
+    // sobrante: «Integrated Camera» ocupaba media ventana y empujaba los
+    // botones contra el borde derecho, lejos del combo al que se refieren. Un
+    // desplegable no se lee mejor por ser cuatro veces más ancho que su texto;
+    // los botones sí se encuentran mejor si están juntos.
+    cameraCombo_->setMaximumWidth(320);
+    cameraCombo_->setSizeAdjustPolicy(QComboBox::AdjustToContentsOnFirstShow);
+    cameraLayout->addWidget(cameraCombo_);
     startStopButton_ = new QPushButton(tr("Iniciar"), central);
     cameraLayout->addWidget(startStopButton_);
     // El botón dice lo que va a hacer. Con «Abrir imagen…» elegido, «Iniciar»
@@ -370,32 +394,44 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(freezeButton_, &QPushButton::clicked, this, &MainWindow::toggleFrozenPhoto);
     cameraLayout->addWidget(freezeButton_);
 
-    roiButton_ = new QPushButton(tr("Zona de detección"), central);
-    roiButton_->setCheckable(true);
-    roiButton_->setIcon(inspection::regionIcon());
-    roiButton_->setToolTip(
-        tr("Enfoca la detección en un solo lugar: arrastra un rectángulo sobre el\n"
-           "video y el contorno automático solo se buscará ahí — las sombras y\n"
-           "objetos fuera de la zona dejan de estorbar. Vuelve a pulsarlo para\n"
-           "quitar la zona."));
-    cameraLayout->addWidget(roiButton_);
+    cameraLayout->addWidget(separator());
 
-    // La zona LIBRE va al lado de la rectangular porque es la misma decisión
-    // —dónde mira el programa— con otra forma. Separarlas en menús distintos
-    // obligaría a saber que existe la segunda para encontrarla.
-    freeZoneButton_ = new QPushButton(tr("Zona libre"), central);
-    freeZoneButton_->setCheckable(true);
-    freeZoneButton_->setIcon(inspection::freeZoneIcon());
-    freeZoneButton_->setToolTip(
-        tr("La misma zona, sin la obligación de que sea un rectángulo. Rodea el área\n"
-           "arrastrando el ratón, o marca las esquinas a clics y cierra sobre la\n"
-           "primera (o con doble clic). El botón derecho deshace el último vértice.\n\n"
-           "Sirve para lo que un rectángulo no puede: el borde del útil pegado a la\n"
-           "pieza, la sombra de un lado, la pieza de al lado en diagonal. Lo que quede\n"
-           "fuera se oscurece en el vídeo, para que se vea qué está mirando el\n"
-           "programa.\n\n"
-           "Vuelve a pulsarlo para quitarla."));
-    cameraLayout->addWidget(freeZoneButton_);
+    // UN solo control para la zona, con menú, en vez de dos botones.
+    //
+    // Había dos, y cada uno cambiaba de texto según el estado: «Zona de
+    // detección» pasaba a «Quitar zona», y «Zona libre» a «Quitar zona libre».
+    // En la barra se leía «Zona de detección | Quitar zona libre», que es un
+    // botón diciendo lo que dibuja al lado de otro diciendo lo que borra — dos
+    // verbos distintos para la misma decisión. Para saber qué había puesto
+    // había que leer los dos y deducirlo.
+    //
+    // Ahora el botón dice SIEMPRE lo mismo («Zona») y el menú ofrece las tres
+    // acciones por su nombre, con la activa marcada. El estado se lee de un
+    // vistazo en vez de deducirse de dos etiquetas que se mueven.
+    zoneButton_ = new QToolButton(central);
+    zoneButton_->setText(tr("Zona"));
+    zoneButton_->setIcon(inspection::regionIcon());
+    zoneButton_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    zoneButton_->setPopupMode(QToolButton::InstantPopup);
+    zoneButton_->setToolTip(
+        tr("Dónde busca el programa la pieza. Fuera de la zona, las sombras, los\n"
+           "reflejos y las piezas de al lado dejan de estorbar."));
+    auto* zoneMenu = new QMenu(zoneButton_);
+    rectZoneAction_ = zoneMenu->addAction(tr("Dibujar zona rectangular"));
+    rectZoneAction_->setIcon(inspection::regionIcon());
+    rectZoneAction_->setToolTip(
+        tr("Arrastra un rectángulo sobre el vídeo: el contorno solo se buscará ahí."));
+    freeZoneAction_ = zoneMenu->addAction(tr("Dibujar zona libre"));
+    freeZoneAction_->setIcon(inspection::freeZoneIcon());
+    freeZoneAction_->setToolTip(
+        tr("La misma zona sin la obligación de que sea un rectángulo: rodea el área\n"
+           "arrastrando, o marca las esquinas a clics y cierra sobre la primera.\n"
+           "Para lo que un rectángulo no puede separar — el borde del útil pegado a\n"
+           "la pieza, la pieza de al lado en diagonal."));
+    zoneMenu->addSeparator();
+    clearZoneAction_ = zoneMenu->addAction(tr("Quitar la zona"));
+    zoneButton_->setMenu(zoneMenu);
+    cameraLayout->addWidget(zoneButton_);
     cameraLayout->addStretch(0);
     rootLayout->addLayout(cameraLayout);
 
@@ -404,7 +440,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     pieceLayout->addWidget(new QLabel(tr("Pieza:"), central));
     pieceCombo_ = new QComboBox(central);
     pieceCombo_->setMinimumWidth(140);
-    pieceLayout->addWidget(pieceCombo_, 1);
+    // Acotado, por lo mismo que el de la fuente: estirado hasta el final
+    // separaba la pieza de las acciones que se le aplican.
+    pieceCombo_->setMaximumWidth(260);
+    pieceLayout->addWidget(pieceCombo_);
 
     // Indicador del modo de medición (M3): junto al combo de pieza, que es
     // donde se decide. El operador nunca debe dudar en qué modo está.
@@ -430,6 +469,11 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             &MainWindow::onManageTemplatesClicked);
     pieceLayout->addWidget(manageTemplatesButton_);
 
+    // Aquí cambia la pregunta: hasta este punto la fila dice QUÉ se mide —la
+    // pieza y su plantilla—, y a partir de aquí QUÉ SE HACE con ello. Sin la
+    // línea, las siete cosas se leían como una lista sin relación.
+    pieceLayout->addWidget(separator());
+
     registerLiveButton_ = new QPushButton(tr("Registrar y activar"), central);
     registerLiveButton_->setToolTip(
         tr("Captura automáticamente %1 referencias de la pieza en el video, guarda las "
@@ -445,6 +489,14 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
 
     inspectButton_ = new QPushButton(tr("Inspeccionar"), central);
     inspectButton_->setToolTip(tr("Inspección única con reporte detallado"));
+    // LA acción de esta pantalla, y la única destacada. Con trece botones del
+    // mismo peso, el que se pulsa cien veces al día parecía tan importante como
+    // «Gestionar…», que se abre una vez al mes. Un solo elemento distinto llama
+    // la atención; dos o tres destacados no destacan ninguno.
+    inspectButton_->setDefault(true);
+    QFont emphasis = inspectButton_->font();
+    emphasis.setBold(true);
+    inspectButton_->setFont(emphasis);
     pieceLayout->addWidget(inspectButton_);
 
     // Medir la pieza NO es inspeccionarla, y por eso es un botón aparte aunque
@@ -778,13 +830,15 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(autoInspectButton_, &QPushButton::toggled, this, &MainWindow::onAutoToggled);
     connect(&autoTimer_, &QTimer::timeout, this, &MainWindow::onAutoTick);
 
-    connect(roiButton_, &QPushButton::toggled, this, &MainWindow::onRoiButtonToggled);
+    connect(rectZoneAction_, &QAction::triggered, this,
+            [this] { onRoiButtonToggled(true); });
+    connect(clearZoneAction_, &QAction::triggered, this, &MainWindow::onClearZoneClicked);
     connect(video_, &inspection::EditorCanvas::regionPicked, this,
             &MainWindow::onRegionPicked);
     connect(measurePieceButton_, &QPushButton::clicked, this,
             &MainWindow::onMeasurePieceClicked);
-    connect(freeZoneButton_, &QPushButton::toggled, this,
-            &MainWindow::onFreeZoneButtonToggled);
+    connect(freeZoneAction_, &QAction::triggered, this,
+            [this] { onFreeZoneButtonToggled(true); });
     connect(video_, &inspection::EditorCanvas::freeZonePicked, this,
             &MainWindow::onFreeZonePicked);
     connect(video_, &inspection::EditorCanvas::freeZoneCancelled, this,
@@ -1277,22 +1331,31 @@ void MainWindow::persistPipelineConfig() {
 }
 
 void MainWindow::updateRoiButton() {
-    const bool hasRoi = pipelineConfig_.roi.area() > 0;
     updateWorkingZoneOverlay();
-    QSignalBlocker blocker(roiButton_);
-    roiButton_->setChecked(false);
-    roiButton_->setText(hasRoi ? tr("Quitar zona") : tr("Zona de detección"));
-    updateFreeZoneButton();
-}
-
-void MainWindow::updateFreeZoneButton() {
-    if (freeZoneButton_ == nullptr) {
+    if (zoneButton_ == nullptr) {
         return;
     }
-    const bool hasZone = pipelineConfig_.roiPolygon.size() >= 3;
-    QSignalBlocker blocker(freeZoneButton_);
-    freeZoneButton_->setChecked(false);
-    freeZoneButton_->setText(hasZone ? tr("Quitar zona libre") : tr("Zona libre"));
+    const bool hasRect = pipelineConfig_.roi.area() > 0;
+    const bool hasFree = pipelineConfig_.roiPolygon.size() >= 3;
+
+    // El botón dice siempre lo mismo y el ESTADO se lee en el menú: la zona
+    // activa marcada, y «Quitar» apagado cuando no hay ninguna. Antes había que
+    // deducirlo de dos etiquetas que cambiaban de verbo.
+    rectZoneAction_->setCheckable(true);
+    rectZoneAction_->setChecked(hasRect);
+    freeZoneAction_->setCheckable(true);
+    freeZoneAction_->setChecked(hasFree);
+    clearZoneAction_->setEnabled(hasRect || hasFree);
+    // Deshabilitado CON MOTIVO: un «Quitar» vivo sin nada que quitar enseña a
+    // desconfiar de los menús.
+    clearZoneAction_->setToolTip(hasRect || hasFree
+                                     ? tr("Vuelve a analizar la imagen entera.")
+                                     : tr("No hay ninguna zona dibujada."));
+    // Y el propio botón dice qué hay puesto, para no tener que abrir el menú
+    // solo para saberlo.
+    zoneButton_->setText(hasFree    ? tr("Zona libre")
+                         : hasRect  ? tr("Zona fija")
+                                    : tr("Zona"));
 }
 
 bool MainWindow::countingPieces() const {
@@ -1439,24 +1502,35 @@ void MainWindow::loadDetectionProfileForSelectedPiece() {
     maybeStartAnalysis();
 }
 
+// Quitar la zona que haya, sea la que sea. Va aparte porque ahora es una acción
+// con su propio nombre en el menú, y no «volver a pulsar el botón de dibujar»,
+// que obligaba a que la etiqueta cambiara de verbo para avisar.
+void MainWindow::onClearZoneClicked() {
+    const bool hadRect = pipelineConfig_.roi.area() > 0;
+    const bool hadFree = pipelineConfig_.roiPolygon.size() >= 3;
+    if (!hadRect && !hadFree) {
+        return;
+    }
+    pipelineConfig_.roi = cv::Rect();
+    pipelineConfig_.roiPolygon.clear();
+    if (hadRect) {
+        setWorkingZoneMode(vision::modeAfterFixedZoneChanged(zoneMode_, false));
+    }
+    if (hadFree) {
+        setWorkingZoneMode(vision::modeAfterFreeZoneChanged(zoneMode_, false));
+    }
+    persistPipelineConfig();
+    updateRoiButton();
+    statusBar()->showMessage(tr("Zona quitada: se vuelve a analizar la imagen entera."));
+}
+
 void MainWindow::onRoiButtonToggled(bool enabled) {
     if (!enabled) {
         video_->setRegionPickMode(false);
         return;
     }
-    if (pipelineConfig_.roi.area() > 0) {
-        // Segundo uso del botón: quitar la zona activa.
-        pipelineConfig_.roi = cv::Rect();
-        setWorkingZoneMode(vision::modeAfterFixedZoneChanged(zoneMode_, false));
-        persistPipelineConfig();
-        updateRoiButton();
-        statusBar()->showMessage(tr("Zona de detección eliminada: se analiza todo el frame."));
-        return;
-    }
     if (lastFrame_.isNull()) {
         statusBar()->showMessage(tr("Inicia la cámara para dibujar la zona de detección."));
-        QSignalBlocker blocker(roiButton_);
-        roiButton_->setChecked(false);
         return;
     }
     video_->setRegionPickMode(true);
@@ -1537,20 +1611,8 @@ void MainWindow::onFreeZoneButtonToggled(bool enabled) {
         video_->setFreeZonePickMode(false);
         return;
     }
-    if (pipelineConfig_.roiPolygon.size() >= 3) {
-        // Segundo uso del botón: quitar la zona libre activa.
-        pipelineConfig_.roiPolygon.clear();
-        setWorkingZoneMode(vision::modeAfterFreeZoneChanged(zoneMode_, false));
-        persistPipelineConfig();
-        updateRoiButton();
-        statusBar()->showMessage(
-            tr("Zona libre eliminada: vuelve a mirarse todo lo de antes."));
-        return;
-    }
     if (lastFrame_.isNull()) {
         statusBar()->showMessage(tr("Inicia la fuente para dibujar la zona libre."));
-        QSignalBlocker blocker(freeZoneButton_);
-        freeZoneButton_->setChecked(false);
         return;
     }
     video_->setFreeZonePickMode(true);

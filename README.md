@@ -199,9 +199,9 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    solo aquí».
 
    No hace falta pasar por esa pestaña para usar una zona fija: **con dibujarla
-   basta**. El botón *Zona de detección* de la barra te deja arrastrar el
+   basta**. El menú *Zona* de la barra (*Dibujar zona rectangular*) te deja arrastrar el
    recuadro sobre el vídeo y a partir de ahí se usa (el modo pasa solo a «zona
-   fija»); pulsando *Quitar zona* se borra y se vuelve a la imagen entera. La
+   fija»); con *Zona ▸ Quitar la zona* se borra y se vuelve a la imagen entera. La
    pestaña *Rendimiento* sirve para cambiar de modo o ver qué se está
    procesando ahora mismo.
 

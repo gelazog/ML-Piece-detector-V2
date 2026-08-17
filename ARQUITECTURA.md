@@ -2609,6 +2609,41 @@ Todo lo que no está ligado a una pieza se puede **exportar e importar en JSON**
 para clonar la puesta a punto a otra PC de la línea. Las plantillas de
 herramientas se exportan aparte, para copiarlas entre piezas.
 
+### La barra de la ventana: trece botones sin jerarquía
+
+La barra había ido creciendo hasta **trece botones repartidos en tres filas**,
+todos del mismo peso y a la misma distancia unos de otros. Cuatro problemas, y
+ninguno es de gusto:
+
+- **Nada destacaba.** «Inspeccionar», que se pulsa cien veces al día, parecía tan
+  importante como «Gestionar…», que se abre una vez al mes. Ahora hay **una**
+  acción enfatizada, y solo una: dos o tres destacados no destacan ninguno.
+- **Los desplegables se comían la fila.** Con factor de estiramiento, «Integrated
+  Camera» ocupaba media ventana y empujaba los botones contra el borde derecho,
+  lejos del combo al que se refieren. Un desplegable no se lee mejor por ser
+  cuatro veces más ancho que su texto; los botones sí se encuentran mejor si
+  están juntos. Ancho acotado.
+- **No había grupos.** Trece cosas equidistantes se leen como una lista de trece
+  cosas sin relación. Con un separador entre grupos se leen como tres
+  decisiones: **qué miro** (fuente y zona), **qué mido** (pieza y plantilla) y
+  **qué hago** (las acciones).
+- **Dos botones para la misma decisión, cada uno cambiando de verbo.** «Zona de
+  detección» pasaba a «Quitar zona» y «Zona libre» a «Quitar zona libre», así que
+  en la barra podía leerse *«Zona de detección | Quitar zona libre»*: un botón
+  diciendo lo que dibuja junto a otro diciendo lo que borra. Para saber qué había
+  puesto había que leer los dos y deducirlo.
+
+El último es el que más cambia. Ahora hay **un** control que dice siempre «Zona»
+—o «Zona fija» / «Zona libre» cuando hay una— y un menú con las tres acciones por
+su nombre: dibujar rectangular, dibujar libre, quitar. La activa va marcada y
+«Quitar» está apagado, con su motivo, cuando no hay nada que quitar. El estado se
+**lee**, en vez de deducirse de dos etiquetas que se mueven.
+
+La barra **no tenía ni un test**, y es exactamente por eso por lo que fue
+acumulando. Ahora hay tres, y no fijan el aspecto sino las decisiones: una sola
+acción destacada, un solo control de zona con sus tres acciones, y los
+desplegables sin comerse la fila.
+
 ### Restablecer es OLVIDAR, no escribir los valores de fábrica
 
 La diferencia parece de matiz y es la que impide que la función se

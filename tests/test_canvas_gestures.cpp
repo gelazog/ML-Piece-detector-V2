@@ -9,6 +9,7 @@
 
 #include <QApplication>
 #include <QColor>
+#include <QComboBox>
 #include <QImage>
 #include <QMouseEvent>
 #include <QPointF>
@@ -38,6 +39,7 @@
 
 #include "inspection_editor/auto_measure_dialog.h"
 #include "inspection_editor/piece_report.h"
+#include "ui/main_window.h"
 #include "ui/piece_report_dialog.h"
 #include "inspection_editor/canvas/editor_canvas.h"
 #include "inspection_editor/canvas/tool_icons.h"
@@ -1969,4 +1971,90 @@ TEST(PieceReportDialogTest, WithoutTolerancesTheColumnSaysSoInsteadOfShowingZero
     // La primera fila de datos es un hecho del contorno (el perímetro).
     EXPECT_EQ(cellText(table, 1, 3), QString::fromUtf8("—"))
         << "un hecho del contorno salió con una tolerancia que nadie declaró";
+}
+
+// ---------------------------------------------------------------------------
+// La barra de la ventana principal
+// ---------------------------------------------------------------------------
+//
+// No tenía ni un test, y por eso fue acumulando: trece botones del mismo peso
+// repartidos en tres filas, sin agrupar, con dos desplegables que se comían el
+// ancho y dos botones de zona cuyos textos cambiaban de verbo según el estado.
+// Lo que se fija aquí no es el aspecto sino las decisiones: una sola acción
+// destacada, un solo control de zona, y los desplegables acotados.
+
+TEST(MainToolbar, OnlyOneActionIsEmphasised) {
+    pci::ui::MainWindow window;
+    window.resize(1400, 800);
+
+    int emphasised = 0;
+    QString which;
+    for (auto* button : window.findChildren<QPushButton*>()) {
+        if (button->isDefault() || button->font().bold()) {
+            ++emphasised;
+            which = button->text();
+        }
+    }
+    std::printf("  [barra] %d boton(es) destacado(s): %s\n", emphasised,
+                which.toStdString().c_str());
+    // Uno, y solo uno: dos o tres destacados no destacan ninguno.
+    EXPECT_EQ(emphasised, 1) << "o no destaca nada, o destaca de más";
+    EXPECT_EQ(which, QStringLiteral("Inspeccionar"))
+        << "lo destacado no es la acción que se pulsa cien veces al día";
+}
+
+TEST(MainToolbar, TheZoneIsOneControlWithItsThreeActionsNamed) {
+    pci::ui::MainWindow window;
+    window.resize(1400, 800);
+
+    // Un solo control, no dos botones cuyas etiquetas cambian de verbo.
+    QToolButton* zone = nullptr;
+    for (auto* button : window.findChildren<QToolButton*>()) {
+        if (button->menu() != nullptr && button->text().startsWith(QStringLiteral("Zona"))) {
+            zone = button;
+        }
+    }
+    ASSERT_NE(zone, nullptr) << "no hay control de zona con menú";
+
+    // Y ninguno de los botones viejos sobrevive: dos verbos para la misma
+    // decisión es justo lo que se quitó.
+    for (auto* button : window.findChildren<QPushButton*>()) {
+        EXPECT_FALSE(button->text().startsWith(QStringLiteral("Quitar zona")))
+            << "sigue habiendo un botón que dice lo que borra";
+    }
+
+    QStringList actions;
+    for (auto* action : zone->menu()->actions()) {
+        if (!action->isSeparator()) {
+            actions << action->text();
+        }
+    }
+    std::printf("  [barra] menu de zona: %s\n", actions.join(" / ").toStdString().c_str());
+    EXPECT_EQ(actions.size(), 3) << "las tres acciones de la zona son dibujar dos y quitar";
+
+    // Sin zona dibujada, «Quitar» está apagado: un «Quitar» vivo sin nada que
+    // quitar enseña a desconfiar de los menús.
+    QAction* clear = zone->menu()->actions().last();
+    EXPECT_FALSE(clear->isEnabled()) << "«" << clear->text().toStdString()
+                                     << "» está vivo sin zona que quitar";
+    EXPECT_FALSE(clear->toolTip().isEmpty()) << "apagado y sin decir por qué";
+}
+
+TEST(MainToolbar, TheDropdownsDoNotEatTheRow) {
+    // Con factor de estiramiento, «Integrated Camera» ocupaba media ventana y
+    // empujaba los botones contra el borde, lejos del combo al que se refieren.
+    pci::ui::MainWindow window;
+    window.resize(1600, 800);
+    window.show();
+    QApplication::processEvents();
+
+    for (auto* combo : window.findChildren<QComboBox*>()) {
+        if (combo->maximumWidth() >= QWIDGETSIZE_MAX) {
+            continue;  // los de los diálogos internos no son de la barra
+        }
+        EXPECT_LE(combo->width(), combo->maximumWidth())
+            << "un desplegable de la barra pasa de su ancho máximo";
+        EXPECT_LT(combo->width(), 700)
+            << "un desplegable se está comiendo la fila con una ventana de 1600 px";
+    }
 }

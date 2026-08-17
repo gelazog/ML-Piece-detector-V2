@@ -118,6 +118,7 @@ private slots:
     void onFreeZoneButtonToggled(bool enabled);
     void onFreeZonePicked(const std::vector<cv::Point>& imagePolygon);
     void onFreeZoneCancelled();
+    void onClearZoneClicked();
     void onUnitChanged();
     void onTemplateChanged(int index);
     void onNewTemplateClicked();
@@ -235,10 +236,6 @@ private:
     void applyPreferencesPage(PreferencesPage* page);
     void wireCameraPage(CameraImagePage* page);
     void updateRoiButton();
-    // Los dos botones de zona y el dibujo sobre el vídeo, siempre a la vez: son
-    // tres caras del mismo estado y actualizarlos por separado fue justo el
-    // fallo que documenta `modeAfterFixedZoneChanged`.
-    void updateFreeZoneButton();
     void rotatePieceView(double deltaDeg);
     void loadPieceList(std::int64_t selectId = -1);
     void loadTemplateList(const QString& selectName = QString());
@@ -315,8 +312,14 @@ private:
     // Fila 1: cámara (controles de uso constante).
     QComboBox* cameraCombo_ = nullptr;
     QPushButton* startStopButton_ = nullptr;
-    QPushButton* roiButton_ = nullptr;
-    QPushButton* freeZoneButton_ = nullptr;
+    // UN control para la zona, con menú. Antes eran dos botones que además
+    // cambiaban de texto según el estado, así que en la barra se leía «Zona de
+    // detección | Quitar zona libre»: un botón diciendo lo que dibuja junto a
+    // otro diciendo lo que borra.
+    QToolButton* zoneButton_ = nullptr;
+    QAction* rectZoneAction_ = nullptr;
+    QAction* freeZoneAction_ = nullptr;
+    QAction* clearZoneAction_ = nullptr;
     QPushButton* measurePieceButton_ = nullptr;
     // Ruta del fichero abierto como fuente, para recordarlo entre sesiones.
     QString lastSourcePath_;
