@@ -1114,6 +1114,17 @@ nueva. `repositories/` es el puente domain↔database: `PieceRepository`
 (roundtrip exacto de `ml::Reference` como BLOB float32) y
 `SettingsRepository` (la cámara elegida se guarda y restaura al abrir).
 
+**Vuelves a donde lo dejaste.** Se recuerdan entre sesiones el tamaño, la
+posición, el monitor y si estaba maximizada la ventana; la disposición de
+paneles; la pieza y la plantilla con las que trabajabas; el tipo de fuente; las
+capas de la vista (incluido *Mostrar contorno*); el desglose de tiempos por
+etapa, y el tamaño de cada diálogo por separado.
+
+Dos cosas a propósito: **la fuente se recuerda pero no se abre sola** —igual que
+la cámara, que se preselecciona sin arrancar—, y **la geometría se guarda dos
+segundos después de mover la ventana**, no solo al cerrar, para que un apagado
+brusco de la máquina no se lleve por delante lo que acabas de colocar.
+
 Limitaciones conocidas:
 
 - La BD vive junto al ejecutable (`pc_inspector.db`, demo portable); si no se

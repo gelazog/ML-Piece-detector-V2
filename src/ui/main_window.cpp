@@ -62,6 +62,7 @@
 #include "vision/plane_scale.h"
 #include <opencv2/imgproc.hpp>
 
+#include "ui/dialog_geometry.h"
 #include "ui/performance_page.h"
 #include "ui/rate_readout.h"
 #include "ui/pieces_page.h"
@@ -774,6 +775,13 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             &QFutureWatcher<core::Result<engine::InspectionEngine::Outcome>>::finished, this,
             &MainWindow::onInspectionFinished);
 
+    // Dos segundos después del último movimiento. Suficiente para que un
+    // arrastre entero cueste una sola escritura, y corto para que un cierre
+    // brusco no se lleve por delante lo que se acaba de colocar.
+    layoutSaveTimer_.setSingleShot(true);
+    layoutSaveTimer_.setInterval(2000);
+    connect(&layoutSaveTimer_, &QTimer::timeout, this, &MainWindow::persistWindowLayout);
+
     captureTimer_.setInterval(350);
     autoTimer_.setInterval(autoIntervalMs_);  // se reajusta al cargar Preferencias
 
@@ -803,6 +811,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         // ignora un índice que no exista, que es lo que pasará si una versión
         // futura tiene menos pestañas que la que guardó el número.
         configureTab_ = std::max(0, repos_.settings->getInt("config_last_tab", 0).value());
+        measureStages_ = repos_.settings->getInt("measure_stages", 0).value() != 0;
         pipelineConfig_.minAreaFraction = std::clamp(
             repos_.settings->getDouble("det_min_area", 0.005).value(), 0.0001, 0.5);
         pipelineConfig_.maxAreaFraction = std::clamp(
@@ -913,15 +922,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
 
     buildShortcuts();
 
-    // Restaurar la disposición de paneles/docks que el operador dejó (S3).
-    if (repos_.settings != nullptr) {
-        if (auto state = repos_.settings->getString("window_state", std::string());
-            state.isOk() && !state.value().empty()) {
-            const QByteArray base64(state.value().data(),
-                                    static_cast<qsizetype>(state.value().size()));
-            restoreState(QByteArray::fromBase64(base64));
-        }
-    }
+    // Restaurar tamaño, posición, pantalla, maximizada y disposición de
+    // paneles: la ventana se abre donde el operador la dejó (S3).
+    restoreWindowLayout();
 
     // Un dock NUEVO sobre un estado guardado VIEJO: `restoreState` no sabe nada
     // de él —se guardó antes de que existiera— y lo deja donde le parece, que a
@@ -939,7 +942,42 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     }
 
     refreshCameras();
-    loadPieceList();
+
+    // Se vuelve a la pieza y a la plantilla con las que se estaba trabajando.
+    // Sin esto, el combo caía siempre en la primera de la lista y en
+    // «principal»: quien tiene veinte piezas registradas empezaba cada turno
+    // buscando la suya.
+    std::int64_t lastPiece = -1;
+    QString lastTemplate;
+    if (repos_.settings != nullptr) {
+        lastPiece = repos_.settings->getInt("last_piece_id", -1).value();
+        lastTemplate = QString::fromStdString(
+            repos_.settings->getString("last_template", std::string()).value());
+    }
+    // Si la pieza se borró desde otra sesión, `loadPieceList` cae sola en la
+    // primera: recordar una elección no puede impedir arrancar.
+    loadPieceList(lastPiece);
+    if (!lastTemplate.isEmpty()) {
+        loadTemplateList(lastTemplate);
+    }
+    // Y la fuente elegida la última vez. Se PRESELECCIONA y nada más: la
+    // cámara guardada tampoco arranca sola, y un programa que al abrirse se
+    // pone a leer un fichero hace algo que nadie le ha pedido.
+    if (repos_.settings != nullptr) {
+        const auto kind = camera::sourceKindFromKey(
+            repos_.settings->getString("last_source_kind", "camera").value().c_str());
+        lastSourcePath_ = QString::fromStdString(
+            repos_.settings->getString("last_source_file", std::string()).value());
+        const int wanted = kind == camera::SourceKind::Image  ? kSourceOpenImage
+                           : kind == camera::SourceKind::Video ? kSourceOpenVideo
+                                                               : 0;
+        if (wanted < 0) {
+            if (const int index = cameraCombo_->findData(QVariant(wanted)); index >= 0) {
+                cameraCombo_->setCurrentIndex(index);
+            }
+        }
+    }
+
     // Al arrancar con una pieza ya seleccionada, su modo y su tablero mandan
     // sobre el ajuste global (M2); loadPieceList puede no disparar la señal.
     loadMeasurementForSelectedPiece();
@@ -1046,14 +1084,23 @@ void MainWindow::buildMenuBar() {
     auto* viewMenu = menuBar()->addMenu(tr("&Ver"));
     showContourAction_ = viewMenu->addAction(tr("Mostrar contorno"));
     showContourAction_->setCheckable(true);
-    showContourAction_->setChecked(true);
+    // Era la ÚNICA capa del menú Ver que no se recordaba: el tablero, la regla
+    // y el resto sí. Quien lo apagaba para inspeccionar con la pieza congelada
+    // se lo encontraba encendido en cada arranque.
+    showContourAction_->setChecked(
+        repos_.settings == nullptr ||
+        repos_.settings->getInt("show_contour", 1).value() != 0);
     showContourAction_->setToolTip(
         tr("Al ocultarlo, las herramientas se congelan en su sitio (la pieza se "
            "inspecciona fija, sin que nada se mueva)."));
     connect(showContourAction_, &QAction::toggled, video_,
             &inspection::EditorCanvas::setLiveContourVisible);
-    connect(showContourAction_, &QAction::toggled, this,
-            [this](bool) { maybeStartAnalysis(); });
+    connect(showContourAction_, &QAction::toggled, this, [this](bool on) {
+        if (repos_.settings != nullptr) {
+            repos_.settings->setInt("show_contour", on ? 1 : 0);
+        }
+        maybeStartAnalysis();
+    });
 
     // Un panel que se cierra sin forma de recuperarlo es una herramienta
     // perdida, así que el dock tiene su entrada en el menú igual que el de
@@ -1554,6 +1601,7 @@ void MainWindow::updateZoomIndicator() {
 
 void MainWindow::onShowShortcuts() {
     ShortcutsDialog dialog(&shortcuts_, repos_.settings, this);
+    keepDialogSize(dialog, repos_.settings, "shortcuts", 560, 620);
     dialog.exec();
 }
 
@@ -1714,6 +1762,7 @@ void MainWindow::onCalibrateClicked() {
         return;
     }
     CalibrationDialog dialog(snapshot, calibration_, this);
+    keepDialogSize(dialog, repos_.settings, "calibration", 1000, 640);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
@@ -1967,6 +2016,7 @@ bool MainWindow::startFileSource(camera::SourceKind kind) {
             &MainWindow::onStreamStopped);
 
     sourceKind_ = kind;
+    lastSourcePath_ = path;
     streaming_ = true;
     // La identidad de la fuente sirve para el aviso de calibración obsoleta: la
     // escala en px/mm depende de la óptica y de la distancia al plano, y pasar
@@ -2791,6 +2841,44 @@ void MainWindow::onBoardOriginChanged(QAction* action) {
     }
 }
 
+vision::BoardConfig MainWindow::defaultBoardConfig() const {
+    vision::BoardConfig config;
+    if (repos_.settings == nullptr) {
+        return config;
+    }
+    config.origin = vision::originFromKey(
+        repos_.settings->getString("board_origin", std::string("bounds")).value());
+    config.followPieceAngle = repos_.settings->getInt("board_follow", 0).value() != 0;
+    config.fixedPoint = {
+        static_cast<float>(repos_.settings->getDouble("board_fixed_x", 0.0).value()),
+        static_cast<float>(repos_.settings->getDouble("board_fixed_y", 0.0).value())};
+    config.manualOffset = {
+        static_cast<float>(repos_.settings->getDouble("board_offset_x", 0.0).value()),
+        static_cast<float>(repos_.settings->getDouble("board_offset_y", 0.0).value())};
+    return config;
+}
+
+void MainWindow::seedMeasurementForNewPiece(std::int64_t pieceId) {
+    if (pieceId < 0 || repos_.pieces == nullptr) {
+        return;
+    }
+    // Se lee y se reescribe la fila entera, como en todas partes: construir un
+    // `PieceMeasurement` desde cero pondría a su valor por defecto todo lo que
+    // esta función no toca.
+    auto measurement = repos_.pieces->loadMeasurement(pieceId);
+    if (!measurement.isOk()) {
+        core::logWarning("No se pudo leer la medición de la pieza nueva: " +
+                         measurement.error().message);
+        return;
+    }
+    measurement.value().board = defaultBoardConfig();
+    if (auto saved = repos_.pieces->saveMeasurement(pieceId, measurement.value());
+        !saved.isOk()) {
+        core::logWarning("No se pudo sembrar el tablero de la pieza nueva: " +
+                         saved.error().message);
+    }
+}
+
 void MainWindow::persistBoardConfig() {
     // El motor de inspección juzga las herramientas de Posición con este mismo
     // tablero: si no se le pasa, el veredicto no coincidiría con lo que se ve.
@@ -3068,6 +3156,7 @@ void MainWindow::onManagePiecesClicked() {
     }
     const std::int64_t previous = selectedPieceId();
     PieceManagerDialog dialog(repos_.pieces, repos_.tools, this);
+    keepDialogSize(dialog, repos_.settings, "pieces", 560, 480);
     dialog.exec();
     if (dialog.changed()) {
         autoInspectButton_->setChecked(false);
@@ -3465,9 +3554,9 @@ void MainWindow::onConfigureClicked() {
     inputs.expectedPieces = expectedPieces_;
     inputs.hasFixedZone = pipelineConfig_.roi.area() > 0;
     inputs.hasFreeZone = pipelineConfig_.roiPolygon.size() >= 3;
-    inputs.settings = repos_.settings;
 
     auto* dialog = new ConfigureDialog(std::move(inputs), this);
+    keepDialogSize(*dialog, repos_.settings, "configure", 560, 520);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     configureDialog_ = dialog;
     dialog->setCurrentTab(configureTab_);
@@ -3476,6 +3565,7 @@ void MainWindow::onConfigureClicked() {
     // El modo de zona se aplica AL MOMENTO y no al pulsar Aplicar: es un
     // conmutador, no un formulario, y su efecto se ve en el vídeo.
     if (auto* performance = dialog->performancePage(); performance != nullptr) {
+        performance->setStageMeasurement(measureStages_);
         connect(performance, &PerformancePage::modeChanged, this,
                 &MainWindow::setWorkingZoneMode);
         connect(performance, &PerformancePage::stageMeasurementToggled, this,
@@ -3485,6 +3575,13 @@ void MainWindow::onConfigureClicked() {
                     // de una sesión anterior daría un reparto de otra escena.
                     measureStages_ = enabled;
                     stageStats_.clear();
+                    // Es una preferencia de diagnóstico, y hasta ahora había
+                    // que reactivarla en cada sesión: justo cuando se está
+                    // persiguiendo algo que tarda, que es cuando menos apetece
+                    // volver a buscarla.
+                    if (repos_.settings != nullptr) {
+                        repos_.settings->setInt("measure_stages", enabled ? 1 : 0);
+                    }
                 });
     }
     connect(dialog, &ConfigureDialog::applied, this, [this, dialog] {
@@ -3523,6 +3620,7 @@ void MainWindow::onShowHistoryClicked() {
         return;
     }
     HistoryDialog dialog(repos_.inspections, repos_.pieces, selectedPieceId(), this);
+    keepDialogSize(dialog, repos_.settings, "history", 640, 460);
     dialog.exec();
 }
 
@@ -3539,6 +3637,7 @@ void MainWindow::onManageTemplatesClicked() {
     }
     TemplateManagerDialog dialog(repos_.tools, pieceId,
                                  QString::fromStdString(activeTemplate()), this);
+    keepDialogSize(dialog, repos_.settings, "templates", 360, 380);
     dialog.exec();
     // Recargar el combo (pudo haber renombrados/borrados/duplicados) y activar
     // la plantilla elegida; las herramientas se recargan para la activa.
@@ -3648,6 +3747,7 @@ bool MainWindow::saveTemplate(std::int64_t pieceId) {
             return false;
         }
         pieceId = created.value();
+        seedMeasurementForNewPiece(pieceId);
         // Bloquear señales: si el combo dispara onPieceSelectionChanged,
         // loadToolsForSelectedPiece limpiaría liveTools_ ANTES del upsert.
         QSignalBlocker blocker(pieceCombo_);
@@ -3734,12 +3834,83 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         event->ignore();  // el operador canceló el cierre para no perder cambios
         return;
     }
-    // Guardar la disposición de paneles/docks para la próxima sesión (S3).
-    if (repos_.settings != nullptr) {
-        repos_.settings->setString("window_state",
-                                   saveState().toBase64().toStdString());
-    }
+    persistWindowLayout();
+    persistLastSession();
     QMainWindow::closeEvent(event);
+}
+
+// Los tres eventos que pueden cambiar la geometría. No se guarda en el acto:
+// arrastrar una ventana emite decenas de eventos por segundo y no hacen falta
+// decenas de escrituras en la base de datos.
+void MainWindow::resizeEvent(QResizeEvent* event) {
+    QMainWindow::resizeEvent(event);
+    scheduleWindowLayoutSave();
+}
+
+void MainWindow::moveEvent(QMoveEvent* event) {
+    QMainWindow::moveEvent(event);
+    scheduleWindowLayoutSave();
+}
+
+void MainWindow::changeEvent(QEvent* event) {
+    QMainWindow::changeEvent(event);
+    if (event != nullptr && event->type() == QEvent::WindowStateChange) {
+        scheduleWindowLayoutSave();  // maximizar o restaurar
+    }
+}
+
+void MainWindow::scheduleWindowLayoutSave() {
+    if (layoutSaveTimer_.isActive()) {
+        layoutSaveTimer_.stop();
+    }
+    layoutSaveTimer_.start();
+}
+
+void MainWindow::persistWindowLayout() {
+    if (repos_.settings == nullptr) {
+        return;
+    }
+    // `saveGeometry` lleva dentro tamaño, posición, pantalla y si estaba
+    // maximizada; `saveState`, la disposición de paneles y barras. Son dos
+    // cosas distintas y Qt las guarda por separado a propósito: restaurar una
+    // sin la otra deja la ventana bien colocada con los paneles descuadrados,
+    // o al revés.
+    repos_.settings->setString("window_geometry", saveGeometry().toBase64().toStdString());
+    repos_.settings->setString("window_state", saveState().toBase64().toStdString());
+}
+
+void MainWindow::restoreWindowLayout() {
+    if (repos_.settings == nullptr) {
+        return;
+    }
+    const auto restore = [this](const char* key, auto&& apply) {
+        auto stored = repos_.settings->getString(key, std::string());
+        if (!stored.isOk() || stored.value().empty()) {
+            return;
+        }
+        const QByteArray base64(stored.value().data(),
+                                static_cast<qsizetype>(stored.value().size()));
+        apply(QByteArray::fromBase64(base64));
+    };
+    // La geometría PRIMERO y el estado después: `restoreState` coloca los
+    // paneles dentro del tamaño que tenga la ventana, así que hacerlo al revés
+    // los reparte sobre un tamaño que va a cambiar acto seguido.
+    restore("window_geometry", [this](const QByteArray& data) { restoreGeometry(data); });
+    restore("window_state", [this](const QByteArray& data) { restoreState(data); });
+}
+
+void MainWindow::persistLastSession() {
+    if (repos_.settings == nullptr) {
+        return;
+    }
+    // Con qué se estaba trabajando. Se recuerda la ELECCIÓN, no se reabre nada:
+    // la cámara guardada tampoco arranca sola, y un programa que al abrirse se
+    // pone a leer un vídeo por su cuenta hace algo que nadie le ha pedido.
+    repos_.settings->setInt("last_piece_id", selectedPieceId());
+    repos_.settings->setString("last_template", activeTemplate());
+    repos_.settings->setString("last_source_kind",
+                               std::string(camera::sourceKindKey(sourceKind_)));
+    repos_.settings->setString("last_source_file", lastSourcePath_.toStdString());
 }
 
 void MainWindow::deleteToolAt(int index) {
@@ -4060,6 +4231,7 @@ void MainWindow::finishLiveRegistration() {
             return;
         }
         pieceId = created.value();
+        seedMeasurementForNewPiece(pieceId);
     }
 
     // Modo "solo herramientas" (G1): la referencia viene vacía a propósito y NO
@@ -4311,6 +4483,7 @@ void MainWindow::onRegisterWizardClicked() {
     }
 
     RegistrationWizard wizard(&controller_, repos_.embedFn, repos_.pieces, this);
+    keepDialogSize(wizard, repos_.settings, "registration", 900, 640);
     if (wizard.exec() == QDialog::Accepted) {
         loadPieceList(wizard.createdPieceId());
     }
@@ -4478,6 +4651,7 @@ void MainWindow::onInspectionFinished() {
 
     InspectionResultDialog dialog(inspectedFrame_, result.value(), repos_.engine, pieceId,
                                   referenceThumb_, calibration_, this);
+    keepDialogSize(dialog, repos_.settings, "result", 1000, 680);
     dialog.exec();
 }
 

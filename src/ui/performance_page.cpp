@@ -151,6 +151,14 @@ vision::WorkingZoneMode PerformancePage::mode() const {
     return vision::WorkingZoneMode::Off;
 }
 
+void PerformancePage::setStageMeasurement(bool enabled) {
+    if (measureStages_ == nullptr) {
+        return;
+    }
+    const QSignalBlocker blocker(measureStages_);
+    measureStages_->setChecked(enabled);
+}
+
 void PerformancePage::setStageStats(const vision::StageStats& stats) {
     if (stageBreakdown_ == nullptr || measureStages_ == nullptr ||
         !measureStages_->isChecked()) {

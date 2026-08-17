@@ -48,6 +48,13 @@ struct SourceCapabilities {
 
 [[nodiscard]] SourceCapabilities capabilitiesOf(SourceKind kind);
 
+// Nombre estable para persistir la fuente elegida. Por NOMBRE y no por el
+// número del enum, por lo mismo que el modo de zona: añadir una fuente en el
+// futuro no puede convertir lo guardado en otra cosa. Lo que no se reconozca
+// cae a `Camera`, que es la fuente que siempre existe.
+[[nodiscard]] const char* sourceKindKey(SourceKind kind);
+[[nodiscard]] SourceKind sourceKindFromKey(const char* key);
+
 // Por qué NO se puede tocar algo, en castellano y dicho al operador. Un control
 // muerto sin explicación es peor que un control ausente: el operador se queda
 // pensando que la aplicación está rota.

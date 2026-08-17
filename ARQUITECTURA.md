@@ -2361,6 +2361,57 @@ Todo lo que no está ligado a una pieza se puede **exportar e importar en JSON**
 para clonar la puesta a punto a otra PC de la línea. Las plantillas de
 herramientas se exportan aparte, para copiarlas entre piezas.
 
+### Volver a donde lo dejaste
+
+Lo que el operador coloca una vez tiene que seguir colocado mañana. Lo contrario
+no se percibe como un ajuste que falta, sino como que el programa **no se
+acuerda de nada** — y a los dos días se deja de colocar.
+
+Se recuerda, además de lo anterior:
+
+- **La ventana**: tamaño, posición, monitor y si estaba maximizada
+  (`saveGeometry`), junto a la disposición de paneles que ya se guardaba
+  (`saveState`). Se restauran en ese orden y no al revés: `restoreState`
+  reparte los paneles dentro del tamaño que tenga la ventana en ese momento.
+- **Con qué se estaba trabajando**: la pieza, la plantilla y el tipo de fuente.
+  Se recuerda la **elección**, no se reabre nada: la cámara guardada tampoco
+  arranca sola, y un programa que al abrirse se pone a leer un fichero hace algo
+  que nadie le ha pedido.
+- **El contorno en vivo**, que era la única capa del menú *Ver* que no se
+  recordaba, y **el desglose de tiempos por etapa**, que había que reactivar en
+  cada sesión — justo cuando se está persiguiendo algo que tarda.
+- **El tamaño de cada diálogo**, por nombre. Los diez abrían con un `resize()`
+  fijo, y eso no es un valor por defecto sino una imposición.
+
+Dos detalles que no son evidentes:
+
+**No basta con guardar al cerrar.** La disposición de paneles ya se hacía así, y
+un cierre que no pase por `closeEvent` —un corte de luz en la línea, un apagado
+a lo bruto— se llevaba por delante justo lo que se coloca una vez. La geometría
+se guarda además **dos segundos después** del último movimiento: un arrastre
+entero cuesta una sola escritura, y un cierre brusco no pierde nada.
+
+**Un tamaño guardado puede quedar inservible.** La sesión anterior corrió en un
+monitor de 4K y hoy la máquina de línea tiene uno de 1366×768: el diálogo abriría
+con los botones fuera de la pantalla y sin forma de alcanzarlos. Se acota a lo
+que hay ahora, y por abajo a algo legible. Solo el tamaño, no la posición: un
+diálogo se centra sobre su ventana padre, y recordar dónde estaba lo sacaría de
+la pantalla en cuanto alguien mueva la aplicación.
+
+### El tablero global era una promesa a medias
+
+La regla estaba escrita: el ajuste global del tablero es **solo la plantilla para
+piezas nuevas**; con una pieza seleccionada mandan sus columnas. Está bien
+pensada —cada pieza puede necesitar un cero distinto— y no era el fallo que
+parecía al ver que la pieza pisa el valor global nada más arrancar.
+
+Lo que no se cumplía era la otra mitad. Una pieza recién creada se quedaba con
+los valores por defecto del **esquema** (`bounds`, sin giro, sin desfase), no con
+los del operador, así que configurar el tablero sin ninguna pieza seleccionada
+—que es el único momento en que ese ajuste global se puede tocar— no servía
+absolutamente para nada. Ahora la pieza nueva hereda ese tablero en los dos
+caminos que crean piezas.
+
 ---
 
 ## 11. Empaquetado

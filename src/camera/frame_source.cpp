@@ -33,6 +33,36 @@ SourceCapabilities capabilitiesOf(SourceKind kind) {
     return caps;
 }
 
+const char* sourceKindKey(SourceKind kind) {
+    switch (kind) {
+        case SourceKind::Camera: return "camera";
+        case SourceKind::Photo: return "photo";
+        case SourceKind::Image: return "image";
+        case SourceKind::Video: return "video";
+    }
+    return "camera";
+}
+
+SourceKind sourceKindFromKey(const char* key) {
+    if (key == nullptr) {
+        return SourceKind::Camera;
+    }
+    const QString name = QString::fromUtf8(key);
+    if (name == QLatin1String("photo")) {
+        return SourceKind::Photo;
+    }
+    if (name == QLatin1String("image")) {
+        return SourceKind::Image;
+    }
+    if (name == QLatin1String("video")) {
+        return SourceKind::Video;
+    }
+    // Lo que no se reconozca cae a la cámara: es la única fuente que existe
+    // siempre, y equivocarse hacia ella no deja al programa apuntando a un
+    // fichero que quizá ya no está.
+    return SourceKind::Camera;
+}
+
 QString whyNotAdjustable(SourceKind kind) {
     switch (kind) {
         case SourceKind::Camera: return {};

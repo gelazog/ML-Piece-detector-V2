@@ -40,6 +40,11 @@ public:
     void setZoneStatus(const cv::Rect& activeZone, const cv::Size& frameSize,
                        vision::AutoRoiGiveUp lastGiveUp);
 
+    // Refleja si el desglose está encendido SIN emitir la señal. Hace falta
+    // porque la preferencia se recuerda entre sesiones y el panel se crea
+    // después: sin esto, abrirlo apagaría lo que estaba encendido.
+    void setStageMeasurement(bool enabled);
+
     // Reparto de tiempos medido (R2), o nada si el desglose está apagado.
     void setStageStats(const vision::StageStats& stats);
 

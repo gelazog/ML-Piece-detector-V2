@@ -63,6 +63,7 @@ add_executable(pci_gui_tests
   test_canvas_gestures.cpp
   test_configure_dialog.cpp
   test_frame_sources.cpp
+  test_session_state.cpp
 )
 set_target_properties(pci_gui_tests PROPERTIES AUTOMOC ON)
 target_link_libraries(pci_gui_tests

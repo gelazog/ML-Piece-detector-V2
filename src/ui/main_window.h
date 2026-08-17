@@ -131,6 +131,10 @@ private slots:
 
 protected:
     void closeEvent(QCloseEvent* event) override;  // aviso de cambios sin guardar (P2)
+    // Mover o cambiar de tamaño la ventana arma el guardado diferido de abajo.
+    void resizeEvent(QResizeEvent* event) override;
+    void moveEvent(QMoveEvent* event) override;
+    void changeEvent(QEvent* event) override;  // maximizar/restaurar
 
 private:
     void setControlsEnabled(bool enabled);
@@ -143,6 +147,17 @@ private:
     void onBoardOriginChanged(QAction* action);  // origen del tablero (T2)
     void updateBoardReadout();  // lectura en vivo de desviacion y giro (T3)
     void persistBoardConfig();
+    // El tablero por defecto guardado en `Settings`, que es lo que la regla
+    // de `persistBoardConfig` llama «la plantilla para piezas nuevas».
+    [[nodiscard]] vision::BoardConfig defaultBoardConfig() const;
+    // Y quien la cumple: una pieza recién creada hereda ese tablero.
+    //
+    // Sin esto, la regla estaba escrita y no se cumplía: la pieza nueva se
+    // quedaba con los valores por defecto del ESQUEMA («bounds», sin giro,
+    // sin desfase), así que configurar el tablero sin ninguna pieza no servía
+    // para nada — que es justo el único momento en que ese ajuste global se
+    // puede tocar.
+    void seedMeasurementForNewPiece(std::int64_t pieceId);
     // Aplica el modo + tablero de una pieza a toda la UI (canvas, motor,
     // visibilidad del tablero y menús). Es el único punto que cambia el estado
     // de medición, para que no se desincronicen.
@@ -159,6 +174,22 @@ private:
     void commitUndoState();
     void restoreTools(std::vector<inspection::EditedTool> tools);
     void persistPipelineConfig();
+    // Tamaño, posición, pantalla, maximizada y disposición de paneles.
+    //
+    // No basta con guardarlo al cerrar: el estado de los paneles ya se hacía
+    // así, y un cierre que no pase por `closeEvent` —un corte de luz en la
+    // línea, un apagado a lo bruto— se llevaba por delante justo lo que el
+    // operador coloca una vez y espera no volver a tocar. Se guarda además con
+    // un retardo después de mover o redimensionar, para no escribir en la base
+    // de datos en cada píxel del arrastre.
+    void persistWindowLayout();
+    void restoreWindowLayout();
+    void scheduleWindowLayoutSave();
+    // Con qué se estaba trabajando: pieza, plantilla y fuente. Solo se
+    // RECUERDA la elección; abrir la fuente sigue siendo un gesto del
+    // operador, igual que con la cámara, que también se preselecciona sin
+    // arrancarse sola.
+    void persistLastSession();
     // Páginas del panel Configurar (C1). Las de formulario se vuelcan al pulsar
     // Aplicar; la de cámara aplica sola y aquí solo se persiste lo que deja.
     void applyDetectionPage(DetectionPage* page);
@@ -278,6 +309,8 @@ private:
     QPushButton* startStopButton_ = nullptr;
     QPushButton* roiButton_ = nullptr;
     QPushButton* freeZoneButton_ = nullptr;
+    // Ruta del fichero abierto como fuente, para recordarlo entre sesiones.
+    QString lastSourcePath_;
     QLabel* calibLabel_ = nullptr;  // estado de la escala en la barra inferior
     // Fila 2: pieza y flujo.
     QComboBox* pieceCombo_ = nullptr;
@@ -388,6 +421,9 @@ private:
     QProgressDialog* captureProgress_ = nullptr;
     QTimer captureTimer_;
     QTimer autoTimer_;
+    // Guardado diferido de la geometría: un arrastre de ventana emite
+    // decenas de eventos y no hacen falta decenas de escrituras.
+    QTimer layoutSaveTimer_;
     QString pendingPieceName_;
     std::int64_t pendingPieceId_ = -1;  // >= 0: nueva versión de pieza existente
     std::optional<vision::Fixture> liveFixture_;

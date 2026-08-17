@@ -77,7 +77,6 @@ public:
         bool hasFixedZone = false;
         bool hasFreeZone = false;
         int expectedPieces = 1;
-        repositories::SettingsRepository* settings = nullptr;
     };
 
     ConfigureDialog(Inputs inputs, QWidget* parent = nullptr);
