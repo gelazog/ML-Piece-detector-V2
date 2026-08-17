@@ -113,6 +113,15 @@ bool measureProposal(const cv::Mat& gray, const vision::Fixture& fixture, double
     proposal.detail = result.value().detail;
     suggestTolerances(proposal.config.type, proposal.measured, proposal.config.toleranceMin,
                       proposal.config.toleranceMax);
+    // Y se dice cuando la cota no volverá a medir. El número de AHORA es una
+    // medida de verdad —sale de la descomposición del contorno de esta pieza—
+    // pero como herramienta guardada repetiría ese mismo valor en cada
+    // inspección. Ofrecerla sin decirlo sería vender una comprobación que no
+    // existe.
+    if (!remeasuresThePiece(proposal.config.type)) {
+        proposal.reason += " Se mide ahora sobre esta pieza; guardada, repite este "
+                           "valor: vale como cota de referencia, no como comprobación.";
+    }
     return true;
 }
 

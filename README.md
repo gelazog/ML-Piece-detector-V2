@@ -316,6 +316,15 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    hacer que la detección de la pieza falle antes de llegar a medir: ahí lo que
    hay que arreglar es la luz.
 
+   **Cuidado con dos de ellas, y la app te lo dice.** La *Regla* y el *Ángulo*
+   miden entre puntos que tú fijas sobre la pieza, no buscan el borde. El número
+   que ves al proponerlas es real —sale del contorno de esa pieza—, pero
+   guardadas como herramienta **repiten ese mismo valor en cada inspección**: no
+   pueden detectar que un lado cambió de largo. Por eso salen con «—» en la
+   columna de estado en vez de un OK verde: dan una cota de referencia, no una
+   comprobación. Lo que sí comprueba es todo lo que vuelve a mirar la imagen —
+   diámetros, redondez, espesores, recuento de lados, blobs.
+
    La lista se corta en **doce**, porque cincuenta propuestas no se revisan. Lo
    que quede fuera **se te dice**: descartar cotas en silencio te dejaría
    creyendo que la pieza no tenía más. Y el corte se lleva lo más pequeño **de

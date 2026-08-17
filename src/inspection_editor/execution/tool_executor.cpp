@@ -193,6 +193,10 @@ ToolRunResult baseResult(const ToolConfig& config) {
     result.toolId = config.id;
     result.name = config.name;
     result.type = config.type;
+    // Aquí, en el único punto donde nace TODO resultado: una herramienta que no
+    // vuelve a medir la pieza no puede dar un veredicto, porque su número es el
+    // mismo siempre. Da su medida y escribe «—» donde iría el OK.
+    result.informative = !remeasuresThePiece(config.type);
     return result;
 }
 

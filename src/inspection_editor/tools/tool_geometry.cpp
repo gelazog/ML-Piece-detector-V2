@@ -775,6 +775,26 @@ const char* toolTypeDescription(ToolType type) {
     return "";
 }
 
+bool remeasuresThePiece(ToolType type) {
+    switch (type) {
+        case ToolType::Ruler:       // distancia entre dos puntos guardados
+        case ToolType::Angle:       // ángulo entre tres puntos guardados
+        case ToolType::LineToLine:  // ángulo entre dos rectas guardadas
+            return false;
+        default:
+            // Todo lo demás mira la imagen (busca bordes, ajusta círculos,
+            // cuenta blobs) o depende del fixture y del tablero del frame
+            // actual, como la Posición y el Desplazamiento de centro, que miden
+            // DÓNDE ha caído la pieza y no la forma que se dibujó.
+            //
+            // Por defecto se dice que SÍ vuelve a medir, a propósito: afirmar
+            // que una herramienta no mide cuando sí lo hace le quitaría un
+            // veredicto de verdad. Aquí solo se listan las tres que se han
+            // comprobado.
+            return true;
+    }
+}
+
 bool measuresFraction(ToolType type) {
     // La Region puede medir una fraccion (solidez, circularidad) o no (area,
     // perimetro, agujeros): eso lo decide su geometria, no su tipo, y lo

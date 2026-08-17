@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "inspection_editor/auto_measure.h"
+#include "inspection_editor/execution/tool_executor.h"
 #include "vision/geometry_features.h"
 #include "vision/shape_class.h"
 
@@ -30,6 +31,9 @@ using pci::inspection::AutoProposal;
 using pci::inspection::proposeTools;
 using pci::inspection::ProposeOptions;
 using pci::inspection::ToolType;
+using pci::inspection::remeasuresThePiece;
+using pci::inspection::runTool;
+using pci::inspection::toolTypeLabel;
 using pci::vision::classifyShape;
 using pci::vision::ShapeKind;
 
@@ -645,4 +649,103 @@ TEST(ShapeProposals, TheCutTakesTheSmallestOfEachKindAndNotTheLast) {
                 longestKept);
     EXPECT_DOUBLE_EQ(longestKept, longestOfAll)
         << "el recorte se llevó el lado más largo de la pieza";
+}
+
+TEST(ShapeProposals, ACotaThatCannotFailNeverPretendsToHaveChecked) {
+    // El fallo, medido y no supuesto. Se propone sobre un hexágono de radio 160
+    // y se ejecuta CADA herramienta propuesta sobre un CUADRADO de radio 200.
+    // Contra un cuadrado y no contra otro hexágono a propósito: un hexágono
+    // regular tiene 120° a cualquier tamaño, así que un ángulo que no se moviera
+    // podría estar midiendo bien y coincidir. Un cuadrado tiene 90°.
+    //
+    // Lo que salió: de quince cotas propuestas, CATORCE devolvían exactamente el
+    // mismo número sobre la otra figura. «Lado 1» daba 159,13 px en las dos, y
+    // el lado de un hexágono de radio 200 mide 200 px. «Ángulo 3» daba 120,26°
+    // sobre un cuadrado.
+    //
+    // No es un error de precisión: la Regla y el Ángulo guardan sus puntos en
+    // coordenadas de PIEZA y calculan sobre ellos, y ni la distancia entre dos
+    // puntos ni el ángulo entre dos rectas cambian al aplicar el fixture, que es
+    // un giro más una traslación. Salían con un OK verde en cada inspección,
+    // para siempre, sin haber comprobado nada.
+    const Scene hexagon = sceneFrom(regularPolygon(6, 500, 160));
+    const Scene square = sceneFrom(regularPolygon(4, 500, 200));
+    const auto proposals = proposeTools(hexagon.gray, hexagon.mask, {}, everything());
+    ASSERT_FALSE(proposals.empty());
+
+    int frozen = 0;
+    int measuring = 0;
+    for (const auto& p : proposals) {
+        const auto here = runTool(hexagon.gray, {}, p.config);
+        const auto there = runTool(square.gray, {}, p.config);
+        if (!here.isOk() || !there.isOk()) {
+            continue;
+        }
+        const double v1 = here.value().measured;
+        const double v2 = there.value().measured;
+        const bool moved = std::abs(v2 - v1) > std::max(0.02 * std::abs(v1), 0.5);
+        moved ? ++measuring : ++frozen;
+
+        // LA REGLA: si el número no se mueve al cambiar de pieza, la herramienta
+        // no puede presentarse como comprobada.
+        if (!moved) {
+            EXPECT_TRUE(here.value().informative)
+                << "«" << p.config.name << "» devuelve " << v1
+                << " en las dos figuras y aun así se presenta con veredicto";
+            EXPECT_FALSE(remeasuresThePiece(p.config.type))
+                << "«" << p.config.name << "» está declarada como que vuelve a medir "
+                << "y no se mueve";
+            // Y la propuesta lo dice, para que el operador no lo descubra en
+            // producción.
+            EXPECT_NE(p.reason.find("repite este valor"), std::string::npos)
+                << "«" << p.config.name << "» no avisa de que no volverá a medir";
+        }
+    }
+    std::printf("  [cotas] %d miden de verdad, %d repiten lo trazado (y lo dicen)\n",
+                measuring, frozen);
+    EXPECT_GT(frozen, 0) << "el banco dejó de reproducir el caso";
+}
+
+TEST(ShapeProposals, WhatDoesLookAtTheImageStillJudges) {
+    // La otra mitad, para que el arreglo no se haya llevado por delante los
+    // veredictos de verdad: lo que sí vuelve a mirar la imagen sigue juzgando.
+    EXPECT_TRUE(remeasuresThePiece(ToolType::Caliper));
+    EXPECT_TRUE(remeasuresThePiece(ToolType::Circle));
+    EXPECT_TRUE(remeasuresThePiece(ToolType::Polygon));
+    EXPECT_TRUE(remeasuresThePiece(ToolType::Roundness));
+    EXPECT_TRUE(remeasuresThePiece(ToolType::Blob));
+    // Y la Posición, que no mira la imagen pero mide DÓNDE ha caído la pieza
+    // respecto al tablero: eso sí cambia de una pieza a otra.
+    EXPECT_TRUE(remeasuresThePiece(ToolType::Position));
+
+    EXPECT_FALSE(remeasuresThePiece(ToolType::Ruler));
+    EXPECT_FALSE(remeasuresThePiece(ToolType::Angle));
+    EXPECT_FALSE(remeasuresThePiece(ToolType::LineToLine));
+
+    // El diámetro de un disco SÍ tiene que SEGUIR a la pieza: si esto fallara,
+    // el arreglo habría apagado una comprobación buena.
+    //
+    // El disco grande se elige a 135 y no a 170 a propósito. La banda de
+    // búsqueda del círculo propuesto es el 25 % de su radio —30 px sobre 120—,
+    // así que a 170 la herramienta no llega al borde y devuelve 0: un fallo
+    // honesto, pero un fallo. Comprobar «el número cambió» contra ese 0 sería
+    // dar por buena la comprobación de una herramienta que no midió nada.
+    const Scene small = sceneFrom(disc(500, 120));
+    const Scene bigger = sceneFrom(disc(500, 135));
+    const auto proposals = proposeTools(small.gray, small.mask, {}, everything());
+    const auto* diameter = findNamed(proposals, "Ø");
+    ASSERT_NE(diameter, nullptr);
+    const auto here = runTool(small.gray, {}, diameter->config);
+    const auto there = runTool(bigger.gray, {}, diameter->config);
+    ASSERT_TRUE(here.isOk());
+    ASSERT_TRUE(there.isOk());
+    ASSERT_GT(there.value().measured, 1.0)
+        << "la herramienta no llegó al borde del disco grande: " << there.value().detail;
+    std::printf("  [cotas] el diametro mide %.1f px en un disco r=120 y %.1f en r=135 "
+                "(teoricos 240 y 270)\n",
+                here.value().measured, there.value().measured);
+    // Y no solo cambia: acierta los dos diámetros de verdad.
+    EXPECT_NEAR(here.value().measured, 240.0, 6.0);
+    EXPECT_NEAR(there.value().measured, 270.0, 6.0);
+    EXPECT_FALSE(here.value().informative) << "un diámetro sí comprueba, y tiene que juzgar";
 }

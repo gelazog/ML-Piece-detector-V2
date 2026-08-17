@@ -647,6 +647,31 @@ const char* toolTypeDescription(ToolType type);
 // sitios acabaria divergiendo.
 [[nodiscard]] bool measuresFraction(ToolType type);
 
+// ¿Esta herramienta vuelve a MEDIR la pieza en cada inspección, o repite el
+// número con el que se trazó?
+//
+// La pregunta parece de matiz y no lo es. La Regla, el Ángulo y la Línea-Línea
+// guardan sus puntos en coordenadas de PIEZA y calculan sobre ellos: la
+// distancia entre dos puntos y el ángulo entre dos rectas no cambian al aplicar
+// el fixture, que es un giro más una traslación. El resultado es el mismo
+// número siempre, en cualquier pieza.
+//
+// Se comprobó midiendo, y el resultado es tajante: una cota de lado propuesta
+// sobre un hexágono de radio 160 daba 159,13 px, y la MISMA herramienta sobre un
+// hexágono de radio 200 —cuyo lado mide 200 px— seguía dando 159,13. Un «Ángulo»
+// de 120,26° del hexágono devolvía 120,26° sobre un CUADRADO, que tiene esquinas
+// de 90°.
+//
+// La consecuencia es la peor que puede tener una inspección: esas herramientas
+// salían con un OK verde en cada pieza, para siempre, sin haber comprobado nada.
+// La Regla lo dice de sí misma en su descripción —«mide exactamente lo que
+// trazas»— y como herramienta suelta está bien; lo que no puede es fingir un
+// veredicto.
+//
+// Con esto, una herramienta que no vuelve a medir se marca INFORMATIVA: da su
+// número y escribe «—» donde iría el veredicto.
+[[nodiscard]] bool remeasuresThePiece(ToolType type);
+
 void suggestTolerances(ToolType type, double measured, double& toleranceMin,
                        double& toleranceMax);
 

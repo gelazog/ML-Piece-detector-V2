@@ -2021,6 +2021,53 @@ inconveniente, perder la pieza es no medir nada.
 Verificado sobre una arandela dibujada con Ø380 y Ø160 px: medidos **379,9 y
 159,8** (0,02 % y 0,13 %).
 
+### Catorce de quince cotas no podían fallar
+
+Lo destapó una sonda que no buscaba esto. Se propusieron las cotas de un
+hexágono de radio 160 y se ejecutó **cada herramienta propuesta sobre otra
+figura**. De quince, **catorce devolvían exactamente el mismo número**:
+
+| Cota | Sobre el hexágono r=160 | Sobre la otra figura |
+|---|---|---|
+| `Lado 1` (Regla) | 159,13 px | 159,13 px — el lado del hexágono r=200 mide 200 |
+| `Ángulo 3` (Ángulo) | 120,26° | 120,26° — **sobre un cuadrado**, que tiene 90° |
+| `Largo total` (Regla) | 322,00 px | 322,00 px |
+| `Lados (6)` (Polígono) | 6 | 8 — la única que medía |
+
+El contraste se hizo contra un **cuadrado** y no contra otro hexágono a
+propósito: un hexágono regular tiene 120° a cualquier tamaño, así que un ángulo
+que no se moviera podría estar midiendo bien y coincidir.
+
+No es un error de precisión. La Regla, el Ángulo y la Línea-Línea guardan sus
+puntos en coordenadas de **pieza** y calculan sobre ellos, y ni la distancia
+entre dos puntos ni el ángulo entre dos rectas cambian al aplicar el fixture,
+que es un giro más una traslación. El número es el mismo siempre, en cualquier
+pieza. Esas herramientas salían con un **OK verde en cada inspección, para
+siempre, sin haber comprobado nada** — la peor forma de fallar que tiene un
+programa de inspección, porque el fallo se lee como conformidad.
+
+La Regla lo dice de sí misma en su descripción —«mide exactamente lo que
+trazas»— y como herramienta suelta está bien: sirve para medir al vuelo. Lo que
+no puede es fingir un veredicto.
+
+`inspection::remeasuresThePiece(ToolType)` lo escribe una sola vez, y
+`baseResult` —el único punto donde nace todo resultado— marca **informativa** a
+la que no vuelve a medir: da su número y escribe «—» donde iría el OK. El
+veredicto global no cambia, porque estas herramientas siempre pasaban; lo que
+desaparece es la afirmación de que se comprobó algo.
+
+Por defecto se dice que una herramienta **sí** vuelve a medir, y también es a
+propósito: afirmar que no mide cuando sí lo hace le quitaría un veredicto de
+verdad. Solo se listan las tres comprobadas. La Posición y el Desplazamiento de
+centro no miran la imagen y aun así miden —*dónde* ha caído la pieza respecto al
+tablero, que cambia de una a otra—, así que siguen juzgando.
+
+Las propuestas automáticas lo dicen en su porqué: *«Se mide ahora sobre esta
+pieza; guardada, repite este valor: vale como cota de referencia, no como
+comprobación.»* El número que enseñan **es** una medida de verdad —sale de la
+descomposición del contorno de esa pieza— y por eso el informe de *Medir pieza*,
+que se recalcula entero cada vez que se pide, sigue siendo exacto.
+
 ### Sacar las medidas
 
 Se podían exportar los **puntos** del contorno a CSV y el historial de
