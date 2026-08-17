@@ -1353,8 +1353,47 @@ nunca su número de columnas.
 
 **La línea de ayuda** es lo que repone el nombre que la rejilla le quita a los
 botones; sin ella el panel sería más bonito y peor. Su texto sale de
-`toolTypeDescription`, no es una copia. Tiene alto fijo de dos renglones: si
-creciera al pasar el ratón, la rejilla botaría bajo el cursor.
+`toolTypeDescription`, no es una copia.
+
+#### El texto se cortaba, y el arreglo anterior solo lo cortó con más educación
+
+Tenía alto **fijo** de tres renglones, con una buena razón: si creciera y
+menguara al pasar el ratón por la rejilla, la rejilla botaría bajo el cursor y
+elegir sería un juego de puntería. El precio era que el resto del texto vivía
+solo en el tooltip.
+
+Medido: **29 de las 32 descripciones no cabían**, y la más larga tiene 901
+caracteres. Es decir, casi toda la ayuda de la aplicación solo existía **al pasar
+el ratón** — y lo que solo se ve con el ratón encima no lo ve quien navega con el
+teclado. Un arreglo anterior había cambiado el corte mudo por unos puntos
+suspensivos, que es mejor y sigue siendo un corte.
+
+La regla se conserva y cambia **cómo se cumple**: el alto lo fija el sitio que
+sobra en el panel, no el largo del texto. La ayuda vive en un `QScrollArea` que
+se queda con ese hueco —que antes se iba en un `addStretch`, espacio vacío bajo
+una ayuda truncada— y el texto se desplaza dentro. La rejilla sigue sin moverse
+y cabe la descripción entera. El tooltip se retira: repetir en un globo lo que
+ya está escrito debajo solo tapa el texto que se está leyendo.
+
+Medido después: la descripción más larga necesita **338 px** y a 900 px de panel
+el hueco da **706**, así que se lee entera sin desplazar; con el panel a 320 px
+quedan 126 px de hueco para 351 de texto, y hay **225 px que desplazar** en vez
+de 225 px perdidos.
+
+Dos cosas que costaron un test cada una:
+
+- **Una etiqueta con ajuste de línea dentro de un `QScrollArea` redimensionable
+  no crece sola.** Qt le da el alto del visor y no consulta `heightForWidth`, así
+  que el texto se recortaba exactamente igual — ahora sin puntos suspensivos, que
+  es peor. Se corrige fijando el mínimo de la etiqueta a su `heightForWidth` cada
+  vez que cambia el texto o el ancho.
+- **El primer test no lo veía**, porque comprobaba `text()` y el texto sí estaba
+  completo; lo que no estaba era *visible*. Lo destapó el que mira si hay algo
+  que desplazar.
+
+Y el test que protegía la estabilidad medía un **proxy** —que la etiqueta no
+cambiara de alto— lo que ataba el diseño a una solución concreta. Ahora comprueba
+lo que de verdad importa: que la rejilla no se mueva.
 
 En la ventana principal el panel va en un `QDockWidget` (`toolsDock`) con lo que
 **actúa sobre la herramienta seleccionada** —«Borrar» y el parámetro de

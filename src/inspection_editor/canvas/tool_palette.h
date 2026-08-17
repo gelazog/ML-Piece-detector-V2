@@ -10,6 +10,7 @@
 
 class QGridLayout;
 class QLabel;
+class QScrollArea;
 class QToolButton;
 
 namespace pci::inspection {
@@ -123,6 +124,14 @@ private:
     QLabel* helpName_ = nullptr;
     QLabel* helpShortcut_ = nullptr;
     QLabel* helpText_ = nullptr;
+    // El área que desplaza la ayuda. Su alto lo fija el sitio que sobra en el
+    // panel y no el largo del texto: así la rejilla de arriba no se mueve al
+    // pasar de una herramienta a otra, y cabe la descripción entera.
+    QScrollArea* helpScroll_ = nullptr;
+    // Ajusta el alto de la etiqueta de ayuda al ancho disponible. Sin esto,
+    // una etiqueta con ajuste de línea dentro de un área desplazable no crece
+    // y el texto se recorta igual, pero en silencio.
+    void fitHelpToWidth();
     std::optional<ToolType> hovered_;
     QGridLayout* grid_ = nullptr;
     QWidget* gridHost_ = nullptr;

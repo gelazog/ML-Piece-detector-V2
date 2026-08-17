@@ -967,7 +967,13 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    sobre el video (amarillo punteado) y el contorno solo se busca ahí —
    sombras y objetos fuera de la zona dejan de estorbar. Ambos ajustes
    persisten y aplican al video en vivo, al registro y a la inspección. Las
-   herramientas de dibujo ahora usan **iconos** (el tooltip explica cada una).
+   herramientas de dibujo usan **iconos**, y debajo de la rejilla se lee **la
+   explicación completa** de la que señalas: qué mide y cómo se traza, entera y
+   sin cortes. Antes se veían tres renglones y el resto solo aparecía al dejar el
+   ratón quieto encima — medido, 29 de las 32 explicaciones no cabían. Ahora el
+   bloque se queda con el hueco que sobra en el panel y, si el panel es bajo, el
+   texto se desplaza en vez de recortarse. La rejilla no se mueve al pasar el
+   ratón, que es lo que el alto fijo protegía.
 
    **Clonar la configuración a otra PC** (menú **Archivo**): *Exportar
    configuración…* vuelca a un `.json` la calibración, los ajustes y perfiles de

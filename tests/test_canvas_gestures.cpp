@@ -18,6 +18,8 @@
 #include <QToolBox>
 #include <QLabel>
 #include <QLayout>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QToolButton>
 
 #include <cmath>
@@ -1113,29 +1115,32 @@ TEST(ToolHelpLine, TheShortcutShownIsTheOneThatWorks) {
     }
 }
 
-TEST(ToolHelpLine, ItDoesNotGrowAndShrinkUnderTheCursor) {
-    // Si la linea cambiara de alto al pasar el raton, la rejilla botaria bajo
-    // el cursor y elegir se volveria un juego de punteria.
+TEST(ToolHelpLine, TheGridDoesNotMoveUnderTheCursor) {
+    // Lo que hay que garantizar es que la REJILLA no se mueva: si botara bajo el
+    // cursor, elegir se volvería un juego de puntería.
+    //
+    // La versión anterior de este test medía un proxy —que la etiqueta de ayuda
+    // no cambiara de alto— y eso ataba el diseño a una solución concreta: alto
+    // fijo, y por tanto texto recortado. Ahora la ayuda se desplaza dentro de un
+    // área cuyo alto lo fija el panel, así que la etiqueta de dentro sí crece y
+    // la rejilla sigue quieta. Se comprueba la rejilla, que es lo que importa.
     ToolPalette palette;
     palette.show();
     palette.resize(220, 600);
     palette.activateCategory(ToolCategory::TurnedAndExtremes);
 
-    int tallest = 0;
-    int shortest = 1 << 20;
+    QWidget* firstButton = buttonFor(palette, toolsInCategory(ToolCategory::TurnedAndExtremes).front());
+    ASSERT_NE(firstButton, nullptr);
+    const QPoint anchor = firstButton->mapTo(&palette, QPoint(0, 0));
+
     for (const auto type : toolsInCategory(ToolCategory::TurnedAndExtremes)) {
         auto* button = buttonFor(palette, type);
         ASSERT_NE(button, nullptr);
         hover(button, true);
-        for (auto* label : palette.findChildren<QLabel*>()) {
-            if (label->wordWrap()) {  // la de la explicacion es la unica que envuelve
-                tallest = std::max(tallest, label->height());
-                shortest = std::min(shortest, label->height());
-            }
-        }
+        EXPECT_EQ(firstButton->mapTo(&palette, QPoint(0, 0)), anchor)
+            << "la rejilla se movió al pasar el ratón por " << toolTypeName(type);
         hover(button, false);
     }
-    EXPECT_EQ(tallest, shortest) << "la linea de ayuda cambia de alto: la rejilla botaria";
 }
 
 // ---------------------------------------------------------------------------
@@ -1377,19 +1382,14 @@ TEST(ToolPanelLooks, TheShortcutLeavesTheViewTellingTheSameStory) {
     }
 }
 
-// La línea de ayuda cortaba la descripción en seco por su primer salto de línea,
-// y eso estaba mal por dos motivos a la vez: tiraba espacio que ya se estaba
-// reservando, y el corte era MUDO — el operador no tenía forma de saber que
-// había más texto esperándole en el tooltip.
-//
-// Medido al ancho real del panel (232 px): la descripción entera de las 32
-// herramientas ocupa de 4 a 26 renglones, así que no cabe ni va a caber. Lo que
-// sí cabe es el resumen MÁS el principio de cómo se traza, que es lo que hace
-// falta mientras eliges.
-TEST(ToolHelpLine, ItShowsAsMuchAsFitsAndSaysWhenThereIsMore) {
+// La ayuda enseñaba SOLO tres renglones y el resto vivía en el tooltip. Medido:
+// 29 de las 32 descripciones no cabían, y la más larga tiene 901 caracteres. O
+// sea, casi toda la ayuda de la aplicación solo existía al pasar el ratón — y lo
+// que solo se ve con el ratón encima no lo ve quien navega con el teclado.
+TEST(ToolHelpLine, TheWholeDescriptionIsOnScreenAndNotOnlyInATooltip) {
     ToolPalette palette;
     palette.show();
-    palette.resize(240, 500);
+    palette.resize(240, 700);
 
     QLabel* help = nullptr;
     for (auto* label : palette.findChildren<QLabel*>()) {
@@ -1399,8 +1399,6 @@ TEST(ToolHelpLine, ItShowsAsMuchAsFitsAndSaysWhenThereIsMore) {
     }
     ASSERT_NE(help, nullptr);
 
-    int withHowTo = 0;
-    int marked = 0;
     int total = 0;
     for (const auto category : allToolCategories()) {
         palette.activateCategory(category);
@@ -1408,57 +1406,116 @@ TEST(ToolHelpLine, ItShowsAsMuchAsFitsAndSaysWhenThereIsMore) {
             auto* button = buttonFor(palette, type);
             ASSERT_NE(button, nullptr) << toolTypeName(type);
             hover(button, true);
-            const QString shown = help->text();
-            const QString full = QString::fromUtf8(toolTypeDescription(type));
             ++total;
 
-            ASSERT_FALSE(shown.isEmpty()) << toolTypeName(type);
-            // El tooltip sigue teniendo el texto ENTERO: la línea es un resumen,
-            // no un sustituto.
-            EXPECT_EQ(help->toolTip(), full) << toolTypeName(type);
-
-            // Si se cortó, tiene que decirlo. Un corte mudo hace creer que la
-            // explicación acaba ahí.
-            // Si lo enseñado no es el texto entero, tiene que acabar en puntos
-            // suspensivos. Se comprueba por herramienta y no contando el total:
-            // una de las 32 SÍ cabe entera, y exigir que todas se corten sería
-            // fijar por contrato la longitud de una redacción.
-            if (shown.endsWith(QStringLiteral("…"))) {
-                ++marked;
-            } else {
-                QString whole = full;
-                whole.replace(QLatin1Char('\n'), QLatin1Char(' '));
-                EXPECT_EQ(shown, whole.simplified())
-                    << toolTypeName(type) << ": se cortó sin decirlo";
-            }
-            // Y lo que se enseña tiene que ser el principio del texto real, no
-            // otra cosa: se compara la primera palabra.
-            const QString firstWord = full.simplified().section(QLatin1Char(' '), 0, 0);
-            EXPECT_TRUE(shown.startsWith(firstWord))
-                << toolTypeName(type) << ": enseña «" << shown.left(40).toStdString() << "»";
-
-            // ¿Llega a asomar el CÓMO se traza? Es lo que se perdía antes: la
-            // primera línea de la descripción es el resumen y el resto explica
-            // el trazo.
-            const QString summary = full.split(QLatin1Char('\n')).first().simplified();
-            if (shown.size() > summary.size() + 1) {
-                ++withHowTo;
-            }
+            const QString full = QString::fromUtf8(toolTypeDescription(type));
+            // ENTERA, letra por letra. No «casi toda» ni «con puntos
+            // suspensivos»: lo que la herramienta explica de sí misma tiene que
+            // poder leerse sin ratón.
+            EXPECT_EQ(help->text(), full)
+                << toolTypeName(type) << ": la ayuda sigue sin estar completa";
+            EXPECT_FALSE(help->text().endsWith(QStringLiteral("…")))
+                << toolTypeName(type) << ": sigue recortándose";
+            // Y el tooltip deja de repetirla: un globo encima del texto que se
+            // está leyendo lo tapa.
+            EXPECT_TRUE(help->toolTip().isEmpty())
+                << toolTypeName(type) << ": el tooltip repite lo que ya está escrito";
             hover(button, false);
         }
     }
-    std::printf("  [ayuda] %d de %d herramientas asoman el «cómo se traza»; %d marcan el "
-                "corte con puntos suspensivos\n",
-                withHowTo, total, marked);
+    EXPECT_EQ(total, 32) << "cambió el número de herramientas: revisa el banco";
+}
 
-    // Antes NINGUNA pasaba del resumen. Se exige que la mayoría lo haga ahora,
-    // con holgura sobre lo medido para que un retoque de redacción no rompa el
-    // test.
-    EXPECT_GT(withHowTo, total / 2)
-        << "casi ninguna herramienta enseña cómo se traza: la línea volvió a ser un resumen";
-    // Y que la inmensa mayoría se corte —son textos de 4 a 26 renglones— para
-    // que este test siga vigilando el caso que importa.
-    EXPECT_GT(marked, total - 3) << "casi ninguna se corta: ¿se acortaron las descripciones?";
+namespace {
+
+// La herramienta de descripción más larga, para probar con el peor caso en vez
+// de con una cualquiera.
+ToolType wordiestTool() {
+    ToolType worst = ToolType::Caliper;
+    std::size_t longest = 0;
+    for (const auto category : allToolCategories()) {
+        for (const auto type : toolsInCategory(category)) {
+            const std::size_t size = QString::fromUtf8(toolTypeDescription(type)).size();
+            if (size > longest) {
+                longest = size;
+                worst = type;
+            }
+        }
+    }
+    return worst;
+}
+
+}  // namespace
+
+TEST(ToolHelpLine, WithRoomTheWholeTextIsVisibleWithoutScrolling) {
+    // El objetivo, no el mecanismo: con sitio, la descripción entera se LEE.
+    // Antes se veían tres renglones pasara lo que pasara.
+    ToolPalette palette;
+    palette.show();
+    palette.resize(240, 900);
+
+    auto* scroll = palette.findChild<QScrollArea*>();
+    ASSERT_NE(scroll, nullptr);
+    auto* help = qobject_cast<QLabel*>(scroll->widget());
+    ASSERT_NE(help, nullptr);
+
+    const ToolType worst = wordiestTool();
+    palette.activateCategory(categoryOf(worst));
+    auto* button = buttonFor(palette, worst);
+    ASSERT_NE(button, nullptr);
+    hover(button, true);
+    QApplication::processEvents();
+
+    std::printf("  [ayuda] la descripcion mas larga (%s, %d caracteres) necesita %d px y "
+                "el hueco da %d px\n",
+                toolTypeName(worst), static_cast<int>(help->text().size()),
+                help->heightForWidth(scroll->viewport()->width()),
+                scroll->viewport()->height());
+    EXPECT_EQ(scroll->verticalScrollBar()->maximum(), 0)
+        << "ni con 900 px de panel cabe la descripción más larga";
+}
+
+TEST(ToolHelpLine, WithoutRoomItScrollsInsteadOfCutting) {
+    // Y sin sitio no se recorta: se desplaza. Un panel bajo es lo normal en una
+    // pantalla de línea, y ahí es donde el corte hacía daño.
+    ToolPalette palette;
+    palette.show();
+    palette.resize(240, 320);
+
+    auto* scroll = palette.findChild<QScrollArea*>();
+    ASSERT_NE(scroll, nullptr);
+    EXPECT_TRUE(scroll->widgetResizable());
+    EXPECT_EQ(scroll->horizontalScrollBarPolicy(), Qt::ScrollBarAlwaysOff)
+        << "una barra horizontal en un texto que se ajusta solo es un texto mal ajustado";
+    auto* help = qobject_cast<QLabel*>(scroll->widget());
+    ASSERT_NE(help, nullptr);
+
+    const ToolType worst = wordiestTool();
+    palette.activateCategory(categoryOf(worst));
+    auto* button = buttonFor(palette, worst);
+    ASSERT_NE(button, nullptr);
+    hover(button, true);
+    QApplication::processEvents();
+
+    auto* bar = scroll->verticalScrollBar();
+    ASSERT_NE(bar, nullptr);
+    std::printf("  [ayuda] con el panel a 320 px: hueco %d px, texto %d px, desplazable %d\n",
+                scroll->viewport()->height(), help->height(), bar->maximum());
+    EXPECT_GT(bar->maximum(), 0) << "no hay nada que desplazar: el texto se está cortando";
+    // Y el texto sigue estando ENTERO: desplazarse no es recortar.
+    EXPECT_EQ(help->text(), QString::fromUtf8(toolTypeDescription(worst)));
+
+    // Cada herramienta empieza por su principio: heredar el desplazamiento de la
+    // anterior deja al operador leyendo por la mitad sin saberlo.
+    bar->setValue(bar->maximum());
+    ASSERT_GT(bar->value(), 0);
+    hover(button, false);
+    palette.activateCategory(categoryOf(ToolType::Caliper));
+    auto* other = buttonFor(palette, ToolType::Caliper);
+    ASSERT_NE(other, nullptr);
+    hover(other, true);
+    QApplication::processEvents();
+    EXPECT_EQ(bar->value(), 0) << "la ayuda se abrió por la mitad";
 }
 
 // ---------------------------------------------------------------------------

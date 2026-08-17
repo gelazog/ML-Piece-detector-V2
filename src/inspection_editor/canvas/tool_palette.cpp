@@ -9,6 +9,8 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QResizeEvent>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -53,64 +55,13 @@ QString checkedStyle() {
         .arg(highlight.name(), highlight.darker(140).name());
 }
 
-// Cuántos renglones de descripción se enseñan. Tres y no dos, y sale de medir:
-// al ancho real del panel (232 px), el RESUMEN de 21 de las 32 herramientas ya
-// ocupa dos renglones por sí solo, así que con dos no cabía ni una palabra de
-// cómo se traza — que es justo lo que hace falta mientras eliges.
+// Alto MÍNIMO de la ayuda, en renglones. Ya no es un tope —el texto se enseña
+// entero y se desplaza— sino el suelo por debajo del cual el bloque dejaría de
+// leerse: con el panel muy bajo, la ayuda no puede reducirse a una rendija.
+//
+// Tres y no dos, y sale de medir: al ancho real del panel (232 px), el RESUMEN
+// de 21 de las 32 herramientas ya ocupa dos renglones por sí solo.
 constexpr int kHelpLines = 3;
-
-// Todo lo que quepa de la descripción, y unos puntos suspensivos si se corta.
-//
-// Antes esto devolvía solo el primer renglón, cortando en seco por el primer
-// salto de línea. Dos cosas estaban mal: se tiraba el segundo renglón que ya se
-// estaba reservando, y sobre todo el corte era MUDO — el operador no tenía forma
-// de saber que había más texto esperándole en el tooltip.
-//
-// La descripción entera no cabe y no va a caber: medidas a este ancho, van de 4
-// a 26 renglones. Así que la línea enseña el principio y los puntos suspensivos
-// dicen «hay más»; el texto completo sigue en el tooltip.
-QString fittedText(const QString& text, const QFontMetrics& metrics, int width, int lines) {
-    if (width <= 0) {
-        return text;
-    }
-    const int maxHeight = metrics.lineSpacing() * lines;
-    const auto fits = [&](const QString& candidate) {
-        return metrics
-                   .boundingRect(QRect(0, 0, width, 100000), Qt::TextWordWrap, candidate)
-                   .height() <= maxHeight;
-    };
-    // Los saltos de la descripción son de su formato de tooltip: dentro de una
-    // línea que se ajusta sola estorban, porque parten renglones a media frase.
-    QString flat = text;
-    flat.replace(QLatin1Char('\n'), QLatin1Char(' '));
-    flat = flat.simplified();
-    if (fits(flat)) {
-        return flat;
-    }
-    // Se recorta por PALABRAS y no por caracteres: cortar a mitad de palabra
-    // hace que el texto parezca roto en vez de continuado.
-    int low = 0;
-    int high = flat.size();
-    while (low < high) {
-        const int mid = (low + high + 1) / 2;
-        QString candidate = flat.left(mid);
-        const int space = candidate.lastIndexOf(QLatin1Char(' '));
-        if (space > 0) {
-            candidate = candidate.left(space);
-        }
-        if (fits(candidate + QStringLiteral("…"))) {
-            low = mid;
-        } else {
-            high = mid - 1;
-        }
-    }
-    QString cut = flat.left(low);
-    const int space = cut.lastIndexOf(QLatin1Char(' '));
-    if (space > 0) {
-        cut = cut.left(space);
-    }
-    return cut + QStringLiteral("…");
-}
 
 }  // namespace
 
@@ -255,11 +206,29 @@ void ToolPalette::buildPanel() {
 
     helpText_ = new QLabel(this);
     helpText_->setWordWrap(true);
-    // Alto FIJO de dos renglones. Si creciera y menguara al pasar el ratón por
-    // la rejilla, la rejilla botaría bajo el cursor y elegir se volvería un
-    // juego de puntería.
+    helpText_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    // Se puede seleccionar con el ratón: una cota o un aviso que hay que copiar
+    // a un parte no se copia de un tooltip.
+    helpText_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+
+    // El texto entero, dentro de un área que se desplaza.
+    //
+    // La regla que había —alto FIJO— nació de un problema real: si el bloque
+    // creciera y menguara al pasar el ratón por la rejilla, la rejilla botaría
+    // bajo el cursor y elegir sería un juego de puntería. Esa regla se conserva,
+    // y lo que cambia es cómo se cumple: el ALTO lo fija el sitio que sobra en
+    // el panel, no el largo del texto, así que la rejilla sigue sin moverse y
+    // además cabe la descripción entera.
+    //
+    // De paso se recupera el hueco que antes se iba en un `addStretch`: era
+    // espacio vacío debajo de una ayuda truncada.
+    helpScroll_ = new QScrollArea(this);
+    helpScroll_->setWidget(helpText_);
+    helpScroll_->setWidgetResizable(true);
+    helpScroll_->setFrameShape(QFrame::NoFrame);
+    helpScroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     const QFontMetrics metrics(helpText_->font());
-    helpText_->setFixedHeight(metrics.lineSpacing() * kHelpLines + 2);
+    helpScroll_->setMinimumHeight(metrics.lineSpacing() * kHelpLines + 2);
 
     gridHost_ = new QWidget(this);
     // La rejilla NO impone su ancho, y esto es lo que hace que el reflujo
@@ -282,8 +251,7 @@ void ToolPalette::buildPanel() {
     grid_->setSpacing(kPanelSpacing);
     column->addWidget(gridHost_);
     column->addLayout(helpRow);
-    column->addWidget(helpText_);
-    column->addStretch(1);
+    column->addWidget(helpScroll_, 1);
 
     rebuildGrid();
     updateHelpLine();
@@ -336,13 +304,26 @@ void ToolPalette::updateHelpLine() {
     // El texto SALE de `toolTypeDescription`, no es una copia: escrito dos
     // veces acabaría divergiendo, que es la razón por la que la paleta se
     // compartió en su día.
+    // ENTERO, con sus saltos de línea. Antes se recortaba a tres renglones con
+    // unos puntos suspensivos y el resto vivía solo en el tooltip: medido, 29 de
+    // las 32 descripciones no cabían, y la más larga tiene 901 caracteres. Es
+    // decir, casi toda la ayuda de la aplicación solo existía al pasar el ratón
+    // — y lo que solo se ve con el ratón encima no lo ve quien navega con el
+    // teclado.
+    //
+    // Los saltos se conservan porque separan «qué mide» de «cómo se traza», que
+    // es exactamente la división que hace falta mientras eliges.
     const QString full = description(*shown);
-    // El ancho se pregunta al propio widget: la paleta reflúye de 4 a 9 columnas
-    // según el sitio que tenga, así que cuánto texto cabe no es una constante.
-    const QFontMetrics metrics(helpText_->font());
-    const int usable = helpText_->width() > 0 ? helpText_->width() : width();
-    helpText_->setText(fittedText(full, metrics, usable, kHelpLines));
-    helpText_->setToolTip(full);
+    helpText_->setText(full);
+    // El tooltip deja de hacer falta y se quita: repetir en un globo lo que ya
+    // está escrito debajo solo tapa el texto que se está leyendo.
+    helpText_->setToolTip(QString());
+    fitHelpToWidth();
+    if (helpScroll_ != nullptr && helpScroll_->verticalScrollBar() != nullptr) {
+        // Cada herramienta empieza por su principio. Heredar el desplazamiento
+        // de la anterior deja al operador leyendo por la mitad sin saberlo.
+        helpScroll_->verticalScrollBar()->setValue(0);
+    }
 }
 
 bool ToolPalette::eventFilter(QObject* watched, QEvent* event) {
@@ -463,6 +444,29 @@ void ToolPalette::relayoutGrid() {
 void ToolPalette::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
     relayoutGrid();
+    fitHelpToWidth();
+}
+
+// El alto que necesita la ayuda con el ancho que tiene AHORA.
+//
+// Hace falta por una trampa de Qt que costó un test: una etiqueta con ajuste de
+// línea dentro de un `QScrollArea` redimensionable **no crece sola**. El área
+// le da el alto del visor y `heightForWidth` no se consulta, así que el texto
+// se recortaba exactamente igual que antes — solo que ahora sin puntos
+// suspensivos, que es peor: un corte mudo.
+//
+// El primer test que escribí no lo veía porque comprobaba `text()`, y el texto
+// SÍ estaba completo; lo que no estaba era visible. Lo destapó el que mira si
+// hay algo que desplazar.
+void ToolPalette::fitHelpToWidth() {
+    if (helpText_ == nullptr || helpScroll_ == nullptr) {
+        return;
+    }
+    const int usable = helpScroll_->viewport()->width();
+    if (usable <= 0) {
+        return;
+    }
+    helpText_->setMinimumHeight(helpText_->heightForWidth(usable));
 }
 
 void ToolPalette::showSelection(std::optional<ToolType> type) {
