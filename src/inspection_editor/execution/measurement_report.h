@@ -46,6 +46,11 @@ struct MeasurementRow {
     bool hasTolerance = false;  // las informativas no juzgan y no tienen banda
     int pieceIndex = 0;
     std::string detail;
+    // De dónde sale la fila. Sirve para separar en la tabla lo que es un HECHO
+    // del contorno —perímetro, área, agujeros— de lo que es una COTA con su
+    // banda: mezclarlos sin distinguirlos invita a buscarle tolerancia a un
+    // área que nadie ha declarado.
+    std::string group;
 };
 
 // `tolerances`, si se pasa, son las herramientas con las que se midió, en el

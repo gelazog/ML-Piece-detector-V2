@@ -35,6 +35,8 @@
 #include <QTableWidget>
 
 #include "inspection_editor/auto_measure_dialog.h"
+#include "inspection_editor/piece_report.h"
+#include "ui/piece_report_dialog.h"
 #include "inspection_editor/canvas/editor_canvas.h"
 #include "inspection_editor/canvas/tool_icons.h"
 #include "database/db.h"
@@ -1765,4 +1767,149 @@ TEST_F(FreeZoneGestureTest, TheGestureMeansTheSameAtAnyZoom) {
     press(&canvas, spot + QPointF(2.0, 1.0));
     release(&canvas, spot + QPointF(2.0, 1.0));
     EXPECT_EQ(pickedTimes, 1) << "al zoom alto el gesto dejó de significar lo mismo";
+}
+
+// ---------------------------------------------------------------------------
+// El informe de pieza sobre la ventana real
+// ---------------------------------------------------------------------------
+
+namespace {
+
+cv::Mat hexagonMask(int canvas = 600, int radius = 160) {
+    cv::Mat mask = cv::Mat::zeros(canvas, canvas, CV_8UC1);
+    std::vector<cv::Point> vertices;
+    for (int k = 0; k < 6; ++k) {
+        const double angle = 2.0 * CV_PI * k / 6 - CV_PI / 2.0;
+        vertices.emplace_back(
+            static_cast<int>(std::lround(canvas / 2 + radius * std::cos(angle))),
+            static_cast<int>(std::lround(canvas / 2 + radius * std::sin(angle))));
+    }
+    cv::fillPoly(mask, std::vector<std::vector<cv::Point>>{vertices}, cv::Scalar(255),
+                 cv::LINE_8);
+    return mask;
+}
+
+pci::inspection::PieceReport hexagonReport(double mmPerPixel = 0.0) {
+    const cv::Mat mask = hexagonMask();
+    cv::Mat gray(mask.size(), CV_8UC1, cv::Scalar(30));
+    gray.setTo(cv::Scalar(220), mask);
+    return pci::inspection::measureWholePiece(gray, mask, {}, mmPerPixel);
+}
+
+// Texto de una celda, o cadena vacía si no hay nada ahí.
+QString cellText(const QTableWidget* table, int row, int column) {
+    const auto* item = table->item(row, column);
+    return item != nullptr ? item->text() : QString();
+}
+
+}  // namespace
+
+TEST(PieceReportDialogTest, EveryMeasurementIsOnScreenWithItsUnit) {
+    // Lo que se pidió: verlo TODO. Si la tabla se quedara corta, el informe
+    // estaría contestando a medias sin decirlo.
+    const auto report = hexagonReport(0.25);
+    ASSERT_TRUE(report.ok) << report.problem;
+
+    pci::ui::PieceReportDialog dialog(report, QStringLiteral("una imagen"));
+    dialog.resize(900, 700);
+    auto* table = dialog.findChild<QTableWidget*>();
+    ASSERT_NE(table, nullptr);
+
+    // Una fila por medida más los dos títulos de bloque.
+    EXPECT_EQ(table->rowCount(), static_cast<int>(report.rows.size()) + 2);
+
+    int withUnit = 0;
+    for (int row = 0; row < table->rowCount(); ++row) {
+        if (!cellText(table, row, 2).isEmpty()) {
+            ++withUnit;
+        }
+    }
+    std::printf("  [informe] %d filas en pantalla, %d con unidad\n", table->rowCount(),
+                withUnit);
+    EXPECT_EQ(withUnit, static_cast<int>(report.rows.size()))
+        << "alguna medida salió a pantalla sin unidad";
+}
+
+TEST(PieceReportDialogTest, TheContourFactsComeBeforeTheDimensionsAndAreSeparated) {
+    // Mezclar un hecho del contorno con una cota sin distinguirlos invita a
+    // buscarle tolerancia a un área que nadie ha declarado.
+    const auto report = hexagonReport();
+    ASSERT_TRUE(report.ok) << report.problem;
+    pci::ui::PieceReportDialog dialog(report, QStringLiteral("una imagen"));
+    dialog.resize(900, 700);
+    auto* table = dialog.findChild<QTableWidget*>();
+    ASSERT_NE(table, nullptr);
+
+    // Los dos títulos de bloque son las filas que ocupan las cinco columnas.
+    std::vector<int> sectionRows;
+    for (int row = 0; row < table->rowCount(); ++row) {
+        if (table->columnSpan(row, 0) == 5) {
+            sectionRows.push_back(row);
+        }
+    }
+    ASSERT_EQ(sectionRows.size(), 2U) << "faltan los títulos que separan los dos bloques";
+    EXPECT_EQ(sectionRows[0], 0) << "el informe no empieza por el contorno";
+    // El primer bloque tiene exactamente los hechos del contorno.
+    EXPECT_EQ(sectionRows[1], static_cast<int>(report.contourFactCount()) + 1);
+}
+
+TEST(PieceReportDialogTest, MeasuringDoesNotWatchUnlessYouSaySo) {
+    // Medir y vigilar son dos decisiones. Unirlas llenaría la plantilla de
+    // herramientas a cada consulta.
+    const auto report = hexagonReport();
+    ASSERT_TRUE(report.ok) << report.problem;
+    ASSERT_FALSE(report.watchable.empty());
+
+    pci::ui::PieceReportDialog dialog(report, QStringLiteral("una imagen"));
+    dialog.resize(900, 700);
+    EXPECT_TRUE(dialog.toWatch().empty()) << "el informe se llevó cotas sin que nadie lo pidiera";
+
+    // Y con el botón, se lleva exactamente las cotas: ni una de las filas del
+    // contorno, que no se pueden vigilar porque no hay herramienta que las mida.
+    QPushButton* watch = nullptr;
+    for (auto* button : dialog.findChildren<QPushButton*>()) {
+        if (button->text().startsWith(QStringLiteral("Vigilar"))) {
+            watch = button;
+        }
+    }
+    ASSERT_NE(watch, nullptr);
+    EXPECT_TRUE(watch->isEnabled());
+    watch->click();
+    EXPECT_EQ(dialog.toWatch().size(), report.watchable.size());
+}
+
+TEST(PieceReportDialogTest, ACountIsNotShownWithDecimals) {
+    // «6,00 agujeros» invita a leer un recuento como una magnitud continua.
+    const auto report = hexagonReport();
+    ASSERT_TRUE(report.ok) << report.problem;
+    pci::ui::PieceReportDialog dialog(report, QStringLiteral("una imagen"));
+    dialog.resize(900, 700);
+    auto* table = dialog.findChild<QTableWidget*>();
+    ASSERT_NE(table, nullptr);
+
+    int counts = 0;
+    for (int row = 0; row < table->rowCount(); ++row) {
+        if (cellText(table, row, 2) == QStringLiteral("n")) {
+            ++counts;
+            EXPECT_FALSE(cellText(table, row, 1).contains('.'))
+                << "el recuento de la fila «" << cellText(table, row, 0).toStdString()
+                << "» salió con decimales: " << cellText(table, row, 1).toStdString();
+        }
+    }
+    EXPECT_GT(counts, 0) << "el informe no trae ningún recuento y este test no prueba nada";
+}
+
+TEST(PieceReportDialogTest, WithoutTolerancesTheColumnSaysSoInsteadOfShowingZero) {
+    // Un cero en la columna de tolerancia parece una tolerancia de cero, que es
+    // la más estricta que existe. Los hechos del contorno no llevan banda.
+    const auto report = hexagonReport();
+    ASSERT_TRUE(report.ok) << report.problem;
+    pci::ui::PieceReportDialog dialog(report, QStringLiteral("una imagen"));
+    dialog.resize(900, 700);
+    auto* table = dialog.findChild<QTableWidget*>();
+    ASSERT_NE(table, nullptr);
+
+    // La primera fila de datos es un hecho del contorno (el perímetro).
+    EXPECT_EQ(cellText(table, 1, 3), QString::fromUtf8("—"))
+        << "un hecho del contorno salió con una tolerancia que nadie declaró";
 }

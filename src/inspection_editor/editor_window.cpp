@@ -631,8 +631,12 @@ void EditorWindow::onAutoMeasureClicked() {
     // se usara otro sistema las propuestas quedarían desplazadas respecto a las
     // que ya hay en la plantilla.
     int dropped = 0;
-    const auto proposals = proposeTools(image, analysis.value().mask, fixture_, {},
-                                        calibration_.mmPerPixel, &dropped);
+    // Con los agujeros de vuelta: la máscara del análisis viene rellena, y sin
+    // esto a una arandela no se le propondría el diámetro interior.
+    const cv::Mat mask = vision::pieceMaskWithHoles(image, analysis.value().mask,
+                                                    pipeline_.segmentation);
+    const auto proposals =
+        proposeTools(image, mask, fixture_, {}, calibration_.mmPerPixel, &dropped);
     if (proposals.empty()) {
         statusLabel_->setText(
             tr("No se encontró ninguna cota que proponer sobre esta imagen."));

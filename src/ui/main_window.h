@@ -108,6 +108,11 @@ private slots:
     void onInspectClicked();
     void onInspectionFinished();
     void onCalibrateClicked();
+    // «¿Cuánto mide esto?»: mide la pieza entera a partir de su contorno y
+    // enseña el informe. Es la pregunta que más se hace delante de una pieza,
+    // y hasta ahora había que dar un rodeo por el editor de plantilla para
+    // contestarla.
+    void onMeasurePieceClicked();
     void onRoiButtonToggled(bool enabled);
     void onRegionPicked(const cv::Rect& imageRect);
     void onFreeZoneButtonToggled(bool enabled);
@@ -309,6 +314,7 @@ private:
     QPushButton* startStopButton_ = nullptr;
     QPushButton* roiButton_ = nullptr;
     QPushButton* freeZoneButton_ = nullptr;
+    QPushButton* measurePieceButton_ = nullptr;
     // Ruta del fichero abierto como fuente, para recordarlo entre sesiones.
     QString lastSourcePath_;
     QLabel* calibLabel_ = nullptr;  // estado de la escala en la barra inferior

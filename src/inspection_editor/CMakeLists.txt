@@ -6,6 +6,7 @@ add_library(pci_inspection STATIC
   execution/measurement_report.cpp
   execution/profiles.cpp
   execution/tool_executor.cpp
+  piece_report.cpp
   tools/template_io.cpp
   tools/tool_geometry.cpp
 )

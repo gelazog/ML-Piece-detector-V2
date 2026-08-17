@@ -63,6 +63,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include "ui/dialog_geometry.h"
+#include "ui/piece_report_dialog.h"
 #include "ui/performance_page.h"
 #include "ui/rate_readout.h"
 #include "ui/pieces_page.h"
@@ -445,6 +446,22 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     inspectButton_ = new QPushButton(tr("Inspeccionar"), central);
     inspectButton_->setToolTip(tr("Inspección única con reporte detallado"));
     pieceLayout->addWidget(inspectButton_);
+
+    // Medir la pieza NO es inspeccionarla, y por eso es un botón aparte aunque
+    // estén juntos: inspeccionar compara contra una referencia y da un
+    // veredicto; esto solo contesta cuánto mide lo que hay delante. Se puede
+    // usar sin pieza registrada, sin plantilla y sin calibrar — dando píxeles y
+    // diciéndolo.
+    measurePieceButton_ = new QPushButton(tr("Medir pieza"), central);
+    measurePieceButton_->setToolTip(
+        tr("Mide la pieza entera a partir de su contorno y enseña todas las cotas:\n"
+           "qué figura es, perímetro, área, envolvente, agujeros, y las cotas que su\n"
+           "forma tenga — diámetro y redondez si es redonda, cada lado y cada ángulo\n"
+           "si es un polígono, los dos diámetros si es una arandela.\n\n"
+           "No hace falta pieza registrada ni plantilla. Sin calibrar da píxeles y lo\n"
+           "dice. Desde el informe puedes copiarlo, exportarlo a CSV o convertir las\n"
+           "cotas en herramientas vigiladas."));
+    pieceLayout->addWidget(measurePieceButton_);
     pieceLayout->addStretch(0);
     rootLayout->addLayout(pieceLayout);
 
@@ -764,6 +781,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(roiButton_, &QPushButton::toggled, this, &MainWindow::onRoiButtonToggled);
     connect(video_, &inspection::EditorCanvas::regionPicked, this,
             &MainWindow::onRegionPicked);
+    connect(measurePieceButton_, &QPushButton::clicked, this,
+            &MainWindow::onMeasurePieceClicked);
     connect(freeZoneButton_, &QPushButton::toggled, this,
             &MainWindow::onFreeZoneButtonToggled);
     connect(video_, &inspection::EditorCanvas::freeZonePicked, this,
@@ -1448,6 +1467,64 @@ void MainWindow::onRegionPicked(const cv::Rect& imageRect) {
     updateRoiButton();
     statusBar()->showMessage(
         tr("Zona de detección activa: el contorno solo se busca dentro del recuadro."));
+}
+
+void MainWindow::onMeasurePieceClicked() {
+    const QImage frame = frameOrFile();
+    if (frame.isNull()) {
+        statusBar()->showMessage(
+            tr("No hay imagen que medir: inicia una fuente o abre una imagen."));
+        return;
+    }
+
+    // Se mide con la MISMA configuración con la que se inspecciona —zona
+    // incluida— para que el informe hable de lo mismo que el veredicto. Si
+    // midiera el frame entero mientras la detección trabaja dentro de una zona,
+    // los dos números serían de piezas distintas.
+    const cv::Mat image = camera::qImageToMat(frame);
+    const auto analysis = vision::analyzeFrame(image, inspectionConfig());
+    if (!analysis.isOk()) {
+        statusBar()->showMessage(tr("No se puede medir: %1")
+                                     .arg(QString::fromStdString(analysis.error().message)));
+        return;
+    }
+
+    // Con los agujeros de vuelta: la máscara que devuelve el análisis viene
+    // rellena, y sin esto una arandela se mediría como un disco.
+    const cv::Mat mask = vision::pieceMaskWithHoles(image, analysis.value().mask,
+                                                    inspectionConfig().segmentation);
+    const auto report = inspection::measureWholePiece(image, mask,
+                                                      analysis.value().fixture,
+                                                      calibration_.mmPerPixel, currentUnit());
+    if (!report.ok) {
+        statusBar()->showMessage(QString::fromStdString(report.problem));
+        return;
+    }
+
+    PieceReportDialog dialog(report, currentSourceLabel(), repos_.settings, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    const auto watch = dialog.toWatch();
+    if (watch.empty()) {
+        return;
+    }
+    for (const auto& proposal : watch) {
+        inspection::EditedTool tool;
+        tool.geometry = proposal.geometry;
+        tool.config = proposal.config;
+        tool.config.id = -1;  // sin guardar todavía: la plantilla decide su id
+        liveTools_.push_back(std::move(tool));
+    }
+    // Todas de una vez y UN solo estado de deshacer: quitar veinte herramientas
+    // con veinte Ctrl+Z sería peor que no haberlas puesto.
+    commitUndoState();
+    video_->clearResults();
+    video_->setSelectedIndex(static_cast<int>(liveTools_.size()) - 1);
+    statusBar()->showMessage(
+        tr("%n cota(s) añadidas como herramientas. Guarda la plantilla para "
+           "conservarlas.",
+           nullptr, static_cast<int>(watch.size())));
 }
 
 void MainWindow::onFreeZoneButtonToggled(bool enabled) {

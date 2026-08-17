@@ -14,6 +14,7 @@ add_library(pci_ui STATIC
   station_status.cpp
   pieces_page.cpp
   piece_manager_dialog.cpp
+  piece_report_dialog.cpp
   preferences_page.cpp
   registration_wizard.cpp
   shortcuts_dialog.cpp

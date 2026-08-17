@@ -88,4 +88,23 @@ core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image,
 [[nodiscard]] core::Result<std::vector<PieceAnalysis>> analyzeFrames(
     const cv::Mat& image, const PipelineConfig& config = {});
 
+// La máscara de la pieza **con sus agujeros**.
+//
+// `analyzeFrame` devuelve la máscara del contorno exterior RELLENA, y lo hace a
+// propósito: el fixture no puede sesgarse con los blobs de ruido que sobreviven
+// a la morfología. Pero rellenar borra los agujeros, y con ellos desaparecen el
+// diámetro interior de una arandela, el recuento de agujeros y la medida de cada
+// uno — justo las cotas que definen esa clase de pieza.
+//
+// El fallo no se veía en el banco de pruebas porque allí las máscaras se dibujan
+// a mano y conservan su agujero; solo se veía sondeando una imagen de verdad,
+// donde una arandela salía clasificada como «círculo» y con dos cotas.
+//
+// Se vuelve a segmentar y se cruza con la máscara rellena: eso devuelve los
+// agujeros y a la vez descarta cualquier mancha fuera de la pieza elegida. Va
+// aparte y no dentro de `analyzeFrame` porque esto lo paga quien MIDE —un gesto
+// puntual— y no cada frame del vídeo.
+[[nodiscard]] cv::Mat pieceMaskWithHoles(const cv::Mat& image, const cv::Mat& filledMask,
+                                         const SegmentationOptions& options = {});
+
 }  // namespace pci::vision

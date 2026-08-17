@@ -1953,6 +1953,74 @@ Verificado sobre piezas de medidas conocidas: agujeros de Ø70 y Ø100 se propon
 como Ø70,1 y Ø100,0; las cuatro esquinas de radio 45 salen como cuatro Arcos; un
 pinchazo de 6 px no genera propuesta.
 
+### «¿Cuánto mide esto?», contestado entero
+
+Es la pregunta que más se hace delante de una pieza, y la aplicación obligaba a
+un rodeo para responderla: abrir el editor de plantilla, pulsar «Medir
+automáticamente», revisar propuestas y aceptarlas como herramientas. Eso está
+bien para PREPARAR la vigilancia de una pieza en producción y es absurdo para
+mirar una pieza y querer sus cotas.
+
+Todo lo necesario existía suelto —`describeContour` saca perímetro, área y
+agujeros; `classifyShape` dice qué figura es; `proposeTools` deduce qué cotas
+tienen sentido para esa figura— y lo que faltaba era **quien lo juntara**. Eso es
+`inspection::measureWholePiece`, y el botón **Medir pieza** de la barra.
+
+El informe va en dos bloques, y la separación no es decorativa:
+
+- **El contorno**: perímetro, área, largo y ancho de la envolvente mínima
+  girada, agujeros, circularidad, tramos rectos y arcos. Van siempre, sea cual
+  sea la figura, porque no dependen de haberla reconocido: son lo que el
+  contorno **es**. Y son justo los que antes no se podían leer en ningún sitio
+  salvo un rótulo en una esquina del editor.
+- **Las cotas**, deducidas de la forma: Ø y redondez si es redonda, los dos
+  diámetros si es una arandela, cada lado y cada ángulo si es un polígono.
+
+Mezclarlos invita a buscarle tolerancia a un área que nadie ha declarado.
+
+Tres decisiones:
+
+- **No se corta.** El diálogo de propuestas se corta en doce porque es una lista
+  que hay que revisar a mano; esto es un informe, y un informe cortado contesta
+  a medias. Medido sobre un dodecágono: 8 hechos de contorno y 25 cotas.
+- **Nada sale marcado «OK».** Una cota recién medida está dentro de su propia
+  tolerancia por construcción —la banda se sugirió a partir de ella—, así que
+  marcarla sería dar por comprobado lo que nadie ha comprobado todavía.
+- **Medir y vigilar son dos decisiones.** El informe no toca la plantilla; hay
+  un botón para convertir las cotas en herramientas vigiladas. Unirlas llenaría
+  la plantilla de herramientas a cada consulta.
+
+Y la unidad de longitud **se resuelve una vez para el informe entero**. En
+automático cada medida elige mm o cm según su tamaño, y para una etiqueta suelta
+sobre la pieza está bien porque se lee sola; en una tabla no, porque una tabla
+existe para comparar filas y un perímetro en cm junto a un lado en mm obliga a
+convertir de cabeza en cada renglón.
+
+#### Los agujeros que la cadena real se comía
+
+Sondeando una arandela de verdad salió clasificada como **«círculo»**, sin
+diámetro interior y con cero agujeros. El motivo estaba tres capas más abajo:
+`analyzeFrame` devuelve la máscara con el contorno exterior **relleno** —a
+propósito, para que los blobs de ruido que sobreviven a la morfología no sesguen
+el fixture— y los **tres** sitios que miden le pasaban esa máscara: la ventana
+principal, el editor y `pci_probe`.
+
+Con eso, el Ø interior de una arandela, el recuento de agujeros y la medida de
+cada uno **no salían nunca en la aplicación real**. El banco de pruebas no podía
+verlo: allí las máscaras se dibujan a mano y conservan su agujero. El comentario
+del sondeo hasta lo decía —«la figura se pregunta con la MÁSCARA, sin ella una
+arandela sale como disco»— y le pasaba la máscara equivocada.
+
+`vision::pieceMaskWithHoles` vuelve a segmentar y cruza con la máscara rellena:
+eso devuelve los agujeros y a la vez descarta cualquier mancha fuera de la pieza
+elegida. Va aparte de `analyzeFrame` porque lo paga quien MIDE —un gesto
+puntual— y no cada frame del vídeo. Si la segunda segmentación no ve lo mismo
+que la primera, manda la máscara original: perder los agujeros es un
+inconveniente, perder la pieza es no medir nada.
+
+Verificado sobre una arandela dibujada con Ø380 y Ø160 px: medidos **379,9 y
+159,8** (0,02 % y 0,13 %).
+
 ### Sacar las medidas
 
 Se podían exportar los **puntos** del contorno a CSV y el historial de

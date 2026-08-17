@@ -112,8 +112,11 @@ std::vector<MeasurementRow> measurementRows(const std::vector<ToolRunResult>& re
 std::string measurementsToCsv(const std::vector<MeasurementRow>& rows) {
     std::ostringstream out;
     out.imbue(std::locale::classic());
+    // `grupo` va la ÚLTIMA a propósito: añadir una columna al final no mueve
+    // ninguna de las que ya había, así que una hoja de cálculo hecha con la
+    // versión anterior sigue apuntando a la misma columna.
     out << "herramienta,valor,unidad,pixeles,estado,tolerancia_min,tolerancia_max,"
-           "pieza,detalle\n";
+           "pieza,detalle,grupo\n";
     out << std::fixed;
     for (const auto& row : rows) {
         out << quoted(row.tool) << ',' << std::setprecision(4) << row.value << ','
@@ -125,7 +128,8 @@ std::string measurementsToCsv(const std::vector<MeasurementRow>& rows) {
         } else {
             out << ',';  // dos columnas vacías: no hay banda que escribir
         }
-        out << ',' << (row.pieceIndex + 1) << ',' << quoted(row.detail) << '\n';
+        out << ',' << (row.pieceIndex + 1) << ',' << quoted(row.detail) << ','
+            << quoted(row.group) << '\n';
     }
     return out.str();
 }

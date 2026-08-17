@@ -96,8 +96,15 @@ std::string analyzeOneFrame(const cv::Mat& gray, const ProbeOptions& options,
     // La figura se pregunta con la MÁSCARA, no solo con el contorno: sin ella
     // una arandela sale como disco y el Ø interior no aparecería por ningún
     // lado.
+    //
+    // Y con la máscara CON AGUJEROS, que es la mitad que faltaba: la que
+    // devuelve el análisis viene con el contorno exterior relleno, así que
+    // pasarla aquí tenía exactamente el efecto que este comentario decía
+    // evitar. Se sondeó una arandela de verdad y salió «circulo» con dos cotas.
+    const cv::Mat measureMask =
+        pci::vision::pieceMaskWithHoles(gray, piece.mask, config.segmentation);
     const pci::vision::ShapeClass shape = pci::vision::classifyShape(
-        outer != nullptr ? *outer : piece.contour.points, piece.mask);
+        outer != nullptr ? *outer : piece.contour.points, measureMask);
     report.shapeKind = pci::vision::shapeKindName(shape.kind);
     report.shapeSides = shape.sides;
     report.outerDiameterPx = shape.outerDiameter;
@@ -109,7 +116,7 @@ std::string analyzeOneFrame(const cv::Mat& gray, const ProbeOptions& options,
     double toolsMs = 0.0;
     if (options.measure) {
         const auto started = std::chrono::steady_clock::now();
-        const auto proposals = pci::inspection::proposeTools(gray, piece.mask, piece.fixture, {},
+        const auto proposals = pci::inspection::proposeTools(gray, measureMask, piece.fixture, {},
                                                             report.mmPerPixel);
         toolsMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                            started)

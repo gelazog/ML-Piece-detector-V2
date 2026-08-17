@@ -153,6 +153,29 @@ core::Result<std::vector<PieceAnalysis>> analyzeFrames(const cv::Mat& image,
     return core::Result<std::vector<PieceAnalysis>>::ok(std::move(pieces));
 }
 
+cv::Mat pieceMaskWithHoles(const cv::Mat& image, const cv::Mat& filledMask,
+                           const SegmentationOptions& options) {
+    if (image.empty() || filledMask.empty() || image.size() != filledMask.size()) {
+        return filledMask;  // sin nada que cruzar, lo que había es lo mejor que hay
+    }
+    auto segmented = segmentPiece(image, options);
+    if (!segmented.isOk()) {
+        // Si la segmentación falla ahora, la máscara rellena sigue siendo
+        // válida como silueta: se pierden los agujeros y no se pierde la pieza.
+        return filledMask;
+    }
+    cv::Mat withHoles;
+    cv::bitwise_and(filledMask, segmented.value(), withHoles);
+    // Un cruce que se queda sin pieza significa que la segunda segmentación no
+    // vio lo mismo que la primera (otra polaridad, otro umbral automático). En
+    // ese caso manda la máscara original: perder los agujeros es un
+    // inconveniente, perder la pieza es no medir nada.
+    if (cv::countNonZero(withHoles) < cv::countNonZero(filledMask) / 2) {
+        return filledMask;
+    }
+    return withHoles;
+}
+
 core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image, const PipelineConfig& config,
                                          StageTimings* timings) {
     if (image.empty()) {
