@@ -779,7 +779,10 @@ TEST(FreeZoneMode, DrawingTheFreeZoneUsesItAndErasingItLetsGo) {
     EXPECT_EQ(modeAfterFreeZoneChanged(WorkingZoneMode::Automatic, true),
               WorkingZoneMode::Free);
     EXPECT_EQ(modeAfterFreeZoneChanged(WorkingZoneMode::Fixed, true), WorkingZoneMode::Free);
-    EXPECT_EQ(modeAfterFreeZoneChanged(WorkingZoneMode::Free, false), WorkingZoneMode::Off);
+    // Se cae a AUTOMÁTICA: quitar una zona es dejar de restringir, no
+    // renunciar a la optimización que no puede cambiar ninguna respuesta.
+    EXPECT_EQ(modeAfterFreeZoneChanged(WorkingZoneMode::Free, false),
+              WorkingZoneMode::Automatic);
     // Borrar la libre no puede tocar a los modos que no la usaban.
     EXPECT_EQ(modeAfterFreeZoneChanged(WorkingZoneMode::Automatic, false),
               WorkingZoneMode::Automatic);

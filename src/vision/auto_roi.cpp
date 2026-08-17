@@ -112,14 +112,18 @@ WorkingZoneMode modeAfterFixedZoneChanged(WorkingZoneMode current, bool hasFixed
     // Sin zona, «fija» no puede seguir siendo el modo. Los otros no dependen de
     // ella y se quedan como estaban — incluida la libre, que tiene su propio
     // dibujo y no se entera de que la rectangular ha desaparecido.
-    return current == WorkingZoneMode::Fixed ? WorkingZoneMode::Off : current;
+    //
+    // Se cae a AUTOMÁTICA, no a «imagen entera». Quitar una zona es dejar de
+    // restringir, no renunciar a la optimización: la automática nunca cambia
+    // una respuesta, así que es el estado de reposo del programa.
+    return current == WorkingZoneMode::Fixed ? WorkingZoneMode::Automatic : current;
 }
 
 WorkingZoneMode modeAfterFreeZoneChanged(WorkingZoneMode current, bool hasFreeZone) {
     if (hasFreeZone) {
         return WorkingZoneMode::Free;
     }
-    return current == WorkingZoneMode::Free ? WorkingZoneMode::Off : current;
+    return current == WorkingZoneMode::Free ? WorkingZoneMode::Automatic : current;
 }
 
 double zoneSimplifyTolerancePx(double tracePerimeterPx) {

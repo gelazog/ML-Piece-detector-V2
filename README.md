@@ -171,11 +171,19 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    **Zona de trabajo** (pestaña *Rendimiento* de *Configurar*): dónde busca el
    programa la pieza en cada imagen. Si la pieza ocupa una esquina, mirar la
    imagen entera es tirar el resto del trabajo — medido sobre 1280×720 con una
-   pieza de 180×140, recortar va **6 veces más rápido**. Tres opciones:
-   **imagen entera** (nunca recorta), **zona automática** (recomendado: un
-   recorte que sigue a la pieza) y **zona de detección fija** (el rectángulo que
-   dibujaste a mano). La zona activa se **dibuja sobre el vídeo**: tienes que
-   poder ver por dónde está mirando el programa.
+   pieza de 180×140, recortar va **6 veces más rápido**. Cuatro opciones:
+   **imagen entera** (nunca recorta), **zona automática** (un recorte que sigue
+   a la pieza), **zona de detección fija** (el rectángulo que dibujaste a mano)
+   y **zona libre** (el contorno que dibujaste a pulso). La zona activa se
+   **dibuja sobre el vídeo**: tienes que poder ver por dónde está mirando el
+   programa.
+
+   **De fábrica viene en automática**, y también es a donde se vuelve al quitar
+   una zona dibujada. El motivo es que la automática no puede cambiar ninguna
+   respuesta: ante cualquier duda suelta el recorte y lo dice. Un ajuste que
+   solo puede ir más rápido no tiene por qué esperar a que alguien lo descubra
+   en una pestaña. Las dibujadas a mano sí cambian la respuesta —para eso las
+   dibujas— y por eso esas se eligen y no se ponen solas.
 
    La zona automática **se rinde y vuelve a la imagen entera** en cuanto duda —
    si pierde la pieza, si la pieza toca el borde del recorte o si cambia de

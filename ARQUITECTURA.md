@@ -605,6 +605,14 @@ Es un punto concreto de *una* pieza y no significa nada en las demás; con
 
 ### La zona de trabajo automática
 
+**Es el modo de fábrica**, y también al que se vuelve cuando se borra una zona
+dibujada a mano. La razón está medida y es la misma que gobierna el resto de la
+sección: la automática **no puede cambiar ninguna respuesta** —recortar no mueve
+ni una medida, y ante cualquier duda suelta el recorte y lo dice—, así que
+arrancar apagada dejaba una mejora de seis veces esperando a que alguien la
+descubriera en una pestaña. Las zonas dibujadas a mano sí cambian la respuesta,
+que es para lo que se dibujan, y por eso esas se eligen y nunca se ponen solas.
+
 `vision/auto_roi.*` decide en qué rectángulo buscar la pieza en el próximo
 frame. **No hizo falta mecanismo nuevo**: `PipelineConfig::roi` ya recortaba y
 `analyzeFrame` ya devolvía las coordenadas en el marco completo; lo que faltaba

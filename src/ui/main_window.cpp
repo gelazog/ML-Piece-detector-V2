@@ -807,8 +807,14 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             repos_.settings->getDouble("det_min_area", 0.005).value(), 0.0001, 0.5);
         pipelineConfig_.maxAreaFraction = std::clamp(
             repos_.settings->getDouble("det_max_area", 0.9).value(), 0.1, 1.0);
+        // Por defecto, AUTOMÁTICA. Arrancar en «imagen entera» dejaba la
+        // optimización apagada para todo el que no supiera que existe, y la
+        // automática no puede cambiar ninguna respuesta: ante la duda —se
+        // pierde la pieza, toca el borde, cambia de tamaño de golpe— vuelve
+        // sola al frame entero y lo dice. Un ajuste que solo puede ir más
+        // rápido no tiene por qué esperar a que alguien lo descubra.
         zoneMode_ = vision::workingZoneModeFromKey(
-            repos_.settings->getString("work_zone_mode", "off").value().c_str());
+            repos_.settings->getString("work_zone_mode", "auto").value().c_str());
     }
     autoTimer_.setInterval(autoIntervalMs_);
     if (repos_.engine != nullptr) {

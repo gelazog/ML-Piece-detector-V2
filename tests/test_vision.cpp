@@ -1837,8 +1837,12 @@ TEST(WorkingZone, DrawingAZoneIsUsingIt) {
 TEST(WorkingZone, RemovingTheZoneTurnsOffTheModeThatUsedIt) {
     // Si no, «fija» quedaría apuntando a un rectángulo que ya no existe, y el
     // programa diría que trabaja en una zona mientras mira la imagen entera.
+    //
+    // Se cae a AUTOMÁTICA, no a «imagen entera». Quitar una zona es dejar de
+    // restringir, no renunciar a la optimización: la automática nunca cambia
+    // una respuesta, así que es el estado de reposo del programa.
     EXPECT_EQ(modeAfterFixedZoneChanged(WorkingZoneMode::Fixed, false),
-              WorkingZoneMode::Off);
+              WorkingZoneMode::Automatic);
     // Los otros dos no dependen de la zona dibujada y no se tocan.
     EXPECT_EQ(modeAfterFixedZoneChanged(WorkingZoneMode::Automatic, false),
               WorkingZoneMode::Automatic);

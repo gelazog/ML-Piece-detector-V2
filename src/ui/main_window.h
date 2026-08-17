@@ -230,7 +230,8 @@ private:
     ConfigureDialog* configureDialog_ = nullptr;
     int configureTab_ = 0;
     // Zona de trabajo automática (C3).
-    vision::WorkingZoneMode zoneMode_ = vision::WorkingZoneMode::Off;
+    // Automática de fábrica: es la que no puede cambiar una respuesta.
+    vision::WorkingZoneMode zoneMode_ = vision::WorkingZoneMode::Automatic;
     vision::AutoRoiTracker autoRoi_;
     int expectedPieces_ = 1;  // de la pieza seleccionada (C5)
     int lastPieceCount_ = -1;  // piezas vistas en el último análisis
