@@ -2681,8 +2681,30 @@ void MainWindow::updateEdgeBrushAvailability() {
 }
 
 void MainWindow::onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& forceBackground) {
-    pipelineConfig_.forcePiece = forcePiece;
-    pipelineConfig_.forceBackground = forceBackground;
+    // La corrección viene ya clonada del lienzo, pero se vuelve a clonar aquí
+    // por lo mismo: estas máscaras viajan a un hilo de trabajo, y compartir un
+    // búfer que otro hilo puede reasignar es la clase de fallo que se manifiesta
+    // como una aplicación que se cierra sola sin decir nada.
+    pipelineConfig_.forcePiece = forcePiece.clone();
+    pipelineConfig_.forceBackground = forceBackground.clone();
+
+    // Y se comprueba que la corrección CORRESPONDE a la imagen que se está
+    // analizando. Si no, `applyMaskCorrection` la ignora en silencio —hace bien,
+    // aplicarla desplazada sería peor— pero el operador vería su pincelada
+    // pintada en pantalla y el contorno sin moverse, sin ninguna explicación.
+    if (!lastFrame_.isNull() && !pipelineConfig_.forcePiece.empty() &&
+        (pipelineConfig_.forcePiece.cols != lastFrame_.width() ||
+         pipelineConfig_.forcePiece.rows != lastFrame_.height())) {
+        statusBar()->showMessage(
+            tr("La corrección es de una imagen de %1×%2 y ahora se ve una de %3×%4: no se "
+               "puede aplicar. Vuelve a corregir sobre esta.")
+                .arg(pipelineConfig_.forcePiece.cols)
+                .arg(pipelineConfig_.forcePiece.rows)
+                .arg(lastFrame_.width())
+                .arg(lastFrame_.height()));
+        return;
+    }
+
     // Se reanaliza en el acto: el sentido de corregir es VER el borde nuevo.
     maybeStartAnalysis();
     const int added = forcePiece.empty() ? 0 : cv::countNonZero(forcePiece);

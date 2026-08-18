@@ -2555,3 +2555,48 @@ TEST(EdgeBrush, TheCorrectionActuallyChangesWhatTheAnalysisFinds) {
     EXPECT_GT(widthCorrected, widthWithShadow + 40)
         << "la corrección no cambió lo que encuentra el análisis";
 }
+
+TEST(EdgeBrush, TheEmittedCorrectionIsNotTheCanvasBuffer) {
+    // LA CAUSA DE QUE LA APLICACIÓN SE CERRARA SOLA.
+    //
+    // `cv::Mat` es de recuento de referencias: entregar la máscara interna tal
+    // cual daba a quien la recibía el MISMO búfer que el lienzo iba a seguir
+    // pintando. Y quien la recibe la pasa a un hilo de trabajo para analizar,
+    // así que un hilo escribía mientras el otro leía — comportamiento
+    // indefinido, y en la práctica la aplicación cerrándose a mitad de una
+    // corrección.
+    //
+    // La carrera no se puede provocar desde un test —depende del planificador—
+    // pero sí se puede comprobar la propiedad que la impide: lo que se entrega
+    // no cambia cuando el lienzo sigue pintando.
+    EditorCanvas canvas;
+    canvas.resize(kWidgetWidth, kWidgetHeight);
+    canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+
+    cv::Mat firstDelivery;
+    QObject::connect(&canvas, &EditorCanvas::edgeCorrected,
+                     [&](const cv::Mat& add, const cv::Mat&) {
+                         if (firstDelivery.empty()) {
+                             firstDelivery = add;  // SIN clonar: es lo que se prueba
+                         }
+                     });
+
+    const ViewTransform view = viewAt(1.0);
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece, 20);
+    press(&canvas, toScreen(view, {600.0F, 400.0F}));
+    release(&canvas, toScreen(view, {600.0F, 400.0F}));
+    ASSERT_FALSE(firstDelivery.empty());
+    const int whenDelivered = cv::countNonZero(firstDelivery);
+    ASSERT_GT(whenDelivered, 0);
+
+    // Segunda pincelada, muy lejos de la primera.
+    press(&canvas, toScreen(view, {200.0F, 800.0F}));
+    release(&canvas, toScreen(view, {200.0F, 800.0F}));
+
+    const int now = cv::countNonZero(firstDelivery);
+    std::printf("  [pincel] lo entregado tenía %d px y sigue teniendo %d tras pintar más\n",
+                whenDelivered, now);
+    EXPECT_EQ(now, whenDelivered)
+        << "lo entregado creció solo: comparte búfer con el lienzo, y eso es la carrera "
+           "que cerraba la aplicación";
+}

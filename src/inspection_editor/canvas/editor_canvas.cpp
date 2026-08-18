@@ -252,7 +252,7 @@ void EditorCanvas::clearEdgeCorrection() {
     forcePiece_ = cv::Mat();
     forceBackground_ = cv::Mat();
     update();
-    emit edgeCorrected(forcePiece_, forceBackground_);
+    emit edgeCorrected(forcePiece_.clone(), forceBackground_.clone());
 }
 
 // Una pincelada en un punto de la imagen.
@@ -1019,7 +1019,15 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         // en cada píxel de la pincelada dejaría el pincel a tirones.
         painting_ = false;
         lastPaint_.reset();
-        emit edgeCorrected(forcePiece_, forceBackground_);
+        // COPIAS PROFUNDAS, y no es una precaución de más.
+        //
+        // `cv::Mat` es de recuento de referencias: entregar `forcePiece_` tal
+        // cual da a quien lo reciba el MISMO búfer de píxeles que este lienzo va
+        // a seguir pintando en la próxima pincelada. Y quien lo recibe lo pasa a
+        // un hilo de trabajo para analizar, así que un hilo escribe mientras el
+        // otro lee — comportamiento indefinido, y en la práctica la aplicación
+        // cerrándose sola a mitad de una corrección.
+        emit edgeCorrected(forcePiece_.clone(), forceBackground_.clone());
         return;
     }
 
