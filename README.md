@@ -291,6 +291,22 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    disparan veinte fotos de las que interesan tres, y una carpeta con diecisiete
    descartes es peor que no tener carpeta.
 
+   **Corregir el borde a mano** (botón *Corregir borde*): cuando la detección se
+   equivoca —una sombra que se come un lado, un reflejo que parte la pieza—
+   puedes **pintar** sobre la imagen para añadir a la pieza lo que le falta o
+   quitarle lo que le sobra. Verde lo que añades, rojo lo que quitas, y el
+   círculo del pincel sigue al cursor para que veas cuánto abarca antes de
+   pintar. Al soltar se reanaliza y ves el borde nuevo.
+
+   **Solo con una foto o una imagen abierta**, y el botón te lo dice cuando no:
+   en vídeo en vivo el contorno se recalcula en cada frame, así que un borde
+   corregido a mano dejaría de valer en cuanto la pieza se moviera. Captura una
+   foto y corrígela ahí.
+
+   La corrección vale para **esa imagen**: no cambia cómo se detectan las demás.
+   Si tienes que corregir siempre lo mismo, lo que hay que ajustar es la
+   detección (*Configurar ▸ Detección*), no cada foto.
+
 3. **Medir pieza** (botón de la barra): la respuesta a *¿cuánto mide esto?*, de
    una vez y sin rodeos. Mira el contorno de lo que tengas delante y te da:
 

@@ -81,6 +81,23 @@ public:
     [[nodiscard]] bool freeZonePickMode() const { return freeZonePick_; }
     void setFreeZone(bool visible, const std::vector<cv::Point>& imagePolygon = {});
 
+    // --- pincel de borde ---
+    //
+    // Corregir a mano dónde está el borde de la pieza cuando la detección se
+    // equivoca: una sombra que se come un lado, un reflejo que parte la pieza.
+    // Se pinta sobre la MÁSCARA, no sobre la imagen.
+    //
+    // Solo tiene sentido con una imagen QUIETA. En vídeo en vivo el contorno se
+    // recalcula en cada frame, así que un borde corregido a mano sería mentira
+    // en cuanto la pieza se moviera un píxel — quien lo encienda debe ofrecerlo
+    // solo con foto o fichero.
+    enum class EdgeBrush { Off, AddPiece, RemovePiece };
+    void setEdgeBrush(EdgeBrush mode, int radiusPx = 12);
+    [[nodiscard]] EdgeBrush edgeBrush() const { return brush_; }
+    // Las dos máscaras acumuladas, para enseñarlas y para deshacerlas.
+    void setEdgeCorrection(const cv::Mat& forcePiece, const cv::Mat& forceBackground);
+    void clearEdgeCorrection();
+
     // --- selección de rasgo distintivo ---
     // Con el modo activo, el siguiente clic sobre la pieza emite pointPicked
     // (coords de imagen) y el modo se desactiva solo.
@@ -169,6 +186,11 @@ signals:
     // botón pulsado, y un botón que se queda hundido después de cancelar dice
     // que el programa sigue esperando un trazo que ya nadie va a hacer.
     void freeZoneCancelled();
+    // El operador ha soltado una pincelada: las dos máscaras completas, en
+    // coordenadas de imagen. Se emiten enteras y no el trazo suelto porque quien
+    // las usa las necesita completas, y así no hay dos acumuladores que
+    // mantener sincronizados.
+    void edgeCorrected(const cv::Mat& forcePiece, const cv::Mat& forceBackground);
     void toolRightClicked(int index);
     // Un gesto claramente intencionado que no pudo convertirse en herramienta.
     // Existe para que nada se descarte en silencio: si el operador traza y no
@@ -225,6 +247,7 @@ private:
     [[nodiscard]] QString measureText(const ToolRunResult& result) const;
     void paintCreationPreview(QPainter& painter) const;
     void paintFreeZone(QPainter& painter) const;
+    void paintEdgeCorrection(QPainter& painter) const;
     // Cierra el trazo: lo simplifica, y si no encierra área lo dice en vez de
     // descartarlo en silencio.
     void finishFreeZone(const std::vector<cv::Point>& trace);
@@ -317,6 +340,17 @@ private:
     cv::Rect regionRect_;
 
     // Zona libre: la guardada y la que se está trazando ahora.
+    // Pincel de borde.
+    EdgeBrush brush_ = EdgeBrush::Off;
+    int brushRadius_ = 12;
+    bool painting_ = false;
+    // Último punto del trazo en curso: el pincel une puntos consecutivos en vez
+    // de pintar círculos sueltos, o un movimiento rápido dejaría huecos.
+    std::optional<cv::Point> lastPaint_;
+    cv::Mat forcePiece_;
+    cv::Mat forceBackground_;
+    void paintAt(const cv::Point2f& imagePoint);
+
     bool freeZonePick_ = false;
     bool freeZoneVisible_ = false;
     std::vector<cv::Point> freeZone_;      // la activa, coords de imagen

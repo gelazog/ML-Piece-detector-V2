@@ -27,6 +27,43 @@ cv::Rect croppingRect(const PipelineConfig& config, const cv::Rect& frameRect) {
     return config.roi & frameRect;
 }
 
+// Aplica la corrección manual del borde sobre la máscara ya segmentada.
+//
+// Se hace aquí y no antes por lo mismo que el polígono de la zona libre: pintar
+// sobre la IMAGEN metería bordes artificiales que la segmentación leería como
+// contornos de verdad. Sobre la máscara, lo marcado simplemente cuenta o deja
+// de contar.
+void applyMaskCorrection(cv::Mat& mask, const PipelineConfig& config, const cv::Rect& crop,
+                         bool cropped) {
+    if (mask.empty()) {
+        return;
+    }
+    const auto region = [&](const cv::Mat& correction) {
+        if (correction.empty() || correction.type() != CV_8UC1) {
+            return cv::Mat();
+        }
+        if (!cropped) {
+            return correction.size() == mask.size() ? correction : cv::Mat();
+        }
+        // La corrección viene en coordenadas de la imagen completa y la máscara
+        // está en las del recorte.
+        const cv::Rect valid = crop & cv::Rect(0, 0, correction.cols, correction.rows);
+        return valid.size() == mask.size() ? correction(valid) : cv::Mat();
+    };
+
+    // El orden importa y es el del pincel: primero se añade lo que falta y
+    // después se quita lo que sobra, así marcar fondo sobre algo recién marcado
+    // como pieza gana lo último que hizo el operador.
+    if (const cv::Mat add = region(config.forcePiece); !add.empty()) {
+        cv::bitwise_or(mask, add, mask);
+    }
+    if (const cv::Mat remove = region(config.forceBackground); !remove.empty()) {
+        cv::Mat keep;
+        cv::bitwise_not(remove, keep);
+        cv::bitwise_and(mask, keep, mask);
+    }
+}
+
 // Borra de la máscara todo lo que cae FUERA del polígono.
 //
 // Se aplica sobre la máscara ya segmentada y no sobre la imagen, y la
@@ -125,6 +162,7 @@ core::Result<std::vector<PieceAnalysis>> analyzeFrames(const cv::Mat& image,
     if (!mask.isOk()) {
         return core::Result<std::vector<PieceAnalysis>>::err(mask.error().message);
     }
+    applyMaskCorrection(mask.value(), config, roi, useRoi);
     keepOnlyInsidePolygon(mask.value(), config, roi, useRoi);
 
     auto contours =
@@ -209,6 +247,7 @@ core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image, const PipelineCon
     if (!mask.isOk()) {
         return core::Result<PieceAnalysis>::err(mask.error().message);
     }
+    applyMaskCorrection(mask.value(), config, roi, useRoi);
     keepOnlyInsidePolygon(mask.value(), config, roi, useRoi);
     mark(timings != nullptr ? &timings->segment : nullptr);
 

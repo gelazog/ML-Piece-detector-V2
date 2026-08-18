@@ -2349,3 +2349,96 @@ TEST(MainToolbar, InsertingTheOpenedFileDoesNotLookLikeChoosingASource) {
     EXPECT_EQ(sources->currentText(), chosen)
         << "el elemento elegido cambió de verdad: entonces el aviso sí era una elección";
 }
+
+// ---------------------------------------------------------------------------
+// El pincel de borde
+// ---------------------------------------------------------------------------
+
+TEST(EdgeBrush, PaintingMarksTheAreaAndEmitsItOnRelease) {
+    EditorCanvas canvas;
+    canvas.resize(kWidgetWidth, kWidgetHeight);
+    canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+
+    cv::Mat lastAdd;
+    cv::Mat lastRemove;
+    int emissions = 0;
+    QObject::connect(&canvas, &EditorCanvas::edgeCorrected,
+                     [&](const cv::Mat& add, const cv::Mat& remove) {
+                         lastAdd = add.clone();
+                         lastRemove = remove.clone();
+                         ++emissions;
+                     });
+
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece, 20);
+    const ViewTransform view = viewAt(1.0);
+    press(&canvas, toScreen(view, {600.0F, 400.0F}));
+    moveTo(&canvas, toScreen(view, {700.0F, 400.0F}));
+    // Se emite al SOLTAR, no en cada punto: reanalizar por cada píxel del trazo
+    // dejaría el pincel a tirones.
+    EXPECT_EQ(emissions, 0) << "se emitió a mitad del trazo";
+    release(&canvas, toScreen(view, {700.0F, 400.0F}));
+
+    ASSERT_EQ(emissions, 1);
+    ASSERT_FALSE(lastAdd.empty()) << "la pincelada no marcó nada";
+    EXPECT_EQ(lastAdd.size(), cv::Size(kImageWidth, kImageHeight))
+        << "la corrección no está en coordenadas de imagen";
+    const int painted = cv::countNonZero(lastAdd);
+    std::printf("  [pincel] un trazo de 100 px con radio 20 marca %d px\n", painted);
+    EXPECT_GT(painted, 0);
+    // Y marca DONDE se pintó, no en cualquier sitio.
+    EXPECT_EQ(lastAdd.at<uchar>(400, 650), 255) << "no marcó por donde pasó el trazo";
+    EXPECT_EQ(lastAdd.at<uchar>(100, 100), 0) << "marcó donde no se pintó";
+}
+
+TEST(EdgeBrush, PaintingOneColourErasesFromTheOther) {
+    // Sin esto, marcar fondo sobre algo marcado como pieza dejaría las dos
+    // máscaras diciendo cosas opuestas del mismo píxel, y el resultado
+    // dependería del orden en que se aplicaran — exactamente la clase de estado
+    // que nadie puede razonar.
+    EditorCanvas canvas;
+    canvas.resize(kWidgetWidth, kWidgetHeight);
+    canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+
+    cv::Mat add;
+    cv::Mat remove;
+    QObject::connect(&canvas, &EditorCanvas::edgeCorrected,
+                     [&](const cv::Mat& a, const cv::Mat& r) {
+                         add = a.clone();
+                         remove = r.clone();
+                     });
+
+    const ViewTransform view = viewAt(1.0);
+    const QPointF spot = toScreen(view, {600.0F, 400.0F});
+
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece, 20);
+    press(&canvas, spot);
+    release(&canvas, spot);
+    ASSERT_FALSE(add.empty());
+    ASSERT_EQ(add.at<uchar>(400, 600), 255);
+
+    // Ahora se pinta lo mismo como fondo: tiene que desaparecer de «añadir».
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::RemovePiece, 20);
+    press(&canvas, spot);
+    release(&canvas, spot);
+    ASSERT_FALSE(remove.empty());
+    EXPECT_EQ(remove.at<uchar>(400, 600), 255) << "no marcó como fondo";
+    EXPECT_EQ(add.at<uchar>(400, 600), 0)
+        << "el mismo píxel sigue marcado como pieza Y como fondo";
+}
+
+TEST(EdgeBrush, WithTheBrushOffAClickDoesNotPaint) {
+    // El pincel apagado no puede pintar: si un clic marcara, seleccionar una
+    // herramienta llenaría la imagen de correcciones sin que nadie lo pidiera.
+    EditorCanvas canvas;
+    canvas.resize(kWidgetWidth, kWidgetHeight);
+    canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+
+    int emissions = 0;
+    QObject::connect(&canvas, &EditorCanvas::edgeCorrected,
+                     [&](const cv::Mat&, const cv::Mat&) { ++emissions; });
+
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::Off);
+    const ViewTransform view = viewAt(1.0);
+    drag(&canvas, toScreen(view, {600.0F, 400.0F}), toScreen(view, {700.0F, 450.0F}));
+    EXPECT_EQ(emissions, 0) << "pintó con el pincel apagado";
+}

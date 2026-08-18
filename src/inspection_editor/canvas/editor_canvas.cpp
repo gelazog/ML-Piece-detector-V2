@@ -2,6 +2,8 @@
 
 #include "inspection_editor/canvas/canvas_geometry.h"
 
+#include <opencv2/imgproc.hpp>
+
 #include <QFontMetrics>
 #include <QLineF>
 #include <QMouseEvent>
@@ -222,6 +224,72 @@ void EditorCanvas::finishFreeZone(const std::vector<cv::Point>& trace) {
     emit freeZonePicked(polygon);
 }
 
+
+void EditorCanvas::setEdgeBrush(EdgeBrush mode, int radiusPx) {
+    brush_ = mode;
+    brushRadius_ = std::max(1, radiusPx);
+    painting_ = false;
+    // Cruz al pintar: el cursor tiene que decir que el clic va a marcar y no a
+    // seleccionar.
+    restoreCursor();
+    update();
+}
+
+void EditorCanvas::setEdgeCorrection(const cv::Mat& forcePiece,
+                                     const cv::Mat& forceBackground) {
+    forcePiece_ = forcePiece.clone();
+    forceBackground_ = forceBackground.clone();
+    update();
+}
+
+void EditorCanvas::clearEdgeCorrection() {
+    forcePiece_ = cv::Mat();
+    forceBackground_ = cv::Mat();
+    update();
+    emit edgeCorrected(forcePiece_, forceBackground_);
+}
+
+// Una pincelada en un punto de la imagen.
+//
+// Las máscaras se crean del tamaño de la imagen la primera vez que hacen falta:
+// reservarlas siempre costaría dos matrices del tamaño del frame por cada
+// lienzo, y lo normal es no corregir nada.
+void EditorCanvas::paintAt(const cv::Point2f& imagePoint) {
+    if (brush_ == EdgeBrush::Off || image_.isNull()) {
+        return;
+    }
+    const cv::Size size(image_.width(), image_.height());
+    cv::Mat& target = brush_ == EdgeBrush::AddPiece ? forcePiece_ : forceBackground_;
+    cv::Mat& other = brush_ == EdgeBrush::AddPiece ? forceBackground_ : forcePiece_;
+    if (target.empty() || target.size() != size) {
+        target = cv::Mat::zeros(size, CV_8UC1);
+    }
+    const cv::Point centre(cvRound(imagePoint.x), cvRound(imagePoint.y));
+    // Un SEGMENTO desde el punto anterior, no un círculo suelto.
+    //
+    // Lo destapó el test: pintando un círculo por cada evento del ratón, un
+    // trazo de 100 px con radio 20 marcaba dos manchas y dejaba el medio sin
+    // tocar. El ratón no emite un evento por píxel, así que a poco que se mueva
+    // rápido el pincel pinta a puntos — y el operador tendría que repasar
+    // despacio para que no quedaran huecos.
+    if (lastPaint_.has_value()) {
+        cv::line(target, *lastPaint_, centre, cv::Scalar(255), brushRadius_ * 2,
+                 cv::LINE_8);
+    }
+    cv::circle(target, centre, brushRadius_, cv::Scalar(255), cv::FILLED);
+    // Y se borra del contrario. Sin esto, marcar fondo sobre algo marcado como
+    // pieza dejaría las dos máscaras diciendo cosas opuestas del mismo píxel, y
+    // el resultado dependería del orden en que se aplicaran — que es
+    // exactamente la clase de estado que nadie puede razonar.
+    if (!other.empty() && other.size() == size) {
+        if (lastPaint_.has_value()) {
+            cv::line(other, *lastPaint_, centre, cv::Scalar(0), brushRadius_ * 2, cv::LINE_8);
+        }
+        cv::circle(other, centre, brushRadius_, cv::Scalar(0), cv::FILLED);
+    }
+    lastPaint_ = centre;
+}
+
 void EditorCanvas::setPickMode(bool enabled) {
     pickMode_ = enabled;
     setCursor(enabled ? Qt::PointingHandCursor
@@ -425,7 +493,8 @@ QPointF EditorCanvas::clampedPan(const QPointF& pan) const {
 }
 
 void EditorCanvas::restoreCursor() {
-    const bool aiming = createType_.has_value() || regionPick_ || freeZonePick_ || pickMode_;
+    const bool aiming = createType_.has_value() || regionPick_ || freeZonePick_ ||
+                        pickMode_ || brush_ != EdgeBrush::Off;
     setCursor(aiming ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
@@ -707,6 +776,15 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
         return;
     }
 
+    // Pincel de borde: pinta desde el primer clic y sigue mientras se arrastra.
+    if (brush_ != EdgeBrush::Off) {
+        painting_ = true;
+        lastPaint_.reset();  // un trazo nuevo no se une al anterior
+        paintAt(pressPoint);
+        update();
+        return;
+    }
+
     // Zona libre: todavía no se sabe si esto es un trazo o un clic. Se decide al
     // mover —o al no moverse—, así que aquí solo se abre el gesto.
     if (freeZonePick_) {
@@ -772,12 +850,18 @@ void EditorCanvas::mouseMoveEvent(QMouseEvent* event) {
     // Trazando la zona libre a clics hace falta seguir el cursor aunque el
     // tablero esté apagado: sin eso no hay línea elástica, y marcar vértices a
     // ciegas es dibujar un polígono que solo se ve cuando ya está cerrado.
-    if ((boardVisible_ || rulerVisible_ || freeZonePick_) && !image_.isNull()) {
+    if ((boardVisible_ || rulerVisible_ || freeZonePick_ || brush_ != EdgeBrush::Off) &&
+        !image_.isNull()) {
         cursorWidget_ = event->position();
         update();
     }
     if (panning_) {
         pan_ = clampedPan(panStartOffset_ + (event->position() - panStartWidget_));
+        update();
+        return;
+    }
+    if (painting_) {
+        paintAt(widgetToImage(event->position()));
         update();
         return;
     }
@@ -903,6 +987,15 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         return;
     }
     const cv::Point2f p = widgetToImage(event->position());
+
+    if (painting_) {
+        // Se emite al SOLTAR y no en cada punto del trazo: reanalizar la imagen
+        // en cada píxel de la pincelada dejaría el pincel a tirones.
+        painting_ = false;
+        lastPaint_.reset();
+        emit edgeCorrected(forcePiece_, forceBackground_);
+        return;
+    }
 
     if (freeDragging_) {
         freeDragging_ = false;
@@ -2377,6 +2470,52 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
                              .normalized());
     }
     paintFreeZone(painter);
+    paintEdgeCorrection(painter);
+}
+
+// Lo que el operador ha marcado a mano, encima de la imagen.
+//
+// Sin esto, el pincel sería un gesto a ciegas: se pinta, la detección cambia, y
+// no hay forma de saber QUÉ se marcó ni de encontrar la pincelada que sobra.
+//
+// Verde lo añadido y rojo lo quitado, translúcidos para no tapar el borde que
+// se está corrigiendo — que es justo lo que hay que mirar mientras se pinta.
+void EditorCanvas::paintEdgeCorrection(QPainter& painter) const {
+    const auto tint = [&](const cv::Mat& mask, QColor colour) {
+        if (mask.empty() || mask.type() != CV_8UC1 || image_.isNull()) {
+            return;
+        }
+        if (mask.cols != image_.width() || mask.rows != image_.height()) {
+            return;  // de otra resolución: se ignora, como en el pipeline
+        }
+        QImage layer(mask.cols, mask.rows, QImage::Format_ARGB32_Premultiplied);
+        layer.fill(Qt::transparent);
+        const QRgb rgba = qPremultiply(qRgba(colour.red(), colour.green(), colour.blue(), 90));
+        for (int y = 0; y < mask.rows; ++y) {
+            const uchar* row = mask.ptr<uchar>(y);
+            auto* out = reinterpret_cast<QRgb*>(layer.scanLine(y));
+            for (int x = 0; x < mask.cols; ++x) {
+                if (row[x] != 0) {
+                    out[x] = rgba;
+                }
+            }
+        }
+        painter.drawImage(targetRect(), layer);
+    };
+    tint(forcePiece_, QColor(0, 210, 90));
+    tint(forceBackground_, QColor(230, 60, 60));
+
+    // El tamaño del pincel bajo el cursor: sin verlo hay que pintar para
+    // descubrir cuánto abarca, y eso ya es una pincelada que deshacer.
+    if (brush_ != EdgeBrush::Off && cursorWidget_.has_value()) {
+        QPen pen(brush_ == EdgeBrush::AddPiece ? QColor(0, 210, 90) : QColor(230, 60, 60));
+        pen.setWidthF(1.5);
+        pen.setCosmetic(true);
+        painter.setPen(pen);
+        painter.setBrush(Qt::NoBrush);
+        painter.drawEllipse(*cursorWidget_, brushRadius_ * displayScale(),
+                            brushRadius_ * displayScale());
+    }
 }
 
 // La zona libre: la activa y la que se está trazando.

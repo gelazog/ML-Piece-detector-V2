@@ -39,6 +39,26 @@ struct PipelineConfig {
     // para recortar, así que la ganancia de velocidad de la zona se conserva y
     // el polígono solo añade precisión. Las dos cosas suman en vez de competir.
     std::vector<cv::Point> roiPolygon;
+    // --- Corrección manual del borde ---
+    //
+    // Dos máscaras del tamaño del frame (vacías = sin corrección): lo que el
+    // operador ha marcado como pieza a mano, y lo que ha marcado como fondo. Se
+    // aplican justo después de segmentar, en el mismo sitio donde la zona libre
+    // recorta, y por la misma razón: sobre la máscara ya segmentada, no sobre la
+    // imagen.
+    //
+    // Dos máscaras y no una con tres estados porque así cada una dice UNA cosa y
+    // se combinan sin ambigüedad. Y en este orden: primero se añade lo que falta
+    // y después se quita lo que sobra, de modo que marcar fondo sobre algo que
+    // se acababa de marcar pieza gana lo último que hizo el operador — que es lo
+    // que espera cualquiera que haya usado un pincel.
+    //
+    // OJO: esto solo tiene sentido sobre una imagen QUIETA. En vídeo en vivo el
+    // contorno se recalcula en cada frame, así que un borde corregido a mano
+    // sería mentira en cuanto la pieza se moviera un píxel. Quien lo ofrezca
+    // tiene que ofrecerlo solo con una foto o un fichero.
+    cv::Mat forcePiece;
+    cv::Mat forceBackground;
     // Cuántas piezas se esperan en la imagen (C5). No cambia la detección: la
     // usa quien juzga, para poder decir "esperaba 6, veo 5". 0 = no vigilar.
     int expectedPieces = 1;

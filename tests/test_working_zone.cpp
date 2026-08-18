@@ -883,3 +883,95 @@ TEST(WorkingZone, TheAutomaticCropCannotBeTheDefaultBecauseItHidesPieces) {
         << "el valor de fábrica esconde piezas";
     EXPECT_EQ(workingZoneModeFromKey("off"), WorkingZoneMode::Off);
 }
+
+// ---------------------------------------------------------------------------
+// Corregir el borde a mano: cuando la detección se equivoca en UNA foto
+// ---------------------------------------------------------------------------
+
+TEST(MaskCorrection, PaintingBackWhatAShadowAteRestoresTheRealOutline) {
+    // El caso que motiva la herramienta: una sombra pegada a un lado de la pieza
+    // hace que la segmentación la parta y se coma ese trozo. En vídeo en vivo
+    // esto no se puede corregir a mano —el contorno se recalcula en cada frame—
+    // pero sobre una foto quieta sí, y es donde hace falta.
+    const cv::Rect piece(400, 200, 240, 180);
+    cv::Mat scene = sceneWithPiece(piece);
+
+    // La sombra: una franja oscura que se come el borde derecho de la pieza.
+    const cv::Rect eaten(piece.x + piece.width - 60, piece.y, 60, piece.height);
+    scene(eaten).setTo(cv::Scalar(30, 26, 24));
+
+    const auto damaged = analyzeFrame(scene, PipelineConfig{});
+    ASSERT_TRUE(damaged.isOk()) << damaged.error().message;
+    const cv::Rect withShadow = cv::boundingRect(damaged.value().contour.points);
+    ASSERT_LT(withShadow.width, piece.width - 30)
+        << "la sombra no llegó a comerse el borde: el test no reproduce el caso";
+
+    // El operador pinta ese trozo como PIEZA.
+    PipelineConfig corrected;
+    corrected.forcePiece = cv::Mat::zeros(scene.size(), CV_8UC1);
+    corrected.forcePiece(eaten).setTo(cv::Scalar(255));
+
+    const auto fixed = analyzeFrame(scene, corrected);
+    ASSERT_TRUE(fixed.isOk()) << fixed.error().message;
+    const cv::Rect restored = cv::boundingRect(fixed.value().contour.points);
+    std::printf("  [borde] con sombra %d px de ancho; corregido %d; real %d\n",
+                withShadow.width, restored.width, piece.width);
+    EXPECT_NEAR(restored.width, piece.width, 4)
+        << "pintar el trozo comido no devolvió el ancho real de la pieza";
+}
+
+TEST(MaskCorrection, PaintingBackgroundWinsOverPaintingPiece) {
+    // El orden del pincel: primero se añade lo que falta y después se quita lo
+    // que sobra, así marcar fondo sobre algo recién marcado como pieza gana lo
+    // ÚLTIMO que hizo el operador — que es lo que espera cualquiera que haya
+    // usado un pincel. Si ganara lo primero, corregirse una pincelada sería
+    // imposible.
+    const cv::Rect piece(400, 200, 240, 180);
+    const cv::Mat scene = sceneWithPiece(piece);
+    const cv::Rect blob(120, 120, 120, 120);
+
+    PipelineConfig added;
+    added.forcePiece = cv::Mat::zeros(scene.size(), CV_8UC1);
+    added.forcePiece(blob).setTo(cv::Scalar(255));
+    const auto withBlob = analyzeFrames(scene, added);
+    ASSERT_TRUE(withBlob.isOk()) << withBlob.error().message;
+    ASSERT_EQ(withBlob.value().size(), 2U) << "la mancha pintada no llegó a contar como pieza";
+
+    // Y ahora se pinta encima como fondo: la mancha desaparece.
+    PipelineConfig undone = added;
+    undone.forceBackground = cv::Mat::zeros(scene.size(), CV_8UC1);
+    undone.forceBackground(blob).setTo(cv::Scalar(255));
+    const auto back = analyzeFrames(scene, undone);
+    ASSERT_TRUE(back.isOk()) << back.error().message;
+    EXPECT_EQ(back.value().size(), 1U)
+        << "pintar fondo encima no deshizo la pincelada anterior";
+}
+
+TEST(MaskCorrection, WithoutCorrectionNothingChangesAtAll) {
+    // La garantía de siempre: una función que se aplica en el camino caliente no
+    // puede mover una medida cuando no se ha pedido nada.
+    const cv::Mat scene = sceneWithPiece(pieceAtStep(4));
+    const auto plain = analyzeFrame(scene, PipelineConfig{});
+    ASSERT_TRUE(plain.isOk()) << plain.error().message;
+
+    PipelineConfig empties;
+    empties.forcePiece = cv::Mat();
+    empties.forceBackground = cv::Mat();
+    const auto same = analyzeFrame(scene, empties);
+    ASSERT_TRUE(same.isOk()) << same.error().message;
+
+    double worst = 0.0;
+    expectSameMeasurements(plain.value(), same.value(), "sin corrección", &worst);
+    EXPECT_DOUBLE_EQ(worst, 0.0);
+
+    // Y una corrección del tamaño equivocado se ignora en vez de romper: la
+    // resolución puede cambiar entre que se pinta y que se analiza.
+    PipelineConfig mismatched;
+    mismatched.forcePiece = cv::Mat::zeros(cv::Size(64, 64), CV_8UC1);
+    mismatched.forcePiece.setTo(cv::Scalar(255));
+    const auto ignored = analyzeFrame(scene, mismatched);
+    ASSERT_TRUE(ignored.isOk()) << ignored.error().message;
+    EXPECT_EQ(cv::boundingRect(ignored.value().contour.points),
+              cv::boundingRect(plain.value().contour.points))
+        << "una corrección de otro tamaño cambió el resultado en vez de ignorarse";
+}

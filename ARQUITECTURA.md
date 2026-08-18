@@ -153,6 +153,53 @@ justo lo que no puede pasar cuando el color no debe cargar solo con el
 significado. Ahora dice **Cám / Img / Víd**. Y el diálogo de fichero vuelve a la
 última carpeta usada, porque quien revisa casos abre diez de la misma.
 
+### Corregir el borde a mano
+
+Cuando la segmentación se equivoca en UNA foto —una sombra pegada a un lado, un
+reflejo que parte la pieza— hay dos salidas posibles y llevan a herramientas
+distintas: afinar la detección, o corregir esa imagen. Esto es lo segundo, y la
+distinción se dice en la propia interfaz: *«la corrección vale para esta imagen;
+si tienes que corregir siempre lo mismo, lo que hay que ajustar es la
+detección»*.
+
+`PipelineConfig` lleva dos máscaras —`forcePiece` y `forceBackground`— que se
+aplican **justo después de segmentar**, en el mismo punto donde la zona libre
+recorta y por la misma razón: pintar sobre la IMAGEN metería bordes artificiales
+que la segmentación leería como contornos de verdad; sobre la máscara, lo
+marcado simplemente cuenta o deja de contar.
+
+Dos máscaras y no una con tres estados porque así cada una dice UNA cosa. El
+orden de aplicación es el del pincel —primero añadir, después quitar— para que
+marcar fondo sobre algo recién marcado como pieza gane lo ÚLTIMO que hizo el
+operador; si ganara lo primero, corregirse una pincelada sería imposible.
+
+Y al pintar, el color contrario se **borra** en el mismo sitio. Sin eso, el mismo
+píxel quedaría marcado como pieza y como fondo a la vez, y el resultado
+dependería del orden en que se aplicaran — exactamente la clase de estado que
+nadie puede razonar.
+
+**Solo con imagen quieta.** En vídeo en vivo el contorno se recalcula en cada
+frame, así que un borde corregido a mano sería mentira en cuanto la pieza se
+moviera un píxel. El botón está apagado con su motivo, y el pincel se apaga solo
+al volver al vídeo — dejarlo encendido haría que el siguiente clic pintara sin
+que nadie lo pidiera.
+
+Medido: una sombra que se comía el borde derecho dejaba la pieza en 180 px de
+ancho; pintando ese trozo como pieza vuelve a 240, que es el real.
+
+#### El pincel pintaba a puntos
+
+Lo destapó el test, y es de los que no se ven probando a ojo. Se pintaba un
+círculo por cada evento del ratón, y el ratón **no emite un evento por píxel**:
+un trazo de 100 px con radio 20 marcaba 2.514 px —dos manchas con el medio sin
+tocar— en vez de los 5.357 de un trazo continuo. Pintando despacio parecía
+funcionar perfectamente; a poco que se moviera rápido, habría dejado huecos y
+habría que repasar. Ahora se une punto con punto, y el trazo nuevo no se enlaza
+con el anterior.
+
+La corrección se emite **al soltar**, no en cada punto: reanalizar la imagen por
+cada píxel de la pincelada dejaría el pincel a tirones.
+
 ### La tira de capturas: las fotos tienen que coexistir
 
 «Capturar foto» congelaba el frame y ahí se quedaba: tomar la siguiente tiraba la

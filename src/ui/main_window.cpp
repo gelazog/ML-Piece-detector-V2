@@ -452,6 +452,45 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     clearZoneAction_ = zoneMenu->addAction(tr("Quitar la zona"));
     zoneButton_->setMenu(zoneMenu);
     cameraLayout->addWidget(zoneButton_);
+
+    // Pincel para corregir el borde detectado.
+    edgeBrushButton_ = new QToolButton(central);
+    edgeBrushButton_->setText(tr("Corregir borde"));
+    edgeBrushButton_->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    edgeBrushButton_->setPopupMode(QToolButton::InstantPopup);
+    auto* brushMenu = new QMenu(edgeBrushButton_);
+    brushAddAction_ = brushMenu->addAction(tr("Pincel: añadir a la pieza"));
+    brushAddAction_->setCheckable(true);
+    brushRemoveAction_ = brushMenu->addAction(tr("Pincel: quitar de la pieza"));
+    brushRemoveAction_->setCheckable(true);
+    brushMenu->addSeparator();
+    brushClearAction_ = brushMenu->addAction(tr("Quitar las correcciones"));
+    edgeBrushButton_->setMenu(brushMenu);
+    cameraLayout->addWidget(edgeBrushButton_);
+
+    connect(brushAddAction_, &QAction::triggered, this, [this](bool on) {
+        brushRemoveAction_->setChecked(false);
+        video_->setEdgeBrush(on ? inspection::EditorCanvas::EdgeBrush::AddPiece
+                                : inspection::EditorCanvas::EdgeBrush::Off);
+        statusBar()->showMessage(
+            on ? tr("Pinta sobre lo que la detección se dejó fuera y forma parte de la pieza.")
+               : tr("Pincel apagado."));
+    });
+    connect(brushRemoveAction_, &QAction::triggered, this, [this](bool on) {
+        brushAddAction_->setChecked(false);
+        video_->setEdgeBrush(on ? inspection::EditorCanvas::EdgeBrush::RemovePiece
+                                : inspection::EditorCanvas::EdgeBrush::Off);
+        statusBar()->showMessage(
+            on ? tr("Pinta sobre lo que la detección metió y no es la pieza: sombras, "
+                    "reflejos, la pieza de al lado.")
+               : tr("Pincel apagado."));
+    });
+    connect(brushClearAction_, &QAction::triggered, this, [this] {
+        video_->clearEdgeCorrection();
+        statusBar()->showMessage(tr("Correcciones del borde quitadas."));
+    });
+    connect(video_, &inspection::EditorCanvas::edgeCorrected, this,
+            &MainWindow::onEdgeCorrected);
     cameraLayout->addStretch(0);
     rootLayout->addLayout(cameraLayout);
 
@@ -1932,6 +1971,7 @@ void MainWindow::updateAutoInspectAvailability() {
 
 void MainWindow::updateStatusIndicators() {
     updateAutoInspectAvailability();
+    updateEdgeBrushAvailability();
     // Punto de color + leyenda por indicador (rich text: sin assets externos).
     auto set = [](QLabel* label, const QString& caption, bool ok, const QString& okText,
                   const QString& badText) {
@@ -2602,6 +2642,56 @@ void MainWindow::onSaveCapturesClicked() {
     }
     statusBar()->showMessage(tr("%n captura(s) guardadas en %1.", nullptr, saved.value())
                                  .arg(folder));
+}
+
+
+// El pincel solo se ofrece con una imagen QUIETA.
+//
+// En vídeo en vivo el contorno se recalcula en cada frame, así que un borde
+// corregido a mano sería mentira en cuanto la pieza se moviera un píxel. Y
+// apagado con su motivo, no muerto y en silencio: un control que no responde sin
+// explicación se lee como que la aplicación está rota.
+void MainWindow::updateEdgeBrushAvailability() {
+    if (edgeBrushButton_ == nullptr) {
+        return;
+    }
+    const bool still = sourceKind_ == camera::SourceKind::Photo ||
+                       sourceKind_ == camera::SourceKind::Image;
+    edgeBrushButton_->setEnabled(still && !lastFrame_.isNull());
+    edgeBrushButton_->setToolTip(
+        still ? tr("Corrige a mano dónde está el borde de la pieza cuando la detección se\n"
+                   "equivoca: una sombra que se come un lado, un reflejo que la parte.\n\n"
+                   "Verde lo que añades, rojo lo que quitas. La corrección vale para esta\n"
+                   "imagen: no cambia cómo se detectan las demás.")
+              : tr("Solo con una foto o una imagen abierta.\n\n"
+                   "En vídeo en vivo el contorno se recalcula en cada frame, así que un\n"
+                   "borde corregido a mano dejaría de valer en cuanto la pieza se moviera.\n"
+                   "Captura una foto y corrígela ahí."));
+    if (!still) {
+        // Al volver al vídeo, el pincel se apaga solo: dejarlo encendido haría
+        // que el siguiente clic sobre la imagen pintara sin que nadie lo pidiera.
+        if (brushAddAction_ != nullptr) {
+            QSignalBlocker a(brushAddAction_);
+            QSignalBlocker b(brushRemoveAction_);
+            brushAddAction_->setChecked(false);
+            brushRemoveAction_->setChecked(false);
+        }
+        video_->setEdgeBrush(inspection::EditorCanvas::EdgeBrush::Off);
+    }
+}
+
+void MainWindow::onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& forceBackground) {
+    pipelineConfig_.forcePiece = forcePiece;
+    pipelineConfig_.forceBackground = forceBackground;
+    // Se reanaliza en el acto: el sentido de corregir es VER el borde nuevo.
+    maybeStartAnalysis();
+    const int added = forcePiece.empty() ? 0 : cv::countNonZero(forcePiece);
+    const int removed = forceBackground.empty() ? 0 : cv::countNonZero(forceBackground);
+    statusBar()->showMessage(added == 0 && removed == 0
+                                 ? tr("Sin correcciones: el borde es el que detecta el programa.")
+                                 : tr("Borde corregido a mano: +%1 px, −%2 px.")
+                                       .arg(added)
+                                       .arg(removed));
 }
 
 void MainWindow::onFrame(const QImage& frame) {

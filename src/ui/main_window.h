@@ -334,6 +334,15 @@ private:
     QAction* freeZoneAction_ = nullptr;
     QAction* clearZoneAction_ = nullptr;
     QPushButton* measurePieceButton_ = nullptr;
+    // Pincel para corregir el borde. Solo con imagen QUIETA: en vídeo en vivo el
+    // contorno se recalcula en cada frame y una corrección a mano sería mentira
+    // en cuanto la pieza se moviera.
+    QToolButton* edgeBrushButton_ = nullptr;
+    QAction* brushAddAction_ = nullptr;
+    QAction* brushRemoveAction_ = nullptr;
+    QAction* brushClearAction_ = nullptr;
+    void updateEdgeBrushAvailability();
+    void onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& forceBackground);
     // Barra de transporte del vídeo. Solo aparece con un vídeo abierto: con una
     // cámara no hay nada que rebobinar, y una barra muerta bajo la imagen es
     // ruido que además invita a pulsarla.
