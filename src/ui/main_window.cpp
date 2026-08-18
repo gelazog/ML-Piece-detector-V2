@@ -2335,8 +2335,24 @@ bool MainWindow::startFileSource(camera::SourceKind kind) {
     // Y el desplegable pasa a decir QUÉ está abierto. Dejarlo en «Abrir
     // imagen…» convertía la única pista sobre con qué se está trabajando en una
     // etiqueta que no dice nada.
-    cameraCombo_->insertItem(0, fileSource_->describe(), QVariant(kSourceOpenedFile));
-    cameraCombo_->setCurrentIndex(0);
+    //
+    // Con las señales BLOQUEADAS, y esto costó un bucle infinito. Insertar en la
+    // posición 0 desplaza al elemento seleccionado —«Abrir imagen…»— de la
+    // posición N a la N+1, y Qt emite `currentIndexChanged` porque el ÍNDICE ha
+    // cambiado, aunque el elemento elegido sea exactamente el mismo.
+    //
+    // Desde que se puede cambiar de fuente en marcha, esa señal se lee como
+    // «han elegido abrir una imagen»: paraba la fuente recién arrancada y
+    // volvía a abrir el diálogo de fichero. El operador veía la carpeta
+    // cerrarse y abrirse una y otra vez, sin llegar a cargar nada.
+    //
+    // Bloquear aquí es lo correcto y no un parche: esta selección no es una
+    // elección del operador, es la consecuencia de la que acaba de hacer.
+    {
+        QSignalBlocker blocker(cameraCombo_);
+        cameraCombo_->insertItem(0, fileSource_->describe(), QVariant(kSourceOpenedFile));
+        cameraCombo_->setCurrentIndex(0);
+    }
     startStopButton_->setText(tr("Cerrar"));
     // El desplegable NO se apaga: cambiar de fuente se decide mirando lo que
     // hay. Apagarlo dejaba «Abrir imagen…» inalcanzable con la cámara en

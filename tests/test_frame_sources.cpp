@@ -11,6 +11,8 @@
 #include <QDir>
 #include <QEventLoop>
 #include <QImage>
+#include <QFile>
+#include <opencv2/imgcodecs.hpp>
 #include <QSignalSpy>
 #include <QTest>
 #include <QTemporaryDir>
@@ -400,4 +402,76 @@ TEST(VideoControls, SeekingMovesWhereItIsToldAndSaysWhereItIs) {
     })) << "no se pudo volver atrás";
 
     source.stop();
+}
+
+// ---------------------------------------------------------------------------
+// Los formatos que la aplicación OFRECE tiene que poder abrirlos
+// ---------------------------------------------------------------------------
+
+TEST(FrameSources, AnImageQtCannotDecodeIsOpenedByOpenCVInstead) {
+    // EL FALLO: el diálogo de la aplicación ofrece `.tif` y `.tiff`, y Qt lee
+    // TIFF con un COMPLEMENTO que aquí no está instalado —solo hay gif, ico y
+    // jpeg—. Se estaban ofreciendo formatos que no se podían abrir.
+    //
+    // Con el JPEG pasa algo parecido y peor de diagnosticar, porque depende de
+    // que el complemento se encuentre en tiempo de ejecución.
+    //
+    // OpenCV trae sus decodificadores dentro de la biblioteca y ya es una
+    // dependencia, así que se usa de respaldo.
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("pieza.tif"));
+
+    cv::Mat piece(120, 160, CV_8UC3, cv::Scalar(40, 40, 40));
+    cv::rectangle(piece, cv::Rect(40, 30, 80, 60), cv::Scalar(220, 220, 220), cv::FILLED);
+    ASSERT_TRUE(cv::imwrite(path.toStdString(), piece)) << "OpenCV no pudo escribir el TIFF";
+
+    // Se comprueba primero que el caso es el caso: si Qt SÍ pudiera, este test
+    // no estaría probando el respaldo.
+    QImage byQt;
+    const bool qtCanDo = byQt.load(path);
+    std::printf("  [formatos] Qt %s este TIFF\n", qtCanDo ? "SI lee" : "NO lee");
+
+    StillImageSource source(path);
+    QSignalSpy frames(&source, &pci::camera::FrameSource::frameReady);
+    QSignalSpy errors(&source, &pci::camera::FrameSource::sourceError);
+    source.start();
+
+    EXPECT_TRUE(waitFor([&] { return frames.count() > 0; }))
+        << "no llegó ningún frame de un TIFF que OpenCV sí sabe leer";
+    EXPECT_EQ(errors.count(), 0)
+        << "se dio error por una imagen que se puede abrir: "
+        << (errors.isEmpty() ? QString() : errors.at(0).at(0).toString()).toStdString();
+
+    if (frames.count() > 0) {
+        const QImage frame = frames.at(0).at(0).value<QImage>();
+        EXPECT_EQ(frame.size(), QSize(160, 120));
+        EXPECT_EQ(frame.format(), QImage::Format_RGB888)
+            << "el respaldo no dejó el frame en el formato que espera el resto";
+    }
+    source.stop();
+}
+
+TEST(FrameSources, SomethingThatIsNotAnImageStillSaysWhy) {
+    // Y el respaldo no puede tragarse los errores de verdad: un fichero que no
+    // es una imagen tiene que seguir dando un motivo, no quedarse mudo.
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("no-es-imagen.png"));
+    QFile file(path);
+    ASSERT_TRUE(file.open(QIODevice::WriteOnly));
+    file.write("esto no es un png, es texto");
+    file.close();
+
+    StillImageSource source(path);
+    QSignalSpy errors(&source, &pci::camera::FrameSource::sourceError);
+    source.start();
+    EXPECT_TRUE(waitFor([&] { return errors.count() > 0; }))
+        << "un fichero que no es una imagen se abrió sin protestar";
+    if (errors.count() > 0) {
+        const QString why = errors.at(0).at(0).toString();
+        std::printf("  [formatos] dice: %s\n", why.toStdString().c_str());
+        EXPECT_TRUE(why.contains(QStringLiteral("no-es-imagen")))
+            << "el motivo no dice de qué fichero habla";
+    }
 }

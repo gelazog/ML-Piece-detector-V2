@@ -1,5 +1,8 @@
 #include "camera/file_sources.h"
 
+#include <QFile>
+#include <opencv2/imgcodecs.hpp>
+#include <vector>
 #include <QFileInfo>
 
 #include <opencv2/imgproc.hpp>
@@ -92,13 +95,44 @@ void StillImageSource::start() {
         return;
     }
     if (!frame_.load(path_)) {
-        // El motivo tiene que ser accionable: el operador necesita saber si se
-        // equivocó de fichero o si el formato no se lee.
-        emit sourceError(tr("No se pudo abrir la imagen «%1». Comprueba que la ruta existe y "
-                            "que el formato es uno que la aplicación lee (PNG, JPG, BMP).")
-                             .arg(QFileInfo(path_).fileName()));
-        emit stopped();
-        return;
+        // Qt no ha podido, así que lo intenta OpenCV. No es redundancia: son dos
+        // lectores con catálogos distintos.
+        //
+        // Qt lee PNG y BMP de serie y delega JPEG, TIFF y compañía en
+        // COMPLEMENTOS que hay que desplegar junto al ejecutable. En esta
+        // instalación solo hay gif, ico y jpeg — no hay `qtiff`— y el diálogo de
+        // la aplicación ofrece `.tif` y `.tiff`: se estaban ofreciendo formatos
+        // que no se podían abrir. Con el JPEG pasa algo parecido y peor de
+        // diagnosticar, porque depende de que el complemento se encuentre en
+        // tiempo de ejecución.
+        //
+        // OpenCV trae sus decodificadores DENTRO de la biblioteca, y ya es una
+        // dependencia de este programa. Los bytes se leen con `QFile` y no con
+        // `cv::imread`: `imread` recibe la ruta como `std::string` y en Windows
+        // eso rompe con acentos o con «ñ», que en español no es un caso raro.
+        QFile file(path_);
+        cv::Mat decoded;
+        if (file.open(QIODevice::ReadOnly)) {
+            const QByteArray bytes = file.readAll();
+            const std::vector<uchar> buffer(bytes.begin(), bytes.end());
+            decoded = cv::imdecode(buffer, cv::IMREAD_COLOR);
+        }
+        if (!decoded.empty()) {
+            frame_ = toQImage(decoded);
+            core::logInfo("La imagen «" + QFileInfo(path_).fileName().toStdString() +
+                          "» no la pudo leer Qt y sí OpenCV: probablemente falta el "
+                          "complemento de imagen de Qt para ese formato");
+        } else {
+            // El motivo tiene que ser accionable: el operador necesita saber si
+            // se equivocó de fichero o si el formato no se lee.
+            emit sourceError(
+                tr("No se pudo abrir la imagen «%1», ni con Qt ni con OpenCV. Comprueba "
+                   "que la ruta existe, que el fichero no está corrupto y que es una "
+                   "imagen de verdad (PNG, JPG, BMP o TIFF).")
+                    .arg(QFileInfo(path_).fileName()));
+            emit stopped();
+            return;
+        }
     }
     // A RGB888 como hace la cámara: el resto de la aplicación cuenta con ese
     // formato, y un PNG con canal alfa o indexado llegaría de otra forma.

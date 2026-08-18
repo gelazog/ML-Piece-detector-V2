@@ -11,6 +11,7 @@
 #include <QAbstractButton>
 #include <QColor>
 #include <QComboBox>
+#include <QSignalSpy>
 #include <QImage>
 #include <QMouseEvent>
 #include <QPointF>
@@ -2304,4 +2305,47 @@ TEST(MainKeyboard, WhatStaysOutOfTheTabOrderHasItsOwnShortcut) {
     EXPECT_GT(zoomShortcuts, 4) << "no hay atajos que justifiquen dejar botones fuera";
     EXPECT_LE(outside.size(), 4)
         << "hay más botones sin teclado que los de zoom: " << outside.join(", ").toStdString();
+}
+
+TEST(MainToolbar, InsertingTheOpenedFileDoesNotLookLikeChoosingASource) {
+    // EL BUCLE, reproducido sin abrir ningún diálogo.
+    //
+    // Al abrir un fichero se inserta su nombre en la posición 0 del desplegable.
+    // Eso desplaza al elemento seleccionado —«Abrir imagen…»— de la posición N a
+    // la N+1, y Qt emite `currentIndexChanged` porque el ÍNDICE cambió, aunque
+    // el elemento elegido sea exactamente el mismo.
+    //
+    // Desde que se puede cambiar de fuente en marcha, esa señal se leía como
+    // «han elegido abrir una imagen»: paraba la fuente recién arrancada y volvía
+    // a abrir el diálogo. El operador veía la carpeta cerrarse y abrirse una y
+    // otra vez sin llegar a cargar nada.
+    pci::ui::MainWindow window;
+    window.resize(1400, 800);
+
+    QComboBox* sources = nullptr;
+    for (auto* combo : window.findChildren<QComboBox*>()) {
+        if (combo->maximumWidth() == 320) {  // el de la fuente, acotado a 320
+            sources = combo;
+        }
+    }
+    ASSERT_NE(sources, nullptr) << "no se encontró el desplegable de fuente";
+    ASSERT_GT(sources->count(), 0);
+
+    // Se selecciona el último elemento y se cuenta cuántas veces avisa el combo
+    // al insertar por delante.
+    sources->setCurrentIndex(sources->count() - 1);
+    const QString chosen = sources->currentText();
+    QSignalSpy changed(sources, &QComboBox::currentIndexChanged);
+
+    // Insertar por delante SIN bloquear: así es como se veía el fallo.
+    sources->insertItem(0, QStringLiteral("fichero abierto"));
+    std::printf("  [fuente] insertar por delante avisa %d vez(ces); sigue elegido «%s»\n",
+                static_cast<int>(changed.count()), sources->currentText().toStdString().c_str());
+    EXPECT_GT(changed.count(), 0)
+        << "Qt ya no avisa al desplazar el elemento elegido: el bucle no se reproduce "
+           "y este test dejó de vigilar nada";
+    // Y la prueba de que el aviso NO significa que se haya elegido otra cosa:
+    // el elemento seleccionado es el mismo de antes.
+    EXPECT_EQ(sources->currentText(), chosen)
+        << "el elemento elegido cambió de verdad: entonces el aviso sí era una elección";
 }
