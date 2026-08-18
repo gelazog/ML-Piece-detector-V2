@@ -31,6 +31,12 @@ constexpr double kMinZoom = 1.0;   // por debajo del ajuste no aporta nada
 constexpr double kMaxZoom = 20.0;
 constexpr double kZoomStep = 1.15;
 
+// Topes del pincel de borde, en píxeles de IMAGEN. Por abajo, menos de dos
+// píxeles no corrige un borde, lo puntea. Por arriba, un pincel más grande que
+// media pieza ya no está corrigiendo un borde: está borrando la pieza.
+constexpr int kMinBrushRadius = 2;
+constexpr int kMaxBrushRadius = 120;
+
 // Convierte la imagen visible a un cv::Mat gris (copia propia) para poder
 // detectar bordes bajo el cursor sin depender del origen del frame.
 cv::Mat qimageToGray(const QImage& image) {
@@ -580,6 +586,22 @@ void EditorCanvas::wheelEvent(QWheelEvent* event) {
     if (std::abs(steps) < 1e-6) {
         return;
     }
+    // Con el pincel encendido, la rueda cambia SU tamaño y no el zoom. Es lo
+    // que hace cualquier editor, y es lo que se necesita: el grosor se ajusta
+    // constantemente mientras se corrige —grueso para rellenar, fino para
+    // perfilar— y tener que ir a un menú por cada cambio haría que nadie lo
+    // cambiara.
+    if (brush_ != EdgeBrush::Off) {
+        // Paso proporcional: subir de 2 a 3 px y de 60 a 61 no son el mismo
+        // gesto, y con paso fijo llegar a un pincel grande cuesta veinte
+        // muescas.
+        const double factor = std::pow(1.2, steps);
+        setEdgeBrush(brush_, std::clamp(static_cast<int>(std::lround(brushRadius_ * factor)),
+                                        kMinBrushRadius, kMaxBrushRadius));
+        emit brushRadiusChanged(brushRadius_);
+        event->accept();
+        return;
+    }
     zoomAt(event->position(), std::pow(kZoomStep, steps));
     event->accept();
 }
@@ -763,7 +785,11 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
         return;
     }
     // En inspección no se dibuja ni se mueve: solo se lee la pieza.
-    if (editingLocked_ && !regionPick_ && !freeZonePick_ && !pickMode_) {
+    // El pincel de borde entra en la lista de excepciones: corregir dónde está
+    // el borde NO es dibujar una herramienta, y bloquearlo durante la
+    // inspección deja al operador viendo una detección mala sin poder tocarla.
+    if (editingLocked_ && !regionPick_ && !freeZonePick_ && !pickMode_ &&
+        brush_ == EdgeBrush::Off) {
         return;
     }
 

@@ -94,6 +94,7 @@ public:
     enum class EdgeBrush { Off, AddPiece, RemovePiece };
     void setEdgeBrush(EdgeBrush mode, int radiusPx = 12);
     [[nodiscard]] EdgeBrush edgeBrush() const { return brush_; }
+    [[nodiscard]] int brushRadius() const { return brushRadius_; }
     // Las dos máscaras acumuladas, para enseñarlas y para deshacerlas.
     void setEdgeCorrection(const cv::Mat& forcePiece, const cv::Mat& forceBackground);
     void clearEdgeCorrection();
@@ -191,6 +192,8 @@ signals:
     // las usa las necesita completas, y así no hay dos acumuladores que
     // mantener sincronizados.
     void edgeCorrected(const cv::Mat& forcePiece, const cv::Mat& forceBackground);
+    // El tamaño del pincel cambió con la rueda: quien lo muestre debe seguirlo.
+    void brushRadiusChanged(int radiusPx);
     void toolRightClicked(int index);
     // Un gesto claramente intencionado que no pudo convertirse en herramienta.
     // Existe para que nada se descarte en silencio: si el operador traza y no

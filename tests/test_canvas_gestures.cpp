@@ -13,6 +13,8 @@
 #include <QComboBox>
 #include <QSignalSpy>
 #include <QImage>
+#include <QWheelEvent>
+#include "vision/pipeline.h"
 #include <QMouseEvent>
 #include <QPointF>
 #include <QString>
@@ -2441,4 +2443,115 @@ TEST(EdgeBrush, WithTheBrushOffAClickDoesNotPaint) {
     const ViewTransform view = viewAt(1.0);
     drag(&canvas, toScreen(view, {600.0F, 400.0F}), toScreen(view, {700.0F, 450.0F}));
     EXPECT_EQ(emissions, 0) << "pintó con el pincel apagado";
+}
+
+TEST(EdgeBrush, TheWheelResizesTheBrushInsteadOfZooming) {
+    // Es lo que hace cualquier editor, y es lo que se necesita: el grosor se
+    // ajusta constantemente mientras se corrige —grueso para rellenar, fino
+    // para perfilar— y tener que ir a un menú por cada cambio haría que nadie
+    // lo cambiara.
+    EditorCanvas canvas;
+    canvas.resize(kWidgetWidth, kWidgetHeight);
+    canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+
+    // Con el pincel APAGADO, la rueda sigue siendo el zoom.
+    const double zoomBefore = canvas.zoomFactor();
+    QWheelEvent zoomIn(QPointF(400, 300), canvas.mapToGlobal(QPointF(400, 300)), QPoint(),
+                       QPoint(0, 120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+    QApplication::sendEvent(&canvas, &zoomIn);
+    EXPECT_GT(canvas.zoomFactor(), zoomBefore) << "sin pincel, la rueda dejó de hacer zoom";
+
+    // Con el pincel encendido, cambia SU tamaño y el zoom no se mueve.
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece, 12);
+    const double zoomKept = canvas.zoomFactor();
+    const int before = canvas.brushRadius();
+    QWheelEvent bigger(QPointF(400, 300), canvas.mapToGlobal(QPointF(400, 300)), QPoint(),
+                       QPoint(0, 120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+    QApplication::sendEvent(&canvas, &bigger);
+    std::printf("  [pincel] radio %d -> %d con una muesca; zoom sin tocar\n", before,
+                canvas.brushRadius());
+    EXPECT_GT(canvas.brushRadius(), before) << "la rueda no agrandó el pincel";
+    EXPECT_DOUBLE_EQ(canvas.zoomFactor(), zoomKept) << "el pincel cambió Y encima hizo zoom";
+
+    // Y hacia el otro lado.
+    const int grown = canvas.brushRadius();
+    QWheelEvent smaller(QPointF(400, 300), canvas.mapToGlobal(QPointF(400, 300)), QPoint(),
+                        QPoint(0, -120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase,
+                        false);
+    QApplication::sendEvent(&canvas, &smaller);
+    EXPECT_LT(canvas.brushRadius(), grown) << "la rueda no encogió el pincel";
+
+    // Con topes: por abajo no puntea, por arriba no borra media pieza.
+    for (int i = 0; i < 40; ++i) {
+        QWheelEvent tiny(QPointF(400, 300), canvas.mapToGlobal(QPointF(400, 300)), QPoint(),
+                         QPoint(0, -120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase,
+                         false);
+        QApplication::sendEvent(&canvas, &tiny);
+    }
+    EXPECT_GE(canvas.brushRadius(), 2) << "el pincel se hizo tan fino que puntea";
+}
+
+TEST(EdgeBrush, TheCorrectionActuallyChangesWhatTheAnalysisFinds) {
+    // EL TEST QUE FALTABA, y por eso se dijo que funcionaba sin que funcionara:
+    // los otros comprueban que la pincelada marca píxeles, no que el ANÁLISIS
+    // haga caso. Este entra por donde entra la aplicación — se pinta sobre el
+    // lienzo, se recoge la corrección emitida y se analiza con ella.
+    //
+    // La escena: una pieza clara a la que una sombra le come el borde derecho,
+    // que es el caso que motiva la herramienta.
+    const int w = kImageWidth;
+    const int h = kImageHeight;
+    cv::Mat scene(h, w, CV_8UC3, cv::Scalar(24, 22, 20));
+    const cv::Rect piece(600, 300, 400, 300);
+    cv::rectangle(scene, piece, cv::Scalar(210, 214, 218), cv::FILLED, cv::LINE_8);
+    const cv::Rect eaten(piece.x + piece.width - 100, piece.y, 100, piece.height);
+    scene(eaten).setTo(cv::Scalar(26, 24, 22));
+
+    const auto before = pci::vision::analyzeFrame(scene, {});
+    ASSERT_TRUE(before.isOk()) << before.error().message;
+    const int widthWithShadow = cv::boundingRect(before.value().contour.points).width;
+    ASSERT_LT(widthWithShadow, piece.width - 50)
+        << "la sombra no se comió el borde: el test no reproduce el caso";
+
+    // Ahora el gesto de verdad, sobre el lienzo.
+    EditorCanvas canvas;
+    canvas.resize(kWidgetWidth, kWidgetHeight);
+    QImage shown(scene.data, scene.cols, scene.rows, static_cast<int>(scene.step),
+                 QImage::Format_BGR888);
+    canvas.setScene(shown.copy().convertToFormat(QImage::Format_RGB888),
+                    pci::vision::Fixture{});
+
+    cv::Mat add;
+    cv::Mat remove;
+    QObject::connect(&canvas, &EditorCanvas::edgeCorrected,
+                     [&](const cv::Mat& a, const cv::Mat& r) {
+                         add = a.clone();
+                         remove = r.clone();
+                     });
+
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece, 60);
+    const ViewTransform view = viewAt(1.0);
+    const float midY = static_cast<float>(eaten.y + eaten.height / 2);
+    press(&canvas, toScreen(view, {static_cast<float>(eaten.x + 10), midY}));
+    for (int y = eaten.y + 60; y < eaten.br().y - 60; y += 40) {
+        moveTo(&canvas, toScreen(view, {static_cast<float>(eaten.x + eaten.width / 2),
+                                        static_cast<float>(y)}));
+    }
+    release(&canvas, toScreen(view, {static_cast<float>(eaten.br().x - 10),
+                                     static_cast<float>(eaten.br().y - 60)}));
+    ASSERT_FALSE(add.empty()) << "el lienzo no emitió ninguna corrección";
+
+    // Y AHORA lo que importa: analizar CON esa corrección tiene que cambiar el
+    // contorno. Si esto falla, el pincel pinta y la detección lo ignora — que es
+    // exactamente lo que el operador vio.
+    pci::vision::PipelineConfig corrected;
+    corrected.forcePiece = add;
+    corrected.forceBackground = remove;
+    const auto after = pci::vision::analyzeFrame(scene, corrected);
+    ASSERT_TRUE(after.isOk()) << after.error().message;
+    const int widthCorrected = cv::boundingRect(after.value().contour.points).width;
+    std::printf("  [pincel] ancho con sombra %d px; tras corregir %d px\n", widthWithShadow,
+                widthCorrected);
+    EXPECT_GT(widthCorrected, widthWithShadow + 40)
+        << "la corrección no cambió lo que encuentra el análisis";
 }
