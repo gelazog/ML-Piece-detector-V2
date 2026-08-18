@@ -489,8 +489,6 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         video_->clearEdgeCorrection();
         statusBar()->showMessage(tr("Correcciones del borde quitadas."));
     });
-    connect(video_, &inspection::EditorCanvas::edgeCorrected, this,
-            &MainWindow::onEdgeCorrected);
     cameraLayout->addStretch(0);
     rootLayout->addLayout(cameraLayout);
 
@@ -658,6 +656,21 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // Video (canvas de edición) como área central de la ventana.
     video_ = new inspection::EditorCanvas(central);
     video_->setTools(&liveTools_);
+    // AQUÍ, y no arriba con el resto del pincel.
+    //
+    // El botón y su menú se construyen mucho antes que el lienzo, y este
+    // `connect` estaba con ellos — sobre `video_` todavía NULO. Qt no puede
+    // conectar nada a un puntero nulo: avisa por consola y sigue. El resultado
+    // era un pincel que pintaba en pantalla, marcaba verde y rojo, y cuya
+    // corrección NO LLEGABA A NINGUNA PARTE: ni se reanalizaba, ni salía el
+    // mensaje de «+N px, −M px», ni se movía el contorno.
+    //
+    // Las lambdas del menú sí funcionaban porque se ejecutan después, con
+    // `video_` ya creado; sólo esta línea se evaluaba en el momento equivocado.
+    // Por eso el fallo parecía «el pincel no hace su función» y no «falta una
+    // conexión».
+    connect(video_, &inspection::EditorCanvas::edgeCorrected, this,
+            &MainWindow::onEdgeCorrected);
     rootLayout->addWidget(video_, 1);
     buildVideoBar(central, rootLayout);
 
@@ -2142,6 +2155,23 @@ void MainWindow::refreshCameras() {
 
 void MainWindow::onCamerasEnumerated() {
     cameras_ = enumerationWatcher_.result();
+
+    // CON LAS SEÑALES BLOQUEADAS mientras se repuebla, y esto costó caro.
+    //
+    // `clear()` seguido de `addItem()` mueve el índice de -1 a 0, y Qt emite
+    // `currentIndexChanged`. Desde que se puede cambiar de fuente en marcha,
+    // esa señal se lee como «han elegido la cámara 0»: paraba el fichero que
+    // estuviera abierto y arrancaba la cámara.
+    //
+    // El resultado, para quien lo sufre: abres una imagen o un vídeo nada más
+    // arrancar y, cuando termina la enumeración de cámaras —que va en segundo
+    // plano y tarda lo suyo—, tu fichero se cierra solo. Igual al pulsar
+    // «Actualizar». Nadie eligió nada; lo eligió un índice al moverse.
+    //
+    // Es el mismo fallo que el del bucle del diálogo de fichero, en otro sitio:
+    // repoblar una lista NO es una elección del operador.
+    const QSignalBlocker repopulating(cameraCombo_);
+    const QVariant previous = cameraCombo_->currentData();
     cameraCombo_->clear();
 
     for (std::size_t i = 0; i < cameras_.size(); ++i) {
@@ -2178,8 +2208,31 @@ void MainWindow::onCamerasEnumerated() {
         return;
     }
 
+    // Si había un fichero abierto, su entrada se acaba de borrar con la lista:
+    // se repone y se vuelve a seleccionar. Sin esto el desplegable diría
+    // «cámara 0» mientras en pantalla se ve la imagen abierta.
+    if (streaming_ && fileSource_ != nullptr) {
+        cameraCombo_->insertItem(0, fileSource_->describe(), QVariant(kSourceOpenedFile));
+        cameraCombo_->setCurrentIndex(0);
+        statusBar()->showMessage(tr("%n cámara(s) detectada(s); sigue abierto «%1».", nullptr,
+                                    static_cast<int>(cameras_.size()))
+                                     .arg(fileSource_->describe()));
+        setControlsEnabled(true);
+        return;
+    }
+    // Y si la selección de antes sigue existiendo, se respeta: la enumeración
+    // no es motivo para mover lo que el operador tenía elegido.
+    if (previous.isValid()) {
+        for (int i = 0; i < cameraCombo_->count(); ++i) {
+            if (cameraCombo_->itemData(i) == previous) {
+                cameraCombo_->setCurrentIndex(i);
+                break;
+            }
+        }
+    }
+
     // Restaurar la última cámara elegida por el usuario (si sigue conectada).
-    if (repos_.settings != nullptr) {
+    if (repos_.settings != nullptr && !previous.isValid()) {
         const auto saved = repos_.settings->getInt(kSettingCameraIndex, -1);
         if (saved.isOk() && saved.value() >= 0) {
             for (std::size_t i = 0; i < cameras_.size(); ++i) {
@@ -2348,7 +2401,17 @@ bool MainWindow::startFileSource(camera::SourceKind kind) {
                              saved.error().message);
         }
     }
+    return startFileSourceAtPath(kind, path);
+}
 
+// Abrir un fichero CONCRETO, sin diálogo. Separado de `startFileSource` porque
+// elegir el fichero y montarlo son dos cosas distintas, y sólo la primera
+// necesita a una persona delante: con el diálogo dentro, todo lo que pasa
+// después —que llegue el frame, que se mida, que corregir el borde mueva el
+// contorno— sólo se podía comprobar a mano, y así es como se colaron los
+// últimos tres fallos.
+bool MainWindow::startFileSourceAtPath(camera::SourceKind kind, const QString& path) {
+    const bool wantsImage = kind == camera::SourceKind::Image;
     if (wantsImage) {
         fileSource_ = std::make_unique<camera::StillImageSource>(path);
     } else {
@@ -2754,16 +2817,21 @@ void MainWindow::onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& force
 
 void MainWindow::onFrame(const QImage& frame) {
     video_->setFrame(frame);
-    // La disponibilidad del pincel depende de que HAYA un frame, y el primero
-    // llega después de que se monte la fuente. Sin recalcularla aquí, el botón
-    // se quedaba apagado para siempre: se decidía con `lastFrame_` todavía
-    // vacío y nadie volvía a preguntarlo.
-    updateEdgeBrushAvailability();
     // Si cambia la resolución del frame, reevaluar si la calibración sigue
     // siendo válida (D1); barato porque solo ocurre al cambiar de fuente.
     const QSize previousSize = lastFrame_.size();
     const bool sizeChanged = previousSize != frame.size();
     lastFrame_ = frame;
+    // La disponibilidad del pincel depende de que HAYA un frame, y el primero
+    // llega después de que se monte la fuente: sin recalcularla aquí el botón
+    // se quedaba apagado para siempre.
+    //
+    // Y DESPUÉS de asignar `lastFrame_`, no antes. Puesta antes iba siempre un
+    // frame por detrás: con una imagen abierta el contorno ya estaba en
+    // pantalla y el pincel seguía muerto hasta el frame siguiente —un cuarto de
+    // segundo con la herramienta apagada sin motivo visible, y para siempre en
+    // cualquier fuente que entregue un solo frame.
+    updateEdgeBrushAvailability();
     if (sizeChanged) {
         // Se reacciona al tamaño REAL del frame, no a lo que se pidió: la
         // cámara puede dar otra resolución distinta de la solicitada.

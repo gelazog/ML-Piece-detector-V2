@@ -1,4 +1,5 @@
 #include "inspection_editor/canvas/editor_canvas.h"
+#include <cstdio>
 
 #include "inspection_editor/canvas/canvas_geometry.h"
 

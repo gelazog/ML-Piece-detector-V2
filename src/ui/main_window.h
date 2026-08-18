@@ -62,6 +62,13 @@ class PreferencesPage;
 class MainWindow : public QMainWindow {
     Q_OBJECT
 
+
+public:
+    // Abrir un fichero CONCRETO como fuente, sin diálogo. Lo usa
+    // `startFileSource` una vez elegido, y es por donde las pruebas entran a
+    // comprobar lo que ocurre DESPUÉS de abrir.
+    bool startFileSourceAtPath(pci::camera::SourceKind kind, const QString& path);
+
 public:
     // Los servicios pueden venir vacíos: la app funciona sin persistencia
     // si la BD no pudo abrirse (error ya loggeado por quien la abrió).

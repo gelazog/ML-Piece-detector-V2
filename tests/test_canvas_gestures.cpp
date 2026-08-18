@@ -26,6 +26,10 @@
 #include <QLayout>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QPainter>
+#include <QElapsedTimer>
+#include <QtTest/QTest>
+#include <QTemporaryDir>
 #include <QToolButton>
 
 #include <cmath>
@@ -2639,4 +2643,181 @@ TEST(EdgeBrush, TheButtonTurnsOnOnceThereIsAnImageToPaintOn) {
     // este test fija es que la pregunta se REHACE al llegar el frame, que es lo
     // que no ocurría. El tooltip lo demuestra: cambia según el caso.
     EXPECT_FALSE(brush->toolTip().isEmpty());
+}
+
+// LA PRUEBA QUE FALTABA, y por eso se colaron tres fallos seguidos: abrir una
+// imagen de verdad, pintar encima con el pincel, y mirar si la línea verde se
+// mueve. Todo lo demás comprobaba piezas sueltas del camino.
+// Superficie de un polígono (fórmula del cordón de zapato). Sirve para
+// responder a «¿se movió la línea verde?» con un número y no con una impresión.
+double polygonArea(const QPolygonF& polygon) {
+    double sum = 0.0;
+    for (int i = 0; i < polygon.size(); ++i) {
+        const QPointF& a = polygon.at(i);
+        const QPointF& b = polygon.at((i + 1) % polygon.size());
+        sum += a.x() * b.y() - b.x() * a.y();
+    }
+    return sum / 2.0;
+}
+
+// Una pincelada de verdad sobre el lienzo: pulsar, arrastrar por puntos
+// intermedios y soltar, en coordenadas de IMAGEN.
+void paintStroke(EditorCanvas* canvas, QPoint fromImage, QPoint toImage) {
+    const ViewTransform view({canvas->imageSize().width(), canvas->imageSize().height()},
+                             {canvas->width(), canvas->height()}, 1.0, {0.0, 0.0});
+    const auto screen = [&](QPoint p) {
+        const cv::Point2d q = view.imageToWidget(cv::Point2f(static_cast<float>(p.x()),
+                                                             static_cast<float>(p.y())));
+        return QPointF(q.x, q.y);
+    };
+    press(canvas, screen(fromImage));
+    for (int step = 1; step <= 6; ++step) {
+        const QPoint mid(fromImage.x() + (toImage.x() - fromImage.x()) * step / 6,
+                         fromImage.y() + (toImage.y() - fromImage.y()) * step / 6);
+        moveTo(canvas, screen(mid));
+    }
+    release(canvas, screen(toImage));
+}
+
+TEST(EdgeBrush, PaintingOnARealOpenedImageMovesTheGreenLine) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+
+    // Una pieza clara sobre fondo oscuro, con una MUESCA oscura en el lado
+    // derecho: eso es exactamente lo que hace una sombra, y la detección la
+    // dejará fuera de la pieza.
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(100, 80, 200, 140), QColor(230, 230, 230));
+        painter.fillRect(QRect(250, 120, 50, 60), QColor(22, 22, 22));  // la "sombra"
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("pieza.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+
+    // Esperar a que el análisis dé un contorno. Sin esto no hay nada que corregir.
+    const auto waitFor = [](auto predicate, int ms = 4000) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (predicate()) {
+                return true;
+            }
+        }
+        return predicate();
+    };
+    ASSERT_TRUE(waitFor([&] { return canvas->liveContour().size() >= 4; }))
+        << "no se detectó ninguna pieza en la imagen abierta";
+
+    const QRectF before = canvas->liveContour().boundingRect();
+    const double areaBefore = std::abs(polygonArea(canvas->liveContour()));
+    std::printf("  [borde] contorno detectado: %.0f px2, caja %.0fx%.0f\n", areaBefore,
+                before.width(), before.height());
+
+    // Ahora se pinta la muesca como PIEZA, que es lo que el operador haría al
+    // ver que una sombra se le come una esquina.
+    QToolButton* brush = nullptr;
+    for (auto* button : window.findChildren<QToolButton*>()) {
+        if (button->text().startsWith(QStringLiteral("Corregir"))) {
+            brush = button;
+        }
+    }
+    ASSERT_NE(brush, nullptr);
+    EXPECT_TRUE(brush->isEnabled())
+        << "con una imagen abierta el pincel tiene que dejarse usar. Dice: "
+        << brush->toolTip().toStdString();
+    EXPECT_TRUE(brush->toolTip().startsWith(QStringLiteral("Corrige")))
+        << "encendido pero explicando por qué está apagado";
+
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece, 18);
+    paintStroke(canvas, QPoint(250, 120), QPoint(300, 180));
+
+    // Y se espera a que el reanálisis termine. NO hay que confirmar nada: el
+    // trazo se procesa al soltar el botón.
+    ASSERT_TRUE(waitFor([&] {
+        return std::abs(polygonArea(canvas->liveContour())) > areaBefore * 1.01;
+    })) << "se pintó sobre el contorno y la línea verde no se movió: el pincel no "
+           "llega al análisis";
+
+    const double areaAfter = std::abs(polygonArea(canvas->liveContour()));
+    std::printf("  [borde] tras pintar la muesca: %.0f px2 (%+.1f%%)\n", areaAfter,
+                100.0 * (areaAfter - areaBefore) / areaBefore);
+    EXPECT_GT(areaAfter, areaBefore)
+        << "corregir hacia dentro tiene que AÑADIR superficie a la pieza";
+}
+
+// Al abrir un fichero, la enumeración de cámaras seguía su curso en segundo
+// plano y, al terminar, repoblaba el desplegable: `clear()` + `addItem()` mueve
+// el índice de -1 a 0 y Qt emite `currentIndexChanged`. Ese aviso se leía como
+// «han elegido la cámara 0», y el fichero recién abierto se cerraba solo.
+//
+// Nadie eligió nada. Lo eligió un índice al moverse.
+TEST(SourceCombo, RefreshingTheCameraListDoesNotCloseTheOpenFile) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QImage photo(320, 240, QImage::Format_RGB888);
+    photo.fill(QColor(30, 30, 30));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(80, 60, 160, 120), QColor(220, 220, 220));
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("abierta.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1000, 700);
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+
+    const auto waitFor = [](auto predicate, int ms = 4000) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (predicate()) {
+                return true;
+            }
+        }
+        return predicate();
+    };
+    ASSERT_TRUE(waitFor([&] { return canvas->imageSize() == QSize(320, 240); }))
+        << "la imagen abierta no llegó a mostrarse";
+
+    // Y ahora se repuebla la lista, que es lo que hace la enumeración al acabar
+    // y lo que hace «Actualizar».
+    QMetaObject::invokeMethod(&window, "refreshCameras", Qt::DirectConnection);
+    QTest::qWait(600);
+    QApplication::processEvents();
+
+    EXPECT_EQ(canvas->imageSize(), QSize(320, 240))
+        << "actualizar la lista de cámaras cerró el fichero abierto";
+
+    // Y el desplegable sigue diciendo QUÉ está abierto, no «cámara 0».
+    QComboBox* sources = nullptr;
+    for (auto* combo : window.findChildren<QComboBox*>()) {
+        for (int i = 0; i < combo->count(); ++i) {
+            if (combo->itemText(i).contains(QStringLiteral("abierta.png"))) {
+                sources = combo;
+            }
+        }
+    }
+    ASSERT_NE(sources, nullptr) << "el fichero abierto desapareció de la lista de fuentes";
+    std::printf("  [fuentes] el desplegable dice: %s\\n",
+                sources->currentText().toStdString().c_str());
+    EXPECT_TRUE(sources->currentText().contains(QStringLiteral("abierta.png")))
+        << "la lista dice una fuente y en pantalla se ve otra";
 }

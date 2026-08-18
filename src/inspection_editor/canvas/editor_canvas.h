@@ -118,6 +118,9 @@ public:
     // desde fuera que una corrección del borde LLEGA a mover la línea verde:
     // sin esto, «se corrige» solo se podía verificar mirando la pantalla.
     [[nodiscard]] const QPolygonF& liveContour() const { return liveContour_; }
+    // El tamaño de la imagen que se está mostrando, para poder reconstruir desde
+    // fuera la misma transformación vista↔imagen que usa el lienzo.
+    [[nodiscard]] QSize imageSize() const { return image_.size(); }
     void clearLive();  // fin de la transmisión: "Sin señal"
 
     [[nodiscard]] QSize sizeHint() const override;
