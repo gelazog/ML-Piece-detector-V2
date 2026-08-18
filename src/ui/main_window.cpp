@@ -910,14 +910,23 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             repos_.settings->getDouble("det_min_area", 0.005).value(), 0.0001, 0.5);
         pipelineConfig_.maxAreaFraction = std::clamp(
             repos_.settings->getDouble("det_max_area", 0.9).value(), 0.1, 1.0);
-        // Por defecto, AUTOMÁTICA. Arrancar en «imagen entera» dejaba la
-        // optimización apagada para todo el que no supiera que existe, y la
-        // automática no puede cambiar ninguna respuesta: ante la duda —se
-        // pierde la pieza, toca el borde, cambia de tamaño de golpe— vuelve
-        // sola al frame entero y lo dice. Un ajuste que solo puede ir más
-        // rápido no tiene por qué esperar a que alguien lo descubra.
+        // Por defecto, IMAGEN ENTERA. Estuvo en «automática» y hubo que
+        // revertirlo: el argumento para ponerla —«la automática no puede
+        // cambiar ninguna respuesta»— era FALSO, y lo demostró usar la
+        // aplicación.
+        //
+        // El recorte automático rodea a UNA pieza, la mayor, con su margen. Se
+        // suelta cuando alguien «está contando», pero eso exige que el operador
+        // haya declarado antes que espera varias — y no puede saber que tiene
+        // que declararlo hasta que ya ha visto el problema. Con varias piezas
+        // en la mesa y nada declarado, las demás quedaban fuera por
+        // construcción y la aplicación decía que solo había una.
+        //
+        // Una optimización que cambia una respuesta no es una optimización, es
+        // un fallo. Esa frase ya estaba escrita en `effectiveWorkingZone`; lo
+        // que faltaba era aplicármela al elegir el valor por defecto.
         zoneMode_ = vision::workingZoneModeFromKey(
-            repos_.settings->getString("work_zone_mode", "auto").value().c_str());
+            repos_.settings->getString("work_zone_mode", "off").value().c_str());
     }
     autoTimer_.setInterval(autoIntervalMs_);
     if (repos_.engine != nullptr) {
@@ -1427,11 +1436,31 @@ void MainWindow::updateRoiButton() {
     clearZoneAction_->setToolTip(hasRect || hasFree
                                      ? tr("Vuelve a analizar la imagen entera.")
                                      : tr("No hay ninguna zona dibujada."));
-    // Y el propio botón dice qué hay puesto, para no tener que abrir el menú
-    // solo para saberlo.
-    zoneButton_->setText(hasFree    ? tr("Zona libre")
-                         : hasRect  ? tr("Zona fija")
-                                    : tr("Zona"));
+    // El botón dice qué zona está EN USO, no cuál hay guardada, y la diferencia
+    // es justo el fallo que tenía: con una libre guardada y una rectangular
+    // dibujada después seguía diciendo «Zona libre» mientras actuaba la otra; y
+    // con el modo en automática decía que había zona cuando no se aplicaba
+    // ninguna.
+    //
+    // Quien manda es el MODO, que es lo mismo que decide qué se recorta de
+    // verdad. Leerlo de otro sitio es como se llega a que la barra afirme una
+    // cosa y el análisis haga otra.
+    switch (zoneMode_) {
+        case vision::WorkingZoneMode::Fixed:
+            zoneButton_->setText(hasRect ? tr("Zona fija") : tr("Zona"));
+            break;
+        case vision::WorkingZoneMode::Free:
+            zoneButton_->setText(hasFree ? tr("Zona libre") : tr("Zona"));
+            break;
+        case vision::WorkingZoneMode::Automatic:
+            // La automática no la dibuja el operador: sigue a la pieza sola. Se
+            // nombra para que no parezca que no hay ninguna.
+            zoneButton_->setText(tr("Zona auto"));
+            break;
+        case vision::WorkingZoneMode::Off:
+            zoneButton_->setText(tr("Zona"));
+            break;
+    }
 }
 
 bool MainWindow::countingPieces() const {
@@ -2908,6 +2937,12 @@ void MainWindow::onStreamStopped() {
     }
 
     // La fuente que se pidió mientras la anterior seguía en marcha.
+    //
+    // Se arranca DIFERIDA y no aquí mismo, y la diferencia importa: esta ranura
+    // puede estar corriendo dentro de la emisión de `stopped()` de la fuente que
+    // acaba de morir, y abrir un diálogo de fichero MODAL ahí dentro es parar el
+    // desmontaje a la mitad y quedarse esperando. `singleShot(0)` lo saca al
+    // bucle de eventos, con el apagado ya terminado.
     if (pendingSourceChoice_.has_value()) {
         const int wanted = *pendingSourceChoice_;
         pendingSourceChoice_.reset();
@@ -2915,7 +2950,7 @@ void MainWindow::onStreamStopped() {
             QSignalBlocker blocker(cameraCombo_);
             cameraCombo_->setCurrentIndex(index);
         }
-        onStartStopClicked();
+        QTimer::singleShot(0, this, &MainWindow::onStartStopClicked);
     }
     updateBoardReadout();      // "sin pieza detectada" al cortar la transmisión
     updateStatusIndicators();  // cámara vuelve a rojo (S4)

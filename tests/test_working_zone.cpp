@@ -843,3 +843,43 @@ TEST(FreeZoneMode, TheModeSurvivesBeingSavedAndRead) {
     EXPECT_EQ(workingZoneModeFromKey("libre"), WorkingZoneMode::Off);
     EXPECT_EQ(workingZoneModeFromKey(nullptr), WorkingZoneMode::Off);
 }
+
+TEST(WorkingZone, TheAutomaticCropCannotBeTheDefaultBecauseItHidesPieces) {
+    // El fallo, reproducido con la regla y no con la ventana.
+    //
+    // Se puso la zona automática por defecto argumentando que «no puede cambiar
+    // ninguna respuesta». Es falso, y lo demostró usar la aplicación: con seis
+    // piezas en la mesa solo se veía una.
+    //
+    // El recorte rodea a UNA pieza, la mayor, con su margen. Se suelta cuando
+    // alguien «está contando», pero eso exige que el operador haya DECLARADO
+    // antes que espera varias — y no puede saber que tiene que declararlo hasta
+    // que ya ha visto el problema.
+    const cv::Mat scene = sceneWithSixPieces();
+    const int truth = piecesSeen(scene, {});
+    ASSERT_EQ(truth, 6) << "la escena de prueba dejó de tener seis piezas";
+
+    AutoRoiTracker tracker;
+    tracker.update(true, cv::Rect(80, 50, 420, 320), kFrameSize);
+    const cv::Rect crop = tracker.roi();
+    ASSERT_GT(crop.area(), 0);
+
+    // Con la automática puesta y NADIE contando —que es el estado de un
+    // operador que acaba de abrir el programa— se ve una sola pieza.
+    const cv::Rect asDefault =
+        effectiveWorkingZone(WorkingZoneMode::Automatic, cv::Rect(), crop, false);
+    const int seenWithAuto = piecesSeen(scene, asDefault);
+    std::printf("  [defecto] con la zona automática puesta se ven %d de %d piezas\n",
+                seenWithAuto, truth);
+    EXPECT_LT(seenWithAuto, truth)
+        << "si esto no oculta piezas, el fallo ya no se reproduce y el valor por "
+           "defecto podría volver a ser automático";
+
+    // Con «imagen entera», que es el valor de fábrica al que se volvió, se ven
+    // todas sin que nadie tenga que declarar nada.
+    const cv::Rect wholeFrame =
+        effectiveWorkingZone(WorkingZoneMode::Off, cv::Rect(), crop, false);
+    EXPECT_EQ(piecesSeen(scene, wholeFrame), truth)
+        << "el valor de fábrica esconde piezas";
+    EXPECT_EQ(workingZoneModeFromKey("off"), WorkingZoneMode::Off);
+}

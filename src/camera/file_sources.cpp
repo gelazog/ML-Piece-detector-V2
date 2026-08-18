@@ -209,9 +209,25 @@ void VideoFileSource::playLoop() {
         // desde el hilo de la interfaz mientras este lee es pedir una
         // corrupción.
         if (const double wanted = seekRequest_.exchange(-1.0); wanted >= 0.0) {
-            if (totalFrames > 0) {
-                const double target = std::clamp(wanted, 0.0, 1.0) * (totalFrames - 1);
-                capture.set(cv::CAP_PROP_POS_FRAMES, target);
+            // Se salta por MILISEGUNDOS y no por número de frame.
+            //
+            // `CAP_PROP_POS_FRAMES` sobre un MP4 con H.264 es de las cosas menos
+            // fiables de OpenCV: el contenedor no indexa frame a frame, así que
+            // pedir el 45.000 obliga a decodificar desde la última clave, y en
+            // un vídeo de 50 minutos eso son segundos de espera con la interfaz
+            // parada. Además, después devuelve la posición de la CLAVE y no la
+            // pedida, que es por lo que el pulgar y el tiempo no cuadraban.
+            //
+            // `CAP_PROP_POS_MSEC` usa el índice de tiempo del contenedor, que es
+            // justo para lo que está.
+            const double clamped = std::clamp(wanted, 0.0, 1.0);
+            const double totalMs = fps > 0.0 && totalFrames > 0
+                                       ? 1000.0 * totalFrames / fps
+                                       : 0.0;
+            if (totalMs > 0.0) {
+                capture.set(cv::CAP_PROP_POS_MSEC, clamped * totalMs);
+            } else if (totalFrames > 0) {
+                capture.set(cv::CAP_PROP_POS_FRAMES, clamped * (totalFrames - 1));
             }
         }
 
@@ -237,9 +253,14 @@ void VideoFileSource::playLoop() {
         }
         emit frameReady(toQImage(frame));
         emit statsUpdated(fps, frame.cols, frame.rows);
-        emit positionChanged(
-            static_cast<qint64>(std::max(0.0, capture.get(cv::CAP_PROP_POS_FRAMES))),
-            totalFrames, fps);
+        // La posición sale del tiempo y se convierte a frame: `POS_FRAMES` tras
+        // un salto devuelve la clave, no donde se está.
+        const double atMs = capture.get(cv::CAP_PROP_POS_MSEC);
+        const auto atFrame =
+            atMs > 0.0 && fps > 0.0
+                ? static_cast<qint64>(atMs * fps / 1000.0)
+                : static_cast<qint64>(std::max(0.0, capture.get(cv::CAP_PROP_POS_FRAMES)));
+        emit positionChanged(atFrame, totalFrames, fps);
         if (stepping) {
             // Un paso deja el vídeo parado en el frame nuevo: es lo que se pide
             // cuando se está buscando EL frame.

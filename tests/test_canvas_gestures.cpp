@@ -2025,6 +2025,17 @@ TEST(MainToolbar, TheZoneIsOneControlWithItsThreeActionsNamed) {
             << "sigue habiendo un botón que dice lo que borra";
     }
 
+    // El botón dice qué zona está EN USO, no cuál hay guardada. Recién abierta
+    // la zona de trabajo va en automática, así que eso es lo que tiene que
+    // decir — «Zona» a secas haría creer que no hay ninguna, y «Zona fija»
+    // afirmaría una que nadie dibujó.
+    // Recién abierta, la zona de trabajo va en IMAGEN ENTERA: la automática
+    // estuvo de fábrica y hubo que revertirla porque escondía piezas. Sin zona
+    // activa, el botón dice «Zona» a secas — nombrar una que no se aplica sería
+    // la misma mentira que se acaba de quitar.
+    EXPECT_EQ(zone->text(), QStringLiteral("Zona"))
+        << "el botón dice «" << zone->text().toStdString() << "» sin zona activa";
+
     QStringList actions;
     for (auto* action : zone->menu()->actions()) {
         if (!action->isSeparator()) {

@@ -274,8 +274,10 @@ private:
     ConfigureDialog* configureDialog_ = nullptr;
     int configureTab_ = 0;
     // Zona de trabajo automática (C3).
-    // Automática de fábrica: es la que no puede cambiar una respuesta.
-    vision::WorkingZoneMode zoneMode_ = vision::WorkingZoneMode::Automatic;
+    // Imagen entera de fábrica. Estuvo en automática y hubo que revertirlo:
+    // el recorte rodea a UNA pieza, así que con varias en la mesa las demás
+    // quedaban fuera y la aplicación decía que solo había una.
+    vision::WorkingZoneMode zoneMode_ = vision::WorkingZoneMode::Off;
     vision::AutoRoiTracker autoRoi_;
     int expectedPieces_ = 1;  // de la pieza seleccionada (C5)
     int lastPieceCount_ = -1;  // piezas vistas en el último análisis
