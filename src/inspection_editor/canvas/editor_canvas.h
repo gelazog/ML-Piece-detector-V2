@@ -114,6 +114,10 @@ public:
     void setLivePiece(bool found, const QPolygonF& contour, const QPointF& centroid,
                       double angleDeg, const QString& statusText);
     void setLiveContourVisible(bool visible);
+    // El contorno detectado que se está pintando. Existe para poder comprobar
+    // desde fuera que una corrección del borde LLEGA a mover la línea verde:
+    // sin esto, «se corrige» solo se podía verificar mirando la pantalla.
+    [[nodiscard]] const QPolygonF& liveContour() const { return liveContour_; }
     void clearLive();  // fin de la transmisión: "Sin señal"
 
     [[nodiscard]] QSize sizeHint() const override;

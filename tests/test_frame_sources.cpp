@@ -338,6 +338,47 @@ TEST(VideoControls, PausingStopsTheFramesAndResumingBringsThemBack) {
     EXPECT_FALSE(source.isRunning()) << "no se pudo parar el vídeo en pausa";
 }
 
+// Un vídeo en pausa NO emite: eso es lo que se quiere (no gasta CPU decodificando
+// lo mismo), pero tiene una consecuencia que costó un fallo entero encontrar.
+//
+// Media aplicación se recalcula «cuando llega un frame»: los ajustes de
+// detección, la zona de trabajo, y la corrección del borde a pincel. Sobre un
+// vídeo en pausa no llega ninguno, así que todo eso se guardaba y no se volvía
+// a medir NADA — el operador corregía el borde y la línea verde no se movía.
+//
+// Una imagen fija sí repite (ver `AnImageDeliversItsFrameAndKeepsDeliveringIt`),
+// y por eso allí el fallo no se veía. Este test fija la diferencia para que
+// quien toque el bucle sepa qué depende de ella.
+TEST(VideoControls, APausedVideoDeliversNothing_SoNothingRecomputesOnItsOwn) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = writeVideo(QDir(dir.path()), QStringLiteral("pausa.avi"), 60, 160, 120);
+    if (path.isEmpty()) {
+        GTEST_SKIP() << "sin códec de escritura de vídeo en esta máquina";
+    }
+
+    VideoFileSource source(path);
+    QSignalSpy frames(&source, &pci::camera::FrameSource::frameReady);
+    source.start();
+    ASSERT_TRUE(waitFor([&] { return frames.count() >= 2; }))
+        << "el vídeo no arrancó";
+
+    source.setPaused(true);
+    ASSERT_TRUE(source.isPaused());
+    QTest::qWait(120);  // que el bucle llegue a la rama de pausa
+    const int settled = static_cast<int>(frames.count());
+
+    // Y aquí está el hecho: pasa el tiempo y no llega nada.
+    QTest::qWait(400);
+    const int later = static_cast<int>(frames.count());
+    std::printf("  [pausa] %d frames en 400 ms de pausa\n", later - settled);
+    EXPECT_EQ(later, settled)
+        << "si un vídeo en pausa emitiera, la corrección del borde se recalcularía sola; "
+           "como no emite, quien cambie algo tiene que pedir el reanálisis a mano";
+
+    source.stop();
+}
+
 TEST(VideoControls, SteppingAdvancesOneFrameAndLeavesItPaused) {
     QTemporaryDir dir;
     ASSERT_TRUE(dir.isValid());

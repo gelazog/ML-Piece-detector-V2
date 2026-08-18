@@ -152,6 +152,7 @@ protected:
 private:
     void setControlsEnabled(bool enabled);
     void maybeStartAnalysis();
+    void reanalyseCurrentFrame();
     [[nodiscard]] bool analysisNeeded() const;
     void updateCalibrationLabel();
     void persistCalibration();     // sella resolución/cámara y guarda en Settings

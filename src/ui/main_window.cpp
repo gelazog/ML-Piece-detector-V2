@@ -1237,7 +1237,7 @@ void MainWindow::buildMenuBar() {
         statusBar()->showMessage(
             on ? tr("Escala por marcador ArUco activa (lado %1 mm).").arg(markerSizeMm_, 0, 'f', 1)
                : tr("Escala por marcador ArUco desactivada."));
-        maybeStartAnalysis();
+        reanalyseCurrentFrame();
     });
 
 
@@ -1311,7 +1311,7 @@ void MainWindow::buildMenuBar() {
         if (repos_.settings != nullptr) {
             repos_.settings->setInt("show_contour", on ? 1 : 0);
         }
-        maybeStartAnalysis();
+        reanalyseCurrentFrame();
     });
 
     // Un panel que se cierra sin forma de recuperarlo es una herramienta
@@ -1620,7 +1620,7 @@ void MainWindow::applyDetectionPage(DetectionPage* page) {
         currentProfileId_ > 0
             ? tr("Ajustes de detección aplicados y guardados en el perfil de la pieza.")
             : tr("Ajustes de detección aplicados: el contorno en vivo ya los usa."));
-    maybeStartAnalysis();
+    reanalyseCurrentFrame();
 }
 
 // Perfil de detección de la pieza seleccionada (O3): si tiene uno, sus ajustes
@@ -1643,7 +1643,7 @@ void MainWindow::loadDetectionProfileForSelectedPiece() {
     pipelineConfig_.segmentation = profile.value().options;
     statusBar()->showMessage(tr("Detección: perfil '%1' de esta pieza.")
                                  .arg(QString::fromStdString(profile.value().name)));
-    maybeStartAnalysis();
+    reanalyseCurrentFrame();
 }
 
 // Quitar la zona que haya, sea la que sea. Va aparte porque ahora es una acción
@@ -1665,6 +1665,9 @@ void MainWindow::onClearZoneClicked() {
     }
     persistPipelineConfig();
     updateRoiButton();
+    // Cambiar la zona sin volver a medir deja el contorno de la zona anterior:
+    // sobre una foto no llega ningún frame nuevo que fuerce el recálculo.
+    reanalyseCurrentFrame();
     statusBar()->showMessage(tr("Zona quitada: se vuelve a analizar la imagen entera."));
 }
 
@@ -1688,6 +1691,7 @@ void MainWindow::onRegionPicked(const cv::Rect& imageRect) {
     setWorkingZoneMode(vision::modeAfterFixedZoneChanged(zoneMode_, true));
     persistPipelineConfig();
     updateRoiButton();
+    reanalyseCurrentFrame();
     statusBar()->showMessage(
         tr("Zona de detección activa: el contorno solo se busca dentro del recuadro."));
 }
@@ -1770,6 +1774,7 @@ void MainWindow::onFreeZonePicked(const std::vector<cv::Point>& imagePolygon) {
     setWorkingZoneMode(vision::modeAfterFreeZoneChanged(zoneMode_, true));
     persistPipelineConfig();
     updateRoiButton();
+    reanalyseCurrentFrame();
     // El número de vértices no es decoración: es lo que permite notar que un
     // trazo de doce esquinas se guardó con cuatro, o al revés.
     statusBar()->showMessage(tr("Zona libre activa (%1 vértices): se analiza solo lo de "
@@ -2453,11 +2458,15 @@ void MainWindow::buildVideoBar(QWidget* parent, QVBoxLayout* root) {
         const bool pausing = !video->isPaused();
         video->setPaused(pausing);
         playPauseButton_->setText(pausing ? tr("Seguir") : tr("Pausa"));
+        // Pausar habilita el pincel y seguir lo apaga: un vídeo detenido en un
+        // frame es tan quieto como una foto, y en marcha no lo es.
+        updateEdgeBrushAvailability();
     });
     connect(stepButton_, &QToolButton::clicked, this, [this] {
         if (auto* video = dynamic_cast<camera::VideoFileSource*>(fileSource_.get())) {
             video->stepOneFrame();
             playPauseButton_->setText(tr("Seguir"));  // el paso deja en pausa
+            updateEdgeBrushAvailability();
         }
     });
     // Mientras se arrastra, la barra deja de seguir al vídeo: si no, el pulgar
@@ -2655,22 +2664,49 @@ void MainWindow::updateEdgeBrushAvailability() {
     if (edgeBrushButton_ == nullptr) {
         return;
     }
+    // Una imagen QUIETA: una foto, un fichero de imagen, o un vídeo EN PAUSA.
+    //
+    // El vídeo pausado entra, y al principio no estaba: se dejó fuera por
+    // pensar «vídeo = se mueve», pero un vídeo detenido en un frame es tan
+    // quieto como una foto — y es justo donde hace falta corregir, porque es el
+    // frame que uno ha elegido tras buscarlo con la barra.
+    //
+    // Lo que sigue fuera es el vídeo EN MARCHA y la cámara en vivo, y ahí la
+    // razón se mantiene: el contorno se recalcula en cada frame, así que un
+    // borde corregido a mano sería mentira en cuanto la pieza se moviera.
+    const auto* video = dynamic_cast<const camera::VideoFileSource*>(fileSource_.get());
+    const bool pausedVideo = video != nullptr && video->isPaused();
     const bool still = sourceKind_ == camera::SourceKind::Photo ||
-                       sourceKind_ == camera::SourceKind::Image;
-    edgeBrushButton_->setEnabled(still && !lastFrame_.isNull());
+                       sourceKind_ == camera::SourceKind::Image || pausedVideo;
+    const bool usable = still && !lastFrame_.isNull();
+
+    // Sin cambios, no se toca nada: esto se consulta en cada frame y reescribir
+    // el tooltip sesenta veces por segundo es trabajo tirado.
+    if (edgeBrushButton_->isEnabled() == usable && !edgeBrushButton_->toolTip().isEmpty()) {
+        return;
+    }
+    edgeBrushButton_->setEnabled(usable);
     edgeBrushButton_->setToolTip(
-        still ? tr("Corrige a mano dónde está el borde de la pieza cuando la detección se\n"
-                   "equivoca: una sombra que se come un lado, un reflejo que la parte.\n\n"
-                   "Verde lo que añades, rojo lo que quitas. La corrección vale para esta\n"
-                   "imagen: no cambia cómo se detectan las demás.")
-              : tr("Solo con una foto o una imagen abierta.\n\n"
-                   "En vídeo en vivo el contorno se recalcula en cada frame, así que un\n"
-                   "borde corregido a mano dejaría de valer en cuanto la pieza se moviera.\n"
-                   "Captura una foto y corrígela ahí."));
-    if (!still) {
-        // Al volver al vídeo, el pincel se apaga solo: dejarlo encendido haría
-        // que el siguiente clic sobre la imagen pintara sin que nadie lo pidiera.
-        if (brushAddAction_ != nullptr) {
+        usable
+            ? tr("Corrige a mano dónde está el borde de la pieza cuando la detección se\n"
+                 "equivoca: una sombra que se come un lado, un reflejo que la parte.\n\n"
+                 "Verde lo que añades, rojo lo que quitas. La rueda del ratón cambia el\n"
+                 "tamaño del pincel. La corrección vale para esta imagen: no cambia cómo\n"
+                 "se detectan las demás.")
+        : sourceKind_ == camera::SourceKind::Video
+            ? tr("Pausa el vídeo para corregir el borde.\n\n"
+                 "Con el vídeo en marcha el contorno se recalcula en cada frame, así que\n"
+                 "una corrección a mano dejaría de valer al frame siguiente.")
+            : tr("Solo con una imagen quieta: una foto, un fichero abierto o un vídeo en\n"
+                 "pausa.\n\n"
+                 "En vídeo en vivo el contorno se recalcula en cada frame, así que un borde\n"
+                 "corregido a mano dejaría de valer en cuanto la pieza se moviera. Captura\n"
+                 "una foto y corrígela ahí."));
+    if (!usable) {
+        // Al dejar de poder usarse, el pincel se apaga solo: dejarlo encendido
+        // haría que el siguiente clic sobre la imagen pintara sin que nadie lo
+        // pidiera.
+        if (brushAddAction_ != nullptr && brushRemoveAction_ != nullptr) {
             QSignalBlocker a(brushAddAction_);
             QSignalBlocker b(brushRemoveAction_);
             brushAddAction_->setChecked(false);
@@ -2706,7 +2742,7 @@ void MainWindow::onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& force
     }
 
     // Se reanaliza en el acto: el sentido de corregir es VER el borde nuevo.
-    maybeStartAnalysis();
+    reanalyseCurrentFrame();
     const int added = forcePiece.empty() ? 0 : cv::countNonZero(forcePiece);
     const int removed = forceBackground.empty() ? 0 : cv::countNonZero(forceBackground);
     statusBar()->showMessage(added == 0 && removed == 0
@@ -2718,6 +2754,11 @@ void MainWindow::onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& force
 
 void MainWindow::onFrame(const QImage& frame) {
     video_->setFrame(frame);
+    // La disponibilidad del pincel depende de que HAYA un frame, y el primero
+    // llega después de que se monte la fuente. Sin recalcularla aquí, el botón
+    // se quedaba apagado para siempre: se decidía con `lastFrame_` todavía
+    // vacío y nadie volvía a preguntarlo.
+    updateEdgeBrushAvailability();
     // Si cambia la resolución del frame, reevaluar si la calibración sigue
     // siendo válida (D1); barato porque solo ocurre al cambiar de fuente.
     const QSize previousSize = lastFrame_.size();
@@ -2857,6 +2898,31 @@ bool MainWindow::analysisNeeded() const {
     return streaming_ &&
            (showContourAction_->isChecked() || !liveTools_.empty() || autoInspecting_ ||
             toolPalette_->currentTool().has_value());
+}
+
+// «Vuelve a medir ESTA imagen», que no es lo mismo que `maybeStartAnalysis`.
+//
+// `maybeStartAnalysis` arranca el análisis del frame que esté ESPERANDO, y en
+// una foto o en un vídeo en pausa no llega ninguno más: el pendiente se
+// consumió en el primer análisis y el hueco se quedó vacío para siempre. Pedir
+// un reanálisis sin reponerlo no hacía nada en absoluto.
+//
+// Ese era el motivo de fondo de que corregir el borde no moviera el contorno
+// —y, con él, de que cambiar la detección, la zona o la escala tampoco se
+// notara sobre una imagen quieta: los ajustes se guardaban, pero nadie volvía
+// a medir con ellos.
+//
+// Se repone desde `lastFrame_` solo si no hay uno pendiente: si lo hay, es más
+// reciente. Y si hay un análisis en vuelo, `maybeStartAnalysis` se retira y lo
+// recoge al terminar, que para eso deja el frame puesto.
+void MainWindow::reanalyseCurrentFrame() {
+    if (lastFrame_.isNull()) {
+        return;
+    }
+    if (pendingAnalysisFrame_.isNull()) {
+        pendingAnalysisFrame_ = lastFrame_;
+    }
+    maybeStartAnalysis();
 }
 
 // Como máximo un análisis en vuelo; si la visión va más lenta que la cámara,
@@ -3104,10 +3170,7 @@ void MainWindow::onToolModeChanged(std::optional<inspection::ToolType> chosen) {
     video_->setCreateType(type);
     // Elegir herramienta exige el fixture: reactiva el análisis si estaba
     // pausado por tener el contorno oculto y la escena vacía.
-    if (!lastFrame_.isNull()) {
-        pendingAnalysisFrame_ = lastFrame_;
-        maybeStartAnalysis();
-    }
+    reanalyseCurrentFrame();
     // La primera línea de la descripción como guía inmediata.
     const QString description = QString::fromUtf8(inspection::toolTypeDescription(type));
     statusBar()->showMessage(description.section(QLatin1Char('\n'), 0, 1));
@@ -4212,7 +4275,7 @@ void MainWindow::onResetConfigClicked() {
            "se aplican al volver a abrir el programa.",
            nullptr, forgotten.value()));
     statusBar()->showMessage(tr("Configuración de fábrica restablecida."));
-    maybeStartAnalysis();
+    reanalyseCurrentFrame();
 }
 
 void MainWindow::onExportConfigClicked() {

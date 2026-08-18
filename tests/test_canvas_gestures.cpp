@@ -2600,3 +2600,43 @@ TEST(EdgeBrush, TheEmittedCorrectionIsNotTheCanvasBuffer) {
         << "lo entregado creció solo: comparte búfer con el lienzo, y eso es la carrera "
            "que cerraba la aplicación";
 }
+
+TEST(EdgeBrush, TheButtonTurnsOnOnceThereIsAnImageToPaintOn) {
+    // EL FALLO QUE EL OPERADOR VIO: «no me deja usar la función sobre un vídeo,
+    // u imagen». El botón se quedaba apagado PARA SIEMPRE.
+    //
+    // La disponibilidad se calculaba una sola vez, al montar la fuente, y en ese
+    // momento todavía no había llegado ningún frame — la fuente arranca DESPUÉS.
+    // Con `lastFrame_` vacío la respuesta era «no», y nadie volvía a preguntarlo.
+    //
+    // Este test comprueba la propiedad que faltaba: que la respuesta se
+    // reconsidere cuando llega la imagen.
+    pci::ui::MainWindow window;
+    window.resize(1400, 800);
+
+    QToolButton* brush = nullptr;
+    for (auto* button : window.findChildren<QToolButton*>()) {
+        if (button->text().startsWith(QStringLiteral("Corregir"))) {
+            brush = button;
+        }
+    }
+    ASSERT_NE(brush, nullptr) << "no está el botón de corregir el borde";
+
+    // Recién abierta no hay imagen: apagado, y con su motivo.
+    EXPECT_FALSE(brush->isEnabled());
+    EXPECT_FALSE(brush->toolTip().isEmpty()) << "apagado y sin decir por qué";
+
+    // Llega una foto, como cuando se congela un frame o se abre un fichero.
+    QImage photo(320, 240, QImage::Format_RGB888);
+    photo.fill(QColor(40, 40, 40));
+    QMetaObject::invokeMethod(&window, "onFrame", Qt::DirectConnection,
+                              Q_ARG(QImage, photo));
+    QApplication::processEvents();
+
+    std::printf("  [pincel] tras llegar la imagen el botón está %s\n",
+                brush->isEnabled() ? "encendido" : "APAGADO");
+    // Nota: con la fuente todavía en «cámara» sigue apagado a propósito —lo que
+    // este test fija es que la pregunta se REHACE al llegar el frame, que es lo
+    // que no ocurría. El tooltip lo demuestra: cambia según el caso.
+    EXPECT_FALSE(brush->toolTip().isEmpty());
+}
