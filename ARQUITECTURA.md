@@ -252,6 +252,44 @@ sólo exige que no sean negativos. La primera versión de esta comprobación usa
 `isValid()` y por eso no saltaba nunca: un ajuste ausente se lee como cero y
 pasaba por bueno. Lo que hace falta es `isEmpty()`.
 
+#### Material REAL: lo que una foto de verdad destapa en el primer intento
+
+Durante meses, todo lo que este proyecto probaba eran PNG que se dibujaba a si
+mismo: rectangulos planos, sin ruido, sin reflejos, sin compresion. Por eso
+todos los fallos de las ultimas semanas los encontro el operador usando la
+aplicacion y no la bateria de pruebas.
+
+Una fotografia de verdad trae de una sola vez lo que las sinteticas no tienen:
+reflejos especulares, sombras suaves, compresion JPEG, y sobre todo **cosas que
+no son la pieza** — una regla, una barra de escala, texto.
+
+La primera foto real destapo un fallo **en el primer intento**. Es una bola
+oscura sobre fondo claro con una regla metalica al lado; la segmentacion se
+queda con las marcas grabadas de la regla (son oscuras, como la bola) y el
+contorno resultante es largo, delgado y casi recto. Ajustar una circunferencia a
+un contorno casi recto da un circulo enorme: se publico un **Ø 130.901 px sobre
+una imagen de 1920 px de ancho**. Sesenta y ocho veces mas ancha que la foto,
+con un motivo que lo explicaba con toda seguridad.
+
+La causa es que la vara era **relativa al radio ajustado** (`deviation <= radius
+* 0,05`): cuanto mas absurdo el circulo, mayor su radio y mas facil pasar el
+5 %. Se justificaba a si mismo — con Ø 130.901 px el margen eran 3.272 px y el
+contorno se separaba 175. Ahora el diametro no puede pasar del doble de la
+diagonal de la caja del propio contorno: para una circunferencia de verdad esa
+razon es 0,71, y el caso de la regla estaba en **99,4**.
+
+Y el video real cierra el hueco que mas costo: los AVI del test son intra-frame
+(cualquier frame es punto de entrada, buscar siempre acierta), mientras que el
+operador trabaja con H.264, donde solo los keyframes lo son. Medido sobre un MP4
+real: **buscar por tiempo aterriza con 8,8 ms de desvio sobre 10.036 ms**, el
+tiempo no retrocede en 454 frames seguidos, y con cuatro dados en el aire se
+encuentran **hasta 5 piezas a la vez** sobre un fondo metalico que brilla tanto
+como ellas.
+
+El corpus **no se versiona** (obras de terceros con su licencia, y pesan): se
+versiona la receta, `testdata/fetch_real_images.py`, y las pruebas se saltan
+solas si no esta descargado.
+
 #### Un informe de cierre que culpaba a quien no era
 
 El manejador de fallos escribia siempre la misma causa: «un driver de captura

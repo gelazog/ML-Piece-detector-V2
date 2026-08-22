@@ -378,8 +378,38 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
     // que es en la práctica —una circunferencia, con su redondez diciendo la
     // verdad sobre las caras planas— y una estrella de veinte puntas, que se
     // separa un 40 %, se queda fuera.
-    const bool roundEnoughForItsSize =
-        circle.valid && circle.radius > 0.0 && circleDeviation <= circle.radius * 0.05;
+    // Una circunferencia no puede ser MUCHO mayor que la pieza a la que se
+    // ajusta, y comprobarlo hacia falta.
+    //
+    // Lo destapo una fotografia real: un contorno largo y casi recto —una regla
+    // metalica que la segmentacion tomo por la pieza— ajusto una circunferencia
+    // de Ø 130.901 px en una imagen de 1920 px de ancho. Sesenta y ocho veces
+    // mas ancha que la foto, publicada con un motivo que la explicaba con toda
+    // seguridad.
+    //
+    // La causa es que la vara de abajo es RELATIVA AL RADIO AJUSTADO: cuanto
+    // mas absurdo es el circulo, mas grande es su radio y mas facil le resulta
+    // pasar el 5 %. Se justifica a si mismo. Con Ø 130.901 px, el 5 % son 3.272
+    // px de margen, y el contorno se separaba 175: aprobado sin despeinarse.
+    //
+    // El limite lo pone la propia pieza. Para una circunferencia de verdad, el
+    // diametro es la diagonal de su caja partido por raiz de dos (0,71 veces);
+    // para cualquier silueta cerrada razonable se queda por debajo de la
+    // diagonal. Se admite hasta el DOBLE, que es holgadisimo, y aun asi deja
+    // fuera el caso de la regla por un factor de cincuenta.
+    //
+    // Solo afecta a este camino —el del contorno "demasiados lados para
+    // medirlos uno a uno"—. Un ajuste que cae dentro de la tolerancia absoluta
+    // (`circleFits`) ya esta acotado por ella y no necesita esto.
+    const cv::Rect contourBox = cv::boundingRect(points);
+    const double boxDiagonal = std::hypot(static_cast<double>(contourBox.width),
+                                          static_cast<double>(contourBox.height));
+    const bool circleFitsInsideThePiece =
+        boxDiagonal > 0.0 && 2.0 * circle.radius <= 2.0 * boxDiagonal;
+
+    const bool roundEnoughForItsSize = circle.valid && circle.radius > 0.0 &&
+                                       circleFitsInsideThePiece &&
+                                       circleDeviation <= circle.radius * 0.05;
     const bool polygonisedCurve =
         !polygonFits && polygon.unlimitedSides > scaled.maxSides && roundEnoughForItsSize;
 

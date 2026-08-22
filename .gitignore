@@ -10,3 +10,13 @@ models/
 
 # Overrides locales de CMake
 CMakeUserPresets.json
+
+# Corpus de fotos y videos REALES para las pruebas.
+#
+# El material no se versiona: son obras de terceros con su propia licencia y
+# pesan megas. Un repositorio de codigo que engorda con JPEG y MP4 se clona
+# peor para siempre, porque git no olvida. Lo que si se versiona es la RECETA
+# (testdata/fetch_real_images.py) y los creditos que genera.
+#
+# Las pruebas que lo usan se saltan solas si no esta descargado.
+testdata/real/
