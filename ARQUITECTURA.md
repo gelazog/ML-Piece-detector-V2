@@ -288,6 +288,24 @@ como ellas.
 
 El corpus **no se versiona** (obras de terceros con su licencia, y pesan): se
 versiona la receta, `testdata/fetch_real_images.py`, y las pruebas se saltan
+Las HERRAMIENTAS tambien se prueban contra ese material, y ahi aparece la
+unica verdad de campo fisica que tiene el proyecto: una bola de **10 mm
+nominales**. Medida con las propias herramientas de la aplicacion sale en
+**10,10 mm de largo y 9,79 mm de ancho**, y el clasificador de forma da Ø 250,8
+px por otro camino, a un 1-2 % de la herramienta. Que dos caminos distintos
+coincidan sobre una pieza cuyo tamano real se conoce es mas fuerte que acertar
+una cifra suelta.
+
+Y una anotacion de metodo, porque la trampa costo tiempo y estuvo a punto de
+convertirse en un defecto reportado que no existia: **el fixture tiene que ser
+el mismo al proponer y al ejecutar**. La geometria de una herramienta vive en
+coordenadas de PIEZA; proponer con un fixture y ejecutar con otro deja a las
+herramientas buscando el borde donde no esta, y entonces no mide ninguna. Con
+el fixture cruzado, 24 de 46 propuestas "fallaban"; con el correcto, cero.
+La segunda trampa de la misma familia: `runTool` devuelve un `Result`, y que
+ese `Result` sea valido solo dice que la herramienta CORRIO — si midio o no lo
+dice `value().ok`.
+
 solas si no esta descargado.
 
 #### Un informe de cierre que culpaba a quien no era

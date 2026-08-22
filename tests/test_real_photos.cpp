@@ -23,6 +23,8 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include "inspection_editor/auto_measure.h"
+#include "inspection_editor/execution/tool_executor.h"
 #include "vision/pipeline.h"
 #include "vision/shape_class.h"
 
@@ -258,4 +260,197 @@ TEST(RealPhotos, MeasuringTheSamePhotographTwiceGivesTheSameNumbers) {
                      shapeOf(photo, second.value(), {}).outerDiameter);
     std::printf("  [real] dos pasadas sobre la misma foto: area %.1f px2 las dos veces\n",
                 first.value().contour.area);
+}
+
+// ---------------------------------------------------------------------------
+// LAS HERRAMIENTAS DE MEDIDA sobre una fotografía real
+// ---------------------------------------------------------------------------
+//
+// Hasta aquí, el material real había servido para la segmentación y la
+// clasificación de forma. Las herramientas —lo que de verdad da los números que
+// el operador lee— seguían probándose solo contra discos y polígonos dibujados
+// por el propio test.
+
+// La bola de 10 mm trae VERDAD DE CAMPO doble: se sabe cuánto mide de verdad, y
+// el clasificador de forma ya dijo su diámetro por otro camino. Si la
+// herramienta y el clasificador no coinciden, uno de los dos miente — y el
+// operador no tiene forma de saber cuál.
+//
+// Dos trampas que este test se comió antes de quedar bien, y que valen más que
+// el test mismo:
+//
+//   1. El FIXTURE tiene que ser el mismo al proponer y al ejecutar. La geometría
+//      de una herramienta vive en coordenadas de PIEZA; proponer con uno y
+//      ejecutar con otro deja a la herramienta buscando el borde donde no está,
+//      y entonces NADA mide. Pasó, y parecía un fallo del programa.
+//   2. `runTool` devuelve un `Result`, y que ese `Result` sea válido sólo dice
+//      que la herramienta CORRIÓ. Si midió o no lo dice `value().ok`. Confundir
+//      los dos hace pasar por buena una medida de cero.
+TEST(RealPhotoTools, TheOutsideDimensionAgreesWithTheShapeClassifierOnARealBall) {
+    const cv::Mat photo = loadReal("bola_oscura_sobre_claro_10mm.jpg");
+    REQUIRE_CORPUS(photo);
+
+    pci::vision::PipelineConfig config;
+    config.roi = cv::Rect(560, 720, 420, 420);
+    const auto analysis = pci::vision::analyzeFrame(photo, config);
+    ASSERT_TRUE(analysis.isOk()) << analysis.error().message;
+    const auto& fixture = analysis.value().fixture;
+
+    cv::Mat gray;
+    cv::cvtColor(photo, gray, cv::COLOR_BGR2GRAY);
+    const cv::Mat mask =
+        pci::vision::pieceMaskWithHoles(gray, analysis.value().mask, config.segmentation);
+    const auto shape = pci::vision::classifyShape(analysis.value().contour.points, mask);
+    ASSERT_GT(shape.outerDiameter, 0.0) << "el clasificador no dio diámetro";
+
+    const auto proposals = pci::inspection::proposeTools(gray, mask, fixture, {});
+    ASSERT_FALSE(proposals.empty()) << "no propuso ninguna medida sobre una foto real";
+
+    // En una bola, «Largo total» y «Ancho total» son las dos el diámetro: es una
+    // pieza sin lado largo. Que las dos coincidan con el clasificador es más
+    // fuerte que acertar una sola cifra.
+    int compared = 0;
+    for (const auto& proposal : proposals) {
+        const auto& name = proposal.config.name;
+        if (name != "Largo total" && name != "Ancho total") {
+            continue;
+        }
+        const auto run = pci::inspection::runTool(gray, fixture, proposal.config);
+        ASSERT_TRUE(run.isOk()) << run.error().message;
+        ASSERT_TRUE(run.value().ok)
+            << name << " se propuso y no consigue medir: " << run.value().detail;
+
+        const double byTool = run.value().measured;
+        const double gap = std::abs(byTool - shape.outerDiameter) / shape.outerDiameter;
+        std::printf("  [real] %-12s %.1f px vs Ø %.1f del clasificador (%.2f %%)  "
+                    "-> %.2f mm con 10 mm nominales\n",
+                    name.c_str(), byTool, shape.outerDiameter, 100.0 * gap,
+                    10.0 * byTool / shape.outerDiameter);
+        EXPECT_LT(gap, 0.05)
+            << name << " y el clasificador dan tamaños distintos de la misma bola: "
+            << "uno de los dos miente y el operador no puede saber cuál";
+        ++compared;
+    }
+    EXPECT_EQ(compared, 2)
+        << "sobre una bola tienen que proponerse el largo y el ancho, y son el mismo "
+           "diámetro";
+}
+
+// Y la propiedad que no depende de saber qué hay en la foto: NINGUNA herramienta
+// puede publicar un número imposible.
+//
+// Es la misma clase de fallo que la circunferencia de Ø 130.901 px, y por eso se
+// comprueba sobre TODAS las propuestas de TODAS las fotos del corpus: un ajuste
+// numérico sin cota superior encuentra siempre la manera de dar un absurdo, y
+// cuando lo da, viene con su explicación puesta.
+TEST(RealPhotoTools, NoProposedToolPublishesAnImpossibleNumber) {
+    const auto dir = corpusDir();
+    if (dir.empty()) {
+        GTEST_SKIP() << "corpus no descargado";
+    }
+
+    int photos = 0;
+    int toolsRun = 0;
+    int suspicious = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        if (entry.path().extension() != ".jpg") {
+            continue;
+        }
+        const cv::Mat photo = cv::imread(entry.path().string(), cv::IMREAD_COLOR);
+        if (photo.empty()) {
+            continue;
+        }
+        const auto analysis = pci::vision::analyzeFrame(photo, {});
+        if (!analysis.isOk()) {
+            continue;
+        }
+        cv::Mat gray;
+        cv::cvtColor(photo, gray, cv::COLOR_BGR2GRAY);
+        const cv::Mat mask = pci::vision::pieceMaskWithHoles(gray, analysis.value().mask, {});
+
+        // CON LOS AJUSTES POR DEFECTO, que es lo que ve el operador: el panel
+        // de "Medir automáticamente" no muestra cien propuestas, muestra las
+        // primeras. Medir con el tope subido diría cuántas propone el motor;
+        // lo que hace falta saber es cuántas de las que SE ENSEÑAN sirven.
+        const auto proposals =
+            pci::inspection::proposeTools(gray, mask, analysis.value().fixture, {});
+        ++photos;
+
+        const double diagonal = std::hypot(static_cast<double>(photo.cols),
+                                           static_cast<double>(photo.rows));
+        for (const auto& proposal : proposals) {
+            const auto run =
+                pci::inspection::runTool(gray, analysis.value().fixture, proposal.config);
+            if (!run.isOk()) {
+                continue;  // no medir es una respuesta honesta
+            }
+            ++toolsRun;
+            const double value = run.value().measured;
+            if (!std::isfinite(value)) {
+                ++suspicious;
+                ADD_FAILURE() << entry.path().filename().string() << " / "
+                              << proposal.config.name << ": publica un valor no finito";
+                continue;
+            }
+            // Un ángulo va en grados y un área en px2, así que la cota de
+            // "no puede pasar de la diagonal" sólo aplica a las longitudes.
+            if (run.value().kind == pci::inspection::MeasuredKind::Length &&
+                std::abs(value) > diagonal) {
+                ++suspicious;
+                ADD_FAILURE() << entry.path().filename().string() << " / "
+                              << proposal.config.name << ": mide " << value
+                              << " px en una foto cuya diagonal son " << diagonal << " px";
+            }
+        }
+    }
+
+    std::printf("  [real] %d fotos, %d herramientas, %d imposibles\n",
+                photos, toolsRun, suspicious);
+    EXPECT_GT(photos, 0);
+    EXPECT_GT(toolsRun, 0) << "ninguna herramienta llegó a medir sobre el corpus real";
+    EXPECT_EQ(suspicious, 0);
+}
+
+// Una herramienta propuesta sobre una foto real tiene que medir LA PIEZA, no el
+// ruido: si se ejecuta dos veces sobre la misma imagen da lo mismo, y si se
+// ejecuta sobre una versión de la foto con MÁS compresión JPEG, el número tiene
+// que moverse poco. Un valor que baila con el ruido de compresión no es una
+// cota, es una casualidad.
+TEST(RealPhotoTools, MeasurementsSurviveHeavierJpegCompression) {
+    const cv::Mat photo = loadReal("bola_oscura_sobre_claro_10mm.jpg");
+    REQUIRE_CORPUS(photo);
+
+    pci::vision::PipelineConfig config;
+    config.roi = cv::Rect(560, 720, 420, 420);
+
+    const auto measureOn = [&config](const cv::Mat& image) {
+        const auto analysis = pci::vision::analyzeFrame(image, config);
+        if (!analysis.isOk()) {
+            return -1.0;
+        }
+        cv::Mat gray;
+        cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+        const cv::Mat mask =
+            pci::vision::pieceMaskWithHoles(gray, analysis.value().mask, config.segmentation);
+        return pci::vision::classifyShape(analysis.value().contour.points, mask).outerDiameter;
+    };
+
+    const double clean = measureOn(photo);
+    ASSERT_GT(clean, 0.0);
+
+    // Se recomprime al 40 % de calidad, que es lo que hace una cámara barata o
+    // una imagen que ha pasado por WhatsApp.
+    std::vector<unsigned char> buffer;
+    ASSERT_TRUE(cv::imencode(".jpg", photo, buffer, {cv::IMWRITE_JPEG_QUALITY, 40}));
+    const cv::Mat degraded = cv::imdecode(buffer, cv::IMREAD_COLOR);
+    ASSERT_FALSE(degraded.empty());
+    const double noisy = measureOn(degraded);
+    ASSERT_GT(noisy, 0.0) << "con más compresión ya no encuentra la pieza";
+
+    const double drift = std::abs(noisy - clean) / clean;
+    std::printf("  [real] Ø %.1f px original -> %.1f px con JPEG al 40 %% (%.2f %% de deriva)\n",
+                clean, noisy, 100.0 * drift);
+    EXPECT_LT(drift, 0.02)
+        << "el diámetro se mueve con el ruido de compresión: eso no es una cota, es "
+           "una casualidad";
 }
