@@ -25,6 +25,31 @@ void setBreadcrumb(const std::string& operation);
 // vez al arrancar. En plataformas sin soporte no hace nada.
 void installCrashHandler(const std::string& crashLogPath);
 
+// Los hechos de un fallo del SO, tal como los entrega Windows.
+//
+// Existe para poder PROBAR el informe. El texto que se escribe al morir es lo
+// unico que queda de un cierre inesperado, y la version anterior afirmaba
+// siempre la misma causa —"un driver dividio por cero"— incluso cuando la
+// excepcion era una violacion de acceso, que es otra cosa. Quien leyera ese log
+// se pondria a buscar una division que nunca ocurrio.
+//
+// Separando los HECHOS de su REDACCION, la redaccion se puede comprobar sin
+// tener que matar un proceso.
+struct CrashFacts {
+    unsigned long code = 0;        // codigo de excepcion del SO
+    const char* breadcrumb = "";   // ultima operacion marcada
+    const void* address = nullptr; // donde fallo
+    const char* module = "";       // modulo que contiene esa direccion, si se supo
+    // Solo para ACCESS_VIOLATION: 0 leyendo, 1 escribiendo, 8 ejecutando.
+    bool hasAccessInfo = false;
+    unsigned long long accessKind = 0;
+    unsigned long long accessAddress = 0;
+};
+
+// Redacta el informe de un fallo en el buffer dado (siempre terminado en cero).
+// Sin reservar memoria: se llama con el proceso muriendose.
+void describeCrash(char* out, unsigned long outSize, const CrashFacts& facts);
+
 // Ejecuta fn(ctx) protegido frente a EXCEPCIONES ESTRUCTURADAS del SO (división
 // entera por cero, acceso inválido, instrucción ilegal) que un try/catch de C++
 // NO atrapa. Devuelve true si fn terminó con normalidad; false si el SO lanzó

@@ -252,6 +252,39 @@ sólo exige que no sean negativos. La primera versión de esta comprobación usa
 `isValid()` y por eso no saltaba nunca: un ajuste ausente se lee como cero y
 pasaba por bueno. Lo que hace falta es `isEmpty()`.
 
+#### Un informe de cierre que culpaba a quien no era
+
+El manejador de fallos escribia siempre la misma causa: «un driver de captura
+fallo al negociar formato y **dividio por cero**». La escribia tambien cuando el
+codigo de excepcion era `0xC0000005` (ACCESS_VIOLATION), que es otra cosa. En el
+registro de este proyecto hay **tres cierres** con ese texto y ese codigo:
+cualquiera que los leyera se pondria a buscar una division que nunca ocurrio.
+
+Ahora la causa se **deduce** de la evidencia. La explicacion del fallo conocido
+de `kswdmcap.ax` no desaparece: se condiciona a que el codigo sea de division
+por cero. Y con una violacion de acceso se dice lo que esa excepcion **trae** y
+antes se tiraba: si fue leyendo, escribiendo o ejecutando, en que direccion, y
+si esa direccion es un puntero nulo.
+
+Lo mas util es el **modulo**: `GetModuleHandleEx` sobre la direccion que fallo
+dice a que DLL pertenece. Si es un `.ax` de captura, la culpa del driver deja de
+ser una hipotesis; si es `pc_inspector.exe`, es de este codigo y no de ningun
+driver.
+
+La redaccion se separo en `describeCrash`, que toma unos `CrashFacts` y escribe
+en un buffer dado. Asi el texto **se puede probar sin matar un proceso**, que es
+la razon por la que llevaba tanto tiempo mintiendo: solo se veia cuando ya no
+habia nadie mirando.
+
+**Y enumerar pasa a estar blindado.** Los tres cierres registrados dicen «ultima
+operacion: (ninguna)», que es justo lo que se ve cuando el proceso muere antes de
+que nadie deje una miga de pan — y enumerar es lo primero que hace la aplicacion.
+No abrir el pin de captura evito el fallo de division por cero, pero
+`BindToStorage` sigue tocando el dispositivo para leer su bolsa de propiedades, y
+eso puede cargar la DLL del fabricante. Ahora va con `runProtected` y con su miga
+de pan: lo peor que pasa es quedarse sin lista de camaras, y la aplicacion
+arranca igual para trabajar con imagenes y videos.
+
 #### Aprender de una captura, y por qué es explícito
 
 La tira de capturas guardaba fotos y nada más. La visión del proyecto dice

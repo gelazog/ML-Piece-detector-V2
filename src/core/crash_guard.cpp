@@ -82,24 +82,73 @@ const char* exceptionName(unsigned long code) {
     }
 }
 
-LONG WINAPI unhandledFilter(EXCEPTION_POINTERS* info) {
-    const unsigned long code =
-        (info != nullptr && info->ExceptionRecord != nullptr)
-            ? static_cast<unsigned long>(info->ExceptionRecord->ExceptionCode)
-            : 0;
+// El modulo al que pertenece una direccion, o "" si no se sabe.
+//
+// Esto es lo que convierte el informe en una PISTA en vez de una conjetura: si
+// la direccion que fallo cae dentro de kswdmcap.ax o de la DLL de una camara
+// virtual, la causa deja de ser una hipotesis y pasa a estar demostrada; y si
+// cae dentro de pc_inspector.exe, la culpa es nuestra y no de ningun driver.
+//
+// Sin CRT y sin reservar memoria: el proceso se esta muriendo.
+void moduleOfAddress(void* address, char* out, unsigned long outSize) {
+    out[0] = '\0';
+    if (address == nullptr) {
+        return;
+    }
+    HMODULE module = nullptr;
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           static_cast<LPCSTR>(address), &module) == 0 ||
+        module == nullptr) {
+        return;
+    }
+    char full[MAX_PATH] = {0};
+    if (GetModuleFileNameA(module, full, MAX_PATH) == 0) {
+        return;
+    }
+    // Solo el nombre del fichero: la ruta completa no aporta y ensucia el log.
+    const char* name = full;
+    for (const char* c = full; *c != '\0'; ++c) {
+        if (*c == '\\' || *c == '/') {
+            name = c + 1;
+        }
+    }
+    unsigned long i = 0;
+    while (name[i] != '\0' && i + 1 < outSize) {
+        out[i] = name[i];
+        ++i;
+    }
+    out[i] = '\0';
+}
 
-    // Best-effort: C stdio, sin allocaciones de C++, porque el proceso agoniza.
+LONG WINAPI unhandledFilter(EXCEPTION_POINTERS* info) {
+    const EXCEPTION_RECORD* record = (info != nullptr) ? info->ExceptionRecord : nullptr;
+
+    CrashFacts facts;
+    facts.breadcrumb = g_breadcrumb;
+    char module[MAX_PATH] = {0};
+    if (record != nullptr) {
+        facts.code = static_cast<unsigned long>(record->ExceptionCode);
+        facts.address = record->ExceptionAddress;
+        moduleOfAddress(record->ExceptionAddress, module, MAX_PATH);
+        facts.module = module;
+        if (facts.code == EXCEPTION_ACCESS_VIOLATION && record->NumberParameters >= 2) {
+            facts.hasAccessInfo = true;
+            facts.accessKind =
+                static_cast<unsigned long long>(record->ExceptionInformation[0]);
+            facts.accessAddress =
+                static_cast<unsigned long long>(record->ExceptionInformation[1]);
+        }
+    }
+
+    // Buffer en la pila: el proceso agoniza y reservar memoria puede fallar o
+    // colgarse si lo que reventó fue el propio montón.
+    char report[2048] = {0};
+    describeCrash(report, sizeof(report), facts);
+
+    // Best-effort: C stdio, sin allocaciones de C++.
     if (std::FILE* f = std::fopen(g_crashLogPath.c_str(), "a")) {
-        std::fprintf(
-            f,
-            "==== CRASH a nivel del sistema operativo ====\n"
-            "  excepcion: 0x%08lX (%s)\n"
-            "  ultima operacion: %s\n"
-            "  Causa probable: un driver de captura (p. ej. kswdmcap.ax con una\n"
-            "  camara virtual no lista, como AndroidCam sin el celular conectado)\n"
-            "  fallo al negociar formato y dividio por cero. Es un fallo del SO,\n"
-            "  no del codigo C++, por eso ningun try/catch pudo atraparlo.\n\n",
-            code, exceptionName(code), g_breadcrumb);
+        std::fputs(report, f);
         std::fclose(f);
     }
 
@@ -122,6 +171,73 @@ bool runWithJump(void (*fn)(void*), void* ctx) {
 #endif  // _WIN32
 
 }  // namespace
+// La redacción del informe, separada de los hechos para poder probarla.
+//
+// Toda la gracia está en que la causa se DEDUCE de lo que hay, en vez de
+// afirmar siempre la misma. La versión anterior decía «dividió por cero»
+// incluso cuando el código era ACCESS_VIOLATION —que es otra cosa— y mandaba a
+// quien leyera el log a buscar una división que nunca ocurrió. Hay tres cierres
+// registrados así en este proyecto.
+void describeCrash(char* out, unsigned long outSize, const CrashFacts& facts) {
+    if (out == nullptr || outSize == 0) {
+        return;
+    }
+    out[0] = 0;
+    unsigned long used = 0;
+    const auto append = [&](const char* format, auto... args) {
+        if (used + 1 >= outSize) {
+            return;
+        }
+        const int written = std::snprintf(out + used, outSize - used, format, args...);
+        if (written > 0) {
+            used += static_cast<unsigned long>(written);
+            if (used >= outSize) {
+                used = outSize - 1;
+            }
+        }
+    };
+
+    append("==== CRASH a nivel del sistema operativo ====\n");
+    append("  excepcion: 0x%08lX (%s)\n", facts.code, exceptionName(facts.code));
+    append("  ultima operacion: %s\n",
+           (facts.breadcrumb != nullptr && facts.breadcrumb[0] != 0) ? facts.breadcrumb
+                                                                    : "(ninguna)");
+    if (facts.address != nullptr) {
+        append("  direccion: %p\n", facts.address);
+    }
+    if (facts.module != nullptr && facts.module[0] != 0) {
+        // Lo más útil del informe: si la dirección cae en un .ax/.dll de
+        // captura, la culpa del driver deja de ser una hipótesis; si cae en el
+        // propio ejecutable, es de este código y no de ningún driver.
+        append("  en el modulo: %s\n", facts.module);
+    }
+    if (facts.hasAccessInfo) {
+        const char* verb = facts.accessKind == 0   ? "leyendo"
+                           : facts.accessKind == 1 ? "escribiendo"
+                           : facts.accessKind == 8 ? "ejecutando"
+                                                   : "accediendo a";
+        append("  %s la direccion 0x%016llX%s\n", verb, facts.accessAddress,
+               facts.accessAddress < 0x10000
+                   ? "  (puntero nulo o casi: fallo de codigo, no de hardware)"
+                   : "");
+    }
+
+    if (facts.code == EXCEPTION_INT_DIVIDE_BY_ZERO ||
+        facts.code == EXCEPTION_FLT_DIVIDE_BY_ZERO) {
+        append("  Encaja con el fallo conocido de kswdmcap.ax: un driver de captura\n"
+               "  negociando formato con una camara virtual no lista (p. ej.\n"
+               "  AndroidCam sin el celular conectado) divide por cero.\n");
+    } else if (facts.code == EXCEPTION_ACCESS_VIOLATION) {
+        append("  Una violacion de acceso NO es el fallo conocido de division por\n"
+               "  cero de los drivers de captura: es otra cosa. Mira el modulo de\n"
+               "  arriba para saber de quien es.\n");
+    }
+    append("  Es un fallo a nivel del SO: ningun try/catch de C++ puede atraparlo,\n"
+           "  por eso el proceso termina aqui.\n\n");
+}
+
+
+
 
 void setBreadcrumb(const std::string& operation) {
     {

@@ -5,9 +5,30 @@
 #include <utility>
 
 #include "camera/native_cameras.h"
+#include "core/crash_guard.h"
 #include "core/logging.h"
 
+#include <cstdio>
+#include <string>
+
 namespace pci::camera {
+
+namespace {
+
+std::string toHex(unsigned long value) {
+    char buffer[16] = {0};
+    std::snprintf(buffer, sizeof(buffer), "0x%08lX", value);
+    return buffer;
+}
+
+// `runProtected` toma una función C sin excepciones de C++ cruzándola, así que
+// la llamada real va envuelta aquí.
+void enumerateTrampoline(void* ctx) {
+    auto* out = static_cast<std::vector<NativeCamera>*>(ctx);
+    *out = enumerateNativeCameras();
+}
+
+}  // namespace
 
 std::vector<CameraInfo> CameraEnumerator::enumerate(int maxIndex) {
     std::vector<CameraInfo> cameras;
@@ -19,7 +40,34 @@ std::vector<CameraInfo> CameraEnumerator::enumerate(int maxIndex) {
     // excepción estructurada que ningún try/catch de C++ atrapa. Ahora pedimos
     // la lista al SO por su API nativa (DirectShow / V4L2), que solo lee
     // metadatos y nunca abre el pin de captura.
-    const std::vector<NativeCamera> natives = enumerateNativeCameras();
+    // BLINDADA, y no por precaución teórica.
+    //
+    // El registro de fallos de este proyecto tiene tres cierres con «ultima
+    // operacion: (ninguna)», que es exactamente lo que se ve cuando el proceso
+    // muere ANTES de que nadie haya dejado una miga de pan — y enumerar es lo
+    // primero que hace la aplicación al arrancar.
+    //
+    // No abrir el pin de captura evitó el fallo de división por cero, pero
+    // `BindToStorage` sigue tocando al dispositivo para leer su bolsa de
+    // propiedades, y eso puede cargar la DLL del fabricante. Un driver que se
+    // cae ahí se llevaba por delante el arranque entero, sin dejar ni una línea
+    // que dijera qué se estaba haciendo.
+    //
+    // Con esto, lo peor que pasa es quedarse sin lista de cámaras: la
+    // aplicación arranca, se puede abrir una imagen o un vídeo, y el motivo
+    // queda escrito.
+    core::setBreadcrumb("enumerando las cámaras del sistema");
+    std::vector<NativeCamera> natives;
+    unsigned long sehCode = 0;
+    const bool survived = core::runProtected(&enumerateTrampoline, &natives, &sehCode);
+    core::setBreadcrumb("enumeración de cámaras terminada");
+    if (!survived) {
+        core::logError(
+            "Excepción estructurada del SO enumerando cámaras (código " + toHex(sehCode) +
+            "): un driver de captura falló al describir su dispositivo. Se sigue sin "
+            "lista de cámaras; la aplicación funciona con imágenes y vídeos.");
+        natives.clear();
+    }
 
     for (const auto& native : natives) {
         if (native.index < 0 || native.index >= maxIndex) {
