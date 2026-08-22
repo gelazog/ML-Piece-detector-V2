@@ -1006,3 +1006,68 @@ TEST(SubpixelEdge, TheResidualErrorIsTheSceneLightingAndNotTheAlgorithm) {
     const double spread = bySector[worstSector] - bySector[bestSector];
     std::printf("  [sombra] asimetria entre sectores opuestos: %.2f px\n", spread);
 }
+
+// ESCENAS DONDE LA RESPUESTA CORRECTA ES NO MEDIR.
+//
+// Dos fotos del corpus se buscaron para probar el agujero pasante y resultaron
+// ser otra cosa: unas arandelas dentro de una bolsa de plástico, superpuestas y
+// bajo una etiqueta impresa que ocupa media imagen; y un montón de piñones
+// amontonados en perspectiva, sin fondo y con brillos por todas partes.
+//
+// Se quedan en el corpus precisamente por eso. En una escena así no hay ninguna
+// medida correcta que dar, y lo único que se le puede exigir a un instrumento es
+// que no invente una.
+//
+// La invariante que se comprueba vale para TODAS las fotos y es la general: si
+// la clasificación no reconoció la figura, no puede publicar el diámetro de una
+// figura que no reconoció. Es la misma regla que faltaba el día del «Ø 130.901
+// px»: no publicar una medida que no se ha establecido.
+TEST(RealPhotos, WhatIsNotRecognisedPublishesNoDiameter) {
+    const auto dir = corpusDir();
+    if (dir.empty()) {
+        GTEST_SKIP() << "corpus no descargado";
+    }
+
+    int checked = 0;
+    int irregular = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        if (entry.path().extension() != ".jpg") {
+            continue;
+        }
+        const cv::Mat photo = cv::imread(entry.path().string(), cv::IMREAD_COLOR);
+        if (photo.empty()) {
+            continue;
+        }
+        const auto analysis = pci::vision::analyzeFrame(photo, {});
+        if (!analysis.isOk()) {
+            continue;
+        }
+        const auto shape = shapeOf(photo, analysis.value(), {});
+        ++checked;
+
+        const bool round = shape.kind == pci::vision::ShapeKind::Circle ||
+                           shape.kind == pci::vision::ShapeKind::Ring;
+        if (!round) {
+            ++irregular;
+            EXPECT_DOUBLE_EQ(shape.outerDiameter, 0.0)
+                << entry.path().filename().string()
+                << ": no reconoció la figura y aun así publica un diámetro de "
+                << shape.outerDiameter << " px";
+            EXPECT_DOUBLE_EQ(shape.innerDiameter, 0.0)
+                << entry.path().filename().string()
+                << ": publica el diámetro de un agujero que no encontró";
+        }
+
+        // Y el motivo NUNCA puede faltar: una clasificación sin explicación deja
+        // al operador sin nada que revisar cuando el resultado le extraña.
+        EXPECT_FALSE(shape.reason.empty())
+            << entry.path().filename().string() << ": clasifica y no dice por qué";
+    }
+
+    std::printf("  [real] %d fotos clasificadas, %d sin figura reconocida\n", checked,
+                irregular);
+    EXPECT_GT(checked, 0);
+    EXPECT_GT(irregular, 0)
+        << "ninguna foto del corpus quedó sin reconocer: faltan las escenas hostiles, "
+           "que son las que comprueban que el programa sabe decir que no";
+}

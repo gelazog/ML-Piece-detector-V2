@@ -409,6 +409,23 @@ tiempo no retrocede en 454 frames seguidos, y con cuatro dados en el aire se
 encuentran **hasta 5 piezas a la vez** sobre un fondo metalico que brilla tanto
 como ellas.
 
+**Dos fotos del corpus estan por lo que NO se puede medir en ellas.** Se
+buscaron para probar el agujero pasante y resultaron ser otra cosa: unas
+arandelas dentro de una bolsa de plastico, superpuestas y bajo una etiqueta
+impresa que ocupa media imagen; y un monton de pinones amontonados en
+perspectiva, sin fondo y con brillos por todas partes.
+
+Se quedan por eso mismo. En una escena asi no hay ninguna medida correcta que
+dar, y lo unico exigible a un instrumento es que **no invente una**. Las dos dan
+«irregular», que es la respuesta honesta.
+
+De ahi sale una invariante que vale para todo el corpus: **lo que no se
+reconoce no publica diametro**. Si la clasificacion no identifico la figura, no
+puede dar el diametro de una figura que no identifico — es la misma regla que
+faltaba el dia del «Ø 130.901 px». Y el motivo nunca puede faltar: una
+clasificacion sin explicacion deja al operador sin nada que revisar cuando el
+resultado le extrana.
+
 El corpus **no se versiona** (obras de terceros con su licencia, y pesan): se
 versiona la receta, `testdata/fetch_real_images.py`, y las pruebas se saltan
 Las HERRAMIENTAS tambien se prueban contra ese material, y ahi aparece la

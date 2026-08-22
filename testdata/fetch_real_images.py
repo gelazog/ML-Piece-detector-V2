@@ -53,6 +53,24 @@ CORPUS = [
                "medido ESCALA, que es mas fuerte que acertar un numero suelto.",
     },
     {
+        "file": "Insulating fiberglass washers for M3.jpg",
+        "as": "arandelas_con_agujero.jpg",
+        "why": "ESCENA HOSTIL, y esta aqui por eso. Se busco para probar el agujero "
+               "pasante y resultó ser otra cosa: arandelas dentro de una bolsa de "
+               "plastico, superpuestas, bajo una etiqueta impresa que ocupa media "
+               "imagen y con reflejos encima. La respuesta correcta del programa aqui "
+               "no es una medida buena: es no publicar una medida imposible ni "
+               "presentar la etiqueta como si fuera la pieza.",
+    },
+    {
+        "file": "Sprocket.jpg",
+        "as": "pinon_corona_dentada.jpg",
+        "why": "OTRA ESCENA HOSTIL: un monton de pinones amontonados en perspectiva, "
+               "sin fondo, sin pieza aislada y con brillos metalicos por todas partes. "
+               "No hay ninguna medida correcta que dar, y eso es justo lo que se "
+               "comprueba: que no se de ninguna imposible.",
+    },
+    {
         "file": "Nut-hardware.jpg",
         "as": "tuerca_dominio_publico.jpg",
         "why": "Tuerca hexagonal con agujero pasante: contorno con hueco interior, "
