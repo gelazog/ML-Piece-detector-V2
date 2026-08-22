@@ -171,6 +171,7 @@ private:
     void updateZoomIndicator();     // porcentaje y botones de la barra de zoom (Z3)
     void onBoardOriginChanged(QAction* action);  // origen del tablero (T2)
     void updateBoardReadout();  // lectura en vivo de desviacion y giro (T3)
+    void persistPixelReference();
     void persistBoardConfig();
     // El tablero por defecto guardado en `Settings`, que es lo que la regla
     // de `persistBoardConfig` llama «la plantilla para piezas nuevas».
@@ -521,10 +522,11 @@ private:
     bool streaming_ = false;
     // Un analisis lanzado por una correccion: al llegar, el trazo se retira.
     bool hideCorrectionWhenAnalysed_ = false;
-    // Resolución a la que se dibujó la zona de trabajo. Se guarda con ella:
-    // una zona en píxeles sin su resolución señala otro sitio en cuanto
-    // cambia la fuente, y al arrancar no hay nada con lo que compararla.
-    QSize zoneReferenceSize_;
+    // Resolución a la que se definieron los ajustes que van en PÍXELES: la zona
+    // de trabajo y el cero del tablero. Se guarda con ellos, porque un píxel
+    // sin su resolución señala otro sitio en cuanto cambia la fuente, y al
+    // arrancar no hay resolución anterior con la que compararlo.
+    QSize pixelReferenceSize_;
     bool autoInspecting_ = false;
     bool arucoLiveScale_ = false;   // escala por marcador ArUco en vivo
     double markerSizeMm_ = 30.0;    // lado real del marcador impreso

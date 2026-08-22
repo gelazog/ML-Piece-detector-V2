@@ -234,6 +234,19 @@ de rodear nada — **no se detecta ninguna pieza y nadie dice por qué**. Con la
 resolución de referencia guardada, la misma zona pasa de x=330 ancho 79 a x=165
 ancho 39: la mitad exacta, la misma pieza.
 
+Y no es sólo la zona. El **cero del tablero** es otro punto en coordenadas de
+imagen, y quien tuviera puesto un cero y ninguna zona sufría el mismo fallo sin
+que nada lo cubriera: el origen de todas las medidas de Posición, corrido y sin
+avisar. Medido: un cero en (300, 150) sobre 480×320 pasa a (150, 75) sobre
+240×160. Por eso la referencia la escribe una función propia,
+`persistPixelReference`, llamada desde los **dos** sitios que guardan píxeles —
+estaba sólo en el de la zona, y con un cero de tablero a solas no se guardaba
+referencia alguna: el arreglo no podía ni dispararse.
+
+La referencia se actualiza a la resolución nueva al reajustar. Sin eso, el
+siguiente arranque volvería a reajustar desde la vieja y lo movería una segunda
+vez.
+
 **Cuidado con `QSize::isValid()`.** En Qt, `QSize(0, 0).isValid()` es `true` —
 sólo exige que no sean negativos. La primera versión de esta comprobación usaba
 `isValid()` y por eso no saltaba nunca: un ajuste ausente se lee como cero y

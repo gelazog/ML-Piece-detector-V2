@@ -3756,3 +3756,82 @@ TEST(WorkingZoneEndToEnd, AZoneDrawnAtOneResolutionSurvivesAReopenAtAnother) {
             << "el contorno es demasiado ancho para ser la pieza pequeña a media escala";
     }
 }
+
+// El cero del tablero es un PUNTO en coordenadas de imagen, igual de dependiente
+// de la resolución que la zona — y quien tuviera puesto un cero y ninguna zona
+// sufría el mismo fallo sin que nada lo cubriera: el origen de todas las
+// medidas de Posición, corrido y sin avisar.
+//
+// Se comprueba sobre el ajuste guardado, que es donde vive la verdad: si el
+// número que queda en la base de datos no se ha movido, el cero está mal.
+TEST(WorkingZoneEndToEnd, TheBoardZeroAlsoFollowsAChangeOfResolution) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QImage half(240, 160, QImage::Format_RGB888);
+    half.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&half);
+        painter.fillRect(QRect(60, 40, 80, 60), QColor(230, 230, 230));
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("mitad.png"));
+    ASSERT_TRUE(half.save(path));
+
+    const std::string dbPath = QDir(dir.path()).filePath(QStringLiteral("b.db")).toStdString();
+    auto opened = pci::database::Db::open(dbPath);
+    ASSERT_TRUE(opened.isOk()) << opened.error().message;
+    auto db = std::move(opened.value());
+    ASSERT_TRUE(pci::database::migrate(*db).isOk());
+    pci::repositories::SettingsRepository settings(*db);
+
+    // Una sesión anterior dejó un cero a mano en (300, 150) sobre 480x320, y
+    // ninguna zona: es el caso que no cubría nada.
+    ASSERT_TRUE(settings.setString("board_origin", "fixed").isOk());
+    ASSERT_TRUE(settings.setDouble("board_fixed_x", 300.0).isOk());
+    ASSERT_TRUE(settings.setDouble("board_fixed_y", 150.0).isOk());
+    ASSERT_TRUE(settings.setInt("det_zone_ref_w", 480).isOk());
+    ASSERT_TRUE(settings.setInt("det_zone_ref_h", 320).isOk());
+
+    pci::ui::AppRepositories repos;
+    repos.settings = &settings;
+
+    pci::ui::MainWindow window(repos);
+    window.resize(1000, 700);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 4000) {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+        if (canvas->imageSize() == QSize(240, 160)) {
+            break;
+        }
+    }
+    ASSERT_EQ(canvas->imageSize(), QSize(240, 160)) << "la imagen no llegó a mostrarse";
+
+    // Y se espera a que el reajuste quede guardado.
+    const auto storedX = [&] { return settings.getDouble("board_fixed_x", -1.0).value(); };
+    timer.restart();
+    while (timer.elapsed() < 3000 && storedX() > 200.0) {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+
+    const double x = storedX();
+    const double y = settings.getDouble("board_fixed_y", -1.0).value();
+    std::printf("  [tablero] cero (300,150) sobre 480x320 -> (%.0f,%.0f) sobre 240x160\n", x, y);
+
+    // La mitad de tamaño, la mitad de coordenadas: el cero sigue en el mismo
+    // sitio de la escena.
+    EXPECT_NEAR(x, 150.0, 2.0) << "el cero del tablero no siguió al cambio de resolución";
+    EXPECT_NEAR(y, 75.0, 2.0) << "el cero del tablero no siguió al cambio de resolución";
+
+    // Y la referencia queda apuntando a la resolución NUEVA: si no, el próximo
+    // arranque volvería a reajustar desde la vieja y lo movería otra vez.
+    EXPECT_EQ(settings.getInt("det_zone_ref_w", 0).value(), 240)
+        << "la referencia se quedó en la resolución anterior: al próximo arranque "
+           "el cero se movería una segunda vez";
+    EXPECT_EQ(settings.getInt("det_zone_ref_h", 0).value(), 160);
+}
