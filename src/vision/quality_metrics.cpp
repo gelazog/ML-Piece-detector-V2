@@ -104,4 +104,43 @@ bool contourLooksRagged(double areaPx, double perimeterPx) {
     return ratio > kRaggedContourWarning;
 }
 
+FrameContact pieceTouchesFrame(const std::vector<cv::Point>& contour,
+                               const cv::Size& frame, int margin) {
+    FrameContact contact;
+    if (contour.empty() || frame.width <= 0 || frame.height <= 0) {
+        return contact;
+    }
+    const cv::Rect box = cv::boundingRect(contour);
+    contact.left = box.x <= margin;
+    contact.top = box.y <= margin;
+    contact.right = box.x + box.width >= frame.width - margin;
+    contact.bottom = box.y + box.height >= frame.height - margin;
+    return contact;
+}
+
+std::string frameContactWarning(const FrameContact& contact) {
+    if (!contact.any()) {
+        return {};
+    }
+    std::string sides;
+    const auto add = [&sides](const char* name) {
+        if (!sides.empty()) {
+            sides += ", ";
+        }
+        sides += name;
+    };
+    if (contact.left) { add("izquierdo"); }
+    if (contact.top) { add("superior"); }
+    if (contact.right) { add("derecho"); }
+    if (contact.bottom) { add("inferior"); }
+
+    // El aviso dice QUE PASA CON LAS MEDIDAS, no solo que toca el borde. Saber
+    // que toca el borde no le sirve de nada a quien esta leyendo un ancho: lo
+    // que necesita saber es que ese ancho se queda corto.
+    return "La pieza toca el borde " + sides +
+           " del encuadre: esta cortada, asi que sus medidas (ancho, alto, area, "
+           "perimetro) son limites inferiores y no medidas. Aleja la camara o mueve "
+           "la pieza hasta que entre entera.";
+}
+
 }  // namespace pci::vision

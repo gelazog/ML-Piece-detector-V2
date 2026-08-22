@@ -92,6 +92,11 @@ std::string analyzeOneFrame(const cv::Mat& gray, const ProbeOptions& options,
             outer = &candidate;
         }
     }
+    // Una pieza cortada por el encuadre no se puede medir: lo que se ve es un
+    // trozo y todas sus cotas son limites inferiores. El proyecto ya lo
+    // comprobaba al REGISTRAR y nadie lo miraba al medir.
+    report.frameContact = pci::vision::frameContactWarning(
+        pci::vision::pieceTouchesFrame(piece.contour.points, gray.size()));
     report.pipelineContourPoints = static_cast<int>(piece.contour.points.size());
     report.contourPoints = outer != nullptr ? static_cast<int>(outer->size()) : 0;
 

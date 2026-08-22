@@ -409,6 +409,32 @@ tiempo no retrocede en 454 frames seguidos, y con cuatro dados en el aire se
 encuentran **hasta 5 piezas a la vez** sobre un fondo metalico que brilla tanto
 como ellas.
 
+#### Una pieza cortada por el encuadre no se puede medir
+
+Lo que se ve de una pieza cortada es un TROZO, y todas sus cotas —ancho, alto,
+area, perimetro, diametro— son **limites inferiores** de las de verdad.
+Publicarlas como medidas es publicar un numero que se sabe corto.
+
+El proyecto ya lo comprobaba, pero solo en el control de calidad **al**
+**registrar** una pieza (`capture_quality`). Al MEDIR no lo miraba nadie, asi
+que se podia sacar un informe entero de una pieza cortada sin un solo aviso.
+
+Lo destapo la moneda de 5 yenes al intentar comprobar su razon nominal 5/22 =
+0,2273. Medida daba **0,2578**, un 13 % de mas, y la causa no era la deteccion:
+la moneda **toca el borde de arriba (20 px) y el de la izquierda (60 px)**. Su
+diametro exterior esta cortado y su agujero no, asi que la razon sale inflada.
+Ninguna cantidad de precision arregla eso — la informacion no esta en la foto.
+
+El aviso dice POR QUE LADO se sale y, sobre todo, QUE PASA CON LAS MEDIDAS.
+Saber que toca el borde no le sirve de nada a quien esta leyendo un ancho: lo
+que necesita saber es que ese ancho se queda corto.
+
+El margen de 2 px tampoco es mania: la morfologia y el suavizado mueven el
+contorno esa distancia, y una pieza que de verdad llega al borde puede quedarse
+a uno de el. Hay un test que comprueba las dos caras — que con margen 2 se
+detecta y con margen 0 no — para que el valor sea una decision y no una
+casualidad.
+
 #### Lo dentado del contorno: un aviso barato que separa dos cosas
 
 Una moneda de 5 yenes —22,0 mm de diametro y 5,0 mm de agujero, publicados—

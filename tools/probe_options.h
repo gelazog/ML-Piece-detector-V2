@@ -303,6 +303,8 @@ struct ProbeStageTimes {
 
 struct ProbeReport {
     std::string source;
+    // Aviso de pieza cortada por el encuadre, vacio si entra entera.
+    std::string frameContact;
     // Si el analisis uso el afinado subpixel del borde. Va en el informe y no
     // solo en las opciones porque quien lea dos salidas tiene que poder saber
     // cual es cual sin acordarse de que bandera puso.
@@ -462,6 +464,9 @@ inline std::string renderText(const ProbeReport& report) {
             out += "\n              del borde. El perimetro no es de fiar asi.";
         }
         out += "\n";
+    }
+    if (!report.frameContact.empty()) {
+        out += "  AVISO     : " + report.frameContact + "\n";
     }
     out += "  Envolvente: " + fmt("%.1f", report.boxWidth) + " x " +
            fmt("%.1f", report.boxHeight) + " px, girada " + fmt("%.1f", report.boxAngleDeg) +

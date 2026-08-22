@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+#include <vector>
 #include <opencv2/core.hpp>
 
 #include "domain/capture_quality.h"
@@ -48,6 +50,42 @@ domain::QualityMetrics computeQualityMetrics(const cv::Mat& image,
 // con él todo lo que se derive de él. Merece decírselo al operador: es la
 // diferencia entre una medida mala y una medida mala que nadie ve.
 [[nodiscard]] double contourRaggedness(double areaPx, double perimeterPx);
+
+// Por qué lados toca la pieza el borde del encuadre.
+//
+// Una pieza cortada por el encuadre NO SE PUEDE MEDIR: lo que se ve es un trozo,
+// y todas sus cotas —ancho, alto, área, perímetro, diámetro— son LÍMITES
+// INFERIORES de las de verdad. Publicarlas como medidas es publicar un número
+// que se sabe corto.
+//
+// El proyecto ya comprobaba esto, pero sólo en el control de calidad AL
+// REGISTRAR una pieza. Al medir no lo miraba nadie, así que se podía sacar un
+// informe entero de una pieza cortada sin un solo aviso.
+//
+// Lo destapó una moneda de 5 yenes del corpus: toca el borde de arriba (20 px) y
+// el de la izquierda (60 px), y por eso la razón entre su agujero y su diámetro
+// salía 0,2578 cuando la nominal es 0,2273 — un 13 % de más, porque el diámetro
+// exterior estaba cortado y el agujero no.
+struct FrameContact {
+    bool left = false;
+    bool top = false;
+    bool right = false;
+    bool bottom = false;
+    [[nodiscard]] bool any() const { return left || top || right || bottom; }
+    [[nodiscard]] int sides() const {
+        return (left ? 1 : 0) + (top ? 1 : 0) + (right ? 1 : 0) + (bottom ? 1 : 0);
+    }
+};
+
+// `margin` en píxeles: a cuántos del borde ya se considera contacto. Uno o dos
+// píxeles de margen no son mania: la morfologia y el suavizado mueven el
+// contorno esa distancia, y una pieza que de verdad llega al borde puede quedar
+// a un pixel de el.
+[[nodiscard]] FrameContact pieceTouchesFrame(const std::vector<cv::Point>& contour,
+                                             const cv::Size& frame, int margin = 2);
+
+// Cómo decírselo al operador. Vacío si no toca ningún borde.
+[[nodiscard]] std::string frameContactWarning(const FrameContact& contact);
 
 // A partir de cuánto conviene avisar.
 //

@@ -1336,3 +1336,108 @@ TEST(RealVideoContours, MovingPiecesNeverOverlapEachOther) {
         << "una sola pieza ocupa casi todo el frame: eso es la segmentacion fallando, "
            "no una pieza";
 }
+
+// ---------------------------------------------------------------------------
+// UNA PIEZA CORTADA POR EL ENCUADRE NO SE PUEDE MEDIR
+// ---------------------------------------------------------------------------
+
+// Lo que se ve de una pieza cortada es un trozo, y todas sus cotas —ancho, alto,
+// area, perimetro, diametro— son LIMITES INFERIORES de las de verdad.
+// Publicarlas como medidas es publicar un numero que se sabe corto.
+//
+// El proyecto ya lo comprobaba, pero solo en el control de calidad AL REGISTRAR
+// una pieza. Al medir no lo miraba nadie, asi que se podia sacar un informe
+// entero de una pieza cortada sin un solo aviso.
+TEST(FrameContact, APieceRunningOffTheEdgeIsReportedWithTheSideAndTheConsequence) {
+    const cv::Size frame(400, 300);
+
+    // Pieza entera, con margen por los cuatro lados: no avisa.
+    std::vector<cv::Point> inside{{100, 80}, {300, 80}, {300, 220}, {100, 220}};
+    const auto whole = pci::vision::pieceTouchesFrame(inside, frame);
+    EXPECT_FALSE(whole.any()) << "avisa de una pieza que entra entera";
+    EXPECT_TRUE(pci::vision::frameContactWarning(whole).empty());
+
+    // Pieza que se sale por la izquierda.
+    std::vector<cv::Point> offLeft{{0, 80}, {200, 80}, {200, 220}, {0, 220}};
+    const auto left = pci::vision::pieceTouchesFrame(offLeft, frame);
+    EXPECT_TRUE(left.left);
+    EXPECT_FALSE(left.right);
+    EXPECT_EQ(left.sides(), 1);
+
+    const std::string warning = pci::vision::frameContactWarning(left);
+    std::printf("  [encuadre] %s\n", warning.c_str());
+    ASSERT_FALSE(warning.empty());
+    EXPECT_NE(warning.find("izquierdo"), std::string::npos)
+        << "no dice POR QUE LADO se sale, que es lo unico accionable";
+    // Y dice que pasa con las MEDIDAS. Saber que toca el borde no le sirve de
+    // nada a quien esta leyendo un ancho: lo que necesita saber es que ese ancho
+    // se queda corto.
+    EXPECT_NE(warning.find("limites inferiores"), std::string::npos)
+        << "avisa de que toca el borde y no de que las medidas se quedan cortas. "
+           "Dice: " << warning;
+
+    // Una pieza mas grande que el encuadre toca por los cuatro lados.
+    std::vector<cv::Point> huge{{0, 0}, {400, 0}, {400, 300}, {0, 300}};
+    const auto all = pci::vision::pieceTouchesFrame(huge, frame);
+    EXPECT_EQ(all.sides(), 4);
+
+    // Sin pieza y sin encuadre no se inventa nada.
+    EXPECT_FALSE(pci::vision::pieceTouchesFrame({}, frame).any());
+    EXPECT_FALSE(pci::vision::pieceTouchesFrame(inside, cv::Size(0, 0)).any());
+}
+
+// El margen no es mania: la morfologia y el suavizado mueven el contorno un
+// pixel o dos, asi que una pieza que de verdad llega al borde puede quedarse a
+// uno de el. Con margen cero se escaparia justo el caso que importa.
+TEST(FrameContact, TheMarginCatchesAPieceThatStopsOnePixelShort) {
+    const cv::Size frame(200, 200);
+    std::vector<cv::Point> almost{{1, 50}, {150, 50}, {150, 150}, {1, 150}};
+
+    EXPECT_TRUE(pci::vision::pieceTouchesFrame(almost, frame, 2).left)
+        << "una pieza a un pixel del borde se escapa: es la misma pieza cortada";
+    EXPECT_FALSE(pci::vision::pieceTouchesFrame(almost, frame, 0).left)
+        << "con margen cero no deberia detectarse, y este test lo comprueba para "
+           "que el margen sea una decision y no una casualidad";
+}
+
+// Y sobre el corpus real, informativo: cuales entran enteras y cuales no.
+//
+// La moneda de 5 yenes esta cortada de verdad —toca arriba y por la izquierda—
+// y por eso la razon entre su agujero y su diametro sale 0,2578 cuando la
+// nominal es 0,2273: el diametro exterior esta cortado y el agujero no. Con los
+// ajustes de fabrica el programa no llega a detectar la moneda entera, asi que
+// el aviso no salta ahi; salta cuando la deteccion SI la coge entera.
+TEST(FrameContact, TheCorpusIsScannedAndTheResultIsStated) {
+    const auto dir = corpusDir();
+    if (dir.empty()) {
+        GTEST_SKIP() << "corpus no descargado";
+    }
+
+    int scanned = 0;
+    int touching = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        const auto extension = entry.path().extension();
+        if (extension != ".jpg" && extension != ".png") {
+            continue;
+        }
+        const cv::Mat photo = cv::imread(entry.path().string(), cv::IMREAD_COLOR);
+        if (photo.empty()) {
+            continue;
+        }
+        const auto analysis = pci::vision::analyzeFrame(photo, {});
+        if (!analysis.isOk()) {
+            continue;
+        }
+        ++scanned;
+        const auto contact = pci::vision::pieceTouchesFrame(
+            analysis.value().contour.points, photo.size());
+        if (contact.any()) {
+            ++touching;
+        }
+        std::printf("  [encuadre] %-34s %s\n", entry.path().filename().string().c_str(),
+                    contact.any() ? "TOCA el borde" : "entra entera");
+    }
+    std::printf("  [encuadre] %d fotos, %d con la pieza tocando el borde\n", scanned,
+                touching);
+    EXPECT_GT(scanned, 0);
+}
