@@ -30,6 +30,7 @@
 #include <QElapsedTimer>
 #include <QtTest/QTest>
 #include <QTemporaryDir>
+#include <QAction>
 #include <QToolButton>
 
 #include <cmath>
@@ -2820,4 +2821,71 @@ TEST(SourceCombo, RefreshingTheCameraListDoesNotCloseTheOpenFile) {
                 sources->currentText().toStdString().c_str());
     EXPECT_TRUE(sources->currentText().contains(QStringLiteral("abierta.png")))
         << "la lista dice una fuente y en pantalla se ve otra";
+}
+
+// La segunda mitad de corregir el borde: que la corrección sirva para AFINAR la
+// detección, y no sólo para tapar el fallo en esta imagen.
+//
+// Este test no abre el diálogo —hacerlo colgaría la suite, como ya pasó una
+// vez— sino que comprueba lo que decide si la función se puede usar: que la
+// acción esté, que nazca apagada, y que se encienda sola en cuanto hay algo que
+// aprender. Una acción que existe y nunca se enciende no existe.
+TEST(EdgeBrush, CorrectingTheEdgeUnlocksTuningTheDetection) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(100, 80, 200, 140), QColor(230, 230, 230));
+        painter.fillRect(QRect(250, 120, 50, 60), QColor(110, 110, 110));  // penumbra
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("penumbra.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+
+    QAction* tune = nullptr;
+    for (auto* action : window.findChildren<QAction*>()) {
+        if (action->text().startsWith(QStringLiteral("Afinar"))) {
+            tune = action;
+        }
+    }
+    ASSERT_NE(tune, nullptr) << "no está la acción de afinar la detección";
+    EXPECT_FALSE(tune->isEnabled())
+        << "encendida sin ninguna corrección: afinar con la nada devolvería los "
+           "ajustes de ahora presentados como un hallazgo";
+
+    const auto waitFor = [](auto predicate, int ms = 4000) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (predicate()) {
+                return true;
+            }
+        }
+        return predicate();
+    };
+    ASSERT_TRUE(waitFor([&] { return canvas->liveContour().size() >= 4; }));
+
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece, 18);
+    paintStroke(canvas, QPoint(255, 125), QPoint(295, 175));
+    ASSERT_TRUE(waitFor([&] { return tune->isEnabled(); }))
+        << "se corrigió el borde y afinar sigue apagado";
+
+    std::printf("  [afinar] tras corregir, la acción dice: %s\\n",
+                tune->text().toStdString().c_str());
+
+    // Y al retirar la corrección vuelve a apagarse: ya no hay nada que aprender.
+    canvas->clearEdgeCorrection();
+    ASSERT_TRUE(waitFor([&] { return !tune->isEnabled(); }))
+        << "sin corrección sigue encendida";
 }

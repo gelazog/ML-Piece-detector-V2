@@ -36,6 +36,7 @@ add_executable(pci_tests
   test_shape_proposals.cpp
   test_tool_options.cpp
   test_vision.cpp
+  test_detection_tuning.cpp
   test_working_zone.cpp
 )
 target_link_libraries(pci_tests

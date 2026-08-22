@@ -200,6 +200,39 @@ con el anterior.
 La corrección se emite **al soltar**, no en cada punto: reanalizar la imagen por
 cada píxel de la pincelada dejaría el pincel a tirones.
 
+#### De corregir una imagen a arreglar la detección
+
+Corregir el borde tapa el fallo en la imagen que tienes delante. Corregir el
+mismo borde diez veces es un ajuste mal puesto que nadie ha mirado.
+
+La corrección es la pieza que faltaba para poder mirarlo: es la **respuesta
+correcta** para un caso que la detección falló. Con ella se puede buscar,
+probando, qué ajuste la habría dado solo. `suggestSegmentation` hace eso
+—barrido grueso sobre el umbral y afinado alrededor del mejor, más las dos
+polaridades explícitas— y devuelve el ajuste junto con **dos** cifras de
+parecido: la de ahora y la del propuesto. Sin las dos, la sugerencia no se
+puede juzgar.
+
+El parecido se mide con **IoU** y no con «porcentaje de píxeles iguales», y la
+diferencia no es académica: medido, en una imagen donde la pieza ocupa el 1 %,
+decir «todo es fondo» acierta el 99,0 % de los píxeles y no detecta nada. Con
+IoU eso vale 0,00.
+
+`applyMaskCorrection` es pública por esto mismo. El afinador tiene que
+reproducir EXACTAMENTE la máscara que se ve en pantalla; con dos copias de esa
+operación, acabaría optimizando para algo distinto de lo dibujado en cuanto una
+de las dos cambiara.
+
+Va a petición y no tras cada pincelada: medido, la búsqueda cuesta **653 ms**
+sobre un frame de 1920×1080, y meterlos en cada trazo convertiría el pincel en
+algo intratable. Al aplicar el ajuste se **retira** la corrección a mano — si se
+dejara puesta, no habría forma de saber si lo que se ve sale del ajuste nuevo o
+sigue saliendo de la pincelada.
+
+Y cuando no hay nada que ganar, se dice con las cifras y no se toca nada.
+Proponer un cambio que no arregla nada gasta la confianza que hace falta para
+cuando sí lo arregle.
+
 ### La tira de capturas: las fotos tienen que coexistir
 
 «Capturar foto» congelaba el frame y ahí se quedaba: tomar la siguiente tiraba la

@@ -124,6 +124,19 @@ core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image,
 // agujeros y a la vez descarta cualquier mancha fuera de la pieza elegida. Va
 // aparte y no dentro de `analyzeFrame` porque esto lo paga quien MIDE —un gesto
 // puntual— y no cada frame del vídeo.
+// Aplica la corrección manual del borde sobre una máscara ya segmentada.
+//
+// Pública, y no un detalle interno del análisis, por una razón concreta: quien
+// quiera saber QUÉ ajuste habría dado el borde corregido tiene que reproducir
+// exactamente la misma máscara que se ve en pantalla. Con dos copias de esta
+// operación, el afinador acabaría optimizando para algo distinto de lo dibujado
+// en cuanto una de las dos cambiara.
+//
+// `crop` y `cropped` describen si la máscara está en coordenadas del recorte;
+// la corrección siempre viene en las de la imagen completa.
+void applyMaskCorrection(cv::Mat& mask, const PipelineConfig& config, const cv::Rect& crop,
+                         bool cropped);
+
 [[nodiscard]] cv::Mat pieceMaskWithHoles(const cv::Mat& image, const cv::Mat& filledMask,
                                          const SegmentationOptions& options = {});
 

@@ -64,6 +64,9 @@
 #include "ui/template_manager_dialog.h"
 #include "vision/fixture_stabilizer.h"
 #include "vision/frame_geometry.h"
+#include <QApplication>
+
+#include "vision/detection_tuning.h"
 #include "vision/pipeline.h"
 #include "vision/plane_scale.h"
 #include <opencv2/imgproc.hpp>
@@ -464,6 +467,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     brushRemoveAction_ = brushMenu->addAction(tr("Pincel: quitar de la pieza"));
     brushRemoveAction_->setCheckable(true);
     brushMenu->addSeparator();
+    // La segunda mitad de corregir el borde: la corrección no sólo arregla ESTA
+    // imagen, también dice dónde se equivoca la detección y con qué signo.
+    brushTuneAction_ = brushMenu->addAction(tr("Afinar la detección con esta corrección…"));
+    brushTuneAction_->setEnabled(false);  // hasta que haya algo que aprender
     brushClearAction_ = brushMenu->addAction(tr("Quitar las correcciones"));
     edgeBrushButton_->setMenu(brushMenu);
     cameraLayout->addWidget(edgeBrushButton_);
@@ -489,6 +496,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         video_->clearEdgeCorrection();
         statusBar()->showMessage(tr("Correcciones del borde quitadas."));
     });
+    connect(brushTuneAction_, &QAction::triggered, this, &MainWindow::onTuneDetectionFromEdge);
     cameraLayout->addStretch(0);
     rootLayout->addLayout(cameraLayout);
 
@@ -2808,11 +2816,111 @@ void MainWindow::onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& force
     reanalyseCurrentFrame();
     const int added = forcePiece.empty() ? 0 : cv::countNonZero(forcePiece);
     const int removed = forceBackground.empty() ? 0 : cv::countNonZero(forceBackground);
+    // Sin corrección no hay nada que aprender, y afinar con la nada devolvería
+    // los ajustes de ahora presentados como un hallazgo.
+    if (brushTuneAction_ != nullptr) {
+        brushTuneAction_->setEnabled(added > 0 || removed > 0);
+    }
     statusBar()->showMessage(added == 0 && removed == 0
                                  ? tr("Sin correcciones: el borde es el que detecta el programa.")
-                                 : tr("Borde corregido a mano: +%1 px, −%2 px.")
+                                 : tr("Borde corregido a mano: +%1 px, −%2 px. En «Corregir "
+                                      "borde» puedes afinar la detección con ella.")
                                        .arg(added)
                                        .arg(removed));
+}
+
+// Afinar la detección a partir de una corrección a mano.
+//
+// Corregir el borde arregla ESTA imagen. Pero la corrección es, literalmente,
+// la respuesta correcta: dice qué es pieza y qué no en un caso que la detección
+// falló. Con la respuesta correcta delante se puede buscar qué ajuste la habría
+// dado solo — y si existe, dejar de corregir a mano una imagen tras otra.
+//
+// Se hace a petición y no tras cada pincelada: sobre un frame de 1920x1080 la
+// búsqueda cuesta unos 650 ms medidos, y meterlos en cada trazo convertiría el
+// pincel en algo intratable.
+void MainWindow::onTuneDetectionFromEdge() {
+    if (lastFrame_.isNull()) {
+        statusBar()->showMessage(tr("No hay imagen sobre la que afinar."));
+        return;
+    }
+    const cv::Mat image = camera::qImageToMat(lastFrame_);
+    auto detected = vision::segmentPiece(image, pipelineConfig_.segmentation);
+    if (!detected.isOk()) {
+        statusBar()->showMessage(
+            tr("No se pudo segmentar la imagen para compararla con tu corrección."));
+        return;
+    }
+
+    // La verdad según el operador: lo que detecta el programa, con la
+    // corrección aplicada encima. Mismo orden que el análisis —primero añadir,
+    // después quitar— para que lo que se busca sea EXACTAMENTE lo que se ve.
+    cv::Mat truth = detected.value();
+    vision::applyMaskCorrection(truth, pipelineConfig_, cv::Rect(), false);
+
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const auto suggestion =
+        vision::suggestSegmentation(image, truth, pipelineConfig_.segmentation);
+    QApplication::restoreOverrideCursor();
+
+    if (!suggestion.found) {
+        statusBar()->showMessage(tr("No se pudo evaluar ningún ajuste sobre esta imagen."));
+        return;
+    }
+
+    const auto percent = [](double value) { return QString::number(100.0 * value, 'f', 1); };
+
+    if (!suggestion.worthApplying()) {
+        // Y se dice CON LAS CIFRAS. «No hay nada que cambiar» sin números es
+        // indistinguible de «no lo he mirado».
+        QMessageBox::information(
+            this, tr("Afinar la detección"),
+            tr("Con estos ajustes no se gana nada.\n\n"
+               "Los de ahora reproducen tu corrección en un %1 %, y el mejor ajuste que "
+               "he encontrado llega al %2 %. La diferencia no justifica cambiarlos.\n\n"
+               "Si el borde te sigue saliendo mal, el problema no está en el umbral: "
+               "mira la iluminación, el enfoque o la zona de trabajo.")
+                .arg(percent(suggestion.agreementNow))
+                .arg(percent(suggestion.agreementSuggested)));
+        return;
+    }
+
+    const auto& proposed = suggestion.options;
+    const QString polarity = proposed.polarity == vision::SegmentationPolarity::DarkPiece
+                                 ? tr("pieza oscura sobre fondo claro")
+                                 : proposed.polarity == vision::SegmentationPolarity::LightPiece
+                                       ? tr("pieza clara sobre fondo oscuro")
+                                       : tr("automática");
+    const auto answer = QMessageBox::question(
+        this, tr("Afinar la detección"),
+        tr("Hay un ajuste que habría detectado este borde SOLO, sin corregirlo a mano.\n\n"
+           "Ahora: coincide con tu corrección en un %1 %.\n"
+           "Propuesto: %2 %, con umbral %3 y polaridad «%4».\n\n"
+           "Se aplica a todas las piezas que se midan de aquí en adelante, no sólo a "
+           "ésta. ¿Lo aplico?")
+            .arg(percent(suggestion.agreementNow))
+            .arg(percent(suggestion.agreementSuggested))
+            .arg(proposed.manualThreshold)
+            .arg(polarity),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+    if (answer != QMessageBox::Yes) {
+        statusBar()->showMessage(tr("Ajustes sin tocar: la corrección sigue valiendo para "
+                                    "esta imagen."));
+        return;
+    }
+
+    pipelineConfig_.segmentation = proposed;
+    persistPipelineConfig();
+    // Y se quita la corrección: si los ajustes nuevos dan el mismo borde, la
+    // corrección ya no pinta nada, y dejarla puesta escondería si el ajuste
+    // funciona de verdad o si lo que se ve sigue siendo la pincelada.
+    video_->clearEdgeCorrection();
+    reanalyseCurrentFrame();
+    statusBar()->showMessage(tr("Detección afinada: umbral %1, coincidencia %2 %. La "
+                                "corrección a mano se ha retirado — lo que ves ahora sale "
+                                "de los ajustes.")
+                                 .arg(proposed.manualThreshold)
+                                 .arg(percent(suggestion.agreementSuggested)));
 }
 
 void MainWindow::onFrame(const QImage& frame) {

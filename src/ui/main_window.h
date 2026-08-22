@@ -348,9 +348,11 @@ private:
     QToolButton* edgeBrushButton_ = nullptr;
     QAction* brushAddAction_ = nullptr;
     QAction* brushRemoveAction_ = nullptr;
+    QAction* brushTuneAction_ = nullptr;
     QAction* brushClearAction_ = nullptr;
     void updateEdgeBrushAvailability();
     void onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& forceBackground);
+    void onTuneDetectionFromEdge();
     // Barra de transporte del vídeo. Solo aparece con un vídeo abierto: con una
     // cámara no hay nada que rebobinar, y una barra muerta bajo la imagen es
     // ruido que además invita a pulsarla.

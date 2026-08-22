@@ -304,8 +304,21 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    foto y corrígela ahí.
 
    La corrección vale para **esa imagen**: no cambia cómo se detectan las demás.
-   Si tienes que corregir siempre lo mismo, lo que hay que ajustar es la
-   detección (*Configurar ▸ Detección*), no cada foto.
+   Pero no hace falta que la ajustes a ojo si se repite — para eso está lo
+   siguiente.
+
+   **Afinar la detección con la corrección** (*Corregir borde ▸ Afinar la
+   detección…*, se enciende en cuanto hay algo pintado): tu corrección es,
+   literalmente, la respuesta correcta para un caso que el programa falló. Con
+   ella delante, el programa **prueba ajustes** y busca cuál habría dado ese
+   mismo borde solo.
+
+   Te dice las dos cifras: cuánto coinciden los ajustes de ahora con lo que
+   corregiste, y cuánto coincidiría el propuesto. Si no hay nada que ganar te lo
+   dice también, con los números — «no hay nada que cambiar» sin cifras es
+   indistinguible de «no lo he mirado». Si aceptas, el ajuste se aplica a
+   **todas las piezas de aquí en adelante** y la corrección a mano se retira,
+   para que lo que veas salga del ajuste y no de tu pincelada.
 
 3. **Medir pieza** (botón de la barra): la respuesta a *¿cuánto mide esto?*, de
    una vez y sin rodeos. Mira el contorno de lo que tengas delante y te da:
