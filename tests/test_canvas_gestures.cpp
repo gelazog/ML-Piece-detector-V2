@@ -4011,3 +4011,90 @@ TEST(SubpixelSetting, ThePageOpensShowingTheStateThatIsActuallyInUse) {
     pci::ui::DetectionPage off(options, nullptr, nullptr, 0, 0.005, 0.9, false);
     EXPECT_FALSE(off.subpixelEdges());
 }
+
+// ---------------------------------------------------------------------------
+// Los avisos viajan CON el informe
+// ---------------------------------------------------------------------------
+
+// Un aviso que se queda en la barra de estado llega a la mitad de la gente que
+// lo necesita: la otra mitad exporta el CSV y se lleva las cifras sin él. Por
+// eso «esta pieza está cortada» y «este perímetro no es de fiar» son parte del
+// informe, no de la ventana que lo enseña.
+TEST(PieceReportWarnings, ACutPieceSaysSoInsideTheReport) {
+    // Una pieza que se sale por la derecha del encuadre.
+    cv::Mat gray(300, 400, CV_8UC1, cv::Scalar(20));
+    cv::rectangle(gray, cv::Rect(250, 80, 200, 140), cv::Scalar(220), cv::FILLED);
+    cv::Mat mask;
+    cv::threshold(gray, mask, 128, 255, cv::THRESH_BINARY);
+
+    const auto cut = pci::inspection::measureWholePiece(gray, mask, {}, 0.0,
+                                                        pci::inspection::LengthUnit::Auto,
+                                                        gray.size());
+    ASSERT_TRUE(cut.ok) << cut.problem;
+    ASSERT_FALSE(cut.warnings.empty())
+        << "la pieza se sale del encuadre y el informe no lo dice";
+    std::printf("  [informe] %s\n", cut.warnings.front().c_str());
+    EXPECT_NE(cut.warnings.front().find("limites inferiores"), std::string::npos)
+        << "avisa de que toca el borde pero no de que las medidas se quedan cortas";
+
+    // La misma pieza con margen por los cuatro lados: sin aviso.
+    cv::Mat whole(300, 400, CV_8UC1, cv::Scalar(20));
+    cv::rectangle(whole, cv::Rect(100, 80, 200, 140), cv::Scalar(220), cv::FILLED);
+    cv::Mat wholeMask;
+    cv::threshold(whole, wholeMask, 128, 255, cv::THRESH_BINARY);
+    const auto fine = pci::inspection::measureWholePiece(whole, wholeMask, {}, 0.0,
+                                                          pci::inspection::LengthUnit::Auto,
+                                                          whole.size());
+    ASSERT_TRUE(fine.ok) << fine.problem;
+    EXPECT_TRUE(fine.warnings.empty())
+        << "avisa de una pieza que entra entera: un aviso que salta siempre se "
+           "aprende a ignorar. Dice: "
+        << (fine.warnings.empty() ? std::string() : fine.warnings.front());
+
+    // Y sin encuadre no se puede comprobar, así que no se inventa el aviso.
+    const auto blind = pci::inspection::measureWholePiece(gray, mask, {}, 0.0,
+                                                          pci::inspection::LengthUnit::Auto);
+    ASSERT_TRUE(blind.ok);
+    EXPECT_TRUE(blind.warnings.empty())
+        << "sin saber el tamaño del encuadre no se puede afirmar que la pieza esté "
+           "cortada, y afirmarlo igual seria inventar";
+}
+
+// Y el diálogo los enseña ANTES que las cifras. Un aviso que dice «estas
+// medidas son límites inferiores» puesto al final llega cuando ya se han leído
+// las cifras, y entonces no cambia nada.
+TEST(PieceReportWarnings, TheDialogShowsThemBeforeTheNumbers) {
+    cv::Mat gray(300, 400, CV_8UC1, cv::Scalar(20));
+    cv::rectangle(gray, cv::Rect(250, 80, 200, 140), cv::Scalar(220), cv::FILLED);
+    cv::Mat mask;
+    cv::threshold(gray, mask, 128, 255, cv::THRESH_BINARY);
+    const auto report = pci::inspection::measureWholePiece(
+        gray, mask, {}, 0.0, pci::inspection::LengthUnit::Auto, gray.size());
+    ASSERT_TRUE(report.ok);
+    ASSERT_FALSE(report.warnings.empty());
+
+    pci::ui::PieceReportDialog dialog(report, QStringLiteral("una imagen"), nullptr);
+    dialog.resize(700, 600);
+    dialog.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&dialog));
+
+    // El aviso tiene que estar en pantalla, entero y visible.
+    QLabel* shown = nullptr;
+    for (auto* label : dialog.findChildren<QLabel*>()) {
+        if (label->text().contains(QStringLiteral("limites inferiores"))) {
+            shown = label;
+        }
+    }
+    ASSERT_NE(shown, nullptr) << "el informe trae el aviso y el diálogo no lo enseña";
+    EXPECT_TRUE(shown->isVisible());
+    EXPECT_TRUE(shown->wordWrap()) << "el aviso se corta en vez de leerse entero";
+
+    // Y por encima de la tabla de cifras.
+    auto* table = dialog.findChild<QTableWidget*>();
+    ASSERT_NE(table, nullptr);
+    const int warningY = shown->mapTo(&dialog, QPoint(0, 0)).y();
+    const int tableY = table->mapTo(&dialog, QPoint(0, 0)).y();
+    std::printf("  [informe] aviso en y=%d, tabla en y=%d\n", warningY, tableY);
+    EXPECT_LT(warningY, tableY)
+        << "el aviso sale debajo de las cifras: para entonces ya se han leido";
+}

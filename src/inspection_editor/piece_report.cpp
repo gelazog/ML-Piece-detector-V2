@@ -1,4 +1,5 @@
 #include "inspection_editor/piece_report.h"
+#include "vision/quality_metrics.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -54,7 +55,7 @@ std::size_t PieceReport::contourFactCount() const {
 
 PieceReport measureWholePiece(const cv::Mat& gray, const cv::Mat& mask,
                               const vision::Fixture& fixture, double mmPerPixel,
-                              LengthUnit unit) {
+                              LengthUnit unit, const cv::Size& frame) {
     PieceReport report;
     if (gray.empty() || mask.empty()) {
         report.problem = "No hay imagen que medir.";
@@ -172,6 +173,27 @@ PieceReport measureWholePiece(const cv::Mat& gray, const cv::Mat& mask,
     for (auto& row : dimensionRows) {
         row.group = kGroupDimension;
         report.rows.push_back(std::move(row));
+    }
+
+    // LOS AVISOS, al final: hacen falta el contorno y el area ya medidos.
+    //
+    // Van dentro del informe y no en la barra de estado porque el informe se
+    // EXPORTA. Un aviso que se queda en la ventana llega a la mitad de la gente
+    // que lo necesita; la otra mitad se lleva las cifras sin el.
+    if (frame.width > 0 && frame.height > 0) {
+        const auto contact = vision::pieceTouchesFrame(contour.outer, frame);
+        if (std::string warning = vision::frameContactWarning(contact); !warning.empty()) {
+            report.warnings.push_back(std::move(warning));
+        }
+    }
+    if (vision::contourLooksRagged(contour.area, contour.perimeter)) {
+        report.warnings.push_back(
+            "El contorno mide " +
+            std::to_string(static_cast<int>(std::lround(
+                100.0 * vision::contourRaggedness(contour.area, contour.perimeter)))) +
+            " % del perimetro de un circulo de la misma area: o la pieza es muy "
+            "dentada, o la deteccion esta siguiendo el dibujo de la superficie en vez "
+            "del borde. En ese caso el perimetro no es de fiar.");
     }
 
     report.ok = true;

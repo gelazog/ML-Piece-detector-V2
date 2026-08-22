@@ -1869,9 +1869,13 @@ void MainWindow::onMeasurePieceClicked() {
     // rellena, y sin esto una arandela se mediría como un disco.
     const cv::Mat mask = vision::pieceMaskWithHoles(image, analysis.value().mask,
                                                     inspectionConfig().segmentation);
+    // Con el TAMAÑO DEL ENCUADRE: sin él, el informe no puede saber si la pieza
+    // está cortada por el borde, y entonces publicaría sus cotas como medidas
+    // cuando son límites inferiores.
     const auto report = inspection::measureWholePiece(image, mask,
                                                       analysis.value().fixture,
-                                                      calibration_.mmPerPixel, currentUnit());
+                                                      calibration_.mmPerPixel, currentUnit(),
+                                                      image.size());
     if (!report.ok) {
         statusBar()->showMessage(QString::fromStdString(report.problem));
         return;

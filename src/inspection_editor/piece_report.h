@@ -55,6 +55,23 @@ struct PieceReport {
 
     // Cuántas filas son hechos del contorno. Las de después son cotas.
     [[nodiscard]] std::size_t contourFactCount() const;
+
+    // AVISOS SOBRE LO QUE SE ACABA DE MEDIR, vacío si no hay ninguno.
+    //
+    // No son errores: el informe se entrega igual. Son las razones por las que
+    // los números de este informe pueden no significar lo que parece, y tienen
+    // que viajar CON él — un aviso que se queda en la barra de estado mientras
+    // las cotas se exportan a un CSV llega a la mitad de la gente que lo
+    // necesita.
+    //
+    // Hoy son dos, y los dos salieron de fotografías reales:
+    //
+    //  - La pieza toca el borde del encuadre: está cortada, y entonces sus cotas
+    //    son límites inferiores y no medidas.
+    //  - El contorno está dentado muy por encima de lo normal: o la pieza lo es,
+    //    o la detección está siguiendo el dibujo de la superficie en vez del
+    //    borde, y entonces el perímetro no significa lo que dice.
+    std::vector<std::string> warnings;
 };
 
 // Nombres de grupo, escritos una vez porque los comparan la interfaz y los
@@ -64,9 +81,13 @@ inline constexpr const char* kGroupDimension = "cota";
 
 // `gray` es la imagen para medir, `mask` la máscara de la pieza y `fixture` su
 // sistema de coordenadas. `mmPerPixel` a 0 devuelve píxeles y lo dice.
+// `frame`, si se pasa con tamaño, es el encuadre completo del que salió la
+// máscara: hace falta para saber si la pieza está cortada por el borde. Vacío =
+// no se comprueba, y entonces el informe no puede avisar de ello.
 [[nodiscard]] PieceReport measureWholePiece(const cv::Mat& gray, const cv::Mat& mask,
                                             const vision::Fixture& fixture,
                                             double mmPerPixel = 0.0,
-                                            LengthUnit unit = LengthUnit::Auto);
+                                            LengthUnit unit = LengthUnit::Auto,
+                                            const cv::Size& frame = {});
 
 }  // namespace pci::inspection

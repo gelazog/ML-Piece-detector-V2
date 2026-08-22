@@ -62,6 +62,20 @@ PieceReportDialog::PieceReportDialog(inspection::PieceReport report,
     headline->setWordWrap(true);
     root->addWidget(headline);
 
+    // LOS AVISOS, antes que las cifras y no debajo.
+    //
+    // Un aviso que dice «estas medidas son límites inferiores» puesto al final
+    // llega cuando ya se han leído las cifras, y entonces no cambia nada. Va
+    // arriba, con color, y con el texto entero: quien lo lea tiene que poder
+    // decidir si sigue mirando o va a recolocar la pieza.
+    for (const auto& warning : report_.warnings) {
+        auto* label = new QLabel(QString::fromStdString(warning), this);
+        label->setWordWrap(true);
+        label->setStyleSheet(QStringLiteral("color:#3a2a00; background:#ffc861;"
+                                            " border-radius:6px; padding:6px;"));
+        root->addWidget(label);
+    }
+
     if (!report_.shape.reason.empty()) {
         // Por qué se reconoció esa figura, con su residuo. Una clasificación sin
         // su número es una opinión.

@@ -435,6 +435,18 @@ a uno de el. Hay un test que comprueba las dos caras — que con margen 2 se
 detecta y con margen 0 no — para que el valor sea una decision y no una
 casualidad.
 
+**Y los avisos viajan CON el informe, no en la ventana.** Un aviso que se queda
+en la barra de estado llega a la mitad de la gente que lo necesita: la otra
+mitad exporta el CSV y se lleva las cifras sin el. Por eso «esta pieza esta
+cortada» y «este perimetro no es de fiar» son campos de `PieceReport`, y el
+dialogo los pinta **encima de la tabla** — puesto debajo, el aviso llega cuando
+las cifras ya se han leido y entonces no cambia nada. Hay un test que compara
+las coordenadas en pantalla para que siga siendo asi.
+
+Y sin el tamano del encuadre no se afirma nada: `measureWholePiece` sin `frame`
+no puede saber si la pieza esta cortada, y entonces **no avisa** en vez de
+inventarselo.
+
 #### Lo dentado del contorno: un aviso barato que separa dos cosas
 
 Una moneda de 5 yenes —22,0 mm de diametro y 5,0 mm de agujero, publicados—
