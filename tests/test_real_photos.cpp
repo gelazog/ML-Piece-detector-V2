@@ -25,6 +25,7 @@
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/videoio.hpp>
 
 #include "inspection_editor/auto_measure.h"
 #include "inspection_editor/execution/tool_executor.h"
@@ -84,6 +85,19 @@ pci::vision::ShapeClass shapeOf(const cv::Mat& photo,
     const cv::Mat withHoles =
         pci::vision::pieceMaskWithHoles(gray, piece.mask, config.segmentation);
     return pci::vision::classifyShape(piece.contour.points, withHoles);
+}
+
+// El video del corpus, buscado igual que las fotos.
+std::string realVideoForContours(const std::string& name) {
+    for (const auto* base : {"testdata/real/", "../testdata/real/", "../../testdata/real/",
+                             "../../../testdata/real/"}) {
+        const std::string path = std::string(base) + name;
+        std::error_code ec;
+        if (std::filesystem::exists(path, ec)) {
+            return path;
+        }
+    }
+    return {};
 }
 
 }  // namespace
@@ -1166,4 +1180,159 @@ TEST(ContourRaggedness, ItStaysQuietOnCleanContoursAndSpeaksOnTheOthers) {
                            "un aviso";
     EXPECT_GT(ragged, 0) << "no avisa en ninguna, teniendo el corpus escenas donde la "
                             "deteccion sigue el dibujo de la superficie";
+}
+
+// ---------------------------------------------------------------------------
+// CON VARIAS PIEZAS: no cuantas, sino QUE CONTORNO se le da a cada una
+// ---------------------------------------------------------------------------
+
+// Las pruebas de varias piezas que habia comprobaban el RECUENTO —tres bolas dan
+// tres, cuatro dados dan hasta cinco— y poco mas: que ninguna caja fuera mayor
+// que el frame y que el area no fuera cero. Eso deja sin comprobar lo que de
+// verdad decide si las medidas valen: si a cada pieza se le da SU contorno.
+//
+// Un recuento correcto es compatible con contornos mal repartidos. Dos piezas
+// pegadas que se cuentan como una y un reflejo que parte una en dos dan, entre
+// los dos, el numero correcto — y las medidas serian basura.
+TEST(RealPhotos, EachOfSeveralPiecesGetsItsOwnContour) {
+    const cv::Mat photo = loadReal("bolas_tres_sobre_negro.jpg");
+    REQUIRE_CORPUS(photo);
+
+    const auto all = pci::vision::analyzeFrames(photo, {});
+    ASSERT_TRUE(all.isOk()) << all.error().message;
+    const auto& pieces = all.value();
+    ASSERT_GE(pieces.size(), 3U) << "en la foto hay tres bolas";
+
+    std::vector<cv::Rect> boxes;
+    for (std::size_t i = 0; i < pieces.size(); ++i) {
+        const cv::Rect box = cv::boundingRect(pieces[i].contour.points);
+        const double area = pieces[i].contour.area;
+        // Una bola es redonda: su area tiene que ser la del circulo inscrito en
+        // su caja, no la de la caja. Si una pieza se hubiera comido a otra o a
+        // un trozo de fondo, esta razon se desploma.
+        const double diameter = 0.5 * (box.width + box.height);
+        const double circle = CV_PI * diameter * diameter / 4.0;
+        const double fill = area / circle;
+        std::printf("  [contornos] pieza %zu: caja %4dx%4d en (%4d,%4d)  area %8.0f  "
+                    "llena el %.0f %% del circulo\n",
+                    i + 1, box.width, box.height, box.x, box.y, area, 100.0 * fill);
+
+        EXPECT_GT(fill, 0.80)
+            << "la pieza " << i + 1 << " llena solo el " << 100.0 * fill
+            << " % del circulo que le corresponde: su contorno no rodea una bola entera";
+        EXPECT_LT(fill, 1.20)
+            << "la pieza " << i + 1 << " tiene mas area que el circulo de su caja: "
+               "el contorno se salio de la pieza";
+
+        // Y una bola se ve redonda: ancho y alto parecidos. Una caja muy
+        // alargada es la firma de dos piezas pegadas contadas como una.
+        const double aspect = static_cast<double>(std::max(box.width, box.height)) /
+                              std::max(1, std::min(box.width, box.height));
+        EXPECT_LT(aspect, 1.35)
+            << "la pieza " << i + 1 << " es " << aspect
+            << " veces mas larga que ancha: eso no es una bola, son dos pegadas";
+        boxes.push_back(box);
+    }
+
+    // LO QUE MAS IMPORTA: las piezas no se pisan. Dos contornos que se solapan
+    // son la misma pieza contada dos veces, y entonces el recuento miente
+    // aunque el numero salga bien por casualidad.
+    for (std::size_t i = 0; i < boxes.size(); ++i) {
+        for (std::size_t j = i + 1; j < boxes.size(); ++j) {
+            const cv::Rect overlap = boxes[i] & boxes[j];
+            const double shared =
+                static_cast<double>(overlap.area()) /
+                std::min(boxes[i].area(), boxes[j].area());
+            EXPECT_LT(shared, 0.25)
+                << "las piezas " << i + 1 << " y " << j + 1 << " comparten el "
+                << 100.0 * shared << " % de su caja: o es una contada dos veces, o una "
+                                     "se metio dentro de la otra";
+        }
+    }
+
+    // Y las tres bolas de la foto son de tamanos claramente distintos, asi que
+    // sus areas tambien tienen que serlo. Tres piezas de area casi igual serian
+    // la misma pieza troceada.
+    std::vector<double> areas;
+    for (const auto& piece : pieces) { areas.push_back(piece.contour.area); }
+    std::sort(areas.begin(), areas.end());
+    const double ratio = areas.back() / areas.front();
+    std::printf("  [contornos] la mayor es %.1f veces la menor\n", ratio);
+    EXPECT_GT(ratio, 2.0)
+        << "las tres piezas tienen tamanos parecidos, y en la foto son claramente "
+           "distintas: seguramente se troceo una sola";
+}
+
+// Y lo mismo sobre VIDEO REAL con piezas en movimiento, que es donde los
+// contornos se reparten mal de verdad: los dados se acercan, se tocan y se
+// separan, y en los frames en que se tocan la segmentacion tiene que decidir.
+//
+// Lo que se le exige no es acertar siempre —dos dados que se tocan son
+// legitimamente ambiguos— sino que lo que devuelva sea COHERENTE: piezas que no
+// se pisan entre si, ninguna del tamano del frame entero.
+TEST(RealVideoContours, MovingPiecesNeverOverlapEachOther) {
+    const std::string path = realVideoForContours("video_dados_multiples.mp4");
+    if (path.empty()) {
+        GTEST_SKIP() << "corpus de video real no descargado";
+    }
+
+    cv::VideoCapture capture(path);
+    ASSERT_TRUE(capture.isOpened());
+    const double frameArea = capture.get(cv::CAP_PROP_FRAME_WIDTH) *
+                             capture.get(cv::CAP_PROP_FRAME_HEIGHT);
+
+    int analysed = 0;
+    int overlaps = 0;
+    int worstCount = 0;
+    double biggestShare = 0.0;
+    cv::Mat frame;
+    for (int index = 0; capture.read(frame) && !frame.empty(); ++index) {
+        if (index % 20 != 0) {
+            continue;
+        }
+        const auto all = pci::vision::analyzeFrames(frame, {});
+        if (!all.isOk()) {
+            continue;
+        }
+        ++analysed;
+        const auto& pieces = all.value();
+        worstCount = std::max(worstCount, static_cast<int>(pieces.size()));
+
+        // Se comparan los CONTORNOS rasterizados, no sus cajas.
+        //
+        // La primera version comparaba cajas y fallaba, con razon: en un monton
+        // de dados cayendo, uno queda delante de otro y sus cajas se solapan de
+        // verdad. Dos cajas superpuestas ahi son geometricamente correctas y no
+        // dicen nada sobre si una pieza se conto dos veces.
+        //
+        // Lo que de verdad importa es que ningun PIXEL pertenezca a dos piezas:
+        // eso si seria la misma pieza contada dos veces, y entonces el recuento
+        // mentiria aunque el numero saliera bien por casualidad.
+        cv::Mat seen = cv::Mat::zeros(frame.size(), CV_8UC1);
+        for (const auto& piece : pieces) {
+            biggestShare = std::max(biggestShare, piece.contour.area / frameArea);
+            cv::Mat one = cv::Mat::zeros(frame.size(), CV_8UC1);
+            const std::vector<std::vector<cv::Point>> fill{piece.contour.points};
+            cv::drawContours(one, fill, 0, cv::Scalar(255), cv::FILLED);
+            cv::Mat both;
+            cv::bitwise_and(seen, one, both);
+            const double shared = static_cast<double>(cv::countNonZero(both)) /
+                                  std::max(1.0, piece.contour.area);
+            if (shared > 0.5) {
+                ++overlaps;
+            }
+            cv::bitwise_or(seen, one, seen);
+        }
+    }
+
+    std::printf("  [contornos] %d frames, hasta %d piezas, %d pares que se pisan, "
+                "la mayor ocupa el %.0f %% del frame\n",
+                analysed, worstCount, overlaps, 100.0 * biggestShare);
+    EXPECT_GT(analysed, 5);
+    EXPECT_EQ(overlaps, 0)
+        << "hay contornos cuyos pixeles se pisan mas de la mitad: una pieza contada "
+           "dos veces";
+    EXPECT_LT(biggestShare, 0.9)
+        << "una sola pieza ocupa casi todo el frame: eso es la segmentacion fallando, "
+           "no una pieza";
 }
