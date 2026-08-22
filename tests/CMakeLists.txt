@@ -37,6 +37,7 @@ add_executable(pci_tests
   test_tool_options.cpp
   test_vision.cpp
   test_detection_tuning.cpp
+  test_documented_numbers.cpp
   test_real_photos.cpp
   test_real_video.cpp
   test_working_zone.cpp

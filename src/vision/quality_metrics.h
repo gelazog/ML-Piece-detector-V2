@@ -43,7 +43,7 @@ domain::QualityMetrics computeQualityMetrics(const cv::Mat& image,
 //   ---------------------------------------------------------------
 //   montón de piñones ............  5,88   no hay borde que seguir
 //   arandelas en una bolsa .......  6,26   etiqueta y plástico
-//   moneda con relieve grabado ... 10,03   sigue el grabado
+//   moneda con relieve grabado ... 10,11   sigue el grabado
 //   bola junto a una regla ....... 21,96   sigue las marcas de la regla
 //
 // Cuando este número se dispara, el PERÍMETRO deja de significar lo que dice, y

@@ -370,10 +370,34 @@ separa no necesita detectar esquinas: el ruido es pequeno por definicion, asi
 que lo que pida moverse mas que eso es un rasgo y se respeta. Con el tope, el
 punto que mas se mueve en esa tuerca lo hace 5,65 px.
 
-El precio esta medido y se paga a proposito: en el circulo, la contradiccion
-entre area y perimetro sube de 1,75 % a **3,06 %** (desde el 6,75 % de partida).
-Vale la pena — un numero algo peor en una pieza redonda a cambio de no
-deformar las que tienen esquinas.
+El precio se pago a proposito, y resultó ser menor de lo que costo al principio:
+la contradiccion entre area y perimetro subio de 1,75 % a 3,06 %, y al rechazar
+despues los cruces ambiguos volvio a bajar hasta **2,00 %** (desde el 6,75 % de
+partida). Vale la pena: un numero algo peor en una pieza redonda a cambio de no deformar las que tienen esquinas.
+
+#### Las cifras que este documento afirma tienen quien las vigile
+
+Un numero medido y copiado a mano a un documento **empieza a caducar el mismo
+dia**. Este documento tenia uno: decia que acotar el suavizado del contorno
+subia la contradiccion entre area y perimetro «de 1,75 % a 3,06 %». Era cierto
+cuando se escribio; despues se anadio el rechazo de cruces ambiguos y la cifra
+real bajo a **2,00 %**. El documento se quedo **exagerando el precio de una
+decision**, y quien lo leyera podria revisitar esa decision por un motivo que ya
+no existia.
+
+Lo destapo un repaso deliberado: sacar todas las cifras que el documento afirma,
+sacar todas las que imprimen los tests, y cruzarlas. De 31 cifras comprobadas,
+12 no las producia ningun test. La mayoria con razon —describen el estado ANTES
+de un arreglo y su valor es historico— pero dos estaban simplemente obsoletas.
+
+`test_documented_numbers.cpp` ata las afirmaciones que describen **como se
+comporta el programa hoy** a una comprobacion: el desacuerdo area/perimetro, la
+tabla entera de dentado por fotografia, y la exactitud del afinado subpixel. Si
+una deja de ser cierta, falla y dice cual y en cuanto se movio.
+
+No estan todas, y es a proposito: las cifras historicas —«se publicaba un Ø de
+130.901 px»— describen algo que ya no ocurre y atarlas a un test seria pedirle
+al programa que siga fallando como fallaba.
 
 #### Material REAL: lo que una foto de verdad destapa en el primer intento
 
@@ -488,7 +512,7 @@ Medido sobre el corpus **por el camino que usa el programa**:
 | *(banda vacia — el umbral va aqui, en 3,0)* | |
 | monton de pinones | 5,88 |
 | arandelas en una bolsa | 6,26 |
-| moneda con relieve | 10,03 |
+| moneda con relieve | 10,11 |
 | bola junto a una regla | 21,96 |
 
 El aviso dice las **dos** posibilidades —«o la pieza es muy dentada, o la
