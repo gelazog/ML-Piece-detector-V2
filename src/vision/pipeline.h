@@ -6,6 +6,7 @@
 
 #include "core/result.h"
 #include "vision/segmentation.h"
+#include "vision/subpixel_edge.h"
 #include "vision/types.h"
 
 namespace pci::vision {
@@ -20,6 +21,21 @@ struct PipelineConfig {
     // no se sigue la rotación (más estable y sin inclinación espuria).
     bool autoOrient = false;
     SegmentationOptions segmentation;
+    // Afinado SUBPÍXEL del borde de la pieza (ver `vision/subpixel_edge.h`).
+    //
+    // APAGADO POR DEFECTO, y no por prudencia genérica: encenderlo cambia dónde
+    // está el borde, y con él el área, el perímetro y toda medida que salga del
+    // contorno. Una pieza ya registrada tiene sus tolerancias ajustadas contra
+    // el borde de ANTES, así que cambiarlo por debajo movería todas sus cotas a
+    // la vez sin que nadie lo hubiera pedido — y una pieza buena empezaría a
+    // salir NG por un cambio de definición, no por un defecto.
+    //
+    // Quien lo encienda tiene que volver a mirar sus tolerancias. Por eso es una
+    // decisión y no un arreglo silencioso.
+    //
+    // Medido sobre un borde en posición fraccionaria conocida: el umbral duro
+    // yerra 0,417 px y el afinado 0,025 px.
+    bool subpixelEdges = false;
     // Zona de detección: si no está vacía, el contorno automático solo se
     // busca dentro de este rectángulo (coords de imagen) — luces, sombras y
     // objetos fuera de la zona dejan de estorbar. Los resultados se devuelven

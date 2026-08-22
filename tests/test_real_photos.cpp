@@ -712,3 +712,108 @@ TEST(SubpixelEdge, ItFindsAnEdgeDeliberatelyPlacedBetweenTwoPixels) {
     EXPECT_LT(std::abs(radiusAfter - trueRadius), 0.5)
         << "el afinado deberia acertar el radio con menos de medio pixel de error";
 }
+
+// LA GARANTÍA QUE HACE SEGURO ENCHUFAR ESTO.
+//
+// El afinado subpíxel cambia dónde está el borde, y con él el área, el
+// perímetro y toda medida que salga del contorno. Una pieza YA REGISTRADA tiene
+// sus tolerancias ajustadas contra el borde de antes: si la definición cambiara
+// por debajo, todas sus cotas se moverían a la vez y una pieza buena empezaría
+// a salir NG por un cambio de definición y no por un defecto.
+//
+// Por eso la opción nace apagada, y por eso esto se comprueba: con la opción
+// apagada, el resultado tiene que ser IDÉNTICO BIT A BIT al de antes de que el
+// afinado existiera.
+TEST(SubpixelWiring, WithTheOptionOffNothingChangesAtAll) {
+    const cv::Mat photo = loadReal("bola_oscura_sobre_claro_10mm.jpg");
+    REQUIRE_CORPUS(photo);
+
+    pci::vision::PipelineConfig off;
+    off.roi = cv::Rect(560, 720, 420, 420);
+    ASSERT_FALSE(off.subpixelEdges) << "la opción no nace apagada, que es lo único "
+                                       "que impide mover las tolerancias de nadie";
+
+    const auto plain = pci::vision::analyzeFrame(photo, off);
+    ASSERT_TRUE(plain.isOk());
+
+    // Los mismos números que daba el pipeline antes de que esto existiera,
+    // anotados aquí a propósito para que cualquier deriva futura se vea.
+    //
+    // El perímetro va con sus decimales y no con el 841,0 que enseña el banco:
+    // ese 841,0 es el valor REDONDEADO PARA MOSTRAR, y copiarlo de la pantalla
+    // hizo fallar este test la primera vez. Un número de una interfaz no es el
+    // número.
+    EXPECT_DOUBLE_EQ(plain.value().contour.area, 49381.0);
+    EXPECT_NEAR(plain.value().contour.perimeter, 840.95035338401794, 1e-9);
+    EXPECT_TRUE(plain.value().contour.subpixel.empty())
+        << "con la opción apagada no debería haber contorno afinado ni para mirar";
+}
+
+// Y con la opción encendida, cambia — y cambia A MEJOR, que no es lo mismo.
+//
+// La prueba de que es mejor no es que el número sea distinto: es que sobre una
+// pieza REDONDA, el área y el perímetro dejan de contradecirse. Un círculo tiene
+// un solo radio; si el área dice uno y el perímetro dice otro, al menos uno está
+// mal, y el que menos se contradice consigo mismo es el que está más cerca.
+TEST(SubpixelWiring, WithTheOptionOnAreaAndPerimeterStopContradictingEachOther) {
+    const cv::Mat photo = loadReal("bola_oscura_sobre_claro_10mm.jpg");
+    REQUIRE_CORPUS(photo);
+
+    const auto gapOf = [&photo](bool subpixel) {
+        pci::vision::PipelineConfig config;
+        config.roi = cv::Rect(560, 720, 420, 420);
+        config.subpixelEdges = subpixel;
+        const auto analysis = pci::vision::analyzeFrame(photo, config);
+        EXPECT_TRUE(analysis.isOk());
+        const double area = analysis.value().contour.area;
+        const double perimeter = analysis.value().contour.perimeter;
+        const double fromArea = std::sqrt(area / CV_PI);
+        const double fromPerimeter = perimeter / (2.0 * CV_PI);
+        std::printf("  [subpixel] %-9s area %8.1f px2  perimetro %7.1f px  ->  r %.2f vs "
+                    "%.2f  (%.2f %%)\n",
+                    subpixel ? "encendido" : "apagado", area, perimeter, fromArea,
+                    fromPerimeter, 100.0 * std::abs(fromArea - fromPerimeter) / fromArea);
+        return std::abs(fromArea - fromPerimeter) / fromArea;
+    };
+
+    const double before = gapOf(false);
+    const double after = gapOf(true);
+    EXPECT_LT(after, before)
+        << "con el afinado, el área y el perímetro se contradicen MÁS que sin él";
+    // El umbral sale de lo MEDIDO, no de lo que quedaría bonito: la
+    // contradicción pasa de 6,75 % a 3,06 %, o sea se queda por debajo de la
+    // mitad. Pedir menos del 2 % sería pedirle al suavizado que se coma las
+    // esquinas de una tuerca, que es justo lo que se acaba de prohibir.
+    EXPECT_LT(after, before * 0.5)
+        << "el afinado tiene que reducir la contradicción a menos de la mitad";
+    EXPECT_LT(after, 0.05);
+}
+
+// El contorno afinado queda DISPONIBLE, y vacío cuando no se pidió. Ese vacío es
+// la señal: quien mida sobre él sabe que tiene más resolución que la rejilla, y
+// quien no lo mire sigue viendo exactamente lo de siempre.
+TEST(SubpixelWiring, TheRefinedContourIsThereToBeUsed) {
+    const cv::Mat photo = loadReal("tuerca_dominio_publico.jpg");
+    REQUIRE_CORPUS(photo);
+
+    pci::vision::PipelineConfig config;
+    config.subpixelEdges = true;
+    const auto analysis = pci::vision::analyzeFrame(photo, config);
+    ASSERT_TRUE(analysis.isOk()) << analysis.error().message;
+
+    const auto& contour = analysis.value().contour;
+    ASSERT_FALSE(contour.subpixel.empty()) << "se pidió afinado y no hay contorno afinado";
+    EXPECT_EQ(contour.subpixel.size(), contour.points.size())
+        << "el contorno afinado tiene que tener los mismos puntos, no otros";
+
+    // Y ninguno se ha ido lejos: afinar mueve el borde dentro de la rampa, no lo
+    // reubica. Un punto que se va cinco píxeles ha encontrado otra cosa.
+    double worst = 0.0;
+    for (std::size_t i = 0; i < contour.points.size(); ++i) {
+        const double dx = static_cast<double>(contour.subpixel[i].x) - contour.points[i].x;
+        const double dy = static_cast<double>(contour.subpixel[i].y) - contour.points[i].y;
+        worst = std::max(worst, std::hypot(dx, dy));
+    }
+    std::printf("  [subpixel] el punto que más se movió lo hizo %.2f px\n", worst);
+    EXPECT_LT(worst, 8.0) << "algún punto se fue demasiado lejos de donde estaba el borde";
+}

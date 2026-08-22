@@ -37,7 +37,7 @@ enum ExitCode {
 
 inline const char* probeUsage() {
     return "Uso: pci_probe <imagen|video> [--json] [--calibrar-largo PX=MM] [--medir]\n"
-           "                 [--zona x,y,w,h] [--frames N]\n"
+           "                 [--zona x,y,w,h] [--frames N] [--subpixel]\n"
            "Salida: 0 analizado, 2 argumentos, 3 no se pudo abrir, 4 sin pieza.\n";
 }
 
@@ -45,6 +45,10 @@ struct ProbeOptions {
     std::string source;   // imagen o vídeo; obligatorio
     bool json = false;    // misma información, en JSON de una sola pieza
     bool measure = false; // añadir las propuestas de medición
+    // Afinado subpíxel del borde. Está aquí para poder COMPARAR sobre el
+    // material de cada cual antes de encenderlo en la aplicación: la misma
+    // imagen con y sin la bandera dice, en números, qué cambia.
+    bool subpixel = false;
 
     // Calibración por objeto de referencia (`--calibrar-largo PX=MM`): una
     // distancia medida en píxeles cuyo tamaño real se conoce. Se guardan los dos
@@ -145,6 +149,8 @@ inline core::Result<ProbeOptions> parseProbeArgs(int argc, const char* const* ar
             options.json = true;
         } else if (arg == "--medir") {
             options.measure = true;
+        } else if (arg == "--subpixel") {
+            options.subpixel = true;
         } else if (arg == "--calibrar-largo") {
             std::string value;
             if (!nextValue(value)) {
@@ -296,6 +302,10 @@ struct ProbeStageTimes {
 
 struct ProbeReport {
     std::string source;
+    // Si el analisis uso el afinado subpixel del borde. Va en el informe y no
+    // solo en las opciones porque quien lea dos salidas tiene que poder saber
+    // cual es cual sin acordarse de que bandera puso.
+    bool subpixel = false;
     bool video = false;
     int width = 0;
     int height = 0;

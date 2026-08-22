@@ -59,6 +59,18 @@ struct SubpixelOptions {
     // Un borde real es suave: el zigzag y la escalera son del muestreo, no de
     // la pieza. Cero desactiva el suavizado.
     int smoothSpan = 2;
+    // Cuánto puede corregir el suavizado a un punto, en píxeles.
+    //
+    // Lo destapó una tuerca hexagonal de verdad: sin este tope, el suavizado
+    // movía un punto hasta 19,6 px — muchísimo más de lo que el propio afinado
+    // tiene permitido. No estaba quitando ruido, estaba REDONDEANDO LAS
+    // ESQUINAS del hexágono, que son la pieza y no el muestreo.
+    //
+    // La regla que lo separa es sencilla y no necesita detectar esquinas: el
+    // ruido es pequeño por definición. Si el suavizado quiere mover un punto más
+    // que esto, no está viendo ruido, está viendo un rasgo — y un rasgo se
+    // respeta.
+    double maxSmoothCorrection = 1.0;
     // Cuánto se permite que se mueva un punto respecto a donde lo puso la
     // máscara. Un punto que se va mucho más lejos que la rampa no ha encontrado
     // el borde de la pieza: ha encontrado otra cosa.

@@ -300,6 +300,32 @@ datos sin ninguna prueba a favor. La garantia de que en el peor caso esto NO
 HACE NADA vale mas que un perimetro algo mejor: sobre una imagen plana, cero
 puntos movidos.
 
+**Enchufado como OPCION, y apagada.** No por prudencia generica: encenderlo
+cambia donde esta el borde, y con el el area, el perimetro y toda medida que
+salga del contorno. Una pieza YA REGISTRADA tiene sus tolerancias ajustadas
+contra el borde de antes — cambiar la definicion por debajo moveria todas sus
+cotas a la vez, y una pieza buena empezaria a salir NG por un cambio de
+definicion y no por un defecto. Quien lo encienda tiene que volver a mirar sus
+tolerancias, y por eso es una decision y no un arreglo silencioso.
+
+Con la opcion apagada el resultado es identico al de antes de que el afinado
+existiera, y hay un test que lo fija con los numeros exactos. `pci_probe
+--subpixel` permite comparar las dos versiones sobre el material de cada cual
+antes de decidir.
+
+**Y el suavizado va acotado a 1 px, que lo destapo una tuerca hexagonal.** Sin
+tope, el suavizado movia un punto hasta **19,6 px** — mucho mas de lo que el
+propio afinado tiene permitido. No estaba quitando ruido: estaba **redondeando
+las esquinas del hexagono**, que son la pieza y no el muestreo. La regla que lo
+separa no necesita detectar esquinas: el ruido es pequeno por definicion, asi
+que lo que pida moverse mas que eso es un rasgo y se respeta. Con el tope, el
+punto que mas se mueve en esa tuerca lo hace 5,65 px.
+
+El precio esta medido y se paga a proposito: en el circulo, la contradiccion
+entre area y perimetro sube de 1,75 % a **3,06 %** (desde el 6,75 % de partida).
+Vale la pena — un numero algo peor en una pieza redonda a cambio de no
+deformar las que tienen esquinas.
+
 #### Material REAL: lo que una foto de verdad destapa en el primer intento
 
 Durante meses, todo lo que este proyecto probaba eran PNG que se dibujaba a si

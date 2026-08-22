@@ -182,7 +182,19 @@ SubpixelContour refineContourSubpixel(const cv::Mat& gray,
                                               (k % static_cast<int>(n)) + static_cast<int>(n))) % n;
                 sum += source[j];
             }
-            result.points[i] = sum / static_cast<float>(2 * span + 1);
+            const cv::Point2f smoothed = sum / static_cast<float>(2 * span + 1);
+            // Acotado: el suavizado corrige ruido, y el ruido es pequeño. Lo que
+            // pida moverse más que esto es un rasgo de la pieza —la esquina de
+            // un hexágono— y se deja donde el afinado lo puso.
+            const cv::Point2f delta = smoothed - source[i];
+            const double distance = std::hypot(static_cast<double>(delta.x), delta.y);
+            if (distance <= options.maxSmoothCorrection || distance < 1e-9) {
+                result.points[i] = smoothed;
+            } else {
+                const float scale =
+                    static_cast<float>(options.maxSmoothCorrection / distance);
+                result.points[i] = source[i] + delta * scale;
+            }
         }
     }
     return result;

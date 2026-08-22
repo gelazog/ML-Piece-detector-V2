@@ -46,6 +46,7 @@ std::string analyzeOneFrame(const cv::Mat& gray, const ProbeOptions& options,
                             ProbeReport& report, pci::probe::ProbeStageTimes& accumulated) {
     pci::vision::PipelineConfig config;
     config.roi = report.zone;
+    config.subpixelEdges = report.subpixel;
 
     pci::vision::StageTimings timings;
     auto analysis = pci::vision::analyzeFrame(gray, config, &timings);
@@ -180,6 +181,7 @@ int main(int argc, char** argv) {
 
     ProbeReport report;
     report.source = options.source;
+    report.subpixel = options.subpixel;
     report.video = isVideo;
 
     pci::probe::ProbeStageTimes accumulated;

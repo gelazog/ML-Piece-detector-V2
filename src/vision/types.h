@@ -12,6 +12,11 @@ struct PieceContour {
     double area = 0.0;
     double perimeter = 0.0;
     cv::RotatedRect rotatedRect;
+    // El mismo contorno con el borde afinado a subpíxel, si se pidió y se pudo.
+    // Vacío en cualquier otro caso, y esa es la señal de "no hay": quien mida
+    // sobre él sabe que está midiendo con más resolución que la rejilla, y quien
+    // no lo mire sigue viendo exactamente lo de siempre en `points`.
+    std::vector<cv::Point2f> subpixel;
 };
 
 // Sistema de coordenadas de la pieza (Position Fixture): origen en el

@@ -300,6 +300,31 @@ core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image, const PipelineCon
         analysis.mask = std::move(cleanMask);
     }
 
+    // Afinado subpíxel del contorno, si se pidió.
+    //
+    // AQUÍ y no antes: los puntos ya están en coordenadas de la imagen completa,
+    // que es donde vive `image`. Afinar dentro del recorte y desplazar después
+    // funcionaría igual, pero obligaría a recordar en qué marco está cada cosa
+    // en dos sitios en vez de uno.
+    //
+    // El área y el perímetro se recalculan desde el contorno afinado y en coma
+    // flotante: redondear al entero justo después de haber medido en décimas
+    // tiraría la precisión recién ganada.
+    if (config.subpixelEdges && analysis.contour.points.size() >= 3) {
+        cv::Mat grayFull;
+        if (image.channels() == 3) {
+            cv::cvtColor(image, grayFull, cv::COLOR_BGR2GRAY);
+        } else {
+            grayFull = image;
+        }
+        const auto refined = refineContourSubpixel(grayFull, analysis.contour.points);
+        if (refined.refined > 0) {
+            analysis.contour.area = subpixelArea(refined.points);
+            analysis.contour.perimeter = subpixelPerimeter(refined.points);
+            analysis.contour.subpixel = refined.points;
+        }
+    }
+
     if (timings != nullptr) {
         // El total se mide de punta a punta, NO sumando las etapas. Así, si
         // alguna vez el desglose deja de cuadrar con el total, la diferencia
