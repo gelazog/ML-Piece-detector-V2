@@ -249,9 +249,42 @@ void EditorCanvas::setEdgeCorrection(const cv::Mat& forcePiece,
     update();
 }
 
+namespace {
+
+// El trozo de una mascara en una zona, o ceros si la mascara todavia no existe:
+// antes de la primera pincelada no hay mascara, y "no habia nada" es un estado
+// tan restaurable como cualquier otro.
+cv::Mat patchOf(const cv::Mat& mask, const cv::Rect& area) {
+    if (mask.empty() || area.empty()) {
+        return cv::Mat::zeros(area.size(), CV_8UC1);
+    }
+    return mask(area).clone();
+}
+
+// Cuantos pasos se recuerdan. Con parches de decenas de kB, cincuenta pasos son
+// unos pocos megas: el mismo limite que la pila de las herramientas dibujadas.
+constexpr std::size_t kMaxEdgeSteps = 50;
+
+}  // namespace
+
 void EditorCanvas::clearEdgeCorrection() {
+    // Quitarlo todo tambien se deshace: es la accion mas destructiva del
+    // pincel, y la unica sin vuelta atras seria justamente la que mas la
+    // necesita. Aqui el parche es el frame entero, pero es UN paso.
+    if (!image_.isNull() && correctedPixelCount() > 0) {
+        const cv::Rect all(0, 0, image_.width(), image_.height());
+        EdgeCorrectionStep step;
+        step.area = all;
+        step.pieceBefore = patchOf(forcePiece_, all);
+        step.backgroundBefore = patchOf(forceBackground_, all);
+        step.pieceAfter = cv::Mat::zeros(all.size(), CV_8UC1);
+        step.backgroundAfter = cv::Mat::zeros(all.size(), CV_8UC1);
+        undoSteps_.push_back(std::move(step));
+        redoSteps_.clear();
+    }
     forcePiece_ = cv::Mat();
     forceBackground_ = cv::Mat();
+    showCorrection_ = true;
     update();
     emit edgeCorrected(forcePiece_.clone(), forceBackground_.clone());
 }
@@ -294,7 +327,126 @@ void EditorCanvas::paintAt(const cv::Point2f& imagePoint) {
         }
         cv::circle(other, centre, brushRadius_, cv::Scalar(0), cv::FILLED);
     }
+
+    // La zona que este trazo ha tocado, para no guardar el frame entero al
+    // deshacer. El alcance se ensancha en uno porque `cv::line` con grosor par
+    // puede pintar un pixel mas alla del radio nominal, y un parche que se
+    // queda corto deja restos al deshacer.
+    const int reach = brushRadius_ + 1;
+    cv::Rect touched(centre.x - reach, centre.y - reach, 2 * reach, 2 * reach);
+    if (lastPaint_.has_value()) {
+        const cv::Rect previous(lastPaint_->x - reach, lastPaint_->y - reach, 2 * reach,
+                                2 * reach);
+        touched |= previous;
+    }
+    touched &= cv::Rect(0, 0, size.width, size.height);
+    strokeArea_ = strokeArea_.empty() ? touched : (strokeArea_ | touched);
+
     lastPaint_ = centre;
+}
+
+// Empieza un trazo: se guarda el estado de partida para poder deshacerlo.
+//
+// Aqui SI se copia el frame entero, pero es una copia transitoria: al soltar se
+// extrae de ella el trozo de la zona tocada y se tira. Lo que se acumula en la
+// pila son los parches, que para una pincelada normal son unas decenas de kB.
+// Con instantaneas completas, cincuenta pasos a 1920x1080 serian 200 MB.
+void EditorCanvas::beginEdgeStroke() {
+    strokeArea_ = cv::Rect();
+    strokeBeforePiece_ = forcePiece_.empty() ? cv::Mat() : forcePiece_.clone();
+    strokeBeforeBackground_ = forceBackground_.empty() ? cv::Mat() : forceBackground_.clone();
+}
+
+void EditorCanvas::commitEdgeStroke() {
+    if (strokeArea_.empty()) {
+        strokeBeforePiece_.release();
+        strokeBeforeBackground_.release();
+        return;
+    }
+    EdgeCorrectionStep step;
+    step.area = strokeArea_;
+    step.pieceBefore = patchOf(strokeBeforePiece_, strokeArea_);
+    step.backgroundBefore = patchOf(strokeBeforeBackground_, strokeArea_);
+    step.pieceAfter = patchOf(forcePiece_, strokeArea_);
+    step.backgroundAfter = patchOf(forceBackground_, strokeArea_);
+    undoSteps_.push_back(std::move(step));
+    if (undoSteps_.size() > kMaxEdgeSteps) {
+        undoSteps_.erase(undoSteps_.begin());
+    }
+    // Un trazo nuevo corta el camino de rehacer: rehacer sobre algo que ya no
+    // es lo que habia daria un resultado que nadie pidio.
+    redoSteps_.clear();
+    strokeBeforePiece_.release();
+    strokeBeforeBackground_.release();
+    strokeArea_ = cv::Rect();
+}
+
+void EditorCanvas::applyEdgeStep(const cv::Rect& area, const cv::Mat& piece,
+                                 const cv::Mat& background) {
+    if (area.empty() || image_.isNull()) {
+        return;
+    }
+    const cv::Size size(image_.width(), image_.height());
+    const auto restore = [&](cv::Mat& mask, const cv::Mat& patch) {
+        if (patch.empty()) {
+            return;
+        }
+        if (mask.empty() || mask.size() != size) {
+            mask = cv::Mat::zeros(size, CV_8UC1);
+        }
+        patch.copyTo(mask(area));
+    };
+    restore(forcePiece_, piece);
+    restore(forceBackground_, background);
+}
+
+bool EditorCanvas::undoEdgeCorrection() {
+    if (undoSteps_.empty()) {
+        return false;
+    }
+    EdgeCorrectionStep step = std::move(undoSteps_.back());
+    undoSteps_.pop_back();
+    applyEdgeStep(step.area, step.pieceBefore, step.backgroundBefore);
+    redoSteps_.push_back(std::move(step));
+    // Al deshacer se vuelve a ENSENAR lo que queda: el operador acaba de pedir
+    // un cambio sobre la correccion, y necesita ver sobre que esta actuando.
+    showCorrection_ = true;
+    update();
+    emit edgeCorrected(forcePiece_.clone(), forceBackground_.clone());
+    return true;
+}
+
+bool EditorCanvas::redoEdgeCorrection() {
+    if (redoSteps_.empty()) {
+        return false;
+    }
+    EdgeCorrectionStep step = std::move(redoSteps_.back());
+    redoSteps_.pop_back();
+    applyEdgeStep(step.area, step.pieceAfter, step.backgroundAfter);
+    undoSteps_.push_back(std::move(step));
+    showCorrection_ = true;
+    update();
+    emit edgeCorrected(forcePiece_.clone(), forceBackground_.clone());
+    return true;
+}
+
+void EditorCanvas::setEdgeCorrectionVisible(bool visible) {
+    if (showCorrection_ == visible) {
+        return;
+    }
+    showCorrection_ = visible;
+    update();
+}
+
+int EditorCanvas::correctedPixelCount() const {
+    int total = 0;
+    if (!forcePiece_.empty()) {
+        total += cv::countNonZero(forcePiece_);
+    }
+    if (!forceBackground_.empty()) {
+        total += cv::countNonZero(forceBackground_);
+    }
+    return total;
 }
 
 void EditorCanvas::setPickMode(bool enabled) {
@@ -807,6 +959,11 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
     if (brush_ != EdgeBrush::Off) {
         painting_ = true;
         lastPaint_.reset();  // un trazo nuevo no se une al anterior
+        // Mientras se pinta SI se ve: el trazo es la unica realimentacion de
+        // donde esta el pincel y cuanto abarca. Se retira despues, cuando ya ha
+        // hecho su trabajo y lo que importa es el contorno.
+        showCorrection_ = true;
+        beginEdgeStroke();
         paintAt(pressPoint);
         update();
         return;
@@ -1020,6 +1177,7 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         // en cada píxel de la pincelada dejaría el pincel a tirones.
         painting_ = false;
         lastPaint_.reset();
+        commitEdgeStroke();
         // COPIAS PROFUNDAS, y no es una precaución de más.
         //
         // `cv::Mat` es de recuento de referencias: entregar `forcePiece_` tal
@@ -2516,6 +2674,13 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
 // Verde lo añadido y rojo lo quitado, translúcidos para no tapar el borde que
 // se está corrigiendo — que es justo lo que hay que mirar mientras se pinta.
 void EditorCanvas::paintEdgeCorrection(QPainter& painter) const {
+    // Retirada tras hacer su trabajo. La corrección sigue en vigor —lo que se
+    // ve es el contorno que produce— pero la mancha no se pinta: dejarla encima
+    // confunde lo que uno dibujó con lo que el programa detecta, y a los tres
+    // trazos ya no se sabe cuál de las dos cosas se está mirando.
+    if (!showCorrection_) {
+        return;
+    }
     const auto tint = [&](const cv::Mat& mask, QColor colour) {
         if (mask.empty() || mask.type() != CV_8UC1 || image_.isNull()) {
             return;

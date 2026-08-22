@@ -3079,3 +3079,295 @@ TEST(MultiPieceEndToEnd, WithASinglePieceItDoesNotShout) {
     EXPECT_FALSE(chip->styleSheet().contains(QStringLiteral("bold")))
         << "destaca con una sola pieza: el aviso pierde sentido si salta siempre";
 }
+
+// El trazo es un GESTO, no un resultado. Una vez que la corrección se ha
+// aplicado y el contorno se ha movido, dejar la mancha encima confunde lo que
+// uno dibujó con lo que el programa detecta: a los tres trazos ya no se sabe
+// cuál de las dos cosas se está mirando.
+//
+// Lo que este test fija es la parte delicada: que al retirar el trazo NO se
+// retire la corrección. Si se fuera con él, quitar la mancha desharía el
+// trabajo, y el contorno volvería al de antes sin que nadie lo pidiera.
+TEST(EdgeBrush, TheStrokeIsRemovedOnceItHasDoneItsWorkButTheCorrectionStays) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(100, 80, 200, 140), QColor(230, 230, 230));
+        painter.fillRect(QRect(250, 120, 50, 60), QColor(22, 22, 22));  // la "sombra"
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("trazo.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+
+    const auto waitFor = [](auto predicate, int ms = 4000) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (predicate()) {
+                return true;
+            }
+        }
+        return predicate();
+    };
+    ASSERT_TRUE(waitFor([&] { return canvas->liveContour().size() >= 4; }));
+    const double areaBefore = std::abs(polygonArea(canvas->liveContour()));
+
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece, 18);
+    paintStroke(canvas, QPoint(255, 125), QPoint(295, 175));
+
+    // Mientras se pinta el trazo SE VE: es la única realimentación de dónde
+    // está el pincel y cuánto abarca.
+    EXPECT_GT(canvas->correctedPixelCount(), 0) << "la pincelada no marcó nada";
+
+    // Y en cuanto el contorno corregido llega a la pantalla, se retira.
+    ASSERT_TRUE(waitFor([&] { return !canvas->edgeCorrectionVisible(); }))
+        << "el trazo sigue pintado encima después de haber hecho su trabajo";
+
+    const double areaAfter = std::abs(polygonArea(canvas->liveContour()));
+    std::printf("  [trazo] retirado; contorno %.0f -> %.0f px2, %d px corregidos siguen puestos\n",
+                areaBefore, areaAfter, canvas->correctedPixelCount());
+
+    // LO IMPORTANTE: retirar el trazo no deshace nada.
+    EXPECT_GT(canvas->correctedPixelCount(), 0)
+        << "quitar la mancha se llevó la corrección por delante";
+    EXPECT_GT(areaAfter, areaBefore)
+        << "el contorno volvió al de antes al retirar el trazo";
+
+    // Y que la corrección sigue puesta se DICE, porque ya no se ve.
+    QLabel* chip = nullptr;
+    for (auto* label : window.findChildren<QLabel*>()) {
+        if (label->isVisible() && label->text().contains(QStringLiteral("corregido"))) {
+            chip = label;
+        }
+    }
+    ASSERT_NE(chip, nullptr)
+        << "la corrección ni se ve ni se anuncia: es estado invisible";
+    EXPECT_FALSE(chip->toolTip().isEmpty());
+}
+
+// Deshacer y rehacer las pinceladas, y que se note en el CONTORNO — que es lo
+// que el operador mira. Deshacer que sólo borre la mancha y deje la corrección
+// aplicada sería peor que no tener deshacer.
+TEST(EdgeBrush, UndoAndRedoMoveTheContourBackAndForward) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(100, 80, 200, 140), QColor(230, 230, 230));
+        painter.fillRect(QRect(250, 120, 50, 60), QColor(22, 22, 22));
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("deshacer.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+    const auto waitFor = [](auto predicate, int ms = 4000) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (predicate()) {
+                return true;
+            }
+        }
+        return predicate();
+    };
+    ASSERT_TRUE(waitFor([&] { return canvas->liveContour().size() >= 4; }));
+    const double clean = std::abs(polygonArea(canvas->liveContour()));
+
+    EXPECT_FALSE(canvas->canUndoEdgeCorrection()) << "hay algo que deshacer sin haber pintado";
+
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece, 18);
+    paintStroke(canvas, QPoint(255, 125), QPoint(295, 175));
+    ASSERT_TRUE(waitFor([&] {
+        return std::abs(polygonArea(canvas->liveContour())) > clean * 1.01;
+    })) << "la pincelada no movió el contorno";
+    const double corrected = std::abs(polygonArea(canvas->liveContour()));
+    const int correctedPx = canvas->correctedPixelCount();
+    ASSERT_TRUE(canvas->canUndoEdgeCorrection());
+
+    // Deshacer: el contorno tiene que volver al de la detección sola.
+    ASSERT_TRUE(canvas->undoEdgeCorrection());
+    ASSERT_TRUE(waitFor([&] {
+        return std::abs(polygonArea(canvas->liveContour())) < clean * 1.005;
+    })) << "se deshizo la pincelada y el contorno sigue corregido";
+    const double undone = std::abs(polygonArea(canvas->liveContour()));
+    EXPECT_EQ(canvas->correctedPixelCount(), 0) << "quedaron restos de la pincelada";
+
+    // Rehacer: y vuelve.
+    ASSERT_TRUE(canvas->canRedoEdgeCorrection());
+    ASSERT_TRUE(canvas->redoEdgeCorrection());
+    ASSERT_TRUE(waitFor([&] {
+        return std::abs(polygonArea(canvas->liveContour())) > clean * 1.01;
+    })) << "se rehízo la pincelada y el contorno no volvió a corregirse";
+    const double redone = std::abs(polygonArea(canvas->liveContour()));
+
+    std::printf("  [deshacer] limpio %.0f -> pintado %.0f -> deshecho %.0f -> rehecho %.0f px2\n",
+                clean, corrected, undone, redone);
+    EXPECT_NEAR(undone, clean, clean * 0.01) << "deshacer no devolvió el contorno original";
+    EXPECT_NEAR(redone, corrected, corrected * 0.01) << "rehacer no reprodujo la corrección";
+    EXPECT_EQ(canvas->correctedPixelCount(), correctedPx)
+        << "rehacer no restauró los mismos píxeles";
+    EXPECT_FALSE(canvas->canRedoEdgeCorrection()) << "queda camino de rehacer tras rehacerlo todo";
+}
+
+// «Quitar las correcciones» también se deshace. Es la acción más destructiva
+// del pincel, y la única sin vuelta atrás sería justamente la que más la
+// necesita.
+TEST(EdgeBrush, ClearingEveryCorrectionCanBeUndone) {
+    EditorCanvas canvas;
+    canvas.resize(kWidgetWidth, kWidgetHeight);
+    canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece, 20);
+
+    const ViewTransform view = viewAt(1.0);
+    press(&canvas, toScreen(view, {600.0F, 400.0F}));
+    moveTo(&canvas, toScreen(view, {700.0F, 400.0F}));
+    release(&canvas, toScreen(view, {700.0F, 400.0F}));
+    const int painted = canvas.correctedPixelCount();
+    ASSERT_GT(painted, 0);
+
+    canvas.clearEdgeCorrection();
+    EXPECT_EQ(canvas.correctedPixelCount(), 0);
+    ASSERT_TRUE(canvas.canUndoEdgeCorrection()) << "borrarlo todo no dejó forma de volver";
+
+    ASSERT_TRUE(canvas.undoEdgeCorrection());
+    std::printf("  [deshacer] tras borrar todo y deshacer vuelven %d de %d px\n",
+                canvas.correctedPixelCount(), painted);
+    EXPECT_EQ(canvas.correctedPixelCount(), painted)
+        << "deshacer el borrado no devolvió lo que había";
+}
+
+// El coste de recordar: si cada paso guardara el frame entero, cincuenta pasos
+// a 1920x1080 serían doscientos megas. Se guardan PARCHES, y este test lo mide
+// en vez de confiar en el comentario.
+TEST(EdgeBrush, RememberingManyStrokesDoesNotEatTheMemory) {
+    EditorCanvas canvas;
+    canvas.resize(kWidgetWidth, kWidgetHeight);
+    canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece, 12);
+    const ViewTransform view = viewAt(1.0);
+
+    for (int stroke = 0; stroke < 60; ++stroke) {
+        const float y = 200.0F + static_cast<float>(stroke) * 10.0F;
+        press(&canvas, toScreen(view, {1000.0F, y}));
+        moveTo(&canvas, toScreen(view, {1060.0F, y}));
+        release(&canvas, toScreen(view, {1060.0F, y}));
+    }
+
+    // Sesenta trazos con el tope en cincuenta: deshacer cincuenta veces tiene
+    // que funcionar, y la cincuenta y una decir que no queda nada.
+    int undone = 0;
+    while (canvas.undoEdgeCorrection()) {
+        ++undone;
+        ASSERT_LT(undone, 200) << "deshacer no termina nunca";
+    }
+    std::printf("  [deshacer] 60 trazos -> %d pasos recordados\n", undone);
+    EXPECT_EQ(undone, 50) << "el tope de pasos recordados no se respeta";
+}
+
+// UN solo Ctrl+Z, y que haga lo correcto.
+//
+// La aplicación ya tenía Ctrl+Z para las herramientas dibujadas. Darle al
+// pincel su propio atajo obligaría a saber cuál de los dos deshaceres está uno
+// usando, y a acertar. La regla es la que espera cualquiera con un pincel en la
+// mano: mientras el pincel está activo deshace la pincelada; con el pincel
+// apagado, sigue siendo el de las herramientas.
+TEST(EdgeBrush, OneUndoThatKnowsWhetherTheBrushIsInYourHand) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(100, 80, 200, 140), QColor(230, 230, 230));
+        painter.fillRect(QRect(250, 120, 50, 60), QColor(22, 22, 22));
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("unctrlz.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+    const auto waitFor = [](auto predicate, int ms = 4000) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (predicate()) {
+                return true;
+            }
+        }
+        return predicate();
+    };
+    ASSERT_TRUE(waitFor([&] { return canvas->liveContour().size() >= 4; }));
+
+    // Sólo hay un Ctrl+Z en toda la ventana: dos serían un atajo ambiguo, y Qt
+    // no dispararía ninguno de los dos.
+    int ctrlZ = 0;
+    for (auto* action : window.findChildren<QAction*>()) {
+        for (const auto& key : action->shortcuts()) {
+            if (key == QKeySequence(QKeySequence::Undo)) {
+                ++ctrlZ;
+            }
+        }
+    }
+    std::printf("  [deshacer] acciones con Ctrl+Z registrado: %d\n", ctrlZ);
+    EXPECT_LE(ctrlZ, 1) << "hay más de un Ctrl+Z: Qt no dispara ninguno de los ambiguos";
+
+    QAction* undo = nullptr;
+    for (auto* action : window.findChildren<QAction*>()) {
+        if (action->shortcuts().contains(QKeySequence(QKeySequence::Undo))) {
+            undo = action;
+        }
+    }
+    ASSERT_NE(undo, nullptr) << "no hay ninguna acción con Ctrl+Z";
+
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece, 18);
+    paintStroke(canvas, QPoint(255, 125), QPoint(295, 175));
+    ASSERT_TRUE(waitFor([&] { return canvas->correctedPixelCount() > 0; }));
+
+    // Con el pincel activo, Ctrl+Z se lleva la pincelada.
+    undo->trigger();
+    QApplication::processEvents();
+    EXPECT_EQ(canvas->correctedPixelCount(), 0)
+        << "con el pincel en la mano, Ctrl+Z no deshizo la pincelada";
+
+    // Y con el pincel apagado NO toca las correcciones que queden.
+    canvas->redoEdgeCorrection();
+    QApplication::processEvents();
+    const int restored = canvas->correctedPixelCount();
+    ASSERT_GT(restored, 0);
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::Off);
+    undo->trigger();
+    QApplication::processEvents();
+    std::printf("  [deshacer] con el pincel apagado quedan %d px (había %d)\n",
+                canvas->correctedPixelCount(), restored);
+    EXPECT_EQ(canvas->correctedPixelCount(), restored)
+        << "con el pincel apagado, Ctrl+Z se llevó una corrección que no tocaba";
+}

@@ -95,6 +95,29 @@ public:
     void setEdgeBrush(EdgeBrush mode, int radiusPx = 12);
     [[nodiscard]] EdgeBrush edgeBrush() const { return brush_; }
     [[nodiscard]] int brushRadius() const { return brushRadius_; }
+
+    // Deshacer y rehacer las pinceladas.
+    //
+    // Con PARCHES y no con instantáneas del frame entero: cada máscara mide lo
+    // que la imagen, así que un paso completo son 4 MB a 1920x1080 y cincuenta
+    // pasos serían doscientos megas. Una pincelada toca una zona pequeña, y es
+    // esa zona —antes y después— lo único que hace falta guardar.
+    bool undoEdgeCorrection();
+    bool redoEdgeCorrection();
+    [[nodiscard]] bool canUndoEdgeCorrection() const { return !undoSteps_.empty(); }
+    [[nodiscard]] bool canRedoEdgeCorrection() const { return !redoSteps_.empty(); }
+
+    // Si la pincelada se PINTA sobre la imagen.
+    //
+    // El trazo es un gesto, no un resultado. Una vez que la corrección se ha
+    // aplicado y el contorno se ha movido, dejar la mancha encima confunde las
+    // dos cosas: el operador ya no sabe si lo que ve es lo que el programa
+    // detecta o lo que él pintó. Se retira, y la corrección SIGUE EN VIGOR.
+    void setEdgeCorrectionVisible(bool visible);
+    [[nodiscard]] bool edgeCorrectionVisible() const { return showCorrection_; }
+    // Cuántos píxeles hay marcados, para poder decir que la corrección sigue
+    // puesta aunque ya no se vea.
+    [[nodiscard]] int correctedPixelCount() const;
     // Las dos máscaras acumuladas, para enseñarlas y para deshacerlas.
     void setEdgeCorrection(const cv::Mat& forcePiece, const cv::Mat& forceBackground);
     void clearEdgeCorrection();
@@ -359,6 +382,28 @@ private:
     std::optional<cv::Point> lastPaint_;
     cv::Mat forcePiece_;
     cv::Mat forceBackground_;
+    bool showCorrection_ = true;
+
+    // Un paso de deshacer: la zona que tocó la pincelada, y su contenido antes
+    // y después. Guardar las dos caras deja deshacer y rehacer simétricos, sin
+    // tener que reconstruir nada.
+    struct EdgeCorrectionStep {
+        cv::Rect area;
+        cv::Mat pieceBefore;
+        cv::Mat backgroundBefore;
+        cv::Mat pieceAfter;
+        cv::Mat backgroundAfter;
+    };
+    std::vector<EdgeCorrectionStep> undoSteps_;
+    std::vector<EdgeCorrectionStep> redoSteps_;
+    // Copia del estado al EMPEZAR el trazo. Transitoria: en cuanto se suelta se
+    // extrae de ella el parche de la zona tocada y se tira.
+    cv::Mat strokeBeforePiece_;
+    cv::Mat strokeBeforeBackground_;
+    cv::Rect strokeArea_;
+    void beginEdgeStroke();
+    void commitEdgeStroke();
+    void applyEdgeStep(const cv::Rect& area, const cv::Mat& piece, const cv::Mat& background);
     void paintAt(const cv::Point2f& imagePoint);
 
     bool freeZonePick_ = false;

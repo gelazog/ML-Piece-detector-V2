@@ -221,6 +221,39 @@ Y el recuento sale a la ventana principal, junto al modo de medición. Se
 que hay que hacer: las herramientas miden la mayor y las demás quedan sin medir.
 Un aviso que salta siempre deja de ser un aviso.
 
+#### El trazo es un gesto, no un resultado
+
+La pincelada se pintaba encima y ahí se quedaba. A los tres trazos ya no se
+sabe qué se está mirando: si el contorno que detecta el programa o la mancha
+que uno dibujó. Ahora el trazo se **retira** en cuanto el contorno corregido
+llega a la pantalla.
+
+No antes: entre soltar el pincel y ver el resultado hay unas décimas, y quitar
+la mancha en ese hueco dejaría un momento sin trazo y sin contorno nuevo, que
+se lee como que no ha pasado nada. Se retira cuando el análisis aterriza.
+
+Retirar el trazo **no deshace la corrección** — eso es lo que fija el test, y
+es el error fácil: si se fuera con él, quitar la mancha desharía el trabajo.
+Y como la corrección deja de verse, tiene que **decirse**: un aviso «Borde
+corregido» junto al modo de medición, con los píxeles. Sin él, una corrección
+activa sería estado invisible, y el operador estaría mirando un contorno que
+no sale de la detección sin forma de saberlo.
+
+**Deshacer con parches, no con instantáneas.** Cada máscara mide lo que la
+imagen: un paso completo son 4 MB a 1920×1080, y cincuenta pasos serían
+doscientos megas. Una pincelada toca una zona pequeña, y es esa zona —antes y
+después— lo único que se guarda. Guardar las dos caras deja deshacer y rehacer
+simétricos sin reconstruir nada. Medido: sesenta trazos dejan cincuenta pasos
+recordados, que es el tope, el mismo que el de las herramientas.
+
+**Un solo Ctrl+Z.** La aplicación ya tenía deshacer para las herramientas
+dibujadas. Darle al pincel su propio atajo obligaría a saber cuál de los dos
+está uno usando, y a acertar — peor que no tener deshacer. La regla es la que
+espera cualquiera con un pincel en la mano: mientras el pincel está activo,
+Ctrl+Z deshace la pincelada; con el pincel apagado, sigue siendo el de las
+herramientas. Un test cuenta las acciones con Ctrl+Z registrado y exige que
+haya **una**: dos serían un atajo ambiguo y Qt no dispararía ninguno.
+
 #### De corregir una imagen a arreglar la detección
 
 Corregir el borde tapa el fallo en la imagen que tienes delante. Corregir el

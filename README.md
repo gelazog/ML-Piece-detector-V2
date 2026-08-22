@@ -303,6 +303,19 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    corregido a mano dejaría de valer en cuanto la pieza se moviera. Captura una
    foto y corrígela ahí.
 
+   **El trazo desaparece cuando ha hecho su trabajo.** En cuanto el contorno
+   corregido aparece en pantalla, la mancha verde o roja se retira: lo que ves
+   es el borde que detecta el programa, no lo que pintaste. La corrección
+   **sigue puesta** — un aviso «Borde corregido» junto al modo de medición te
+   lo dice, con cuántos píxeles lleva.
+
+   **Deshacer y rehacer**: con el pincel activo, **Ctrl+Z** deshace la última
+   pincelada y **Ctrl+Y** la rehace. Con el pincel apagado, esos mismos atajos
+   siguen siendo los de las herramientas dibujadas, como siempre: hay un solo
+   deshacer, y hace lo que toca según tengas el pincel en la mano o no.
+   También están en el menú *Corregir borde*. Quitar todas las correcciones
+   también se deshace.
+
    La corrección vale para **esa imagen**: no cambia cómo se detectan las demás.
    Pero no hace falta que la ajustes a ojo si se repite — para eso está lo
    siguiente.

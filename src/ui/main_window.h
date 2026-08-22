@@ -190,7 +190,8 @@ private:
     void loadMeasurementForSelectedPiece();
     void loadDetectionProfileForSelectedPiece();  // perfil de detección (O3)
     void updateModeChip();
-    void updatePiecesChip();  // etiqueta del modo activo (M3)
+    void updatePiecesChip();
+    void updateEdgeCorrectionChip();  // etiqueta del modo activo (M3)
     [[nodiscard]] int positionToolCount() const;
     // Avisa si cambiar el cero deja las herramientas de Posición midiendo otra
     // cosa (sus tolerancias se sugirieron respecto al origen anterior).
@@ -349,6 +350,8 @@ private:
     QToolButton* edgeBrushButton_ = nullptr;
     QAction* brushAddAction_ = nullptr;
     QAction* brushRemoveAction_ = nullptr;
+    QAction* brushUndoAction_ = nullptr;
+    QAction* brushRedoAction_ = nullptr;
     QAction* brushTuneAction_ = nullptr;
     QAction* brushClearAction_ = nullptr;
     void updateEdgeBrushAvailability();
@@ -391,7 +394,8 @@ private:
     // Fila 2: pieza y flujo.
     QComboBox* pieceCombo_ = nullptr;
     QLabel* modeChip_ = nullptr;
-    QLabel* piecesChip_ = nullptr;           // modo de medición activo (M3)
+    QLabel* piecesChip_ = nullptr;
+    QLabel* edgeChip_ = nullptr;           // modo de medición activo (M3)
     QComboBox* templateCombo_ = nullptr;   // plantillas de la pieza
     QPushButton* newTemplateButton_ = nullptr;
     QPushButton* manageTemplatesButton_ = nullptr;  // abre el gestor de plantillas
@@ -515,6 +519,8 @@ private:
     QImage referenceThumb_;
     int toolNameCounter_ = 0;
     bool streaming_ = false;
+    // Un analisis lanzado por una correccion: al llegar, el trazo se retira.
+    bool hideCorrectionWhenAnalysed_ = false;
     bool autoInspecting_ = false;
     bool arucoLiveScale_ = false;   // escala por marcador ArUco en vivo
     double markerSizeMm_ = 30.0;    // lado real del marcador impreso

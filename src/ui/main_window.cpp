@@ -467,6 +467,24 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     brushRemoveAction_ = brushMenu->addAction(tr("Pincel: quitar de la pieza"));
     brushRemoveAction_->setCheckable(true);
     brushMenu->addSeparator();
+    // UN solo deshacer, no dos.
+    //
+    // La aplicación ya tiene Ctrl+Z para las herramientas dibujadas. Darle al
+    // pincel su propio atajo obligaría a saber cuál de los dos deshaceres está
+    // uno usando, y a acertar — que es peor que no tener deshacer.
+    //
+    // La regla es la que espera cualquiera con un pincel en la mano: mientras
+    // el pincel está activo, Ctrl+Z deshace la pincelada; con el pincel
+    // apagado, Ctrl+Z sigue siendo el de las herramientas, como siempre. El
+    // reparto lo hace `onUndo`, y los nombres del menú lo dicen para que no
+    // haya que descubrirlo probando.
+    brushUndoAction_ = brushMenu->addAction(
+        tr("Deshacer la última pincelada	Ctrl+Z con el pincel activo"));
+    brushUndoAction_->setEnabled(false);
+    brushRedoAction_ = brushMenu->addAction(
+        tr("Rehacer la pincelada	Ctrl+Y con el pincel activo"));
+    brushRedoAction_->setEnabled(false);
+    brushMenu->addSeparator();
     // La segunda mitad de corregir el borde: la corrección no sólo arregla ESTA
     // imagen, también dice dónde se equivoca la detección y con qué signo.
     brushTuneAction_ = brushMenu->addAction(tr("Afinar la detección con esta corrección…"));
@@ -497,6 +515,16 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         statusBar()->showMessage(tr("Correcciones del borde quitadas."));
     });
     connect(brushTuneAction_, &QAction::triggered, this, &MainWindow::onTuneDetectionFromEdge);
+    connect(brushUndoAction_, &QAction::triggered, this, [this] {
+        if (!video_->undoEdgeCorrection()) {
+            statusBar()->showMessage(tr("No hay ninguna pincelada que deshacer."));
+        }
+    });
+    connect(brushRedoAction_, &QAction::triggered, this, [this] {
+        if (!video_->redoEdgeCorrection()) {
+            statusBar()->showMessage(tr("No hay ninguna pincelada que rehacer."));
+        }
+    });
     cameraLayout->addStretch(0);
     rootLayout->addLayout(cameraLayout);
 
@@ -523,6 +551,16 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     piecesChip_->setAlignment(Qt::AlignCenter);
     piecesChip_->setVisible(false);  // sin recuento no ocupa sitio
     pieceLayout->addWidget(piecesChip_);
+
+    // Que hay una correccion a mano puesta.
+    //
+    // Hace falta PORQUE el trazo se retira: sin este aviso, una correccion
+    // activa seria estado invisible, y el operador podria estar mirando un
+    // contorno que no sale de la deteccion sin tener forma de saberlo.
+    edgeChip_ = new QLabel(central);
+    edgeChip_->setAlignment(Qt::AlignCenter);
+    edgeChip_->setVisible(false);
+    pieceLayout->addWidget(edgeChip_);
 
     pieceLayout->addWidget(new QLabel(tr("Plantilla:"), central));
     templateCombo_ = new QComboBox(central);
@@ -1963,6 +2001,13 @@ void MainWindow::restoreTools(std::vector<inspection::EditedTool> tools) {
 }
 
 void MainWindow::onUndo() {
+    // Con el pincel en la mano, deshacer es deshacer la pincelada. Es lo que
+    // espera quien lo está usando, y evita tener dos atajos que hay que acertar.
+    if (video_ != nullptr && video_->edgeBrush() != inspection::EditorCanvas::EdgeBrush::Off &&
+        video_->undoEdgeCorrection()) {
+        statusBar()->showMessage(tr("Pincelada deshecha."));
+        return;
+    }
     if (auto previous = undoStack_.undo(liveTools_)) {
         restoreTools(std::move(*previous));
         statusBar()->showMessage(tr("Deshecho."));
@@ -1970,6 +2015,11 @@ void MainWindow::onUndo() {
 }
 
 void MainWindow::onRedo() {
+    if (video_ != nullptr && video_->edgeBrush() != inspection::EditorCanvas::EdgeBrush::Off &&
+        video_->redoEdgeCorrection()) {
+        statusBar()->showMessage(tr("Pincelada rehecha."));
+        return;
+    }
     if (auto next = undoStack_.redo(liveTools_)) {
         restoreTools(std::move(*next));
         statusBar()->showMessage(tr("Rehecho."));
@@ -2838,6 +2888,12 @@ void MainWindow::onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& force
     }
 
     // Se reanaliza en el acto: el sentido de corregir es VER el borde nuevo.
+    //
+    // Y se apunta que, en cuanto ese analisis llegue, hay que RETIRAR el trazo.
+    // No antes: entre soltar el pincel y ver el contorno nuevo hay unas decimas,
+    // y quitar la mancha en ese hueco dejaria un momento en el que no se ve ni
+    // lo pintado ni el resultado, que se lee como que no ha pasado nada.
+    hideCorrectionWhenAnalysed_ = true;
     reanalyseCurrentFrame();
     const int added = forcePiece.empty() ? 0 : cv::countNonZero(forcePiece);
     const int removed = forceBackground.empty() ? 0 : cv::countNonZero(forceBackground);
@@ -2846,12 +2902,14 @@ void MainWindow::onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& force
     if (brushTuneAction_ != nullptr) {
         brushTuneAction_->setEnabled(added > 0 || removed > 0);
     }
-    statusBar()->showMessage(added == 0 && removed == 0
-                                 ? tr("Sin correcciones: el borde es el que detecta el programa.")
-                                 : tr("Borde corregido a mano: +%1 px, −%2 px. En «Corregir "
-                                      "borde» puedes afinar la detección con ella.")
-                                       .arg(added)
-                                       .arg(removed));
+    statusBar()->showMessage(
+        added == 0 && removed == 0
+            ? tr("Sin correcciones: el borde es el que detecta el programa.")
+            : tr("Borde corregido a mano: +%1 px, −%2 px. Ctrl+Z deshace la pincelada; en "
+                 "«Corregir borde» puedes afinar la detección con ella.")
+                  .arg(added)
+                  .arg(removed));
+    updateEdgeCorrectionChip();
 }
 
 // Afinar la detección a partir de una corrección a mano.
@@ -3088,6 +3146,14 @@ void MainWindow::onAnalysisFinished() {
         // Medidas en vivo de las herramientas dibujadas (px o mm calibrados).
         video_->setResults(overlay.toolResults);
         updateBoardReadout();  // desviación y giro respecto al tablero (T3)
+        // El contorno corregido ya esta en pantalla: el trazo ha hecho su
+        // trabajo y se retira. La correccion sigue en vigor, y el aviso de al
+        // lado del modo de medicion lo dice.
+        if (hideCorrectionWhenAnalysed_) {
+            hideCorrectionWhenAnalysed_ = false;
+            video_->setEdgeCorrectionVisible(false);
+            updateEdgeCorrectionChip();
+        }
         maybeStartAnalysis();
     }
 }
@@ -3706,6 +3772,45 @@ void MainWindow::updatePiecesChip() {
                      "alrededor.")
                       .arg(lastPieceCount_)
                 : tr("Se ve una sola pieza en el encuadre."));
+}
+
+// El aviso de que el borde lleva una correccion a mano.
+//
+// Existe porque el trazo se retira una vez aplicado: sin el, una correccion
+// activa seria estado invisible. Dice cuantos pixeles y como quitarla.
+void MainWindow::updateEdgeCorrectionChip() {
+    if (edgeChip_ == nullptr || video_ == nullptr) {
+        return;
+    }
+    const int corrected = video_->correctedPixelCount();
+    if (corrected <= 0) {
+        edgeChip_->setVisible(false);
+        if (brushUndoAction_ != nullptr) {
+            brushUndoAction_->setEnabled(video_->canUndoEdgeCorrection());
+        }
+        if (brushRedoAction_ != nullptr) {
+            brushRedoAction_->setEnabled(video_->canRedoEdgeCorrection());
+        }
+        return;
+    }
+    edgeChip_->setVisible(true);
+    edgeChip_->setText(tr(" Borde corregido "));
+    edgeChip_->setStyleSheet(QStringLiteral("color:#0b2a35; background:#8ce99a;"
+                                            " border-radius:8px; padding:1px 6px;"
+                                            " font-weight:bold;"));
+    edgeChip_->setToolTip(tr("%1 px del borde están puestos a mano.\n\n"
+                             "El trazo ya no se pinta: lo que ves es el contorno que sale de "
+                             "la corrección, no la pincelada. Con el pincel activo, Ctrl+Z deshace "
+                             "la última; "
+                             "en \u00abCorregir borde\u00bb puedes quitarlas todas o afinar la "
+                             "detección con ellas.")
+                              .arg(corrected));
+    if (brushUndoAction_ != nullptr) {
+        brushUndoAction_->setEnabled(video_->canUndoEdgeCorrection());
+    }
+    if (brushRedoAction_ != nullptr) {
+        brushRedoAction_->setEnabled(video_->canRedoEdgeCorrection());
+    }
 }
 
 void MainWindow::updateModeChip() {
