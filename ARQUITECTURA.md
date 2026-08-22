@@ -300,6 +300,32 @@ datos sin ninguna prueba a favor. La garantia de que en el peor caso esto NO
 HACE NADA vale mas que un perimetro algo mejor: sobre una imagen plana, cero
 puntos movidos.
 
+**Los cruces ambiguos, y hasta donde llega arreglarlos.** El punto malo tenia
+causa fisica: donde hay un reflejo especular, el perfil de intensidad cruza el
+nivel medio **dos veces** —se entra en la pieza, se sale al reflejo, se vuelve a
+entrar— y elegir uno de los dos cruces es adivinar. Rechazarlos bajo el peor
+punto de **10,68 a 6,35 px** y el desacuerdo area/perimetro de 3,06 % a 2,00 %.
+
+Se probo un segundo filtro —descartar los puntos que no se parecen a sus
+vecinos— y **no se quedo**: bajaba el peor punto de 6,346 a 6,332 px. Catorce
+milesimas de pixel no pagan un filtro mas que mantener.
+
+Y ahi esta el limite, que resulto no ser del algoritmo. El error residual es
+**direccional**: hay un sector del contorno que se va hacia fuera y el opuesto
+hacia dentro, con **6,48 px** entre ellos. Esa asimetria es la firma de una luz
+que viene de un lado — la mascara incluye la sombra pegada a la pieza, y ahi hay
+un borde de verdad: el de la sombra, no el de la pieza. Ningun afinado arregla
+eso, porque no es un problema de resolucion. Lo arregla la iluminacion difusa o
+el pincel de corregir el borde.
+
+**Y una leccion de metodo que costo un test fallado.** La primera version fijaba
+QUE sector se va hacia fuera, apoyada en un analisis rapido en Python que decia
+que 39 de los 40 peores puntos caian donde la sombra. El test fallo: ese analisis
+usaba Otsu **crudo**, y el pipeline aplica antes suavizado y morfologia, lo que
+mueve que sector domina. Medir por fuera del camino que usa el programa mide
+**otra cosa**. Lo que se afirma ahora es solo lo que sobrevivio: que el error es
+direccional. Cual sea el lado depende del preprocesado y no merece un aserto.
+
 **Donde SI se usa y donde NO, con el numero delante.** El afinado alimenta el
 area y el perimetro, que son integrales sobre todo el contorno y por tanto
 robustas a un punto malo. **No** alimenta la clasificacion de figura, y eso se

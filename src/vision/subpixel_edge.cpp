@@ -125,6 +125,7 @@ SubpixelContour refineContourSubpixel(const cv::Mat& gray,
         double bestT = 0.0;
         double bestDistance = std::numeric_limits<double>::infinity();
         bool found = false;
+        int crossings = 0;
         for (std::size_t k = 0; k + 1 < profile.size(); ++k) {
             const double a = profile[k];
             const double b = profile[k + 1];
@@ -132,6 +133,7 @@ SubpixelContour refineContourSubpixel(const cv::Mat& gray,
             if (!crosses) {
                 continue;
             }
+            ++crossings;
             const double fraction = (std::abs(b - a) < 1e-9) ? 0.0 : (half - a) / (b - a);
             const double t = (static_cast<double>(k) + fraction) * step -
                              static_cast<double>(steps) * step;
@@ -140,6 +142,14 @@ SubpixelContour refineContourSubpixel(const cv::Mat& gray,
                 bestT = t;
                 found = true;
             }
+        }
+        if (options.rejectAmbiguous && crossings > 1) {
+            // Más de un cruce: el borde no está definido aquí. Se deja el punto
+            // donde la máscara lo puso, que es una respuesta honesta, en vez de
+            // elegir entre dos candidatos sin nada que lo justifique.
+            ++result.kept;
+            ++result.ambiguous;
+            continue;
         }
         if (!found || std::abs(bestT) > options.maxShift) {
             ++result.kept;
@@ -151,6 +161,7 @@ SubpixelContour refineContourSubpixel(const cv::Mat& gray,
         totalShift += std::abs(bestT);
         ++result.refined;
     }
+
 
     result.meanShift =
         result.refined > 0 ? totalShift / static_cast<double>(result.refined) : 0.0;

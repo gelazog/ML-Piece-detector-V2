@@ -75,6 +75,23 @@ struct SubpixelOptions {
     // máscara. Un punto que se va mucho más lejos que la rampa no ha encontrado
     // el borde de la pieza: ha encontrado otra cosa.
     double maxShift = 6.0;
+    // Rechazar los perfiles AMBIGUOS: los que cruzan el nivel medio más de una
+    // vez dentro del alcance.
+    //
+    // Un borde limpio cruza una sola vez: se entra por dentro, se sale por
+    // fuera. Dos cruces significan que por el camino hay algo más —un reflejo
+    // especular, que es una isla clara dentro de una pieza oscura— y entonces
+    // «el borde» deja de estar definido: hay dos candidatos y elegir uno es
+    // adivinar.
+    //
+    // Esto es lo que impedía que el afinado sirviera para las cotas. Medido
+    // sobre una bola con reflejo, elegir a ciegas duplicaba el PEOR punto (de
+    // 5,03 a 10,68 px) aunque mejorara la media, y `classifyShape` juzga por el
+    // peor: la bola pasaba de «circulo» a «irregular».
+    //
+    // Rechazar es mejor que adivinar, y es la misma regla que ya sigue el resto
+    // del módulo: sin prueba clara, el punto se queda donde estaba.
+    bool rejectAmbiguous = true;
 };
 
 // Resultado del afinado, con lo necesario para poder JUZGARLO.
@@ -86,6 +103,10 @@ struct SubpixelContour {
     std::vector<cv::Point2f> points;
     int refined = 0;    // puntos que encontraron su cruce
     int kept = 0;       // puntos que se dejaron como estaban
+    // De los dejados, cuántos lo fueron por AMBIGÜEDAD (más de un cruce). Se
+    // cuenta aparte porque dice algo distinto: no es «aquí no hay borde», es
+    // «aquí hay más de uno», y eso apunta a reflejos en la escena.
+    int ambiguous = 0;
     double meanShift = 0.0;  // cuánto se movieron de media, en píxeles
 };
 
