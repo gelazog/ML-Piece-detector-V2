@@ -65,10 +65,24 @@ struct MeasurementRow {
 // `vision::contourToCsv`: en un Windows en español el separador decimal por
 // defecto es la coma, y un CSV con «12,50» en una columna separada por comas no
 // lo abre nadie.
-[[nodiscard]] std::string measurementsToCsv(const std::vector<MeasurementRow>& rows);
+// `warnings`, si se pasan, salen ARRIBA del todo, antes de la cabecera y de los
+// datos.
+//
+// Hacen falta aqui y no solo en la ventana, y la razon es el motivo entero por
+// el que existen: **el CSV es lo que sobrevive**. La ventana se cierra; el
+// fichero se guarda, se manda por correo y se abre tres semanas despues. Un
+// aviso que diga «estas medidas son limites inferiores porque la pieza estaba
+// cortada» tiene que ir dentro del fichero o no llega a quien lo lee.
+//
+// Van como lineas sueltas en la primera columna y separadas por una linea en
+// blanco: quien abra esto en una hoja de calculo las lee arriba del todo, y
+// quien lo parsee busca la cabecera, que sigue estando donde estaba.
+[[nodiscard]] std::string measurementsToCsv(const std::vector<MeasurementRow>& rows,
+                                            const std::vector<std::string>& warnings = {});
 
 // Lo mismo en texto alineado, para pegar en un correo o en un parte. El CSV es
 // para la hoja de cálculo; esto es para que alguien lo lea.
-[[nodiscard]] std::string measurementsToText(const std::vector<MeasurementRow>& rows);
+[[nodiscard]] std::string measurementsToText(const std::vector<MeasurementRow>& rows,
+                                             const std::vector<std::string>& warnings = {});
 
 }  // namespace pci::inspection

@@ -12,6 +12,8 @@
 // unidad, y los píxeles conservados por si la escala resulta estar mal después.
 #include <gtest/gtest.h>
 
+#include <cstdio>
+
 #include <string>
 #include <vector>
 
@@ -261,4 +263,86 @@ TEST(MeasurementReport, NothingMeasuredGivesAHeaderAndNoRows) {
     ASSERT_EQ(csv.size(), 1U);
     EXPECT_EQ(cell(csv[0], 0), "herramienta");
     EXPECT_TRUE(measurementsToText({}).empty());
+}
+
+// EL CSV ES LO QUE SOBREVIVE.
+//
+// Los avisos se metieron en el informe con este argumento: «un aviso que se
+// queda en la ventana llega a la mitad de la gente, la otra mitad exporta el CSV
+// y se lleva las cifras sin él». Y luego el CSV se exportaba SIN los avisos, con
+// lo que el argumento quedaba sin cumplir en el único sitio donde importaba.
+//
+// La ventana se cierra. El fichero se guarda, se manda por correo y se abre tres
+// semanas después, cuando ya nadie se acuerda de si la pieza entraba entera en
+// el encuadre.
+TEST(MeasurementExport, TheWarningsAreInsideTheFileAndNotJustOnScreen) {
+    std::vector<pci::inspection::MeasurementRow> rows;
+    pci::inspection::MeasurementRow row;
+    row.tool = "Largo total";
+    row.value = 42.5;
+    row.unit = "mm";
+    row.pixels = 425.0;
+    row.state = "OK";
+    row.group = "cota";
+    rows.push_back(row);
+
+    const std::vector<std::string> warnings{
+        "La pieza toca el borde derecho del encuadre: esta cortada, asi que sus "
+        "medidas son limites inferiores y no medidas."};
+
+    const std::string csv = pci::inspection::measurementsToCsv(rows, warnings);
+    std::printf("  [csv] primeras lineas:\n%s",
+                csv.substr(0, csv.find("herramienta")).c_str());
+
+    EXPECT_NE(csv.find("limites inferiores"), std::string::npos)
+        << "el aviso no viaja en el CSV, que es justo el sitio donde tenia que ir";
+    // Y ARRIBA del todo: un aviso al final de una hoja de calculo con cuarenta
+    // filas no lo ve nadie.
+    EXPECT_LT(csv.find("AVISO"), csv.find("herramienta"))
+        << "el aviso sale despues de la cabecera: para entonces ya se estan leyendo "
+           "las cifras";
+    // Y la cabecera sigue estando, entera, para quien parsee el fichero.
+    EXPECT_NE(csv.find("herramienta,valor,unidad,pixeles,estado"), std::string::npos)
+        << "meter los avisos rompio la cabecera: el fichero deja de parsearse";
+    EXPECT_NE(csv.find("Largo total"), std::string::npos);
+
+    // Sin avisos, el fichero es EXACTAMENTE el de antes: quien ya tuviera una
+    // hoja de calculo apuntando a estas columnas no se entera del cambio.
+    const std::string plain = pci::inspection::measurementsToCsv(rows);
+    EXPECT_EQ(plain.find("herramienta"), 0U)
+        << "sin avisos, el CSV tiene que empezar por la cabecera como siempre";
+    EXPECT_EQ(plain.find("AVISO"), std::string::npos);
+
+    // Y lo mismo en el texto para pegar en un parte.
+    const std::string text = pci::inspection::measurementsToText(rows, warnings);
+    EXPECT_NE(text.find("limites inferiores"), std::string::npos);
+    EXPECT_EQ(text.find("AVISO"), 0U) << "el aviso no encabeza el parte";
+}
+
+// Un aviso con comas o comillas no puede romper el fichero. Los textos de aviso
+// llevan comas —«ancho, alto, area, perimetro»— asi que esto no es teorico.
+TEST(MeasurementExport, AWarningWithCommasDoesNotBreakTheCsv) {
+    std::vector<pci::inspection::MeasurementRow> rows;
+    pci::inspection::MeasurementRow row;
+    row.tool = "Ancho";
+    row.value = 1.0;
+    rows.push_back(row);
+
+    const std::vector<std::string> warnings{
+        "sus medidas (ancho, alto, area, perimetro) son \"limites inferiores\""};
+    const std::string csv = pci::inspection::measurementsToCsv(rows, warnings);
+
+    // La linea del aviso tiene que ser UNA sola linea y tener exactamente dos
+    // campos: la etiqueta y el texto entrecomillado.
+    const std::string first = csv.substr(0, csv.find('\n'));
+    std::printf("  [csv] %s\n", first.c_str());
+    EXPECT_EQ(first.rfind("AVISO,", 0), 0U);
+    int quotes = 0;
+    for (const char c : first) {
+        if (c == '"') { ++quotes; }
+    }
+    EXPECT_EQ(quotes % 2, 0)
+        << "comillas sin cerrar: el fichero deja de parsearse a partir de aqui";
+    EXPECT_NE(first.find("ancho, alto"), std::string::npos)
+        << "el texto del aviso se corto por una coma";
 }

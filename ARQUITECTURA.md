@@ -443,6 +443,23 @@ dialogo los pinta **encima de la tabla** — puesto debajo, el aviso llega cuand
 las cifras ya se han leido y entonces no cambia nada. Hay un test que compara
 las coordenadas en pantalla para que siga siendo asi.
 
+Y sobre todo **viajan en el fichero**. La primera version metia los avisos en el
+informe con este argumento —«un aviso que se queda en la ventana llega a la
+mitad de la gente; la otra mitad exporta el CSV y se lleva las cifras sin el»— y
+luego exportaba el CSV **sin los avisos**, con lo que el argumento quedaba sin
+cumplir justo donde importaba.
+
+La ventana se cierra. El fichero se guarda, se manda por correo y se abre tres
+semanas despues, cuando ya nadie se acuerda de si la pieza entraba entera en el
+encuadre. Los avisos salen como lineas `AVISO,"..."` **antes de la cabecera**,
+separados por una linea en blanco: quien lo abra en una hoja de calculo los lee
+arriba del todo, y quien lo parsee encuentra la cabecera donde estaba.
+
+Sin avisos el fichero es **byte a byte el de antes**, y hay un test que lo fija:
+quien ya tuviera una hoja apuntando a estas columnas no se entera del cambio. Y
+otro comprueba que un aviso con comas y comillas —los textos reales las llevan,
+«ancho, alto, area, perimetro»— no rompe el parseo.
+
 Y sin el tamano del encuadre no se afirma nada: `measureWholePiece` sin `frame`
 no puede saber si la pieza esta cortada, y entonces **no avisa** en vez de
 inventarselo.

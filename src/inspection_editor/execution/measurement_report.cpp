@@ -109,9 +109,20 @@ std::vector<MeasurementRow> measurementRows(const std::vector<ToolRunResult>& re
     return rows;
 }
 
-std::string measurementsToCsv(const std::vector<MeasurementRow>& rows) {
+std::string measurementsToCsv(const std::vector<MeasurementRow>& rows,
+                              const std::vector<std::string>& warnings) {
+    // Los avisos van primero: el CSV es lo que sobrevive a la ventana, y un
+    // aviso que no viaja con el fichero no llega a quien lo abre despues.
+    std::string preamble;
+    for (const auto& warning : warnings) {
+        preamble += "AVISO," + quoted(warning) + "\n";
+    }
+    if (!preamble.empty()) {
+        preamble += "\n";
+    }
     std::ostringstream out;
     out.imbue(std::locale::classic());
+    out << preamble;
     // `grupo` va la ÚLTIMA a propósito: añadir una columna al final no mueve
     // ninguna de las que ya había, así que una hoja de cálculo hecha con la
     // versión anterior sigue apuntando a la misma columna.
@@ -134,9 +145,18 @@ std::string measurementsToCsv(const std::vector<MeasurementRow>& rows) {
     return out.str();
 }
 
-std::string measurementsToText(const std::vector<MeasurementRow>& rows) {
+std::string measurementsToText(const std::vector<MeasurementRow>& rows,
+                               const std::vector<std::string>& warnings) {
+    std::string preamble;
+    for (const auto& warning : warnings) {
+        preamble += "AVISO: " + warning + "\n";
+    }
+    if (!preamble.empty()) {
+        preamble += "\n";
+    }
     std::ostringstream out;
     out.imbue(std::locale::classic());
+    out << preamble;
     out << std::fixed << std::setprecision(2);
 
     // El ancho de la primera columna sale de los nombres que hay, no de un

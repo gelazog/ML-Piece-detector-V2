@@ -168,7 +168,7 @@ PieceReportDialog::PieceReportDialog(inspection::PieceReport report,
 
 void PieceReportDialog::onCopyClicked() {
     QGuiApplication::clipboard()->setText(
-        QString::fromStdString(inspection::measurementsToText(report_.rows)));
+        QString::fromStdString(inspection::measurementsToText(report_.rows, report_.warnings)));
     status_->setStyleSheet(QStringLiteral("color:#22cc44;"));
     status_->setText(tr("%n medida(s) copiadas al portapapeles.", nullptr,
                         static_cast<int>(report_.rows.size())));
@@ -181,7 +181,7 @@ void PieceReportDialog::onExportClicked() {
     if (path.isEmpty()) {
         return;  // cancelar no es un error
     }
-    const std::string csv = inspection::measurementsToCsv(report_.rows);
+    const std::string csv = inspection::measurementsToCsv(report_.rows, report_.warnings);
     // `QSaveFile`: escribe a un temporal y renombra al cerrar, así que un fallo
     // a mitad no deja el fichero anterior medio sobrescrito.
     QSaveFile file(path);
