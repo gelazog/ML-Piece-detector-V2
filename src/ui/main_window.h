@@ -367,10 +367,13 @@ private:
     QDockWidget* captureDock_ = nullptr;
     QListWidget* captureList_ = nullptr;
     QLabel* captureCountLabel_ = nullptr;
+    QPushButton* learnFromCaptureButton_ = nullptr;
     CaptureTray captureTray_;
     void buildCaptureDock();
     void refreshCaptureList();
+    void updateLearnFromCaptureAvailability();
     void onSaveCapturesClicked();
+    void onLearnFromCaptureClicked();
     void onCaptureChosen(int row);
 
     QWidget* videoBar_ = nullptr;

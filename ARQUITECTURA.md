@@ -252,6 +252,32 @@ sólo exige que no sean negativos. La primera versión de esta comprobación usa
 `isValid()` y por eso no saltaba nunca: un ajuste ausente se lee como cero y
 pasaba por bueno. Lo que hace falta es `isEmpty()`.
 
+#### Aprender de una captura, y por qué es explícito
+
+La tira de capturas guardaba fotos y nada más. La visión del proyecto dice
+«actualizar la referencia estadística tras cada pieza buena, nunca reentrenar»,
+y eso sólo se podía hacer desde el diálogo de una inspección recién corrida:
+las fotos que uno guarda durante la puesta a punto —que son precisamente las
+buenas, elegidas a mano— no servían para alimentar nada.
+
+**Explícito y por foto, nunca automático.** Una referencia contaminada con
+piezas malas no falla ruidosamente: falla **dejando pasar defectos**, y nadie lo
+nota hasta que llega una reclamación. Es el peor modo de fallo de toda la
+aplicación, así que aprender es siempre un acto del operador sobre una foto
+concreta que él ha mirado. No hay «aprender de todas» ni aprendizaje al vuelo.
+
+**Y antes de sumarla se inspecciona.** Si el programa considera mala esa pieza,
+se dice con el motivo y se pregunta: añadirla mueve lo que se considera normal
+hacia ella, y a partir de ahí defectos parecidos pasarán como buenos. El
+operador puede tener razón —la referencia se quedó estrecha— o haberse
+equivocado de foto; lo que no puede es decidirlo sin la información.
+
+El botón apagado dice **cuál** de los tres motivos lo apaga (sin foto elegida,
+sin pieza elegida, sin modelo ONNX), porque cada uno pide un arreglo distinto y
+un texto único los escondería. Y su disponibilidad se recalcula al cambiar la
+selección de la tira y al cambiar de pieza: calcularla una sola vez es
+exactamente el fallo que costó tres rondas con el pincel.
+
 #### El trazo es un gesto, no un resultado
 
 La pincelada se pintaba encima y ahí se quedaba. A los tres trazos ya no se

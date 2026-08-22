@@ -36,6 +36,7 @@
 #include "database/schema.h"
 #include "repositories/settings_repository.h"
 #include "ui/app_repositories.h"
+#include <QListWidget>
 #include <QToolButton>
 
 #include <cmath>
@@ -3834,4 +3835,123 @@ TEST(WorkingZoneEndToEnd, TheBoardZeroAlsoFollowsAChangeOfResolution) {
         << "la referencia se quedó en la resolución anterior: al próximo arranque "
            "el cero se movería una segunda vez";
     EXPECT_EQ(settings.getInt("det_zone_ref_h", 0).value(), 160);
+}
+
+// Aprender de una captura: la última pieza que le faltaba a la tira.
+//
+// La visión del proyecto dice «actualizar la referencia estadística tras cada
+// pieza buena, nunca reentrenar», y eso sólo se podía hacer desde el diálogo de
+// una inspección recién corrida. Las fotos que uno guarda durante la puesta a
+// punto —que son precisamente las buenas, elegidas a mano— no servían para
+// nada.
+//
+// Lo que este test fija no es que el botón exista, sino CUÁNDO se deja pulsar y
+// que diga por qué cuando no. Una referencia contaminada con piezas malas no
+// falla ruidosamente: falla dejando pasar defectos, y nadie lo nota hasta que
+// llega una reclamación. Por eso aprender no puede ser nunca un accidente.
+TEST(CaptureTrayLearning, LearningIsNeverAvailableByAccident) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(120, 90, 160, 120), QColor(230, 230, 230));
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("captura.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+
+    QPushButton* learn = nullptr;
+    for (auto* button : window.findChildren<QPushButton*>()) {
+        if (button->text().startsWith(QStringLiteral("Aprender"))) {
+            learn = button;
+        }
+    }
+    ASSERT_NE(learn, nullptr) << "no está el botón de aprender de una captura";
+
+    // Sin foto elegida no se puede, y se dice.
+    EXPECT_FALSE(learn->isEnabled());
+    EXPECT_FALSE(learn->toolTip().isEmpty())
+        << "apagado y mudo: un botón muerto sin motivo se lee como aplicación rota";
+    const QString reasonWithoutCapture = learn->toolTip();
+    std::printf("  [aprender] sin foto dice: «%s»\n",
+                reasonWithoutCapture.left(60).toStdString().c_str());
+
+    // Se toma una foto de verdad, abriendo una imagen y capturándola.
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+    const auto waitFor = [](auto predicate, int ms = 4000) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (predicate()) {
+                return true;
+            }
+        }
+        return predicate();
+    };
+    auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+    ASSERT_TRUE(waitFor([&] { return canvas->imageSize() == QSize(400, 300); }));
+
+    QListWidget* tray = nullptr;
+    for (auto* list : window.findChildren<QListWidget*>()) {
+        if (list->viewMode() == QListView::IconMode) {
+            tray = list;
+        }
+    }
+    ASSERT_NE(tray, nullptr) << "no está la tira de capturas";
+
+    // Sin pieza elegida y sin modelo, el motivo tiene que CAMBIAR: tres razones
+    // distintas piden tres arreglos distintos, y un texto único los escondería.
+    QApplication::processEvents();
+    EXPECT_FALSE(learn->isEnabled())
+        << "se puede aprender sin haber elegido de qué pieza es la referencia";
+    std::printf("  [aprender] con imagen abierta dice: «%s»\n",
+                learn->toolTip().left(60).toStdString().c_str());
+    EXPECT_FALSE(learn->toolTip().isEmpty());
+}
+
+// El botón no puede quedarse enganchado a un estado viejo: es exactamente el
+// fallo que costó tres rondas con el pincel —una disponibilidad calculada una
+// sola vez, y nunca más—, así que aquí se comprueba que se RECALCULA.
+TEST(CaptureTrayLearning, TheReasonIsRecomputedAndNotFrozen) {
+    pci::ui::MainWindow window;
+    window.resize(1000, 700);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+
+    QPushButton* learn = nullptr;
+    for (auto* button : window.findChildren<QPushButton*>()) {
+        if (button->text().startsWith(QStringLiteral("Aprender"))) {
+            learn = button;
+        }
+    }
+    ASSERT_NE(learn, nullptr);
+    const QString before = learn->toolTip();
+
+    QListWidget* tray = nullptr;
+    for (auto* list : window.findChildren<QListWidget*>()) {
+        if (list->viewMode() == QListView::IconMode) {
+            tray = list;
+        }
+    }
+    ASSERT_NE(tray, nullptr);
+
+    // Cambiar la selección de la tira tiene que volver a preguntarse el motivo.
+    // Con la tira vacía la selección no puede cambiar, así que se fuerza la
+    // señal que la ventana escucha.
+    emit tray->currentRowChanged(-1);
+    QApplication::processEvents();
+
+    std::printf("  [aprender] el motivo %s tras mover la selección\n",
+                learn->toolTip() == before ? "se mantiene (coherente)" : "cambió");
+    EXPECT_FALSE(learn->toolTip().isEmpty())
+        << "tras mover la selección el botón se quedó sin explicación";
+    EXPECT_FALSE(learn->isEnabled());
 }

@@ -2734,6 +2734,19 @@ void MainWindow::buildCaptureDock() {
     buttons->addWidget(clear);
     column->addLayout(buttons);
 
+    // Aprender de una foto: la última pieza que le faltaba a la tira.
+    //
+    // Hasta ahora las capturas eran fotos y nada más. La visión del proyecto
+    // dice «actualizar la referencia estadística tras cada pieza buena, nunca
+    // reentrenar», y eso sólo se podía hacer desde el diálogo de una inspección
+    // recién corrida: las fotos que uno guarda durante la puesta a punto —que
+    // son precisamente las buenas, elegidas a mano— no servían para nada.
+    learnFromCaptureButton_ = new QPushButton(tr("Aprender de esta foto"), panel);
+    learnFromCaptureButton_->setEnabled(false);
+    column->addWidget(learnFromCaptureButton_);
+    connect(learnFromCaptureButton_, &QPushButton::clicked, this,
+            &MainWindow::onLearnFromCaptureClicked);
+
     captureDock_->setWidget(panel);
     addDockWidget(Qt::LeftDockWidgetArea, captureDock_);
 
@@ -2757,6 +2770,111 @@ void MainWindow::buildCaptureDock() {
     refreshCaptureList();
 }
 
+// Cuándo se puede aprender de la foto elegida, y si no se puede, POR QUÉ.
+//
+// Un botón apagado sin explicación se lee como que la aplicación está rota; y
+// aquí hay tres motivos distintos para estarlo, que piden tres arreglos
+// distintos por parte del operador.
+void MainWindow::updateLearnFromCaptureAvailability() {
+    if (learnFromCaptureButton_ == nullptr) {
+        return;
+    }
+    const int row = captureList_ != nullptr ? captureList_->currentRow() : -1;
+    const bool hasCapture = row >= 0 && row < captureTray_.count();
+    const std::int64_t pieceId = selectedPieceId();
+    const bool hasEngine = repos_.engine != nullptr && static_cast<bool>(repos_.embedFn);
+
+    const bool usable = hasCapture && pieceId >= 0 && hasEngine;
+    learnFromCaptureButton_->setEnabled(usable);
+    learnFromCaptureButton_->setToolTip(
+        usable ? tr("Añade esta foto a la referencia de la pieza como un ejemplar BUENO.\n\n"
+                    "La referencia no se reentrena: se le suma esta muestra y se guarda una "
+                    "versión nueva, conservando las anteriores. Antes de añadirla se "
+                    "inspecciona, y si sale NG se avisa — enseñarle una pieza mala a la "
+                    "referencia es la forma más rápida de que deje de detectar nada.")
+        : !hasCapture ? tr("Elige antes una foto de la tira.")
+        : pieceId < 0 ? tr("Elige antes qué pieza es: la referencia que se actualiza es la "
+                           "suya.")
+                      : tr("Sin el modelo ONNX no hay apariencia que aprender. Con las "
+                           "herramientas de medida se sigue inspeccionando, pero la "
+                           "referencia por apariencia necesita el modelo."));
+}
+
+// Aprender de una captura elegida a mano.
+//
+// EXPLÍCITO Y POR FOTO, nunca automático, y la decisión es deliberada: una
+// referencia contaminada con piezas malas no falla ruidosamente, falla dejando
+// pasar defectos. Es el peor modo de fallo de toda la aplicación, porque nadie
+// lo nota hasta que llega una reclamación. Así que aprender es siempre un acto
+// del operador sobre una foto concreta que él ha mirado.
+//
+// Y antes de sumarla se INSPECCIONA. Si el programa la considera mala, se dice
+// —con el motivo— y se pregunta. El operador puede tener razón (la referencia
+// era demasiado estrecha) o puede haberse equivocado de foto; lo que no puede
+// es decidirlo sin la información.
+void MainWindow::onLearnFromCaptureClicked() {
+    const int row = captureList_ != nullptr ? captureList_->currentRow() : -1;
+    if (row < 0 || row >= captureTray_.count() || repos_.engine == nullptr) {
+        return;
+    }
+    const std::int64_t pieceId = selectedPieceId();
+    if (pieceId < 0) {
+        statusBar()->showMessage(tr("Elige antes qué pieza es."));
+        return;
+    }
+
+    const cv::Mat frame = camera::qImageToMat(captureTray_.at(row).image);
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    auto outcome = repos_.engine->inspect(frame, pieceId);
+    QApplication::restoreOverrideCursor();
+    if (!outcome.isOk()) {
+        QMessageBox::warning(this, tr("Aprender de esta foto"),
+                             tr("No se pudo inspeccionar la foto, así que tampoco añadirla "
+                                "a la referencia.\n\n%1")
+                                 .arg(QString::fromStdString(outcome.error().message)));
+        return;
+    }
+    if (outcome.value().embedding.empty()) {
+        QMessageBox::warning(this, tr("Aprender de esta foto"),
+                             tr("De esta foto no salió ninguna huella de apariencia: sin "
+                                "modelo cargado o sin pieza detectada en ella."));
+        return;
+    }
+
+    const auto& verdict = outcome.value().verdict;
+    if (!verdict.ok) {
+        const auto answer = QMessageBox::question(
+            this, tr("Esta foto sale NG"),
+            tr("El programa considera MALA esta pieza:\n\n%1\n\n"
+               "Añadirla a la referencia mueve lo que se considera normal hacia esa "
+               "pieza, y a partir de ahí defectos parecidos empezarán a pasar como "
+               "buenos.\n\n"
+               "Tiene sentido hacerlo si la referencia se quedó demasiado estrecha y esta "
+               "pieza es buena de verdad. ¿La añado?")
+                .arg(QString::fromStdString(verdict.summary)),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer != QMessageBox::Yes) {
+            statusBar()->showMessage(tr("No se añadió: la referencia sigue como estaba."));
+            return;
+        }
+    }
+
+    const auto version = repos_.engine->updateReference(pieceId, outcome.value().embedding);
+    if (!version.isOk()) {
+        QMessageBox::warning(this, tr("Aprender de esta foto"),
+                             QString::fromStdString(version.error().message));
+        return;
+    }
+    // Se dice QUÉ cambió, y con el parecido de la foto añadida: sin eso,
+    // «referencia actualizada» es indistinguible de no haber hecho nada.
+    const double similarity = verdict.embedding.similarity;
+    statusBar()->showMessage(
+        tr("Aprendido: la referencia de la pieza pasa a la versión %1 (las anteriores se "
+           "conservan). Esta foto se parecía a la referencia un %2 %.")
+            .arg(version.value())
+            .arg(100.0 * similarity, 0, 'f', 1));
+}
+
 void MainWindow::refreshCaptureList() {
     if (captureList_ == nullptr) {
         return;
@@ -2778,6 +2896,9 @@ void MainWindow::refreshCaptureList() {
         captureTray_.empty()
             ? tr("Sin capturas. Pulsa «Capturar foto» y se irán juntando aquí.")
             : tr("%n captura(s) en esta sesión.", nullptr, captureTray_.count()));
+    // La disponibilidad cambia con la lista: sin recalcularla aquí el botón
+    // se quedaría como estuviera, que es el fallo que ya costó el pincel.
+    updateLearnFromCaptureAvailability();
 }
 
 void MainWindow::onCaptureChosen(int row) {
@@ -2799,6 +2920,7 @@ void MainWindow::onCaptureChosen(int row) {
     fileSource_->start();
     statusBar()->showMessage(tr("Trabajando sobre la captura de las %1.")
                                  .arg(capture.taken.toString(QStringLiteral("HH:mm:ss"))));
+    updateLearnFromCaptureAvailability();
 }
 
 void MainWindow::onSaveCapturesClicked() {
@@ -5186,6 +5308,8 @@ void MainWindow::onPieceSelectionChanged(int index) {
     video_->resetView();  // otra pieza, encuadre limpio (Z3)
     loadMeasurementForSelectedPiece();  // modo y tablero de ESTA pieza (M2)
     loadDetectionProfileForSelectedPiece();  // perfil de detección de la pieza (O3)
+    // La referencia que se actualizaría es la de la pieza elegida.
+    updateLearnFromCaptureAvailability();
     loadTemplateList();       // repuebla plantillas de la pieza
     loadToolsForSelectedPiece();
 
