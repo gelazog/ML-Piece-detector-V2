@@ -221,6 +221,24 @@ Y el recuento sale a la ventana principal, junto al modo de medición. Se
 que hay que hacer: las herramientas miden la mayor y las demás quedan sin medir.
 Un aviso que salta siempre deja de ser un aviso.
 
+#### Una zona en píxeles sin su resolución no significa nada
+
+La zona de trabajo se guardaba en píxeles y **no a qué resolución se dibujó**.
+Dentro de una misma sesión eso ya se corregía al cambiar de resolución; lo que
+faltaba era el arranque, donde no hay resolución anterior con la que comparar
+porque el programa acaba de abrirse.
+
+El resultado, medido: una zona dibujada sobre 480×320 que rodeaba la pieza
+pequeña, reabierta con una fuente de 240×160, se recorta contra el frame y deja
+de rodear nada — **no se detecta ninguna pieza y nadie dice por qué**. Con la
+resolución de referencia guardada, la misma zona pasa de x=330 ancho 79 a x=165
+ancho 39: la mitad exacta, la misma pieza.
+
+**Cuidado con `QSize::isValid()`.** En Qt, `QSize(0, 0).isValid()` es `true` —
+sólo exige que no sean negativos. La primera versión de esta comprobación usaba
+`isValid()` y por eso no saltaba nunca: un ajuste ausente se lee como cero y
+pasaba por bueno. Lo que hace falta es `isEmpty()`.
+
 #### El trazo es un gesto, no un resultado
 
 La pincelada se pintaba encima y ahí se quedaba. A los tres trazos ya no se

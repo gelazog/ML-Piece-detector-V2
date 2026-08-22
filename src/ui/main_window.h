@@ -521,6 +521,10 @@ private:
     bool streaming_ = false;
     // Un analisis lanzado por una correccion: al llegar, el trazo se retira.
     bool hideCorrectionWhenAnalysed_ = false;
+    // Resolución a la que se dibujó la zona de trabajo. Se guarda con ella:
+    // una zona en píxeles sin su resolución señala otro sitio en cuanto
+    // cambia la fuente, y al arrancar no hay nada con lo que compararla.
+    QSize zoneReferenceSize_;
     bool autoInspecting_ = false;
     bool arucoLiveScale_ = false;   // escala por marcador ArUco en vivo
     double markerSizeMm_ = 30.0;    // lado real del marcador impreso

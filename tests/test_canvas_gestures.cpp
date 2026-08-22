@@ -33,6 +33,9 @@
 #include <QAction>
 #include <QAbstractSlider>
 #include <opencv2/videoio.hpp>
+#include "database/schema.h"
+#include "repositories/settings_repository.h"
+#include "ui/app_repositories.h"
 #include <QToolButton>
 
 #include <cmath>
@@ -3624,4 +3627,132 @@ TEST(VideoTransportEndToEnd, PausingStopsItAndSeekingLandsWhereItWasAsked) {
                 landed, std::abs(landed - asked));
     EXPECT_LT(std::abs(landed - asked), 12.0)
         << "la posición que muestra la barra no cuadra con donde se pidió ir";
+}
+
+// La zona sobrevive al cierre del programa, y hasta ahora sobrevivía MAL.
+//
+// Se guardaba en píxeles y no a qué resolución se dibujó. Al reabrir con una
+// fuente de otro tamaño se aplicaba tal cual: recortada contra el frame, la
+// zona se queda en un trozo que nadie eligió, o desaparece entera y se analiza
+// toda la imagen. Las dos cosas en silencio, que es lo peor de las dos.
+//
+// Dentro de la misma sesión esto ya se corregía al cambiar de resolución. Lo
+// que faltaba era el arranque, donde no hay resolución anterior con la que
+// comparar porque el programa acaba de abrirse.
+TEST(WorkingZoneEndToEnd, AZoneDrawnAtOneResolutionSurvivesAReopenAtAnother) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+
+    // Dos versiones de la MISMA escena, una al doble que la otra: la zona bien
+    // reajustada tiene que seguir rodeando la misma pieza.
+    const auto sceneOfSize = [](int width, int height) {
+        QImage photo(width, height, QImage::Format_RGB888);
+        photo.fill(QColor(20, 20, 20));
+        QPainter painter(&photo);
+        const double sx = width / 480.0;
+        const double sy = height / 320.0;
+        painter.fillRect(QRect(qRound(40 * sx), qRound(60 * sy), qRound(180 * sx),
+                               qRound(200 * sy)),
+                         QColor(230, 230, 230));  // grande
+        painter.fillRect(QRect(qRound(330 * sx), qRound(130 * sy), qRound(80 * sx),
+                               qRound(60 * sy)),
+                         QColor(230, 230, 230));  // pequeña
+        return photo;
+    };
+    const QString bigPath = QDir(dir.path()).filePath(QStringLiteral("grande.png"));
+    const QString smallPath = QDir(dir.path()).filePath(QStringLiteral("mitad.png"));
+    ASSERT_TRUE(sceneOfSize(480, 320).save(bigPath));
+    ASSERT_TRUE(sceneOfSize(240, 160).save(smallPath));
+
+    const auto waitFor = [](auto predicate, int ms = 4000) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (predicate()) {
+                return true;
+            }
+        }
+        return predicate();
+    };
+
+    // Las dos sesiones comparten una base de datos de verdad: con una ventana
+    // sin repositorios no se persiste nada, y el test estaría comprobando que
+    // no hay zona en lugar de que la zona heredada se reajusta.
+    const std::string dbPath = QDir(dir.path()).filePath(QStringLiteral("s.db")).toStdString();
+    auto opened = pci::database::Db::open(dbPath);
+    ASSERT_TRUE(opened.isOk()) << opened.error().message;
+    auto db = std::move(opened.value());
+    ASSERT_TRUE(pci::database::migrate(*db).isOk());
+    pci::repositories::SettingsRepository settings(*db);
+    pci::ui::AppRepositories repos;
+    repos.settings = &settings;
+
+    // --- Sesión 1: se dibuja la zona alrededor de la pieza pequeña ----------
+    {
+        pci::ui::MainWindow window(repos);
+        window.resize(1200, 800);
+        window.show();
+        ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+        ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, bigPath));
+
+        auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+        ASSERT_NE(canvas, nullptr);
+        ASSERT_TRUE(waitFor([&] { return canvas->liveContour().size() >= 4; }));
+
+        const ViewTransform view({canvas->imageSize().width(), canvas->imageSize().height()},
+                                 {canvas->width(), canvas->height()}, 1.0, {0.0, 0.0});
+        const auto screen = [&](double x, double y) {
+            const cv::Point2d q = view.imageToWidget(
+                cv::Point2f(static_cast<float>(x), static_cast<float>(y)));
+            return QPointF(q.x, q.y);
+        };
+        canvas->setFreeZonePickMode(true);
+        const std::vector<QPointF> corners{{300, 105}, {440, 105}, {440, 215}, {300, 215}};
+        press(canvas, screen(corners.front().x(), corners.front().y()));
+        for (std::size_t i = 1; i <= corners.size(); ++i) {
+            const QPointF from = corners[i - 1];
+            const QPointF to = corners[i % corners.size()];
+            for (int step = 1; step <= 20; ++step) {
+                const double t = static_cast<double>(step) / 20.0;
+                moveTo(canvas, screen(from.x() + (to.x() - from.x()) * t,
+                                      from.y() + (to.y() - from.y()) * t));
+            }
+        }
+        release(canvas, screen(corners.front().x(), corners.front().y()));
+
+        ASSERT_TRUE(waitFor([&] {
+            const QRectF box = canvas->liveContour().boundingRect();
+            return box.width() > 1.0 && box.left() > 250.0;
+        })) << "la zona no llegó a aplicarse en la primera sesión";
+        std::printf("  [zona] sesión 1 (480x320): mide en x=%.0f, ancho %.0f\n",
+                    canvas->liveContour().boundingRect().left(),
+                    canvas->liveContour().boundingRect().width());
+    }
+
+    // --- Sesión 2: otra ventana, otra fuente, LA MITAD de tamaño ------------
+    {
+        pci::ui::MainWindow window(repos);
+        window.resize(1200, 800);
+        window.show();
+        ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+        ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, smallPath));
+
+        auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+        ASSERT_NE(canvas, nullptr);
+        ASSERT_TRUE(waitFor([&] { return canvas->liveContour().size() >= 4; }))
+            << "con la zona heredada no se detecta ninguna pieza: la zona quedó "
+               "señalando un sitio donde no hay nada";
+
+        const QRectF box = canvas->liveContour().boundingRect();
+        std::printf("  [zona] sesión 2 (240x160): mide en x=%.0f, ancho %.0f\n", box.left(),
+                    box.width());
+
+        // La zona reajustada rodea la MISMA pieza, ahora a la mitad de escala:
+        // la pequeña está sobre x=165 y mide unos 40 px de ancho.
+        EXPECT_GT(box.left(), 140.0)
+            << "la zona heredada dejó de rodear la pieza pequeña: se está midiendo la grande";
+        EXPECT_LT(box.width(), 70.0)
+            << "el contorno es demasiado ancho para ser la pieza pequeña a media escala";
+    }
 }

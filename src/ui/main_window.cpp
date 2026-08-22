@@ -1071,6 +1071,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             pipelineConfig_.roiPolygon.size() < 3) {
             zoneMode_ = vision::WorkingZoneMode::Off;
         }
+        zoneReferenceSize_ = QSize(repos_.settings->getInt("det_zone_ref_w", 0).value(),
+                                   repos_.settings->getInt("det_zone_ref_h", 0).value());
         pipelineConfig_.autoOrient = repos_.settings->getInt("track_rotation", 0).value() != 0;
         arucoLiveScale_ = repos_.settings->getInt("aruco_live", 0).value() != 0;
         markerSizeMm_ = repos_.settings->getDouble("aruco_marker_mm", 30.0).value();
@@ -1512,6 +1514,29 @@ void MainWindow::persistPipelineConfig() {
     repos_.settings->setInt("det_roi_h", pipelineConfig_.roi.height);
     repos_.settings->setString(kSettingFreeZone,
                                encodeZonePolygon(pipelineConfig_.roiPolygon));
+    // A QUÉ RESOLUCIÓN se dibujó la zona.
+    //
+    // Sin esto, la zona se guardaba en píxeles y se volvía a aplicar tal cual.
+    // Una zona dibujada sobre 1920x1080 y reabierta con una fuente de 640x480
+    // señala otro sitio: recortada contra el frame, se queda en un trozo que
+    // nadie eligió, o desaparece entera y se analiza toda la imagen. En los dos
+    // casos en silencio, que es lo peor de los dos.
+    //
+    // Dentro de la misma sesión esto ya se corregiía al cambiar de resolución.
+    // Lo que faltaba era el arranque, donde no hay resolución anterior con la
+    // que comparar porque el programa acaba de abrirse.
+    // `isValid()` NO sirve aquí: en Qt, `QSize(0, 0).isValid()` es true (sólo
+    // exige que no sean negativos), así que un ajuste ausente —que se lee como
+    // cero— pasaba por bueno y la referencia no se anotaba nunca.
+    //
+    // Y sin condición sobre lo que ya hubiera: al persistir, la zona está
+    // SIEMPRE en coordenadas del frame actual —o acaba de dibujarse, o acaba de
+    // reajustarse a él—, así que la referencia es el frame actual y punto.
+    if (!lastFrame_.isNull()) {
+        zoneReferenceSize_ = lastFrame_.size();
+    }
+    repos_.settings->setInt("det_zone_ref_w", zoneReferenceSize_.width());
+    repos_.settings->setInt("det_zone_ref_h", zoneReferenceSize_.height());
     repos_.settings->setDouble("det_min_area", pipelineConfig_.minAreaFraction);
     repos_.settings->setDouble("det_max_area", pipelineConfig_.maxAreaFraction);
     repos_.settings->setInt("track_rotation", pipelineConfig_.autoOrient ? 1 : 0);
@@ -3023,6 +3048,14 @@ void MainWindow::onFrame(const QImage& frame) {
     // segundo con la herramienta apagada sin motivo visible, y para siempre en
     // cualquier fuente que entregue un solo frame.
     updateEdgeBrushAvailability();
+    // Primer frame de la sesión: no hay resolución anterior con la que comparar,
+    // pero sí la que quedó guardada con la zona. Es el único momento en que se
+    // puede notar que la zona viene de una fuente distinta a la de ahora.
+    if (previousSize.isEmpty() && !zoneReferenceSize_.isEmpty() &&
+        zoneReferenceSize_ != frame.size() &&
+        (pipelineConfig_.roi.area() > 0 || pipelineConfig_.roiPolygon.size() >= 3)) {
+        rescalePixelSettings(zoneReferenceSize_, frame.size());
+    }
     if (sizeChanged) {
         // El lienzo ya ha olvidado la corrección del borde —sus pasos guardaban
         // coordenadas de la imagen anterior—, así que aquí se suelta la copia
@@ -4324,6 +4357,10 @@ void MainWindow::rescalePixelSettings(const QSize& from, const QSize& to) {
     const cv::Size before(from.width(), from.height());
     const cv::Size after(to.width(), to.height());
     QStringList adjusted;
+    // A partir de aquí la zona vive en las coordenadas NUEVAS: si no se anotara,
+    // el próximo arranque volvería a reajustarla desde la resolución vieja y la
+    // movería una segunda vez.
+    zoneReferenceSize_ = to;
 
     if (pipelineConfig_.roi.area() > 0) {
         pipelineConfig_.roi = vision::rescaleRect(pipelineConfig_.roi, before, after);
