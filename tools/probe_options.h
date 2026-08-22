@@ -12,6 +12,7 @@
 // Nada de excepciones: los errores salen por `Result`, como en el resto del
 // proyecto. Un banco que aborta no informa de nada.
 
+#include "vision/quality_metrics.h"
 #include <opencv2/core.hpp>
 
 #include <cmath>
@@ -443,6 +444,25 @@ inline std::string renderText(const ProbeReport& report) {
     out += "\n";
     out += "  Perímetro : " + fmt("%.1f", report.perimeterPx) + " px" + mm(report.perimeterPx) +
            "\n";
+
+    // Lo dentado del contorno, junto al perimetro porque es lo que lo juzga.
+    //
+    // Vale 1 para un circulo y crece con lo sucio que este el borde. Cuando se
+    // dispara, el perimetro deja de significar lo que dice — y con el todo lo
+    // que se derive de el. Decirlo aqui es la diferencia entre una medida mala
+    // y una medida mala que nadie ve.
+    const double ragged =
+        pci::vision::contourRaggedness(report.areaPx, report.perimeterPx);
+    if (ragged > 0.0) {
+        out += "  Dentado   : " + fmt("%.2f", ragged) +
+               " veces el perimetro de un circulo de la misma area";
+        if (pci::vision::contourLooksRagged(report.areaPx, report.perimeterPx)) {
+            out += "\n              AVISO: o la pieza es muy dentada, o la deteccion";
+            out += "\n              esta siguiendo el dibujo de la superficie en vez";
+            out += "\n              del borde. El perimetro no es de fiar asi.";
+        }
+        out += "\n";
+    }
     out += "  Envolvente: " + fmt("%.1f", report.boxWidth) + " x " +
            fmt("%.1f", report.boxHeight) + " px, girada " + fmt("%.1f", report.boxAngleDeg) +
            " grados\n";

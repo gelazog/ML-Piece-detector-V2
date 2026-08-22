@@ -409,6 +409,43 @@ tiempo no retrocede en 454 frames seguidos, y con cuatro dados en el aire se
 encuentran **hasta 5 piezas a la vez** sobre un fondo metalico que brilla tanto
 como ellas.
 
+#### Lo dentado del contorno: un aviso barato que separa dos cosas
+
+Una moneda de 5 yenes —22,0 mm de diametro y 5,0 mm de agujero, publicados—
+entro en el corpus como la mejor verdad de campo que tiene: la razon 5/22 =
+0,2273 se puede comprobar **sin saber cuantos pixeles son un milimetro**.
+
+Y destapo otra cosa antes de llegar a eso. Su relieve grabado hace que la
+segmentacion siga el DIBUJO de la superficie en vez del borde, y el contorno
+sale con un perimetro diez veces mayor del que le tocaria. `contourRaggedness`
+lo pone en un numero: **perimetro medido / perimetro de un circulo de la misma
+area**. Vale 1 para un circulo, no depende de la escala, y nunca puede bajar de
+1 (desigualdad isoperimetrica: de todas las figuras con un area dada, la
+circunferencia es la de menor perimetro).
+
+Medido sobre el corpus **por el camino que usa el programa**:
+
+| imagen | dentado |
+|---|---|
+| bola de 20 mm | 1,59 |
+| tres bolas sobre negro | 1,72 |
+| tuerca hexagonal | 2,42 |
+| *(banda vacia — el umbral va aqui, en 3,0)* | |
+| monton de pinones | 5,88 |
+| arandelas en una bolsa | 6,26 |
+| moneda con relieve | 10,03 |
+| bola junto a una regla | 21,96 |
+
+El aviso dice las **dos** posibilidades —«o la pieza es muy dentada, o la
+deteccion sigue el dibujo de la superficie»— en vez de acusar a una: un pinon
+bien detectado pasaria de 3 con toda la razon.
+
+**Y el umbral se recoloco por la misma leccion de ayer.** El primer valor, 2,5,
+salio de medir con un script en Python; los numeros del programa son otros
+porque aplica antes suavizado y morfologia. Con los suyos, la banda vacia esta
+entre 2,42 y 5,88, y el umbral va en medio en vez de rozando un caso bueno.
+Medir por fuera del camino del programa mide otra cosa: van dos veces.
+
 **Dos fotos del corpus estan por lo que NO se puede medir en ellas.** Se
 buscaron para probar el agujero pasante y resultaron ser otra cosa: unas
 arandelas dentro de una bolsa de plastico, superpuestas y bajo una etiqueta

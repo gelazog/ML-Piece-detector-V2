@@ -29,6 +29,7 @@
 #include "inspection_editor/auto_measure.h"
 #include "inspection_editor/execution/tool_executor.h"
 #include "vision/pipeline.h"
+#include "vision/quality_metrics.h"
 #include "vision/shape_class.h"
 #include "vision/subpixel_edge.h"
 
@@ -1070,4 +1071,99 @@ TEST(RealPhotos, WhatIsNotRecognisedPublishesNoDiameter) {
     EXPECT_GT(irregular, 0)
         << "ninguna foto del corpus quedó sin reconocer: faltan las escenas hostiles, "
            "que son las que comprueban que el programa sabe decir que no";
+}
+
+// ---------------------------------------------------------------------------
+// LO DENTADO DEL CONTORNO: un aviso barato que separa dos cosas muy distintas
+// ---------------------------------------------------------------------------
+
+// La medida es «cuántas veces más largo es el contorno que el de un círculo de
+// la misma área». Vale 1 para un círculo y **no depende de la escala**, que es
+// lo que la hace utilizable sin calibrar nada.
+TEST(ContourRaggedness, ACircleIsOneAndItDoesNotDependOnSize) {
+    for (const double radius : {10.0, 100.0, 1000.0}) {
+        const double area = CV_PI * radius * radius;
+        const double perimeter = 2.0 * CV_PI * radius;
+        const double ratio = pci::vision::contourRaggedness(area, perimeter);
+        std::printf("  [dentado] circulo de r=%.0f -> %.4f\n", radius, ratio);
+        EXPECT_NEAR(ratio, 1.0, 1e-6)
+            << "un circulo tiene que dar exactamente 1, sea cual sea su tamano";
+    }
+
+    // Un cuadrado: perímetro 4L, área L². La razón es 4L/(2*raiz(pi*L²)) =
+    // 2/raiz(pi) = 1,1284, y tampoco depende del tamaño.
+    for (const double side : {5.0, 500.0}) {
+        const double ratio = pci::vision::contourRaggedness(side * side, 4.0 * side);
+        EXPECT_NEAR(ratio, 2.0 / std::sqrt(CV_PI), 1e-6);
+    }
+
+    // Sin pieza no hay nada que juzgar, y devolver un número ahí sería inventar.
+    EXPECT_DOUBLE_EQ(pci::vision::contourRaggedness(0.0, 100.0), 0.0);
+    EXPECT_DOUBLE_EQ(pci::vision::contourRaggedness(100.0, 0.0), 0.0);
+    EXPECT_FALSE(pci::vision::contourLooksRagged(0.0, 0.0));
+}
+
+// Y NUNCA puede bajar de 1: de todas las figuras con un área dada, la
+// circunferencia es la de menor perímetro. Un número por debajo de 1 sería una
+// figura imposible, o sea un error de cálculo.
+TEST(ContourRaggedness, ItCanNeverGoBelowOne) {
+    for (const double sides : {3.0, 4.0, 6.0, 8.0, 12.0, 50.0}) {
+        // Polígono regular de N lados inscrito en un círculo de radio 1.
+        const double angle = CV_PI / sides;
+        const double area = sides * std::sin(angle) * std::cos(angle);
+        const double perimeter = 2.0 * sides * std::sin(angle);
+        const double ratio = pci::vision::contourRaggedness(area, perimeter);
+        std::printf("  [dentado] poligono de %2.0f lados -> %.4f\n", sides, ratio);
+        EXPECT_GE(ratio, 1.0 - 1e-9)
+            << "por debajo de 1 no hay figura posible: es un error de calculo";
+    }
+}
+
+// EL AVISO, contra el corpus real. Es lo que decide si esto sirve de algo: tiene
+// que callarse con los contornos buenos y saltar con los que siguen el dibujo de
+// la superficie en vez del borde.
+//
+// Los números salen de medir POR EL CAMINO QUE USA EL PROGRAMA, con su suavizado
+// y su morfología. Medirlo con un script aparte da otros —lo intenté, y esa fue
+// justo la equivocación que hizo falta corregir.
+TEST(ContourRaggedness, ItStaysQuietOnCleanContoursAndSpeaksOnTheOthers) {
+    const auto dir = corpusDir();
+    if (dir.empty()) {
+        GTEST_SKIP() << "corpus no descargado";
+    }
+
+    int clean = 0;
+    int ragged = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        const auto extension = entry.path().extension();
+        if (extension != ".jpg" && extension != ".png") {
+            continue;
+        }
+        const cv::Mat photo = cv::imread(entry.path().string(), cv::IMREAD_COLOR);
+        if (photo.empty()) {
+            continue;
+        }
+        const auto analysis = pci::vision::analyzeFrame(photo, {});
+        if (!analysis.isOk()) {
+            continue;
+        }
+        const double ratio = pci::vision::contourRaggedness(
+            analysis.value().contour.area, analysis.value().contour.perimeter);
+        const bool warns = pci::vision::contourLooksRagged(
+            analysis.value().contour.area, analysis.value().contour.perimeter);
+        std::printf("  [dentado] %-34s %6.2f  %s\n",
+                    entry.path().filename().string().c_str(), ratio,
+                    warns ? "AVISA" : "-");
+        if (warns) { ++ragged; } else { ++clean; }
+
+        EXPECT_GE(ratio, 1.0)
+            << entry.path().filename().string() << ": razon por debajo de 1, imposible";
+    }
+
+    // Las dos mitades importan. Si no avisara nunca, el aviso sobra; si avisara
+    // siempre, se aprende a ignorarlo, que es lo mismo que no tenerlo.
+    EXPECT_GT(clean, 0) << "avisa en TODAS las fotos: un aviso que salta siempre no es "
+                           "un aviso";
+    EXPECT_GT(ragged, 0) << "no avisa en ninguna, teniendo el corpus escenas donde la "
+                            "deteccion sigue el dibujo de la superficie";
 }

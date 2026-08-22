@@ -53,6 +53,16 @@ CORPUS = [
                "medido ESCALA, que es mas fuerte que acertar un numero suelto.",
     },
     {
+        "file": "5 Yen Heisei.png",
+        "as": "moneda_5_yen_con_agujero.png",
+        "why": "LA MEJOR VERDAD DE CAMPO DEL CORPUS: una moneda de 5 yenes mide 22,0 mm "
+               "de diametro y su agujero central 5,0 mm, los dos publicados por la "
+               "Casa de la Moneda de Japon. Y la razon entre ambos, 5/22 = 0,2273, es "
+               "verdad de campo SIN ESCALA: se puede comprobar sin saber cuantos "
+               "pixeles son un milimetro. Es el camino de la corona circular, que "
+               "hasta ahora solo se probaba con dibujos generados aqui.",
+    },
+    {
         "file": "Insulating fiberglass washers for M3.jpg",
         "as": "arandelas_con_agujero.jpg",
         "why": "ESCENA HOSTIL, y esta aqui por eso. Se busco para probar el agujero "

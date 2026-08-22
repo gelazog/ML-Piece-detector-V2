@@ -85,4 +85,23 @@ domain::QualityMetrics computeQualityMetrics(const cv::Mat& image,
     return metrics;
 }
 
+double contourRaggedness(double areaPx, double perimeterPx) {
+    if (areaPx <= 0.0 || perimeterPx <= 0.0) {
+        return 0.0;  // sin pieza no hay nada que juzgar
+    }
+    // Perímetro del círculo que tendría esa misma área. Es el mínimo posible:
+    // de todas las figuras con un área dada, la circunferencia es la de menor
+    // perímetro (desigualdad isoperimétrica), así que la razón nunca baja de 1.
+    const double minimumPerimeter = 2.0 * std::sqrt(CV_PI * areaPx);
+    if (minimumPerimeter <= 0.0) {
+        return 0.0;
+    }
+    return perimeterPx / minimumPerimeter;
+}
+
+bool contourLooksRagged(double areaPx, double perimeterPx) {
+    const double ratio = contourRaggedness(areaPx, perimeterPx);
+    return ratio > kRaggedContourWarning;
+}
+
 }  // namespace pci::vision
