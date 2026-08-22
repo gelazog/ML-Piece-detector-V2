@@ -103,8 +103,19 @@ struct ClassifyOptions {
 // Clasifica el contorno EXTERIOR. `mask` es opcional y solo se usa para
 // distinguir una arandela de un disco: sin ella, una arandela sale como disco,
 // que no es falso, solo incompleto.
+// `subpixel`, si se pasa y tiene los mismos puntos que `contour`, es el mismo
+// contorno con el borde afinado (ver `vision/subpixel_edge.h`). Se usa para todo
+// lo que mide DISTANCIAS —el ajuste de circunferencia, la redondez, cuánto se
+// separa el contorno de su modelo— mientras que el ajuste de polígono sigue
+// yendo por el contorno entero, porque sus vértices son puntos del contorno y no
+// posiciones interpoladas.
+//
+// Nulo o de otro tamaño = se mide como siempre. Que el afinado sea opcional aquí
+// no es indecisión: es lo que permite encenderlo sin mover las cotas de nadie
+// hasta que su dueño lo decida.
 [[nodiscard]] ShapeClass classifyShape(const std::vector<cv::Point>& contour,
                                        const cv::Mat& mask = cv::Mat(),
-                                       const ClassifyOptions& options = {});
+                                       const ClassifyOptions& options = {},
+                                       const std::vector<cv::Point2f>* subpixel = nullptr);
 
 }  // namespace pci::vision

@@ -30,6 +30,7 @@
 #include "inspection_editor/tools/tool_types.h"
 #include "vision/pipeline.h"
 #include "vision/shape_class.h"
+#include "vision/subpixel_edge.h"
 
 #include "probe_options.h"
 
@@ -104,8 +105,30 @@ std::string analyzeOneFrame(const cv::Mat& gray, const ProbeOptions& options,
     // evitar. Se sondeó una arandela de verdad y salió «circulo» con dos cotas.
     const cv::Mat measureMask =
         pci::vision::pieceMaskWithHoles(gray, piece.mask, config.segmentation);
-    const pci::vision::ShapeClass shape = pci::vision::classifyShape(
-        outer != nullptr ? *outer : piece.contour.points, measureMask);
+    // Con el contorno afinado cuando lo hay: el diámetro y la redondez son justo
+    // donde media décima de píxel se nota. Solo se pasa si corresponde al mismo
+    // contorno que se está clasificando.
+    const std::vector<cv::Point>& classified =
+        outer != nullptr ? *outer : piece.contour.points;
+    // La clasificación de figura NO usa el contorno afinado, y es una decisión
+    // tomada con el número delante.
+    //
+    // `classifyShape` juzga con `worstRadialDeviation`, que es un MÁXIMO: basta
+    // un punto malo para cambiar el veredicto. El afinado mejora la media —sobre
+    // esta bola, la desviación media baja— pero puede empeorar el peor punto,
+    // porque donde hay un reflejo especular el perfil cruza el nivel medio dos
+    // veces y ese punto se coloca en el cruce equivocado.
+    //
+    // Medido: con el afinado enchufado aquí, la bola pasaba de «circulo» a
+    // «irregular». Una medida más fina que hace fallar la clasificación es peor
+    // que la medida de antes, así que no se enchufa.
+    //
+    // El parámetro de `classifyShape` se queda —probado y documentado— porque es
+    // la costura por donde entrará esto el día que el afinado sepa descartar los
+    // cruces ambiguos. Hoy no lo sabe.
+    const std::vector<cv::Point2f>* refined = nullptr;
+    const pci::vision::ShapeClass shape =
+        pci::vision::classifyShape(classified, measureMask, {}, refined);
     report.shapeKind = pci::vision::shapeKindName(shape.kind);
     report.shapeSides = shape.sides;
     report.outerDiameterPx = shape.outerDiameter;

@@ -300,6 +300,29 @@ datos sin ninguna prueba a favor. La garantia de que en el peor caso esto NO
 HACE NADA vale mas que un perimetro algo mejor: sobre una imagen plana, cero
 puntos movidos.
 
+**Donde SI se usa y donde NO, con el numero delante.** El afinado alimenta el
+area y el perimetro, que son integrales sobre todo el contorno y por tanto
+robustas a un punto malo. **No** alimenta la clasificacion de figura, y eso se
+decidio midiendo: con el afinado enchufado ahi, la bola pasaba de «circulo» a
+«irregular».
+
+La razon esta en como juzga `classifyShape`: `worstRadialDeviation` es un
+**maximo**, no una media. Basta un punto mal colocado para cambiar el veredicto.
+Y el afinado mejora la media a costa del peor punto, porque donde hay un reflejo
+especular el perfil de intensidad cruza el nivel medio **dos veces** y ese punto
+se coloca en el cruce equivocado. Medido sobre la bola:
+
+| desviacion radial | umbral | subpixel |
+|---|---|---|
+| media | 2,078 px | **1,807 px** |
+| peor punto | 5,032 px | **10,677 px** |
+
+Parte la media por la mitad y **duplica el peor punto**. Una medida mas fina que
+hace fallar la clasificacion es peor que la de antes, asi que no se enchufa. El
+parametro de `classifyShape` se queda —probado y documentado— porque es la
+costura por donde entrara el dia que el afinado sepa descartar los cruces
+ambiguos. Hoy no lo sabe, y hay un test que lo dice.
+
 **Enchufado como OPCION, y apagada.** No por prudencia generica: encenderlo
 cambia donde esta el borde, y con el el area, el perimetro y toda medida que
 salga del contorno. Una pieza YA REGISTRADA tiene sus tolerancias ajustadas

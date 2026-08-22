@@ -817,3 +817,86 @@ TEST(SubpixelWiring, TheRefinedContourIsThereToBeUsed) {
     std::printf("  [subpixel] el punto que más se movió lo hizo %.2f px\n", worst);
     EXPECT_LT(worst, 8.0) << "algún punto se fue demasiado lejos de donde estaba el borde";
 }
+
+// UN RESULTADO NEGATIVO, escrito para que no se repita el intento a ciegas.
+//
+// Parece evidente que si el contorno afinado es más preciso, la clasificación de
+// figura debería usarlo. Se probó, y sale PEOR: la bola pasaba de «circulo» a
+// «irregular».
+//
+// La razón está en cómo juzga `classifyShape`: `worstRadialDeviation` es un
+// MÁXIMO, no una media. Basta un punto mal colocado para cambiar el veredicto. Y
+// el afinado, que mejora la media, puede empeorar el peor punto: donde hay un
+// reflejo especular el perfil de intensidad cruza el nivel medio DOS VECES, y
+// ese punto se coloca en el cruce equivocado.
+//
+// Una medida más fina que hace fallar la clasificación es peor que la medida de
+// antes. Este test fija las dos mitades del resultado: que el afinado mejora la
+// media, y que aun así empeora el peor punto.
+TEST(SubpixelEdge, ItImprovesTheAverageButNotNecessarilyTheWorstPoint) {
+    const cv::Mat photo = loadReal("bola_oscura_sobre_claro_10mm.jpg");
+    REQUIRE_CORPUS(photo);
+
+    pci::vision::PipelineConfig config;
+    config.roi = cv::Rect(560, 720, 420, 420);
+    const auto analysis = pci::vision::analyzeFrame(photo, config);
+    ASSERT_TRUE(analysis.isOk());
+    cv::Mat gray;
+    cv::cvtColor(photo, gray, cv::COLOR_BGR2GRAY);
+
+    // El contorno denso de la máscara, que es el que se clasifica.
+    std::vector<std::vector<cv::Point>> found;
+    cv::findContours(analysis.value().mask, found, cv::RETR_EXTERNAL,
+                     cv::CHAIN_APPROX_NONE);
+    ASSERT_FALSE(found.empty());
+    const auto& contour =
+        *std::max_element(found.begin(), found.end(),
+                          [](const auto& a, const auto& b) {
+                              return cv::contourArea(a) < cv::contourArea(b);
+                          });
+    ASSERT_GE(contour.size(), 50U);
+
+    const auto deviations = [](const std::vector<cv::Point2f>& points) {
+        cv::Point2f centre(0.0F, 0.0F);
+        for (const auto& p : points) { centre += p; }
+        centre /= static_cast<float>(points.size());
+        double sum = 0.0;
+        std::vector<double> radii;
+        for (const auto& p : points) {
+            const double r = std::hypot(static_cast<double>(p.x) - centre.x,
+                                        static_cast<double>(p.y) - centre.y);
+            radii.push_back(r);
+            sum += r;
+        }
+        const double mean = sum / static_cast<double>(radii.size());
+        double meanDeviation = 0.0;
+        double worst = 0.0;
+        for (double r : radii) {
+            meanDeviation += std::abs(r - mean);
+            worst = std::max(worst, std::abs(r - mean));
+        }
+        return std::make_pair(meanDeviation / static_cast<double>(radii.size()), worst);
+    };
+
+    std::vector<cv::Point2f> raw;
+    raw.reserve(contour.size());
+    for (const auto& p : contour) {
+        raw.emplace_back(static_cast<float>(p.x), static_cast<float>(p.y));
+    }
+    const auto refined = pci::vision::refineContourSubpixel(gray, contour);
+
+    const auto [meanBefore, worstBefore] = deviations(raw);
+    const auto [meanAfter, worstAfter] = deviations(refined.points);
+    std::printf("  [subpixel] desviacion media  %.3f -> %.3f px\n", meanBefore, meanAfter);
+    std::printf("  [subpixel] desviacion PEOR   %.3f -> %.3f px\n", worstBefore, worstAfter);
+
+    EXPECT_LT(meanAfter, meanBefore)
+        << "el afinado tiene que mejorar la media; si tampoco eso, no sirve de nada";
+
+    // Y la advertencia, que es el motivo de que la clasificación no lo use: el
+    // peor punto NO mejora necesariamente. Si algún día mejorase de forma
+    // fiable, este test lo dirá al fallar — y entonces habrá que reconsiderar
+    // enchufarlo a `classifyShape`.
+    std::printf("  [subpixel] el peor punto %s con el afinado\n",
+                worstAfter < worstBefore ? "MEJORA" : "no mejora");
+}

@@ -58,6 +58,32 @@ std::vector<cv::Point> densify(const std::vector<cv::Point>& contour, double ste
     return dense;
 }
 
+// El mismo relleno de puntos, pero en coma flotante y sin redondear.
+//
+// Hace falta su propia versión: `densify` redondea cada punto intermedio al
+// entero, y pasar por ahí un contorno afinado a décimas de píxel tiraría
+// exactamente lo que se acaba de ganar.
+std::vector<cv::Point2f> densifyFloat(const std::vector<cv::Point2f>& contour,
+                                      double step = 1.0) {
+    if (contour.size() < 2) {
+        return contour;
+    }
+    std::vector<cv::Point2f> dense;
+    dense.reserve(contour.size());
+    for (std::size_t i = 0; i < contour.size(); ++i) {
+        const cv::Point2f& from = contour[i];
+        const cv::Point2f& to = contour[(i + 1) % contour.size()];
+        dense.push_back(from);
+        const double length = cv::norm(to - from);
+        const int pieces = static_cast<int>(length / std::max(step, 0.5));
+        for (int k = 1; k < pieces; ++k) {
+            const float t = static_cast<float>(k) / static_cast<float>(pieces);
+            dense.emplace_back(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t);
+        }
+    }
+    return dense;
+}
+
 std::vector<cv::Point2f> asFloat(const std::vector<cv::Point>& contour) {
     std::vector<cv::Point2f> points;
     points.reserve(contour.size());
@@ -278,7 +304,8 @@ const char* shapeKindName(ShapeKind kind) {
 }
 
 ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& mask,
-                         const ClassifyOptions& options) {
+                         const ClassifyOptions& options,
+                         const std::vector<cv::Point2f>* subpixel) {
     ShapeClass shape;
     // Con menos de ocho puntos no hay forma que reconocer, solo ruido con
     // ínfulas. Devolver «irregular» aquí no es rendirse: es lo correcto, y
@@ -291,7 +318,15 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
     // Todo lo que sigue mide DISTANCIAS de los puntos del contorno a un modelo,
     // así que necesita puntos a lo largo de los lados y no solo en las esquinas.
     const std::vector<cv::Point> dense = densify(contour);
-    const std::vector<cv::Point2f> points = asFloat(dense);
+    // Las medidas de DISTANCIA salen del contorno afinado cuando lo hay: el
+    // ajuste de circunferencia, la redondez y cuánto se separa el contorno de su
+    // modelo son justo donde media décima de píxel se nota. El ajuste de
+    // polígono se queda con el contorno entero unas líneas más abajo, porque sus
+    // vértices son puntos del contorno y no posiciones interpoladas.
+    const bool useSubpixel = subpixel != nullptr && subpixel->size() == contour.size() &&
+                             subpixel->size() >= 8;
+    const std::vector<cv::Point2f> points =
+        useSubpixel ? densifyFloat(*subpixel) : asFloat(dense);
 
     // La tolerancia tiene DOS mitades, y hace falta entender por qué antes de
     // tocarla:
