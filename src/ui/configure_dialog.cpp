@@ -84,7 +84,7 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
     // --- Detección ---
     detection_ = new DetectionPage(inputs.segmentation, this, inputs.profiles,
                                    inputs.detectionProfileId, inputs.minAreaFraction,
-                                   inputs.maxAreaFraction);
+                                   inputs.maxAreaFraction, inputs.subpixelEdges);
     tabs_->addTab(detection_, tr("Detección"));
 
     // --- Piezas ---

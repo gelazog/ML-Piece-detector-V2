@@ -22,7 +22,8 @@ namespace pci::ui {
 DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* parent,
                                  repositories::DetectionProfileRepository* profiles,
                                  std::int64_t selectedProfileId, double minAreaFraction,
-                                 double maxAreaFraction)
+                                 double maxAreaFraction,
+                             bool subpixelEdges)
     : QWidget(parent), profiles_(profiles) {
     auto* rootLayout = new QVBoxLayout(this);
     auto* help = new QLabel(
@@ -119,6 +120,31 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "(la luz marcó toda la imagen) en vez de que la pieza sea enorme.\n"
            "Por defecto 90 %."));
     form->addRow(tr("Área máxima de pieza:"), maxArea_);
+
+    // Afinado subpíxel del borde.
+    //
+    // Va aquí, entre lo que decide DÓNDE está el borde, porque es justo eso:
+    // otra definición del borde, no un filtro de calidad.
+    //
+    // Y nace apagado con su advertencia escrita, no escondida en la ayuda: al
+    // cambiar dónde cae el borde, cambian el área, el perímetro y todas las
+    // cotas de la pieza a la vez. Quien tenga tolerancias ajustadas contra el
+    // borde de antes tiene que volver a mirarlas — si no, una pieza buena
+    // empieza a salir NG por un cambio de definición y no por un defecto.
+    subpixel_ = new QCheckBox(tr("Afinar el borde a subpíxel"), this);
+    subpixel_->setChecked(subpixelEdges);
+    subpixel_->setToolTip(
+        tr("El borde de una pieza no es un escalón: la intensidad cambia a lo largo de\n"
+           "varios píxeles. Medido sobre una foto real, esa rampa ocupaba 15 px, y un\n"
+           "umbral coloca el borde en cualquier punto de ella según la iluminación.\n\n"
+           "Con esto, cada punto del contorno se coloca donde el brillo cruza la mitad\n"
+           "entre el nivel de dentro y el de fuera EN ESE PUNTO, interpolando entre\n"
+           "píxeles. Medido sobre un borde de posición conocida, el error pasa de\n"
+           "0,417 px a 0,025 px.\n\n"
+           "OJO: cambia dónde está el borde, así que cambian el área, el perímetro y\n"
+           "todas las cotas de la pieza a la vez. Si ya tienes tolerancias ajustadas,\n"
+           "revísalas después de encenderlo."));
+    form->addRow(tr("Precisión:"), subpixel_);
 
     rootLayout->addLayout(form);
     rootLayout->addStretch(1);
@@ -261,6 +287,10 @@ vision::SegmentationOptions DetectionPage::options() const {
     result.blurKernel = blur_->value();
     result.morphKernel = morph_->value();
     return result;
+}
+
+bool DetectionPage::subpixelEdges() const {
+    return subpixel_ != nullptr && subpixel_->isChecked();
 }
 
 }  // namespace pci::ui

@@ -320,6 +320,22 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    Pero no hace falta que la ajustes a ojo si se repite — para eso está lo
    siguiente.
 
+   **Afinar el borde a subpíxel** (*Configurar ▸ Detección ▸ Precisión*): el borde
+   de una pieza no es un escalón — el brillo cambia a lo largo de varios
+   píxeles, y sobre una foto real esa rampa medía **15 px**. Un umbral coloca el
+   borde en cualquier punto de ella según la iluminación. Con esto, cada punto
+   del contorno se pone donde el brillo cruza la mitad entre el nivel de dentro
+   y el de fuera **en ese punto**. Medido sobre un borde de posición conocida,
+   el error pasa de **0,417 px a 0,025 px**.
+
+   **Nace apagado, y a propósito.** Cambia dónde está el borde, así que cambian
+   el área, el perímetro y todas las cotas a la vez. Si ya tienes tolerancias
+   ajustadas, **revísalas** al encenderlo: una pieza buena podría salir NG por el
+   cambio de definición y no por un defecto. El programa te lo avisa al cambiarlo.
+
+   Para verlo antes de decidir: `pci_probe tu_foto.jpg --subpixel` frente a la
+   misma orden sin la bandera.
+
    **Afinar la detección con la corrección** (*Corregir borde ▸ Afinar la
    detección…*, se enciende en cuanto hay algo pintado): tu corrección es,
    literalmente, la respuesta correcta para un caso que el programa falló. Con

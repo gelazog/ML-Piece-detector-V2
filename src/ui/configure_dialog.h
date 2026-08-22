@@ -60,6 +60,7 @@ public:
         std::int64_t detectionProfileId = 0;
         double minAreaFraction = 0.005;
         double maxAreaFraction = 0.9;
+        bool subpixelEdges = false;
         repositories::DetectionProfileRepository* profiles = nullptr;
         camera::CameraController* controller = nullptr;
         // De dónde vienen los frames. Decide QUÉ MOTIVO se le da al operador

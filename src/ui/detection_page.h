@@ -30,7 +30,8 @@ public:
     DetectionPage(vision::SegmentationOptions current, QWidget* parent = nullptr,
                     repositories::DetectionProfileRepository* profiles = nullptr,
                     std::int64_t selectedProfileId = 0,
-                    double minAreaFraction = 0.005, double maxAreaFraction = 0.9);
+                    double minAreaFraction = 0.005, double maxAreaFraction = 0.9,
+                    bool subpixelEdges = false);
 
     [[nodiscard]] vision::SegmentationOptions options() const;
     // Qué se acepta como pieza, en fracción del área de la imagen. Estaban
@@ -39,6 +40,10 @@ public:
     // no se podía mover sin recompilar.
     [[nodiscard]] double minAreaFraction() const;
     [[nodiscard]] double maxAreaFraction() const;
+    // Afinado subpíxel del borde. Se ofrece aquí, junto a lo que decide DÓNDE
+    // está el borde, porque es exactamente eso: no es un filtro de calidad, es
+    // otra definición del borde.
+    [[nodiscard]] bool subpixelEdges() const;
     // Perfil elegido al aceptar: 0 = ninguno (ajustes sueltos, como antes).
     [[nodiscard]] std::int64_t selectedProfileId() const;
 
@@ -66,6 +71,7 @@ private:
     repositories::DetectionProfileRepository* profiles_ = nullptr;
     QComboBox* profileCombo_ = nullptr;
     QCheckBox* autoThreshold_ = nullptr;
+    QCheckBox* subpixel_ = nullptr;
     QSlider* threshold_ = nullptr;
     QLabel* thresholdValue_ = nullptr;
     QComboBox* polarity_ = nullptr;

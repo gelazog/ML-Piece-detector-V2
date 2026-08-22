@@ -1074,6 +1074,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         pixelReferenceSize_ = QSize(repos_.settings->getInt("det_zone_ref_w", 0).value(),
                                    repos_.settings->getInt("det_zone_ref_h", 0).value());
         pipelineConfig_.autoOrient = repos_.settings->getInt("track_rotation", 0).value() != 0;
+        pipelineConfig_.subpixelEdges =
+            repos_.settings->getInt("det_subpixel", 0).value() != 0;
         arucoLiveScale_ = repos_.settings->getInt("aruco_live", 0).value() != 0;
         markerSizeMm_ = repos_.settings->getDouble("aruco_marker_mm", 30.0).value();
     }
@@ -1519,6 +1521,7 @@ void MainWindow::persistPipelineConfig() {
     repos_.settings->setDouble("det_min_area", pipelineConfig_.minAreaFraction);
     repos_.settings->setDouble("det_max_area", pipelineConfig_.maxAreaFraction);
     repos_.settings->setInt("track_rotation", pipelineConfig_.autoOrient ? 1 : 0);
+    repos_.settings->setInt("det_subpixel", pipelineConfig_.subpixelEdges ? 1 : 0);
 }
 
 // A qué resolución están expresados los ajustes que van en PÍXELES: la zona de
@@ -1721,6 +1724,34 @@ void MainWindow::applyDetectionPage(DetectionPage* page) {
     pipelineConfig_.segmentation = page->options();
     pipelineConfig_.minAreaFraction = page->minAreaFraction();
     pipelineConfig_.maxAreaFraction = page->maxAreaFraction();
+
+    // Encender o apagar el afinado subpíxel NO es un ajuste más: cambia dónde
+    // está el borde, y con él el área, el perímetro y todas las cotas de la
+    // pieza a la vez. Quien tenga tolerancias ajustadas contra el borde de antes
+    // vería una pieza buena salir NG por un cambio de definición y no por un
+    // defecto.
+    //
+    // Así que se avisa, y solo cuando CAMBIA. Repetir el aviso cada vez que se
+    // aceptan los ajustes de detección lo convertiría en algo que se cierra sin
+    // leer, que es peor que no avisar.
+    const bool subpixelBefore = pipelineConfig_.subpixelEdges;
+    pipelineConfig_.subpixelEdges = page->subpixelEdges();
+    if (pipelineConfig_.subpixelEdges != subpixelBefore) {
+        QMessageBox::information(
+            this, tr("Ha cambiado la definición del borde"),
+            pipelineConfig_.subpixelEdges
+                ? tr("El borde pasa a afinarse a subpíxel: en vez de caer donde lo puso el "
+                     "umbral, cada punto se coloca donde el brillo cruza la mitad entre el "
+                     "nivel de dentro y el de fuera.\n\n"
+                     "Las medidas de la pieza —área, perímetro y todas las cotas— cambian "
+                     "un poco a partir de ahora, porque el borde ya no está en el mismo "
+                     "sitio.\n\n"
+                     "Si tienes tolerancias ajustadas, REVÍSALAS: una pieza buena podría "
+                     "salir NG por este cambio y no por un defecto.")
+                : tr("El borde vuelve a ser el que marca el umbral.\n\n"
+                     "Las medidas cambian un poco respecto a las de ahora mismo. Si "
+                     "ajustaste tolerancias con el afinado encendido, revísalas."));
+    }
     persistPipelineConfig();
 
     // El perfil elegido se guarda CON LA PIEZA: cada pieza puede necesitar una
@@ -4899,6 +4930,7 @@ void MainWindow::onConfigureClicked() {
     inputs.segmentation = pipelineConfig_.segmentation;
     inputs.detectionProfileId = currentProfileId_;
     inputs.minAreaFraction = pipelineConfig_.minAreaFraction;
+    inputs.subpixelEdges = pipelineConfig_.subpixelEdges;
     inputs.maxAreaFraction = pipelineConfig_.maxAreaFraction;
     inputs.profiles = repos_.detectionProfiles;
     // Las resoluciones ya sondeadas de ESTA cámara se pasan hechas: volver a

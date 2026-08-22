@@ -37,6 +37,8 @@
 #include "repositories/settings_repository.h"
 #include "ui/app_repositories.h"
 #include <QListWidget>
+#include <QCheckBox>
+#include "ui/detection_page.h"
 #include <QToolButton>
 
 #include <cmath>
@@ -3954,4 +3956,58 @@ TEST(CaptureTrayLearning, TheReasonIsRecomputedAndNotFrozen) {
     EXPECT_FALSE(learn->toolTip().isEmpty())
         << "tras mover la selección el botón se quedó sin explicación";
     EXPECT_FALSE(learn->isEnabled());
+}
+
+// ---------------------------------------------------------------------------
+// El afinado subpíxel, al alcance del operador
+// ---------------------------------------------------------------------------
+
+// Una mejora de precisión que sólo se puede encender desde un banco de línea de
+// comandos no está entregada: el operador no tiene forma de llegar a ella.
+//
+// Y tiene que nacer APAGADA, porque encenderla cambia dónde está el borde y con
+// él todas las cotas de la pieza. Esa decisión es del operador, con la
+// consecuencia dicha; lo que no puede es tomarse sola.
+TEST(SubpixelSetting, TheOperatorCanReachItAndItStartsOff) {
+    pci::vision::SegmentationOptions options;
+    pci::ui::DetectionPage page(options);
+
+    QCheckBox* box = nullptr;
+    for (auto* candidate : page.findChildren<QCheckBox*>()) {
+        if (candidate->text().contains(QStringLiteral("subpíxel")) ||
+            candidate->text().contains(QStringLiteral("subpixel"))) {
+            box = candidate;
+        }
+    }
+    ASSERT_NE(box, nullptr)
+        << "no hay forma de encender el afinado subpíxel desde la aplicación";
+
+    EXPECT_FALSE(box->isChecked())
+        << "nace encendida: cambiaría las cotas de todas las piezas ya registradas "
+           "sin que nadie lo hubiera pedido";
+    EXPECT_FALSE(page.subpixelEdges());
+
+    // Y la advertencia va DONDE SE VE, no escondida: quien la encienda tiene que
+    // enterarse de que sus tolerancias dejan de valer.
+    const QString help = box->toolTip();
+    EXPECT_FALSE(help.isEmpty());
+    EXPECT_TRUE(help.contains(QStringLiteral("tolerancias")))
+        << "la ayuda no avisa de que hay que revisar las tolerancias. Dice: "
+        << help.toStdString();
+
+    box->setChecked(true);
+    EXPECT_TRUE(page.subpixelEdges()) << "marcarla no cambia lo que la página devuelve";
+}
+
+// El estado con el que se abre la página tiene que ser el que hay. Una casilla
+// que siempre nace apagada mentiría en cuanto alguien la encendiera: diría
+// «apagado» con el afinado funcionando.
+TEST(SubpixelSetting, ThePageOpensShowingTheStateThatIsActuallyInUse) {
+    pci::vision::SegmentationOptions options;
+    pci::ui::DetectionPage on(options, nullptr, nullptr, 0, 0.005, 0.9, true);
+    EXPECT_TRUE(on.subpixelEdges())
+        << "se abrió con el afinado encendido y la página dice que está apagado";
+
+    pci::ui::DetectionPage off(options, nullptr, nullptr, 0, 0.005, 0.9, false);
+    EXPECT_FALSE(off.subpixelEdges());
 }
