@@ -285,6 +285,28 @@ eso puede cargar la DLL del fabricante. Ahora va con `runProtected` y con su mig
 de pan: lo peor que pasa es quedarse sin lista de camaras, y la aplicacion
 arranca igual para trabajar con imagenes y videos.
 
+#### Lo que el propio registro de cierres senalaba
+
+De los tres cierres registrados, dos dicen «ultima operacion: (ninguna)» y el
+tercero dice **«midiendo los fps de cada exposicion»**. Ese tercero es una pista
+literal: nombra la llamada dentro de la cual murio el proceso.
+
+Y esa llamada dejaba su miga de pan pero **no iba dentro del blindaje**. Igual
+el sondeo de resoluciones. Los dos hacen lo mismo que abrir la camara —pedirle
+al driver que negocie formato, exposicion o tamano— y solo abrir estaba
+protegido. Ahora los tres lo estan.
+
+El precio, escrito para que nadie lo descubra por las malas: `runProtected` sale
+por `longjmp`, que **no ejecuta destructores**, asi que un fallo a mitad del
+barrido pierde lo que esa llamada hubiera reservado. Se paga con gusto: el
+camino alternativo es que muera el proceso, donde se pierde exactamente lo mismo
+y ademas todo lo demas.
+
+Los tests lo ejercitan con una camara de mentira cuyo driver revienta a la
+tercera llamada: el barrido muere, el proceso no, y el siguiente barrido con una
+camara sana vuelve a funcionar. Que el test siga corriendo despues es la
+demostracion.
+
 #### Aprender de una captura, y por qué es explícito
 
 La tira de capturas guardaba fotos y nada más. La visión del proyecto dice

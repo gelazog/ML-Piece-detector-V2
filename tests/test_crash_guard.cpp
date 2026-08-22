@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+#include "camera/camera_controls.h"
 #include "camera/native_cameras.h"
 #include "core/crash_guard.h"
 
@@ -156,6 +157,92 @@ TEST(CrashReport, ItNeverOverrunsTheBuffer) {
         }
     }
     std::printf("  [informe] sin desbordar con 29 tamanos entre 1 y 200 bytes\n");
+}
+
+#endif  // _WIN32
+
+#ifdef _WIN32
+
+namespace {
+
+// Una cámara cuyo driver revienta a mitad del barrido, que es lo que hace un
+// driver de captura roto al negociar exposición.
+struct FaultingSweep {
+    pci::camera::ExposureSweepCamera camera;
+    pci::camera::ExposureProfileResult out;
+    int callsBeforeFault = 2;
+    int calls = 0;
+};
+
+void faultingSweepTrampoline(void* ctx) {
+    auto* state = static_cast<FaultingSweep*>(ctx);
+    state->out = pci::camera::runExposureProfile(state->camera, -11.0, -3.0);
+}
+
+}  // namespace
+
+// Barrer exposiciones y sondear resoluciones tocan al driver tanto como abrir la
+// cámara, y ninguno de los dos iba dentro del blindaje. No es una suposición: en
+// el registro de cierres de este proyecto hay uno con «ultima operacion:
+// midiendo los fps de cada exposición», o sea muerto justo ahí.
+//
+// Este test comprueba la propiedad que hacía falta: que un driver que revienta a
+// mitad del barrido NO se lleve el proceso por delante. Que el test siga
+// corriendo después es la demostración.
+TEST(CameraGuard, ADriverThatFaultsMidSweepDoesNotTakeTheProcessDown) {
+    FaultingSweep state;
+    state.camera.setExposure = [&state](double) {
+        if (++state.calls > state.callsBeforeFault) {
+            volatile int* const boom = nullptr;
+            g_sink = *boom;  // EXCEPTION_ACCESS_VIOLATION, como un driver roto
+        }
+    };
+    state.camera.setAutoExposure = [](bool) {};
+    state.camera.observe = [] {
+        pci::camera::SceneObservation observation;
+        observation.fps = 30.0;
+        observation.contrast = 42.0;
+        return observation;
+    };
+
+    unsigned long code = 0;
+    const bool survived =
+        pci::core::runProtected(&faultingSweepTrampoline, &state, &code);
+
+    std::printf("  [camara] el driver revento tras %d llamadas; codigo 0x%08lX\n",
+                state.calls, code);
+    EXPECT_FALSE(survived) << "el fallo del driver no se detecto";
+    EXPECT_EQ(code, kAccessViolation);
+    // Y lo importante: seguimos vivos para poder afirmarlo.
+    EXPECT_GT(state.calls, state.callsBeforeFault);
+}
+
+// Y el blindaje sigue sirviendo después, que es lo que permite reintentar con
+// otra cámara en vez de dejar la aplicación inservible.
+TEST(CameraGuard, AfterADriverFaultTheGuardStillWorks) {
+    FaultingSweep broken;
+    broken.camera.setExposure = [](double) {
+        volatile int* const boom = nullptr;
+        g_sink = *boom;
+    };
+    broken.camera.setAutoExposure = [](bool) {};
+    broken.camera.observe = [] { return pci::camera::SceneObservation{}; };
+    unsigned long code = 0;
+    EXPECT_FALSE(pci::core::runProtected(&faultingSweepTrampoline, &broken, &code));
+
+    FaultingSweep good;
+    good.camera.setExposure = [](double) {};
+    good.camera.setAutoExposure = [](bool) {};
+    good.camera.observe = [] {
+        pci::camera::SceneObservation observation;
+        observation.fps = 25.0;
+        observation.contrast = 38.0;
+        return observation;
+    };
+    EXPECT_TRUE(pci::core::runProtected(&faultingSweepTrampoline, &good, &code))
+        << "tras un driver roto, el siguiente barrido ya no se puede ni intentar";
+    std::printf("  [camara] tras el fallo, un barrido bueno da %zu muestras\n",
+                good.out.sweep.size());
 }
 
 #endif  // _WIN32

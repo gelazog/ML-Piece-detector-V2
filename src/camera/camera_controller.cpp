@@ -32,6 +32,48 @@ struct OpenArgs {
 // excepciones de C++ AQUÍ (no cruzan la barrera SEH); las excepciones
 // estructuradas del SO —la división por cero de un driver roto— sí la cruzan y
 // las gestiona core::runProtected.
+// Sondear resoluciones y barrer exposiciones tocan al driver tanto como abrir.
+//
+// Los dos dejaban su miga de pan y NINGUNO iba dentro del blindaje. No es una
+// suposición: en el registro de cierres de este proyecto hay uno que murió con
+// «ultima operacion: midiendo los fps de cada exposición», o sea justo dentro de
+// una de estas dos llamadas.
+//
+// El precio de blindarlas: `runProtected` sale por `longjmp`, que NO ejecuta
+// destructores, así que un fallo a mitad del barrido pierde lo que esa llamada
+// hubiera reservado. Se paga con gusto — el camino alternativo es que muera el
+// proceso entero, y en ese caso se pierde exactamente lo mismo y además todo lo
+// demás.
+struct ProbeArgs {
+    cv::VideoCapture* capture;
+    std::vector<CameraResolution> out;
+};
+
+void probeTrampoline(void* ctx) {
+    auto* args = static_cast<ProbeArgs*>(ctx);
+    try {
+        args->out = probeResolutions(*args->capture);
+    } catch (const cv::Exception& e) {
+        core::logWarning(std::string("OpenCV lanzó al sondear resoluciones: ") + e.what());
+    }
+}
+
+struct SweepArgs {
+    ExposureSweepCamera* camera;
+    double minExposure;
+    double maxExposure;
+    ExposureProfileResult out;
+};
+
+void sweepTrampoline(void* ctx) {
+    auto* args = static_cast<SweepArgs*>(ctx);
+    try {
+        args->out = runExposureProfile(*args->camera, args->minExposure, args->maxExposure);
+    } catch (const cv::Exception& e) {
+        core::logWarning(std::string("OpenCV lanzó al medir exposiciones: ") + e.what());
+    }
+}
+
 void openTrampoline(void* ctx) {
     auto* args = static_cast<OpenArgs*>(ctx);
     try {
@@ -168,7 +210,17 @@ void CameraController::drainExposureSweep(cv::VideoCapture& capture) {
     };
     seam.observe = [&capture] { return observe(capture); };
 
-    const ExposureProfileResult result = runExposureProfile(seam, minExposure, maxExposure);
+    SweepArgs sweepArgs{&seam, minExposure, maxExposure, {}};
+    unsigned long sweepCode = 0;
+    if (!core::runProtected(&sweepTrampoline, &sweepArgs, &sweepCode)) {
+        core::logError("Excepción estructurada del SO midiendo exposiciones (código " +
+                       toHex(sweepCode) +
+                       "): el driver de la cámara falló al cambiar la exposición. Se sigue "
+                       "sin perfil de exposición; el vídeo en vivo no se toca.");
+        core::setBreadcrumb("perfil de exposición abortado por fallo del driver");
+        return;
+    }
+    const ExposureProfileResult result = std::move(sweepArgs.out);
     for (const auto& sample : result.sweep) {
         core::logInfo("Exposición " + std::to_string(sample.exposure) + " -> " +
                       std::to_string(sample.fps) + " fps");
@@ -227,8 +279,17 @@ void CameraController::drainResolutionRequests(cv::VideoCapture& capture) {
 
     if (probe) {
         core::setBreadcrumb("sondeando resoluciones de la cámara");
-        const std::vector<CameraResolution> available = probeResolutions(capture);
-        emit resolutionsProbed(available, currentResolution(capture));
+        ProbeArgs probeArgs{&capture, {}};
+        unsigned long probeCode = 0;
+        if (!core::runProtected(&probeTrampoline, &probeArgs, &probeCode)) {
+            core::logError("Excepción estructurada del SO sondeando resoluciones (código " +
+                           toHex(probeCode) +
+                           "): el driver falló al negociar formato. Se sigue con la "
+                           "resolución actual y sin lista de resoluciones.");
+            core::setBreadcrumb("sondeo de resoluciones abortado por fallo del driver");
+        } else {
+            emit resolutionsProbed(probeArgs.out, currentResolution(capture));
+        }
     }
 }
 
