@@ -31,6 +31,8 @@
 #include <QtTest/QTest>
 #include <QTemporaryDir>
 #include <QAction>
+#include <QAbstractSlider>
+#include <opencv2/videoio.hpp>
 #include <QToolButton>
 
 #include <cmath>
@@ -3370,4 +3372,256 @@ TEST(EdgeBrush, OneUndoThatKnowsWhetherTheBrushIsInYourHand) {
                 canvas->correctedPixelCount(), restored);
     EXPECT_EQ(canvas->correctedPixelCount(), restored)
         << "con el pincel apagado, Ctrl+Z se llevó una corrección que no tocaba";
+}
+
+// Cambiar de imagen con pinceladas guardadas.
+//
+// Los pasos de deshacer guardan un RECTÁNGULO en coordenadas de la imagen sobre
+// la que se pintó. Al abrir otra más pequeña, ese rectángulo se sale de la
+// máscara nueva — y recortar una `cv::Mat` fuera de sus límites no devuelve
+// vacío: lanza. Sin red, deshacer después de cambiar de imagen cerraría la
+// aplicación.
+//
+// La corrección tampoco tiene sentido ya: el análisis descarta las de otro
+// tamaño, así que una pila de pasos que no se pueden aplicar es historia muerta
+// que sólo sirve para romper algo.
+TEST(EdgeBrush, ChangingTheImageDoesNotLeaveUndoStepsThatCrash) {
+    EditorCanvas canvas;
+    canvas.resize(kWidgetWidth, kWidgetHeight);
+    canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece, 20);
+
+    const ViewTransform view = viewAt(1.0);
+    press(&canvas, toScreen(view, {1500.0F, 900.0F}));
+    moveTo(&canvas, toScreen(view, {1700.0F, 1000.0F}));
+    release(&canvas, toScreen(view, {1700.0F, 1000.0F}));
+    ASSERT_GT(canvas.correctedPixelCount(), 0);
+    ASSERT_TRUE(canvas.canUndoEdgeCorrection());
+
+    // Llega una imagen MUCHO más pequeña, como al abrir otro fichero.
+    QImage small(320, 240, QImage::Format_RGB888);
+    small.fill(QColor(40, 40, 40));
+    canvas.setFrame(small);
+
+    std::printf("  [cambio] tras cambiar a 320x240 quedan %d px y %s pasos\n",
+                canvas.correctedPixelCount(),
+                canvas.canUndoEdgeCorrection() ? "algunos" : "cero");
+
+    // Ni corrección de la imagen anterior, ni pasos que la reconstruyan.
+    EXPECT_EQ(canvas.correctedPixelCount(), 0)
+        << "la corrección de la imagen anterior sigue puesta sobre la nueva";
+    EXPECT_FALSE(canvas.canUndoEdgeCorrection())
+        << "quedan pasos con coordenadas de una imagen que ya no está";
+    EXPECT_FALSE(canvas.canRedoEdgeCorrection());
+
+    // Y aunque se pidan, no revientan.
+    EXPECT_FALSE(canvas.undoEdgeCorrection());
+    EXPECT_FALSE(canvas.redoEdgeCorrection());
+
+    // El pincel sigue usable sobre la imagen nueva.
+    press(&canvas, toScreen(ViewTransform({320, 240}, {kWidgetWidth, kWidgetHeight}, 1.0,
+                                          {0.0, 0.0}),
+                            {160.0F, 120.0F}));
+    release(&canvas, toScreen(ViewTransform({320, 240}, {kWidgetWidth, kWidgetHeight}, 1.0,
+                                            {0.0, 0.0}),
+                              {160.0F, 120.0F}));
+    EXPECT_GT(canvas.correctedPixelCount(), 0) << "el pincel dejó de funcionar tras el cambio";
+}
+
+// Corregir una imagen y abrir otra: ni la corrección ni su aviso pueden
+// sobrevivir al cambio. El análisis descarta las correcciones de otro tamaño,
+// así que un aviso que siguiera diciendo «Borde corregido» estaría mintiendo
+// sobre lo que se está viendo.
+TEST(EdgeBrush, OpeningAnotherFileLeavesNoCorrectionBehind) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+
+    QImage first(400, 300, QImage::Format_RGB888);
+    first.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&first);
+        painter.fillRect(QRect(100, 80, 200, 140), QColor(230, 230, 230));
+        painter.fillRect(QRect(250, 120, 50, 60), QColor(22, 22, 22));
+    }
+    const QString firstPath = QDir(dir.path()).filePath(QStringLiteral("primera.png"));
+    ASSERT_TRUE(first.save(firstPath));
+
+    QImage second(260, 200, QImage::Format_RGB888);  // OTRO tamaño a propósito
+    second.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&second);
+        painter.fillRect(QRect(60, 50, 140, 100), QColor(230, 230, 230));
+    }
+    const QString secondPath = QDir(dir.path()).filePath(QStringLiteral("segunda.png"));
+    ASSERT_TRUE(second.save(secondPath));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, firstPath));
+
+    auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+    const auto waitFor = [](auto predicate, int ms = 4000) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (predicate()) {
+                return true;
+            }
+        }
+        return predicate();
+    };
+    ASSERT_TRUE(waitFor([&] { return canvas->liveContour().size() >= 4; }));
+
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece, 18);
+    paintStroke(canvas, QPoint(255, 125), QPoint(295, 175));
+    ASSERT_TRUE(waitFor([&] { return canvas->correctedPixelCount() > 0; }));
+
+    const auto correctionChip = [&]() -> QLabel* {
+        for (auto* label : window.findChildren<QLabel*>()) {
+            if (label->isVisible() && label->text().contains(QStringLiteral("corregido"))) {
+                return label;
+            }
+        }
+        return nullptr;
+    };
+    ASSERT_TRUE(waitFor([&] { return correctionChip() != nullptr; }))
+        << "no se anuncia la corrección sobre la primera imagen";
+
+    // Y ahora se abre otra, de otro tamaño.
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, secondPath));
+    ASSERT_TRUE(waitFor([&] { return canvas->imageSize() == QSize(260, 200); }))
+        << "la segunda imagen no llegó a mostrarse";
+
+    std::printf("  [cambio] tras abrir la segunda: %d px corregidos, aviso %s\n",
+                canvas->correctedPixelCount(),
+                correctionChip() != nullptr ? "VISIBLE" : "retirado");
+
+    EXPECT_EQ(canvas->correctedPixelCount(), 0)
+        << "la corrección de la primera imagen sigue viva sobre la segunda";
+    EXPECT_FALSE(canvas->canUndoEdgeCorrection())
+        << "quedan pasos con coordenadas de la imagen anterior";
+    ASSERT_TRUE(waitFor([&] { return correctionChip() == nullptr; }))
+        << "el aviso sigue diciendo «Borde corregido» sobre una imagen sin corregir";
+
+    // Y se puede corregir la nueva sin que nada de lo anterior estorbe.
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece, 12);
+    paintStroke(canvas, QPoint(130, 100), QPoint(160, 120));
+    EXPECT_GT(canvas->correctedPixelCount(), 0)
+        << "el pincel dejó de funcionar tras cambiar de fichero";
+}
+
+// El control de vídeo, de punta a punta y a través de la VENTANA: abrir el
+// fichero, pausar con el botón, mover la barra, y comprobar que la posición que
+// se lee cuadra con donde se pidió ir.
+//
+// Se reportó como «la barra no responde», «va a saltos» y «la posición no
+// cuadra», y hasta ahora sólo estaba probada la fuente por dentro. Aviso: el
+// material es un AVI corto generado aquí; sobre un MP4 largo de verdad el
+// comportamiento del códec puede ser otro, y eso sigue sin cubrir.
+TEST(VideoTransportEndToEnd, PausingStopsItAndSeekingLandsWhereItWasAsked) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("transporte.avi"));
+    {
+        cv::VideoWriter writer(path.toStdString(),
+                               cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 25.0,
+                               cv::Size(320, 240));
+        if (!writer.isOpened()) {
+            GTEST_SKIP() << "sin códec de escritura de vídeo en esta máquina";
+        }
+        // 250 frames = 10 segundos. Cada uno lleva su número pintado como una
+        // barra que crece, para que se pueda ver por dónde va.
+        for (int i = 0; i < 250; ++i) {
+            cv::Mat frame(240, 320, CV_8UC3, cv::Scalar(20, 20, 20));
+            cv::rectangle(frame, cv::Rect(20, 20, 10 + i, 60), cv::Scalar(230, 230, 230),
+                          cv::FILLED);
+            writer.write(frame);
+        }
+    }
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Video, path));
+
+    auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+    const auto waitFor = [](auto predicate, int ms = 6000) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (predicate()) {
+                return true;
+            }
+        }
+        return predicate();
+    };
+    ASSERT_TRUE(waitFor([&] { return canvas->imageSize() == QSize(320, 240); }))
+        << "el vídeo no llegó a mostrarse";
+
+    // La barra de transporte tiene que estar VISIBLE con un vídeo abierto.
+    QAbstractSlider* bar = nullptr;
+    for (auto* slider : window.findChildren<QAbstractSlider*>()) {
+        if (slider->isVisible() && slider->maximum() > slider->minimum() + 10) {
+            bar = slider;
+        }
+    }
+    ASSERT_NE(bar, nullptr) << "no hay barra de posición visible con un vídeo abierto";
+
+    QAbstractButton* playPause = nullptr;
+    for (auto* button : window.findChildren<QAbstractButton*>()) {
+        if (button->isVisible() && (button->text() == QStringLiteral("Pausa") ||
+                                    button->text() == QStringLiteral("Seguir"))) {
+            playPause = button;
+        }
+    }
+    ASSERT_NE(playPause, nullptr) << "no hay botón de pausa visible";
+
+    // 1) Pausar PARA de verdad: la barra deja de moverse.
+    ASSERT_TRUE(waitFor([&] { return bar->value() > bar->minimum(); }))
+        << "el vídeo no avanza: la barra no se mueve sola";
+    playPause->click();
+    QTest::qWait(250);
+    const int settled = bar->value();
+    QTest::qWait(500);
+    std::printf("  [vídeo] en pausa la barra pasó de %d a %d\n", settled, bar->value());
+    EXPECT_EQ(bar->value(), settled) << "en pausa la barra sigue corriendo";
+    EXPECT_EQ(playPause->text(), QStringLiteral("Seguir"))
+        << "el botón no dice cómo salir de la pausa";
+
+    // 2) Y pausado, el pincel se deja usar: es justo el frame que uno buscó.
+    QToolButton* brush = nullptr;
+    for (auto* button : window.findChildren<QToolButton*>()) {
+        if (button->text().startsWith(QStringLiteral("Corregir"))) {
+            brush = button;
+        }
+    }
+    ASSERT_NE(brush, nullptr);
+    EXPECT_TRUE(brush->isEnabled())
+        << "vídeo en pausa y el pincel apagado. Dice: " << brush->toolTip().toStdString();
+
+    // 3) Buscar: se pide el 70 % y se comprueba dónde dice que está.
+    const int target = bar->minimum() + (bar->maximum() - bar->minimum()) * 7 / 10;
+    bar->setValue(target);
+    emit bar->sliderReleased();
+    const double asked = 100.0 * (target - bar->minimum()) /
+                         static_cast<double>(bar->maximum() - bar->minimum());
+    ASSERT_TRUE(waitFor([&] {
+        const double at = 100.0 * (bar->value() - bar->minimum()) /
+                          static_cast<double>(bar->maximum() - bar->minimum());
+        return std::abs(at - asked) < 12.0;
+    })) << "se pidió el 70 % y la barra se quedó en otro sitio";
+
+    const double landed = 100.0 * (bar->value() - bar->minimum()) /
+                          static_cast<double>(bar->maximum() - bar->minimum());
+    std::printf("  [vídeo] pedido %.0f %%, aterrizó en %.0f %% (desvío %.1f puntos)\n", asked,
+                landed, std::abs(landed - asked));
+    EXPECT_LT(std::abs(landed - asked), 12.0)
+        << "la posición que muestra la barra no cuadra con donde se pidió ir";
 }

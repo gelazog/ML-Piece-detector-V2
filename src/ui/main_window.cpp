@@ -3024,6 +3024,14 @@ void MainWindow::onFrame(const QImage& frame) {
     // cualquier fuente que entregue un solo frame.
     updateEdgeBrushAvailability();
     if (sizeChanged) {
+        // El lienzo ya ha olvidado la corrección del borde —sus pasos guardaban
+        // coordenadas de la imagen anterior—, así que aquí se suelta la copia
+        // que usa el análisis. Se hace desde este lado y no emitiendo desde el
+        // lienzo: `setFrame` corre en mitad de la llegada de un frame, y
+        // reentrar ahí en el análisis mediría el frame viejo.
+        pipelineConfig_.forcePiece = cv::Mat();
+        pipelineConfig_.forceBackground = cv::Mat();
+        updateEdgeCorrectionChip();
         // Se reacciona al tamaño REAL del frame, no a lo que se pidió: la
         // cámara puede dar otra resolución distinta de la solicitada.
         if (previousSize.isValid() && !previousSize.isEmpty()) {

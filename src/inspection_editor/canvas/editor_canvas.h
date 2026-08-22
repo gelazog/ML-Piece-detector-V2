@@ -404,6 +404,7 @@ private:
     void beginEdgeStroke();
     void commitEdgeStroke();
     void applyEdgeStep(const cv::Rect& area, const cv::Mat& piece, const cv::Mat& background);
+    void forgetEdgeCorrection();
     void paintAt(const cv::Point2f& imagePoint);
 
     bool freeZonePick_ = false;

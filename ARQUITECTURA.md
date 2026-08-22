@@ -254,6 +254,18 @@ Ctrl+Z deshace la pincelada; con el pincel apagado, sigue siendo el de las
 herramientas. Un test cuenta las acciones con Ctrl+Z registrado y exige que
 haya **una**: dos serían un atajo ambiguo y Qt no dispararía ninguno.
 
+**Cambiar de imagen tira la corrección y su historia.** Cada paso de deshacer
+guarda un rectángulo en coordenadas de la imagen sobre la que se pintó; al abrir
+otra más pequeña, ese rectángulo se sale de la máscara nueva — y recortar una
+`cv::Mat` fuera de sus límites no devuelve vacío, **lanza**. Deshacer después de
+cambiar de imagen cerraba la aplicación, y el test lo reprodujo antes de
+arreglarlo. La corrección tampoco tenía ya sentido: el análisis descarta las de
+otro tamaño, así que lo que quedaba era historia muerta capaz de romper algo.
+
+La ventana suelta su copia desde `onFrame`, no emitiendo desde el lienzo:
+`setFrame` corre en mitad de la llegada de un frame, y reentrar ahí en el
+análisis mediría el frame viejo.
+
 #### De corregir una imagen a arreglar la detección
 
 Corregir el borde tapa el fallo en la imagen que tienes delante. Corregir el

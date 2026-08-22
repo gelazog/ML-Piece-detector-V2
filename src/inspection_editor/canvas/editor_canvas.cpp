@@ -119,6 +119,9 @@ void EditorCanvas::setScene(const QImage& image, const vision::Fixture& fixture)
     if (image_.size() != image.size()) {
         zoom_ = 1.0;
         pan_ = QPointF();
+        // Y la corrección del borde se olvida, por lo mismo que en `setFrame`:
+        // sus pasos guardan coordenadas de la imagen anterior.
+        forgetEdgeCorrection();
     }
     image_ = image;
     fixture_ = fixture;
@@ -130,9 +133,32 @@ void EditorCanvas::setScene(const QImage& image, const vision::Fixture& fixture)
 }
 
 void EditorCanvas::setFrame(const QImage& frame) {
+    const bool resized = image_.size() != frame.size();
     image_ = frame;
     liveMode_ = true;
+    if (resized) {
+        forgetEdgeCorrection();
+    }
     update();
+}
+
+// Al cambiar el TAMAÑO de la imagen, la corrección y su historia dejan de tener
+// sentido y pasan a ser peligrosas.
+//
+// Sin sentido porque el análisis descarta las correcciones de otro tamaño: una
+// que sigue puesta no hace nada y sólo confunde. Y peligrosas porque cada paso
+// de deshacer guarda un RECTÁNGULO en coordenadas de la imagen sobre la que se
+// pintó: recortar una máscara más pequeña por ese rectángulo no devuelve vacío,
+// lanza. Deshacer después de abrir otra imagen cerraba la aplicación.
+void EditorCanvas::forgetEdgeCorrection() {
+    forcePiece_ = cv::Mat();
+    forceBackground_ = cv::Mat();
+    strokeBeforePiece_.release();
+    strokeBeforeBackground_.release();
+    strokeArea_ = cv::Rect();
+    undoSteps_.clear();
+    redoSteps_.clear();
+    showCorrection_ = true;
 }
 
 void EditorCanvas::setLivePiece(bool found, const QPolygonF& contour, const QPointF& centroid,
@@ -387,8 +413,14 @@ void EditorCanvas::applyEdgeStep(const cv::Rect& area, const cv::Mat& piece,
         return;
     }
     const cv::Size size(image_.width(), image_.height());
+    // Cinturón y tirantes: aunque la historia se tira al cambiar de imagen, un
+    // paso que no quepa se ignora en vez de lanzar. Un deshacer que cierra la
+    // aplicación es infinitamente peor que un deshacer que no hace nada.
+    if ((area & cv::Rect(0, 0, size.width, size.height)) != area) {
+        return;
+    }
     const auto restore = [&](cv::Mat& mask, const cv::Mat& patch) {
-        if (patch.empty()) {
+        if (patch.empty() || patch.size() != area.size()) {
             return;
         }
         if (mask.empty() || mask.size() != size) {
