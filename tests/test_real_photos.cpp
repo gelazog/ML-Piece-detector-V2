@@ -15,6 +15,9 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <tuple>
+#include <vector>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -27,6 +30,7 @@
 #include "inspection_editor/execution/tool_executor.h"
 #include "vision/pipeline.h"
 #include "vision/shape_class.h"
+#include "vision/subpixel_edge.h"
 
 namespace {
 
@@ -453,4 +457,258 @@ TEST(RealPhotoTools, MeasurementsSurviveHeavierJpegCompression) {
     EXPECT_LT(drift, 0.02)
         << "el diámetro se mueve con el ruido de compresión: eso no es una cota, es "
            "una casualidad";
+}
+
+// ---------------------------------------------------------------------------
+// PRECISIÓN: cuánto baila una medida que no debería moverse
+// ---------------------------------------------------------------------------
+
+// Desplazar la ventana de trabajo un píxel no cambia la pieza. Lo que se mueva
+// en la medida es error, y medirlo así no necesita saber el tamaño real de
+// nada: es la repetibilidad, que es la mitad de lo que define a un instrumento.
+TEST(RealPrecision, HowMuchTheDiameterWobblesWhenNothingChanges) {
+    const cv::Mat photo = loadReal("bola_oscura_sobre_claro_10mm.jpg");
+    REQUIRE_CORPUS(photo);
+
+    std::vector<double> diameters;
+    std::vector<double> areas;
+    for (int shift = 0; shift < 12; ++shift) {
+        pci::vision::PipelineConfig config;
+        config.roi = cv::Rect(560 + shift, 720 + shift, 420, 420);
+        const auto analysis = pci::vision::analyzeFrame(photo, config);
+        if (!analysis.isOk()) {
+            continue;
+        }
+        cv::Mat gray;
+        cv::cvtColor(photo, gray, cv::COLOR_BGR2GRAY);
+        const cv::Mat mask = pci::vision::pieceMaskWithHoles(gray, analysis.value().mask,
+                                                             config.segmentation);
+        const auto shape =
+            pci::vision::classifyShape(analysis.value().contour.points, mask);
+        if (shape.outerDiameter > 0.0) {
+            diameters.push_back(shape.outerDiameter);
+            areas.push_back(analysis.value().contour.area);
+        }
+    }
+    ASSERT_GE(diameters.size(), 8U);
+
+    const auto spread = [](const std::vector<double>& v) {
+        const auto mm = std::minmax_element(v.begin(), v.end());
+        double sum = 0.0;
+        for (double x : v) { sum += x; }
+        const double mean = sum / static_cast<double>(v.size());
+        return std::make_tuple(mean, *mm.first, *mm.second,
+                               100.0 * (*mm.second - *mm.first) / mean);
+    };
+    const auto [dMean, dMin, dMax, dPct] = spread(diameters);
+    const auto [aMean, aMin, aMax, aPct] = spread(areas);
+    std::printf("  [precision] Ø  media %.2f px, rango %.2f..%.2f  -> %.3f %% de deriva\n",
+                dMean, dMin, dMax, dPct);
+    std::printf("  [precision] area media %.0f px2, rango %.0f..%.0f -> %.3f %%\n",
+                aMean, aMin, aMax, aPct);
+    std::printf("  [precision] con 10 mm nominales, esa deriva son %.4f mm\n",
+                10.0 * dPct / 100.0);
+    EXPECT_LT(dPct, 5.0) << "la medida baila demasiado al mover la ventana un pixel";
+}
+
+// ---------------------------------------------------------------------------
+// AFINADO SUBPÍXEL: ¿mejora de verdad, o solo añade pasos?
+// ---------------------------------------------------------------------------
+
+// LA PRUEBA QUE DECIDE SI ESTO SIRVE.
+//
+// Sobre la bola de 10 mm, tres formas distintas de medir el MISMO diámetro no
+// coincidían: el largo daba 253,4 px, el ancho 245,4 y la circunferencia
+// ajustada 250,8. Un 3,2 % de desacuerdo entre tres números que describen la
+// misma cosa.
+//
+// La causa está medida: el borde de una bola de acero sobre fondo claro no es
+// un escalón, es una rampa de 15 px de ancho (de 33 a 240 de intensidad). Un
+// umbral duro coloca el borde en cualquier punto de esos quince, y el radio del
+// contorno variaba entre 118,6 y 129,0 px sobre la misma pieza.
+//
+// El afinado subpíxel coloca cada punto donde el perfil cruza la mitad entre su
+// nivel de dentro y el de fuera. Si sirve, el contorno tiene que quedar MÁS
+// REDONDO —menos dispersión de radios— sobre una pieza que es redonda.
+TEST(SubpixelEdge, ItMakesARealBallRounderThanTheThresholdSaidItWas) {
+    const cv::Mat photo = loadReal("bola_oscura_sobre_claro_10mm.jpg");
+    REQUIRE_CORPUS(photo);
+
+    pci::vision::PipelineConfig config;
+    config.roi = cv::Rect(560, 720, 420, 420);
+    const auto analysis = pci::vision::analyzeFrame(photo, config);
+    ASSERT_TRUE(analysis.isOk()) << analysis.error().message;
+
+    cv::Mat gray;
+    cv::cvtColor(photo, gray, cv::COLOR_BGR2GRAY);
+    const auto& contour = analysis.value().contour.points;
+    ASSERT_GE(contour.size(), 50U);
+
+    const auto refined = pci::vision::refineContourSubpixel(gray, contour);
+    ASSERT_EQ(refined.points.size(), contour.size());
+    std::printf("  [subpixel] %d puntos afinados, %d dejados, desplazamiento medio %.2f px\n",
+                refined.refined, refined.kept, refined.meanShift);
+    EXPECT_GT(refined.refined, static_cast<int>(contour.size()) / 2)
+        << "afinó menos de la mitad de los puntos: sobre un borde de 15 px de rampa "
+           "debería encontrarlos casi todos";
+
+    // Dispersión de radios respecto al centro, antes y después. Sobre una pieza
+    // REDONDA, menos dispersión es literalmente más preciso: la pieza no cambió.
+    const auto radiusSpread = [](const std::vector<cv::Point2f>& points) {
+        cv::Point2f centre(0.0F, 0.0F);
+        for (const auto& p : points) { centre += p; }
+        centre /= static_cast<float>(points.size());
+        double sum = 0.0;
+        std::vector<double> radii;
+        radii.reserve(points.size());
+        for (const auto& p : points) {
+            const double r = std::hypot(static_cast<double>(p.x) - centre.x,
+                                        static_cast<double>(p.y) - centre.y);
+            radii.push_back(r);
+            sum += r;
+        }
+        const double mean = sum / static_cast<double>(radii.size());
+        double variance = 0.0;
+        for (double r : radii) { variance += (r - mean) * (r - mean); }
+        return std::make_pair(mean, std::sqrt(variance / static_cast<double>(radii.size())));
+    };
+
+    std::vector<cv::Point2f> asInteger;
+    asInteger.reserve(contour.size());
+    for (const auto& p : contour) {
+        asInteger.emplace_back(static_cast<float>(p.x), static_cast<float>(p.y));
+    }
+
+    const auto [meanBefore, sdBefore] = radiusSpread(asInteger);
+    const auto [meanAfter, sdAfter] = radiusSpread(refined.points);
+    std::printf("  [subpixel] radio: antes %.2f +- %.3f px   despues %.2f +- %.3f px\n",
+                meanBefore, sdBefore, meanAfter, sdAfter);
+    std::printf("  [subpixel] la dispersion baja un %.1f %%\n",
+                100.0 * (sdBefore - sdAfter) / sdBefore);
+
+    EXPECT_LT(sdAfter, sdBefore)
+        << "tras afinar, el contorno de una bola es MENOS redondo que antes: el afinado "
+           "está moviendo los puntos a peor";
+}
+
+// El área y el perímetro subpíxel tienen que ser coherentes entre sí y con la
+// forma. Sobre un círculo, área = pi*r^2 y perímetro = 2*pi*r con el MISMO r —
+// si cada uno da un radio distinto, uno de los dos está mal calculado.
+TEST(SubpixelEdge, AreaAndPerimeterAgreeOnTheSameRadius) {
+    const cv::Mat photo = loadReal("bola_oscura_sobre_claro_10mm.jpg");
+    REQUIRE_CORPUS(photo);
+
+    pci::vision::PipelineConfig config;
+    config.roi = cv::Rect(560, 720, 420, 420);
+    const auto analysis = pci::vision::analyzeFrame(photo, config);
+    ASSERT_TRUE(analysis.isOk());
+    cv::Mat gray;
+    cv::cvtColor(photo, gray, cv::COLOR_BGR2GRAY);
+    const auto refined =
+        pci::vision::refineContourSubpixel(gray, analysis.value().contour.points);
+
+    // Referencia: el MISMO calculo sobre el contorno entero, sin afinar. Sin
+    // esto no se sabe si el desacuerdo lo trae el afinado o ya estaba.
+    std::vector<cv::Point2f> raw;
+    for (const auto& p : analysis.value().contour.points) {
+        raw.emplace_back(static_cast<float>(p.x), static_cast<float>(p.y));
+    }
+    const double rawArea = pci::vision::subpixelArea(raw);
+    const double rawPerimeter = pci::vision::subpixelPerimeter(raw);
+    std::printf("  [subpixel] SIN afinar: r por area %.2f, r por perimetro %.2f (%.2f %%)\n",
+                std::sqrt(rawArea / CV_PI), rawPerimeter / (2.0 * CV_PI),
+                100.0 * std::abs(std::sqrt(rawArea / CV_PI) - rawPerimeter / (2.0 * CV_PI)) /
+                    std::sqrt(rawArea / CV_PI));
+
+    const double area = pci::vision::subpixelArea(refined.points);
+    const double perimeter = pci::vision::subpixelPerimeter(refined.points);
+    ASSERT_GT(area, 0.0);
+    ASSERT_GT(perimeter, 0.0);
+
+    const double radiusFromArea = std::sqrt(area / CV_PI);
+    const double radiusFromPerimeter = perimeter / (2.0 * CV_PI);
+    const double gap = std::abs(radiusFromArea - radiusFromPerimeter) / radiusFromArea;
+    std::printf("  [subpixel] r por area %.2f px, r por perimetro %.2f px (%.2f %%)\n",
+                radiusFromArea, radiusFromPerimeter, 100.0 * gap);
+    EXPECT_LT(gap, 0.05)
+        << "el area y el perimetro subpixel describen circulos de radios distintos";
+}
+
+// No inventa bordes donde no los hay. Sobre una imagen PLANA —sin ningún
+// contraste— todos los puntos tienen que quedarse donde estaban.
+//
+// Es la garantía que hace que esto se pueda encender sin miedo: en el peor caso
+// no hace nada, nunca empeora.
+TEST(SubpixelEdge, OnAFlatImageItRefusesToMoveAnything) {
+    const cv::Mat flat(200, 200, CV_8UC1, cv::Scalar(128));
+    std::vector<cv::Point> circle;
+    for (int a = 0; a < 360; a += 4) {
+        const double rad = a * CV_PI / 180.0;
+        circle.emplace_back(static_cast<int>(100 + 50 * std::cos(rad)),
+                            static_cast<int>(100 + 50 * std::sin(rad)));
+    }
+
+    const auto refined = pci::vision::refineContourSubpixel(flat, circle);
+    std::printf("  [subpixel] imagen plana: %d afinados, %d dejados\n", refined.refined,
+                refined.kept);
+    EXPECT_EQ(refined.refined, 0)
+        << "movió puntos en una imagen sin ningún borde: se los está inventando";
+    for (std::size_t i = 0; i < circle.size(); ++i) {
+        EXPECT_FLOAT_EQ(refined.points[i].x, static_cast<float>(circle[i].x));
+        EXPECT_FLOAT_EQ(refined.points[i].y, static_cast<float>(circle[i].y));
+    }
+}
+
+// Y sobre un borde SINTÉTICO colocado a propósito en una posición fraccionaria,
+// el afinado tiene que encontrarlo ahí. Es la única forma de comprobar la
+// exactitud y no solo la coherencia: aquí sí se sabe la respuesta exacta.
+TEST(SubpixelEdge, ItFindsAnEdgeDeliberatelyPlacedBetweenTwoPixels) {
+    // Disco de radio 60,5 px dibujado con antialias: el borde real está a mitad
+    // de camino entre dos píxeles enteros.
+    const double trueRadius = 60.5;
+    cv::Mat image(200, 200, CV_8UC1, cv::Scalar(30));
+    for (int y = 0; y < image.rows; ++y) {
+        for (int x = 0; x < image.cols; ++x) {
+            const double d = std::hypot(x - 100.0, y - 100.0);
+            // Rampa de dos píxeles alrededor del radio verdadero, como la de una
+            // óptica real.
+            const double t = std::clamp((trueRadius + 1.0 - d) / 2.0, 0.0, 1.0);
+            image.at<unsigned char>(y, x) = static_cast<unsigned char>(30 + 190 * t);
+        }
+    }
+
+    cv::Mat mask;
+    cv::threshold(image, mask, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+    ASSERT_FALSE(contours.empty());
+    const auto& contour = contours.front();
+
+    const auto measureRadius = [](const std::vector<cv::Point2f>& points) {
+        double sum = 0.0;
+        for (const auto& p : points) {
+            sum += std::hypot(static_cast<double>(p.x) - 100.0,
+                              static_cast<double>(p.y) - 100.0);
+        }
+        return sum / static_cast<double>(points.size());
+    };
+
+    std::vector<cv::Point2f> before;
+    before.reserve(contour.size());
+    for (const auto& p : contour) {
+        before.emplace_back(static_cast<float>(p.x), static_cast<float>(p.y));
+    }
+    const auto refined = pci::vision::refineContourSubpixel(image, contour);
+
+    const double radiusBefore = measureRadius(before);
+    const double radiusAfter = measureRadius(refined.points);
+    std::printf("  [subpixel] radio verdadero %.2f px: umbral %.3f (error %.3f), "
+                "subpixel %.3f (error %.3f)\n",
+                trueRadius, radiusBefore, std::abs(radiusBefore - trueRadius), radiusAfter,
+                std::abs(radiusAfter - trueRadius));
+
+    EXPECT_LT(std::abs(radiusAfter - trueRadius), std::abs(radiusBefore - trueRadius))
+        << "sobre un borde cuya posicion se conoce, el afinado no acerca la medida";
+    EXPECT_LT(std::abs(radiusAfter - trueRadius), 0.5)
+        << "el afinado deberia acertar el radio con menos de medio pixel de error";
 }

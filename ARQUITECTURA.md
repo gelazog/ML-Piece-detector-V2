@@ -252,6 +252,54 @@ sólo exige que no sean negativos. La primera versión de esta comprobación usa
 `isValid()` y por eso no saltaba nunca: un ajuste ausente se lee como cero y
 pasaba por bueno. Lo que hace falta es `isEmpty()`.
 
+#### Precision: el borde no es un escalon, es una rampa de 15 pixeles
+
+Tres formas de medir el MISMO diametro de la bola de 10 mm no coincidian: el
+largo daba 253,4 px, el ancho 245,4 y la circunferencia ajustada 250,8. Un
+3,2 % de desacuerdo entre tres numeros que describen la misma cosa.
+
+La repetibilidad no era el problema: mover la ventana de trabajo un pixel deja
+la medida **exactamente igual** (0,000 % de deriva). Lo que falla es donde se
+pone el borde. Medido sobre la foto: la intensidad pasa de 33 a 240 a lo largo
+de **15 pixeles**, y el radio del contorno variaba entre 118,6 y 129,0 px sobre
+la misma bola. Con una rampa asi, un umbral duro coloca el borde en cualquier
+punto de esos quince segun la iluminacion.
+
+`refineContourSubpixel` hace lo que un calibre optico: para cada punto del
+contorno mira el perfil de intensidad **a lo largo de su normal**, saca el nivel
+de dentro y el de fuera EN ESE PUNTO, y coloca el borde donde el perfil cruza la
+mitad entre los dos, interpolando. Que los niveles sean **locales** es la mitad
+del asunto: una pieza con una cara iluminada y otra en sombra tiene dos umbrales
+correctos distintos, y ningun valor global puede ser los dos a la vez.
+
+Medido sobre un borde colocado a proposito en una posicion fraccionaria, donde
+la respuesta se conoce exacta:
+
+| radio verdadero 60,50 px | medido | error |
+|---|---|---|
+| umbral duro | 60,083 | 0,417 px |
+| **subpixel** | 60,475 | **0,025 px** |
+
+Diecisiete veces mas exacto. Sobre la bola real la ganancia es mucho menor
+(4,9 % menos dispersion de radios) y la razon esta medida: el contorno de esa
+bola **no es circular de verdad** — la sombra suave de abajo y el reflejo
+especular lo deforman. El afinado coloca bien el borde que hay; no puede
+arreglar que ese borde incluya sombra.
+
+**El suavizado del contorno, y por que hizo falta.** Cada punto se afina por su
+cuenta a lo largo de su normal, asi que dos vecinos pueden quedar en zigzag. El
+area apenas lo nota —es una integral— pero el perimetro suma cada zigzag. Y
+debajo de eso hay un problema mas viejo: el efecto **escalera**, que hace que
+sumar pasos entre pixeles enteros sobreestime la longitud de una curva suave.
+Medido: el radio deducido del perimetro salia un **6,75 %** mayor que el
+deducido del area sobre la misma pieza. Con el suavizado baja a **1,75 %**.
+
+Y el suavizado **solo se aplica si el afinado encontro bordes de verdad**. Si no
+se afino nada es que no habia borde visible, y mover el contorno seria modificar
+datos sin ninguna prueba a favor. La garantia de que en el peor caso esto NO
+HACE NADA vale mas que un perimetro algo mejor: sobre una imagen plana, cero
+puntos movidos.
+
 #### Material REAL: lo que una foto de verdad destapa en el primer intento
 
 Durante meses, todo lo que este proyecto probaba eran PNG que se dibujaba a si
