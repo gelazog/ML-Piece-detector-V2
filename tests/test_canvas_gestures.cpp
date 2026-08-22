@@ -2889,3 +2889,193 @@ TEST(EdgeBrush, CorrectingTheEdgeUnlocksTuningTheDetection) {
     ASSERT_TRUE(waitFor([&] { return !tune->isEnabled(); }))
         << "sin corrección sigue encendida";
 }
+
+// Rodear una zona a mano sobre una imagen ABIERTA y comprobar que la medición
+// se limita a ella. Es lo que se reportó roto («dibujo y no recorta nada») y lo
+// que hasta ahora sólo se probaba por piezas sueltas: el gesto por un lado, la
+// regla de la zona por otro, y el análisis por un tercero.
+TEST(WorkingZoneEndToEnd, DrawingAZoneAroundOnePieceMeasuresThatOneAndNotTheOther) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+
+    // Dos piezas de tamaños MUY distintos: la grande a la izquierda, la pequeña
+    // a la derecha. Sin zona, el análisis se queda con la mayor; con la zona
+    // alrededor de la pequeña tiene que quedarse con la pequeña. Si el recorte
+    // no se aplicara, el contorno seguiría siendo el de la grande y el test lo
+    // vería — que es justo lo que no detectaba nada antes.
+    QImage photo(480, 320, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(40, 60, 180, 200), QColor(230, 230, 230));   // grande
+        painter.fillRect(QRect(330, 130, 80, 60), QColor(230, 230, 230));   // pequeña
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("dos.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+
+    const auto waitFor = [](auto predicate, int ms = 4000) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (predicate()) {
+                return true;
+            }
+        }
+        return predicate();
+    };
+    ASSERT_TRUE(waitFor([&] { return canvas->liveContour().size() >= 4; }));
+
+    const QRectF whole = canvas->liveContour().boundingRect();
+    std::printf("  [zona] sin zona mide la caja %.0fx%.0f en x=%.0f\\n", whole.width(),
+                whole.height(), whole.left());
+    ASSERT_GT(whole.width(), 150.0) << "sin zona tenía que quedarse con la pieza grande";
+    ASSERT_LT(whole.left(), 100.0) << "la grande está a la izquierda";
+
+    // Ahora se rodea la PEQUEÑA a pulso, como haría el operador.
+    const ViewTransform view({canvas->imageSize().width(), canvas->imageSize().height()},
+                             {canvas->width(), canvas->height()}, 1.0, {0.0, 0.0});
+    const auto screen = [&](double x, double y) {
+        const cv::Point2d q = view.imageToWidget(
+            cv::Point2f(static_cast<float>(x), static_cast<float>(y)));
+        return QPointF(q.x, q.y);
+    };
+    canvas->setFreeZonePickMode(true);
+    const std::vector<QPointF> corners{{300, 105}, {440, 105}, {440, 215}, {300, 215}};
+    press(canvas, screen(corners.front().x(), corners.front().y()));
+    for (std::size_t i = 1; i <= corners.size(); ++i) {
+        const QPointF from = corners[i - 1];
+        const QPointF to = corners[i % corners.size()];
+        for (int step = 1; step <= 20; ++step) {
+            const double t = static_cast<double>(step) / 20.0;
+            moveTo(canvas, screen(from.x() + (to.x() - from.x()) * t,
+                                  from.y() + (to.y() - from.y()) * t));
+        }
+    }
+    release(canvas, screen(corners.front().x(), corners.front().y()));
+
+    ASSERT_TRUE(waitFor([&] {
+        const QRectF box = canvas->liveContour().boundingRect();
+        return box.width() > 1.0 && box.left() > 250.0;
+    })) << "se dibujó la zona alrededor de la pieza pequeña y se sigue midiendo la grande: "
+           "la zona no recorta nada";
+
+    const QRectF inZone = canvas->liveContour().boundingRect();
+    std::printf("  [zona] con zona mide la caja %.0fx%.0f en x=%.0f\\n", inZone.width(),
+                inZone.height(), inZone.left());
+    EXPECT_LT(inZone.width(), 120.0) << "la pieza de dentro de la zona es la pequeña";
+    EXPECT_GT(inZone.left(), 300.0) << "el contorno se salió de la zona dibujada";
+}
+
+// «Solo detecta una»: seis piezas delante y la ventana sin decir nada.
+//
+// El recuento existía, pero sólo se encendía si la pieza declaraba esperar
+// varias o si el operador tenía abierta la pestaña Piezas — y sólo se veía DENTRO
+// de ese diálogo. Con los ajustes de fábrica y seis piezas en el encuadre, la
+// aplicación medía la mayor en silencio.
+TEST(MultiPieceEndToEnd, WithSixPiecesInViewTheWindowSaysSix) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QImage photo(600, 400, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        for (int i = 0; i < 6; ++i) {
+            const int x = 40 + (i % 3) * 190;
+            const int y = 50 + (i / 3) * 180;
+            painter.fillRect(QRect(x, y, 120 - i * 6, 110 - i * 5), QColor(230, 230, 230));
+        }
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("seis.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    const auto waitFor = [](auto predicate, int ms = 5000) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (predicate()) {
+                return true;
+            }
+        }
+        return predicate();
+    };
+
+    // El indicador tiene que estar DONDE SE TRABAJA, no dentro de un diálogo que
+    // hay que saber abrir.
+    QLabel* chip = nullptr;
+    const auto findChip = [&] {
+        for (auto* label : window.findChildren<QLabel*>()) {
+            if (label->isVisible() && label->text().contains(QStringLiteral("pieza"))) {
+                chip = label;
+                return true;
+            }
+        }
+        return false;
+    };
+    ASSERT_TRUE(waitFor(findChip))
+        << "con seis piezas delante, la ventana principal no dice cuántas ve";
+
+    std::printf("  [contar] la ventana dice: «%s»\\n", chip->text().trimmed().toStdString().c_str());
+    EXPECT_TRUE(chip->text().contains(QStringLiteral("6")))
+        << "dice «" << chip->text().toStdString() << "» con seis piezas en el encuadre";
+    EXPECT_FALSE(chip->toolTip().isEmpty())
+        << "un aviso que no explica qué hacer con él es sólo un número más";
+}
+
+// Y con una sola pieza no grita: el aviso destacado sólo tiene sentido cuando
+// cambia lo que el operador debe hacer.
+TEST(MultiPieceEndToEnd, WithASinglePieceItDoesNotShout) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(120, 90, 160, 120), QColor(230, 230, 230));
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("una.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    QElapsedTimer timer;
+    timer.start();
+    QLabel* chip = nullptr;
+    while (timer.elapsed() < 3000) {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+        for (auto* label : window.findChildren<QLabel*>()) {
+            if (label->isVisible() && label->text().contains(QStringLiteral("pieza"))) {
+                chip = label;
+            }
+        }
+        if (chip != nullptr) {
+            break;
+        }
+    }
+    ASSERT_NE(chip, nullptr) << "el recuento no aparece ni con una pieza";
+    std::printf("  [contar] con una sola pieza dice: «%s»\\n",
+                chip->text().trimmed().toStdString().c_str());
+    EXPECT_TRUE(chip->text().contains(QStringLiteral("1")));
+    EXPECT_FALSE(chip->styleSheet().contains(QStringLiteral("bold")))
+        << "destaca con una sola pieza: el aviso pierde sentido si salta siempre";
+}

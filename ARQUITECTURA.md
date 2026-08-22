@@ -200,6 +200,27 @@ con el anterior.
 La corrección se emite **al soltar**, no en cada punto: reanalizar la imagen por
 cada píxel de la pincelada dejaría el pincel a tirones.
 
+#### «Solo detecta una»: seis piezas y la ventana callada
+
+El recuento existía y funcionaba. Lo que no existía era **verlo**: sólo se
+encendía si la pieza declaraba esperar varias o si el operador tenía abierta la
+pestaña *Piezas*, y sólo se mostraba DENTRO de ese diálogo. Con los ajustes de
+fábrica y seis piezas en el encuadre, la aplicación medía la mayor en silencio.
+
+La justificación de no contar siempre era el coste. Medido sobre 1920×1080 con
+seis piezas: **7,5 ms** quedarse con la mayor, **11,2 ms** contarlas todas. Son
+3,7 ms de los 33 que dura un frame a 30 fps — no es un coste, es ruido.
+
+Lo que sí era real es la otra mitad: contar **suelta el recorte automático**,
+que rodea a la pieza mayor y por construcción daría siempre uno. Por eso la
+regla nueva es: se cuenta siempre SALVO con la zona automática activa, donde se
+respeta la regla anterior y hay que pedirlo.
+
+Y el recuento sale a la ventana principal, junto al modo de medición. Se
+**destaca** sólo con más de una pieza, porque es el único caso en que cambia lo
+que hay que hacer: las herramientas miden la mayor y las demás quedan sin medir.
+Un aviso que salta siempre deja de ser un aviso.
+
 #### De corregir una imagen a arreglar la detección
 
 Corregir el borde tapa el fallo en la imagen que tienes delante. Corregir el

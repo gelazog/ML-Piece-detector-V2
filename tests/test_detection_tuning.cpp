@@ -6,6 +6,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include "vision/detection_tuning.h"
+#include "vision/pipeline.h"
 
 using pci::vision::maskAgreement;
 using pci::vision::SegmentationOptions;
@@ -167,4 +168,39 @@ TEST(DetectionTuning, ItIsFastEnoughToRunWhileTheOperatorWaits) {
     std::printf("  [coste] %lld ms sobre 1920x1080, %.3f -> %.3f\n", static_cast<long long>(ms),
                 suggestion.agreementNow, suggestion.agreementSuggested);
     EXPECT_LT(ms, 3000) << "demasiado lento para correr con el operador esperando";
+}
+
+// ¿Cuánto cuesta REALMENTE contar todas las piezas en vez de quedarse con la
+// mayor? De la respuesta depende una decisión de diseño: si contar es caro hay
+// que encenderlo a mano —y el operador tiene que saber que existe—, y si es
+// barato no hay razón para que mirar seis piezas dé «una».
+TEST(MultiPieceCost, CountingThemAllVersusTakingTheBiggest) {
+    cv::Mat image(1080, 1920, CV_8UC1, cv::Scalar(25));
+    for (int i = 0; i < 6; ++i) {
+        const int x = 150 + (i % 3) * 550;
+        const int y = 200 + (i / 3) * 450;
+        cv::rectangle(image, cv::Rect(x, y, 300 - i * 20, 260 - i * 15), cv::Scalar(215),
+                      cv::FILLED);
+    }
+
+    pci::vision::PipelineConfig config;
+    const auto timeOf = [](auto&& call) {
+        const auto start = std::chrono::steady_clock::now();
+        for (int repeat = 0; repeat < 10; ++repeat) {
+            call();
+        }
+        return std::chrono::duration_cast<std::chrono::microseconds>(
+                   std::chrono::steady_clock::now() - start)
+                   .count() /
+               10.0 / 1000.0;
+    };
+
+    const double oneMs = timeOf([&] { (void)pci::vision::analyzeFrame(image, config); });
+    const double allMs = timeOf([&] { (void)pci::vision::analyzeFrames(image, config); });
+
+    const auto all = pci::vision::analyzeFrames(image, config);
+    ASSERT_TRUE(all.isOk());
+    std::printf("  [contar] la mayor: %.1f ms | todas (%zu piezas): %.1f ms | x%.2f\n", oneMs,
+                all.value().size(), allMs, allMs / oneMs);
+    EXPECT_EQ(all.value().size(), 6U) << "no encuentra las seis piezas del cuadro";
 }

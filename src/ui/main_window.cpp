@@ -516,6 +516,14 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     modeChip_->setAlignment(Qt::AlignCenter);
     pieceLayout->addWidget(modeChip_);
 
+    // Cuántas piezas se están viendo. Estaba SÓLO dentro de Configurar ▸ Piezas,
+    // y ahí no lo ve quien está trabajando: con seis piezas en el encuadre la
+    // ventana no decía nada y se medía la mayor en silencio.
+    piecesChip_ = new QLabel(central);
+    piecesChip_->setAlignment(Qt::AlignCenter);
+    piecesChip_->setVisible(false);  // sin recuento no ocupa sitio
+    pieceLayout->addWidget(piecesChip_);
+
     pieceLayout->addWidget(new QLabel(tr("Plantilla:"), central));
     templateCombo_ = new QComboBox(central);
     templateCombo_->setMinimumWidth(110);
@@ -1536,7 +1544,24 @@ bool MainWindow::countingPieces() const {
     // aún en la de Rendimiento, que es donde se enciende la zona automática:
     // el operador la encendía y la veía apagada, por su propia culpa de estar
     // mirándola.
-    return configureDialog_ != nullptr && configureDialog_->showingPieceCount();
+    if (configureDialog_ != nullptr && configureDialog_->showingPieceCount()) {
+        return true;
+    }
+    // Y, por defecto, SIEMPRE que el recorte automático no esté en juego.
+    //
+    // La regla de antes dejaba fuera el caso normal: seis piezas delante del
+    // operador, ajustes de fábrica, y la aplicación midiendo la mayor sin decir
+    // en ningún sitio que había otras cinco. «Solo detecta una» era literal.
+    //
+    // La justificación era que contar cuesta una segmentación multi-pieza.
+    // Medido sobre 1920x1080 con seis piezas: 7,5 ms quedarse con la mayor,
+    // 11,2 ms contarlas todas. Son 3,7 ms de 33 que dura un frame a 30 fps —no
+    // es un coste, es ruido.
+    //
+    // Lo que sí es real es la otra mitad: contar SUELTA el recorte automático
+    // (rodea a la pieza mayor, así que contar dentro daría siempre uno). Por eso
+    // ahí se respeta la regla anterior y sólo se cuenta si alguien lo pide.
+    return zoneMode_ != vision::WorkingZoneMode::Automatic;
 }
 
 cv::Rect MainWindow::effectiveWorkingZone() const {
@@ -3009,6 +3034,7 @@ void MainWindow::onAnalysisFinished() {
             pieces->setDetectedCount(lastPieceCount_);
         }
     }
+    updatePiecesChip();
 
     // Asistente de enfoque (C2): solo se alimenta si el panel está abierto por
     // esa pestaña; medir para nadie sería trabajo tirado.
@@ -3649,6 +3675,39 @@ void MainWindow::applyMeasurement(const repositories::PieceMeasurement& measurem
 
 // Etiqueta del modo activo (M3). Cambia de color para distinguirse de un
 // vistazo y el tooltip explica qué implica el modo y dónde se cambia.
+// El recuento de piezas, donde se trabaja.
+//
+// Se destaca cuando hay MÁS de una, porque es el único caso en que cambia lo
+// que el operador debe hacer: con varias en el encuadre, las herramientas miden
+// la mayor y las demás quedan sin medir. Con una sola, el aviso sería ruido.
+void MainWindow::updatePiecesChip() {
+    if (piecesChip_ == nullptr) {
+        return;
+    }
+    if (lastPieceCount_ < 0 || !countingPieces()) {
+        piecesChip_->setVisible(false);
+        return;
+    }
+    const bool several = lastPieceCount_ > 1;
+    piecesChip_->setVisible(true);
+    // Sin `%n`: el plural de Qt sólo se resuelve con un traductor cargado, y sin
+    // él esto se queda en «6 pieza(s)» de forma permanente en pantalla.
+    piecesChip_->setText(several ? tr(" %1 piezas ").arg(lastPieceCount_)
+                                 : tr(" 1 pieza "));
+    piecesChip_->setStyleSheet(
+        several ? QStringLiteral("color:#3a2a00; background:#ffc861; border-radius:8px;"
+                                 " padding:1px 6px; font-weight:bold;")
+                : QStringLiteral("color:#ddd; background:#3a3a3a; border-radius:8px;"
+                                 " padding:1px 6px;"));
+    piecesChip_->setToolTip(
+        several ? tr("Se ven %1 piezas en el encuadre.\n\n"
+                     "Las herramientas miden la MAYOR; las demás se cuentan pero no se "
+                     "miden. Si quieres medir otra, dibuja una zona de trabajo a su "
+                     "alrededor.")
+                      .arg(lastPieceCount_)
+                : tr("Se ve una sola pieza en el encuadre."));
+}
+
 void MainWindow::updateModeChip() {
     if (modeChip_ == nullptr) {
         return;

@@ -189,7 +189,8 @@ private:
     void applyMeasurement(const repositories::PieceMeasurement& measurement);
     void loadMeasurementForSelectedPiece();
     void loadDetectionProfileForSelectedPiece();  // perfil de detección (O3)
-    void updateModeChip();  // etiqueta del modo activo (M3)
+    void updateModeChip();
+    void updatePiecesChip();  // etiqueta del modo activo (M3)
     [[nodiscard]] int positionToolCount() const;
     // Avisa si cambiar el cero deja las herramientas de Posición midiendo otra
     // cosa (sus tolerancias se sugirieron respecto al origen anterior).
@@ -389,7 +390,8 @@ private:
     QLabel* calibLabel_ = nullptr;  // estado de la escala en la barra inferior
     // Fila 2: pieza y flujo.
     QComboBox* pieceCombo_ = nullptr;
-    QLabel* modeChip_ = nullptr;           // modo de medición activo (M3)
+    QLabel* modeChip_ = nullptr;
+    QLabel* piecesChip_ = nullptr;           // modo de medición activo (M3)
     QComboBox* templateCombo_ = nullptr;   // plantillas de la pieza
     QPushButton* newTemplateButton_ = nullptr;
     QPushButton* manageTemplatesButton_ = nullptr;  // abre el gestor de plantillas
