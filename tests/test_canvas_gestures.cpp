@@ -4098,3 +4098,4 @@ TEST(PieceReportWarnings, TheDialogShowsThemBeforeTheNumbers) {
     EXPECT_LT(warningY, tableY)
         << "el aviso sale debajo de las cifras: para entonces ya se han leido";
 }
+

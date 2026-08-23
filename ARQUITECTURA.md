@@ -399,6 +399,33 @@ No estan todas, y es a proposito: las cifras historicas —«se publicaba un Ø 
 130.901 px»— describen algo que ya no ocurre y atarlas a un test seria pedirle
 al programa que siga fallando como fallaba.
 
+#### Y el manual manda al operador a sitios que existen
+
+El mismo repaso, aplicado al README, encontro **seis referencias rotas de una
+vez**. El menu «Camara» se renombro a «Fuente» y sus entradas de medida se
+movieron a «Medida»; el manual se quedo con los nombres viejos:
+
+| el manual decia | donde esta de verdad |
+|---|---|
+| *Camara ▸ Configurar…* | Fuente ▸ Configurar… |
+| *Camara ▸ Calibrar escala* | Medida ▸ Calibrar escala (mm)… |
+| *Camara ▸ Escala por marcador* | Medida ▸ Escala por marcador ArUco (en vivo) |
+| *Ver ▸ Unidad* | Medida ▸ Unidad de medida |
+
+Una cifra obsoleta en un documento tecnico despista a quien programa. Una ruta
+de menu obsoleta en el manual **manda a quien esta midiendo piezas a buscar algo
+que no esta**, y le hace concluir que el programa esta roto.
+
+`test_readme_paths.cpp` lee las rutas del propio README y las resuelve contra
+los menus, submenus, acciones y **botones** de la ventana de verdad. Los botones
+hacen falta: la zona de trabajo vive en uno cuyo menu no tiene titulo, asi que
+«Zona ▸ Quitar la zona» salia como rota siendo correcta.
+
+Y obligo a arreglar una ambiguedad de notacion. El manual escribia igual una
+ruta de menu y una navegacion por pestanas de un dialogo, y no son lo mismo:
+«Detección» no es una accion, es una pestana de *Configurar*. Ahora se distingue
+—*Fuente ▸ Configurar…*, pestana **Detección**— y el lector tampoco las confunde.
+
 #### Material REAL: lo que una foto de verdad destapa en el primer intento
 
 Durante meses, todo lo que este proyecto probaba eran PNG que se dibujaba a si

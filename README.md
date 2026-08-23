@@ -78,7 +78,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    eje se dibujan sobre el video en tiempo real; **al ocultarlo, las
    herramientas se congelan en su sitio** (la pieza se inspecciona fija, sin
    que nada tiemble) y el análisis se pausa si no hay nada que medir. La
-   unidad de medida se elige en **Ver ▸ Unidad**. La cámara elegida queda
+   unidad de medida se elige en **Medida ▸ Unidad de medida**. La cámara elegida queda
    guardada.
 
    La **primera vez** que arrancas, sobre el vídeo aparece una línea con el
@@ -96,7 +96,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    este caso no pasa nada» — medir en píxeles sin calibrar, o procesar la imagen
    entera, son formas legítimas de trabajar.
 
-   **Configurar** (menú *Cámara ▸ Configurar…*) es **el único sitio** donde se
+   **Configurar** (menú *Fuente ▸ Configurar…*) es **el único sitio** donde se
    ajusta cómo se ve y cómo se detecta la pieza: cámara e imagen, detección,
    escala, preferencias y atajos, en pestañas. **No bloquea la ventana**, y eso
    es a propósito: ajustar un umbral o un enfoque consiste en mover y mirar, y
@@ -320,7 +320,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    Pero no hace falta que la ajustes a ojo si se repite — para eso está lo
    siguiente.
 
-   **Afinar el borde a subpíxel** (*Configurar ▸ Detección ▸ Precisión*): el borde
+   **Afinar el borde a subpíxel** (*Fuente ▸ Configurar…*, pestaña **Detección**, apartado **Precisión**): el borde
    de una pieza no es un escalón — el brillo cambia a lo largo de varios
    píxeles, y sobre una foto real esa rampa medía **15 px**. Un umbral coloca el
    borde en cualquier punto de ella según la iluminación. Con esto, cada punto
@@ -981,7 +981,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    vacío para dibujar un **marco de selección** — las herramientas dentro
    quedan seleccionadas y se mueven o borran (Supr) en grupo.
 
-   **Escala por marcador ArUco en vivo** (**Cámara ▸ Escala por marcador
+   **Escala por marcador ArUco en vivo** (**Medida ▸ Escala por marcador ArUco (en vivo)
    ArUco**): imprime el marcador `sample_images/aruco_4x4_id0.png`, mide su
    lado real con una regla y escríbelo al activar la opción. Colócalo junto a
    la pieza (en el mismo plano): la escala px→mm se recalcula **en cada frame
@@ -1012,7 +1012,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    **sensibilidad de anomalía (kσ)** de apariencia. Se aplican al aceptar y
    quedan guardados.
 
-   **Calibración a milímetros** (menú *Cámara ▸ Calibrar escala*): dos
+   **Calibración a milímetros** (menú *Medida ▸ Calibrar escala (mm)…*): dos
    métodos —
    **A)** haz dos clics sobre una distancia real conocida (una regla, el
    diámetro de una moneda) y escribe los mm: la escala se calcula y además se
