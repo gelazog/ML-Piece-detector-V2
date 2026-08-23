@@ -126,13 +126,22 @@ TEST(ReadmePaths, EveryMenuPathInTheManualExistsInTheApplication) {
 
     // Las rutas del manual: *Algo ▸ Algo* entre asteriscos.
     static const QRegularExpression pattern(
-        QStringLiteral("\\*\\*?([^*\\n]{2,80}?\\x{25b8}[^*\\n]{2,80}?)\\*\\*?"));
+        // Una ruta puede venir PARTIDA por un salto de linea: el manual se reajusta
+        // al editarlo, y nada impide que «Pieza ▸ Registrar otro acabado» acabe con
+        // el salto en medio. La primera version excluia el salto, asi que una ruta
+        // partida NO se comprobaba — y no fallaba: pasaba desapercibida, que es
+        // peor. Se destapo al añadir una ruta nueva y ver que el recuento no subia.
+        QStringLiteral("\\*\\*?([^*\\n]{1,80}?\\x{25b8}[^*]{2,80}?)\\*\\*?"));
     auto matches = pattern.globalMatch(readme);
 
     int checked = 0;
     QStringList broken;
     while (matches.hasNext()) {
-        const QString path = matches.next().captured(1);
+        // Se junta lo que el salto de linea habia partido. Una ruta escrita en
+        // dos renglones es la misma ruta, y sin esto se comprobaria un trozo
+        // —«Medida ▸ Corregir la distorsion»— que no existe como tal.
+        QString path = matches.next().captured(1);
+        path.replace(QRegularExpression(QStringLiteral("\\s+")), QStringLiteral(" "));
         const QStringList parts = path.split(QStringLiteral("▸"));
         ++checked;
         for (const auto& raw : parts) {

@@ -1399,6 +1399,19 @@ del día en la barra de estado). Tras un OK, **"Actualizar referencia"**
 ejecuta el aprendizaje incremental: nueva versión de la referencia (Welford,
 O(dim)), las anteriores nunca se borran.
 
+**Varios acabados de la misma pieza**
+(*Pieza ▸ Registrar otro acabado de esta pieza…*).
+La misma pieza de dos proveedores, con dos acabados admisibles o antes
+y después de un cambio de lote no se parece a sí misma, y meter las dos cosas en
+la misma referencia **no da falsos NG: deja de vigilar**. La media se coloca
+entre los dos grupos, la banda se ensancha —medido, de 0,98 a 0,68— y un defecto
+que antes se detectaba pasa.
+
+Registrado como acabado aparte, cada uno conserva su media y su banda, y una
+pieza es buena si se parece a **cualquiera** de ellos. Comparte herramientas,
+tolerancias e historial con la pieza, que es lo que lo distingue de registrarla
+otra vez — eso crearía una pieza distinta.
+
 **Dónde difiere.** Un NG por apariencia era hasta ahora un número: la similitud
 cayó por debajo de la banda y a buscar a ojo qué le pasa a la pieza. Ahora el
 diálogo de resultado añade una tercera miniatura que **señala el sitio**, y lo

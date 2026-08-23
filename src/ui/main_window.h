@@ -394,6 +394,7 @@ private:
     bool lensCorrectionOn_ = false;
     class LensCalibrationDialog* lensDialog_ = nullptr;
     void onCalibrateLensClicked();
+    void onRegisterVariantClicked();
     void applyLensCalibration(const vision::LensCalibration& calibration, bool enable);
     void updateEdgeBrushAvailability();
     void applyBrushRadius(int radiusPx, bool fromCanvas);

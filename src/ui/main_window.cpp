@@ -1621,6 +1621,14 @@ void MainWindow::buildMenuBar() {
     auto* pieceMenu = menuBar()->addMenu(tr("&Pieza"));
     registerWizardAction_ = pieceMenu->addAction(tr("Registrar con asistente…"), this,
                                                  &MainWindow::onRegisterWizardClicked);
+    // OTRO ACABADO DE LA MISMA PIEZA, y no una pieza nueva.
+    //
+    // Va justo debajo de «Registrar con asistente…» porque es la confusión que
+    // hay que evitar: quien tiene delante la misma pieza con otro acabado
+    // acabaría registrándola otra vez, y eso crea una pieza distinta con sus
+    // herramientas y su historial aparte.
+    pieceMenu->addAction(tr("Registrar otro acabado de esta pieza…"), this,
+                         &MainWindow::onRegisterVariantClicked);
     managePiecesAction_ = pieceMenu->addAction(tr("Gestionar piezas…"), this,
                                                &MainWindow::onManagePiecesClicked);
     pieceMenu->addSeparator();
@@ -6559,6 +6567,47 @@ void MainWindow::onRegisterWizardClicked() {
     if (wizard.exec() == QDialog::Accepted) {
         loadPieceList(wizard.createdPieceId());
     }
+}
+
+// Registrar un acabado admisible mas de la pieza que ya esta seleccionada.
+void MainWindow::onRegisterVariantClicked() {
+    const std::int64_t pieceId = selectedPieceId();
+    if (pieceId < 0) {
+        QMessageBox::information(
+            this, tr("Ninguna pieza seleccionada"),
+            tr("Elige primero la pieza a la que quieres añadirle un acabado."));
+        return;
+    }
+    if (!repos_.embedFn) {
+        QMessageBox::warning(
+            this, tr("Modelo no disponible"),
+            tr("Registrar un acabado necesita el modelo de embeddings. Ejecuta run.ps1 "
+               "para descargarlo y prepararlo."));
+        return;
+    }
+    const QString pieceName = pieceCombo_ != nullptr ? pieceCombo_->currentText() : QString();
+
+    RegistrationWizard wizard(&controller_, repos_.embedFn, repos_.pieces, pieceId,
+                              pieceName, this);
+    keepDialogSize(wizard, repos_.settings, "registration", 900, 640);
+    if (wizard.exec() != QDialog::Accepted) {
+        return;
+    }
+    // Se dice CUANTOS acabados tiene ahora la pieza. «Guardado» a secas no deja
+    // comprobar que se guardo donde uno creia, y aqui el error tipico —haberlo
+    // guardado encima del anterior— es invisible sin este numero.
+    if (auto variants = repos_.pieces->listVariants(pieceId); variants.isOk()) {
+        QStringList names;
+        for (const auto& name : variants.value()) {
+            names << QString::fromStdString(name);
+        }
+        statusBar()->showMessage(
+            tr("«%1» tiene ahora %2 acabados registrados: %3.")
+                .arg(pieceName)
+                .arg(names.size())
+                .arg(names.join(QStringLiteral(", "))));
+    }
+    reanalyseCurrentFrame();
 }
 
 void MainWindow::onOpenEditorClicked() {

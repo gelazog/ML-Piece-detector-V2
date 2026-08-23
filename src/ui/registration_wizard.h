@@ -36,9 +36,27 @@ class RegistrationWizard : public QDialog {
 public:
     RegistrationWizard(camera::CameraController* controller, engine::EmbedFn embedFn,
                        repositories::PieceRepository* pieces, QWidget* parent = nullptr);
+
+    // REGISTRAR OTRO ACABADO de una pieza que YA existe.
+    //
+    // Es el mismo flujo de capturas apuntando a otro sitio: en vez de crear una
+    // pieza, se guarda una variante mas de la que ya hay. Existe porque meter
+    // dos acabados admisibles en la misma media no da falsos NG — deja CIEGA la
+    // referencia, y esa es la unica forma que habia de registrarlos hasta ahora
+    // (`ml/reference.h` lleva las cifras).
+    //
+    // Y no vale con «registrar la pieza otra vez»: eso crearia una pieza
+    // distinta, con sus herramientas y su historial aparte, cuando lo que hay
+    // delante es la MISMA pieza con otro acabado.
+    RegistrationWizard(camera::CameraController* controller, engine::EmbedFn embedFn,
+                       repositories::PieceRepository* pieces, std::int64_t existingPieceId,
+                       const QString& pieceName, QWidget* parent = nullptr);
     ~RegistrationWizard() override;
 
     [[nodiscard]] std::int64_t createdPieceId() const { return createdPieceId_; }
+    // El nombre de la variante que se acabo de guardar, vacio si se registro una
+    // pieza nueva. Lo usan la ventana —para decirlo— y las pruebas.
+    [[nodiscard]] QString savedVariant() const { return savedVariant_; }
 
 private slots:
     void onFrame(const QImage& frame);
@@ -68,6 +86,10 @@ private:
     QFutureWatcher<core::Result<engine::RegistrationSession::SampleFeedback>> watcher_;
     QImage lastFrame_;
     std::int64_t createdPieceId_ = -1;
+    // >= 0 cuando se esta registrando un acabado de una pieza que ya existe.
+    std::int64_t targetPieceId_ = -1;
+    QString savedVariant_;
+    void buildUi(const QString& fixedPieceName);
 };
 
 }  // namespace pci::ui

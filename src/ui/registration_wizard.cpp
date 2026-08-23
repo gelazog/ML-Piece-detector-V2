@@ -32,15 +32,56 @@ RegistrationWizard::RegistrationWizard(camera::CameraController* controller,
       session_(std::make_unique<engine::RegistrationSession>(std::move(embedFn),
                                                              kTargetCaptures,
                                                              kMinimumCaptures)) {
-    setWindowTitle(tr("Registrar pieza nueva"));
+    buildUi(QString());
+}
+
+// El mismo asistente apuntando a una pieza que ya existe: lo unico que cambia es
+// que al terminar se guarda una VARIANTE en vez de crearse una pieza.
+RegistrationWizard::RegistrationWizard(camera::CameraController* controller,
+                                       engine::EmbedFn embedFn,
+                                       repositories::PieceRepository* pieces,
+                                       std::int64_t existingPieceId,
+                                       const QString& pieceName, QWidget* parent)
+    : QDialog(parent), controller_(controller), pieces_(pieces),
+      session_(std::make_unique<engine::RegistrationSession>(std::move(embedFn),
+                                                             kTargetCaptures,
+                                                             kMinimumCaptures)),
+      targetPieceId_(existingPieceId) {
+    buildUi(pieceName);
+}
+
+void RegistrationWizard::buildUi(const QString& fixedPieceName) {
+    const bool variantMode = targetPieceId_ >= 0;
+    setWindowTitle(variantMode ? tr("Registrar otro acabado de «%1»").arg(fixedPieceName)
+                               : tr("Registrar pieza nueva"));
     resize(900, 640);
 
     auto* rootLayout = new QVBoxLayout(this);
 
+    if (variantMode) {
+        // Se explica QUÉ es esto y por qué no es «registrar la pieza otra vez»:
+        // es la confusión natural, y equivocarse cuesta una pieza duplicada con
+        // sus herramientas y su historial aparte.
+        auto* intro = new QLabel(
+            tr("Estás añadiendo un acabado admisible de «%1», no una pieza nueva. "
+               "Comparte herramientas, tolerancias e historial con la que ya "
+               "existe.\n\n"
+               "Hace falta registrarlo aparte y no mezclarlo con el anterior: dos "
+               "acabados en la misma referencia no dan falsos NG, dejan de vigilar "
+               "— la media se coloca entre los dos y deja pasar defectos que antes "
+               "detectaba.")
+                .arg(fixedPieceName),
+            this);
+        intro->setWordWrap(true);
+        rootLayout->addWidget(intro);
+    }
+
     auto* nameLayout = new QHBoxLayout();
-    nameLayout->addWidget(new QLabel(tr("Nombre de la pieza:"), this));
+    nameLayout->addWidget(new QLabel(
+        variantMode ? tr("Nombre del acabado:") : tr("Nombre de la pieza:"), this));
     nameEdit_ = new QLineEdit(this);
-    nameEdit_->setPlaceholderText(tr("p. ej. Engranaje A"));
+    nameEdit_->setPlaceholderText(variantMode ? tr("p. ej. pulido, proveedor B, lote 24")
+                                              : tr("p. ej. Engranaje A"));
     nameLayout->addWidget(nameEdit_, 1);
     rootLayout->addLayout(nameLayout);
 
@@ -224,6 +265,47 @@ void RegistrationWizard::onFinishClicked() {
     if (!reference.isOk()) {
         QMessageBox::warning(this, tr("Registro incompleto"),
                              QString::fromStdString(reference.error().message));
+        return;
+    }
+
+    if (targetPieceId_ >= 0) {
+        // «principal» es la referencia de siempre. Llegar a ella desde «añadir
+        // un acabado» seria pisar la buena por un camino que no lo parece, asi
+        // que se pregunta con todas las letras.
+        if (name.compare(QStringLiteral("principal"), Qt::CaseInsensitive) == 0) {
+            const auto answer = QMessageBox::question(
+                this, tr("Es la referencia principal"),
+                tr("«principal» es la referencia con la que se registró la pieza. "
+                   "Guardar aquí la sustituye por estas capturas.\n\n"
+                   "¿Es lo que quieres?"));
+            if (answer != QMessageBox::Yes) {
+                nameEdit_->setFocus();
+                nameEdit_->selectAll();
+                return;
+            }
+        }
+        auto savedVariant = pieces_->saveReference(targetPieceId_, reference.value(),
+                                                   name.toStdString());
+        if (!savedVariant.isOk()) {
+            QMessageBox::warning(this, tr("No se pudo guardar el acabado"),
+                                 QString::fromStdString(savedVariant.error().message));
+            return;
+        }
+        // La MINIATURA NO SE TOCA. Es la de la pieza registrada, y es contra ella
+        // contra la que se dibuja el mapa de diferencia: cambiarla al añadir un
+        // acabado haria que el mapa comparase con otra cosa sin que nadie lo
+        // hubiera pedido.
+        createdPieceId_ = targetPieceId_;
+        savedVariant_ = name;
+        QMessageBox::information(
+            this, tr("Acabado registrado"),
+            tr("Acabado «%1» registrado con %2 capturas (referencia v%3).\n\n"
+               "A partir de ahora una pieza es buena si se parece a CUALQUIERA de "
+               "los acabados registrados.")
+                .arg(name)
+                .arg(session_->count())
+                .arg(savedVariant.value()));
+        accept();
         return;
     }
 
