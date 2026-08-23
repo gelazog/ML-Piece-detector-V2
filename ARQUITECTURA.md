@@ -3572,8 +3572,16 @@ cosas está hecha; son propuestas con su contrapartida dicha en voz alta.
    **localizar** el defecto en la pieza, no solo decir que algo cambió. Coste:
    mucha más memoria y CPU por pieza; habría que medir si sigue siendo viable
    sin GPU.
-6. **Múltiples referencias por pieza** (variantes admisibles: dos acabados, dos
-   proveedores) en vez de una sola media.
+6. ~~**Múltiples referencias por pieza**~~ — **hecho el núcleo**. No era
+   comodidad: mezclar dos acabados admisibles en una sola media no da falsos NG,
+   deja **ciega** la referencia. La media se coloca entre los dos grupos, la
+   banda se ensancha —medido, de **0,98 a 0,68**— y un defecto que se detectaba
+   pasa. Separadas, cada variante conserva su media y su banda y una pieza es
+   buena si alguna la reconoce.
+
+   Falta la interfaz para registrar un acabado nuevo: hoy se guarda con
+   `saveReference(pieza, referencia, "nombre")` y el motor ya juzga contra
+   todas.
 7. **Mapa de calor de diferencia** contra el recorte de referencia: es barato
    (resta y suavizado) y ayuda muchísimo a que el operador entienda un NG.
 8. **Curva ROC con piezas malas reales**: hoy el umbral es estadístico. Con un

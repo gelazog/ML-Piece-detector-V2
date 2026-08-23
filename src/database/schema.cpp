@@ -196,6 +196,30 @@ const char* const kMigrationV10 = R"sql(
 ALTER TABLE ToolResults ADD COLUMN piece_index INTEGER NOT NULL DEFAULT 0;
 )sql";
 
+// v11: VARIANTES ADMISIBLES de la misma pieza.
+//
+// La referencia era una sola media por pieza, y eso da por supuesto que todas
+// las piezas buenas se parecen entre si. La misma pieza de dos proveedores, con
+// dos acabados admisibles, o antes y despues de un cambio de lote, forma DOS
+// grupos — y meterlos en la misma media no da falsos NG, deja CIEGA la
+// referencia: la media se coloca entre los dos grupos, la banda se ensancha de
+// 0,98 a 0,68 y un defecto que se detectaba pasa. Medido en
+// `tests/test_variants.cpp`.
+//
+// Se hace con una columna y no con una tabla nueva, igual que las plantillas de
+// herramientas: es el mismo patron y ya esta probado. Y NO se toca la clave
+// unica (piece_id, version): el numero de version sigue siendo unico dentro de
+// la pieza y corre entre todas sus variantes, asi que «la ultima de cada
+// variante» se contesta con un MAX por variante. Cambiar una restriccion UNIQUE
+// en SQLite obliga a recrear la tabla entera, y recrear una tabla con las
+// referencias de todas las piezas dentro es un riesgo que aqui no hace falta
+// correr.
+//
+// Las filas que ya existen quedan en «principal», que es lo que eran.
+const char* const kMigrationV11 = R"sql(
+ALTER TABLE Embeddings ADD COLUMN variant TEXT NOT NULL DEFAULT 'principal';
+)sql";
+
 const char* migrationFor(int targetVersion) {
     switch (targetVersion) {
         case 1: return kSchemaV1;
@@ -208,6 +232,7 @@ const char* migrationFor(int targetVersion) {
         case 8: return kMigrationV8;
         case 9: return kMigrationV9;
         case 10: return kMigrationV10;
+        case 11: return kMigrationV11;
     }
     return nullptr;
 }

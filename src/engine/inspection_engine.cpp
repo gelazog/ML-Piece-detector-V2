@@ -100,12 +100,43 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
                 outcome.embedding = std::move(embedding.value());
                 outcome.referenceVersion = stored.value().version;
                 check.evaluated = true;
-                check.similarity = ml::cosineSimilarity(outcome.embedding, reference.mean);
-                check.threshold =
-                    reference.simMean -
-                    std::max(options_.kSigma * reference.simStd, 0.02);
-                check.anomalous =
-                    ml::isAnomalous(outcome.embedding, reference, options_.kSigma);
+
+                // SE JUZGA CONTRA TODAS LAS VARIANTES, no solo contra la
+                // principal.
+                //
+                // La misma pieza puede tener dos acabados admisibles, y
+                // meterlos en una sola media no da falsos NG: deja CIEGA la
+                // referencia —la media se coloca entre los grupos, la banda se
+                // ensancha de 0,98 a 0,68 y un defecto que se detectaba pasa—.
+                // Ver `ml/reference.h` y `tests/test_variants.cpp`.
+                //
+                // Con una sola variante esto decide exactamente lo de siempre,
+                // así que quien no las use no puede notar que existen.
+                auto variants = pieces_.loadAllVariantReferences(pieceId);
+                if (variants.isOk() && !variants.value().empty()) {
+                    const auto match =
+                        ml::matchVariants(outcome.embedding, variants.value(),
+                                          options_.kSigma);
+                    check.similarity = match.similarity;
+                    check.anomalous = match.anomalous;
+                    // El umbral que se enseña es el de la variante que decidió,
+                    // no el de la principal: si no, el informe pondría una cifra
+                    // que no es la que se usó para juzgar.
+                    const auto& deciding =
+                        variants.value()[static_cast<std::size_t>(
+                            match.index >= 0 ? match.index : 0)];
+                    check.threshold =
+                        deciding.simMean -
+                        std::max(options_.kSigma * deciding.simStd, 0.02);
+                } else {
+                    check.similarity =
+                        ml::cosineSimilarity(outcome.embedding, reference.mean);
+                    check.threshold =
+                        reference.simMean -
+                        std::max(options_.kSigma * reference.simStd, 0.02);
+                    check.anomalous =
+                        ml::isAnomalous(outcome.embedding, reference, options_.kSigma);
+                }
             }
         }
     }

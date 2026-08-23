@@ -14,6 +14,6 @@ core::Result<void> migrate(Db& db);
 // v2: rasgo distintivo de orientación (anchor_*) en Pieces.
 // v3: ajuste manual de orientación (orientation_offset) en Pieces.
 // v4: plantillas múltiples por pieza (template) en InspectionTools.
-inline constexpr int kSchemaVersion = 10;
+inline constexpr int kSchemaVersion = 11;
 
 }  // namespace pci::database

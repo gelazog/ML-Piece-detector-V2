@@ -1138,3 +1138,131 @@ TEST_F(DatabaseTest, RemovingEveryToolLeavesNothingBehindAndSaysHowMany) {
     ASSERT_TRUE(again.isOk());
     EXPECT_EQ(again.value(), 0);
 }
+
+// ---------------------------------------------------------------------------
+// v11: variantes admisibles de la misma pieza
+// ---------------------------------------------------------------------------
+
+TEST_F(DatabaseTest, VariantsAreKeptApartAndTheOldOnesAreStillPrincipal) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+
+    const auto pieceId = pieces.createPiece("brida");
+    ASSERT_TRUE(pieceId.isOk());
+
+    const auto referenceWith = [](float bias) {
+        ml::Reference reference;
+        reference.mean = {1.0F + bias, 2.0F, 3.0F};
+        reference.stddev = {0.1F, 0.1F, 0.1F};
+        reference.sampleCount = 30;
+        reference.simMean = 0.99;
+        reference.simStd = 0.004;
+        reference.simMin = 0.97;
+        return reference;
+    };
+
+    // Sin decir nada, la referencia va a «principal»: es lo que eran todas antes
+    // de que las variantes existieran.
+    ASSERT_TRUE(pieces.saveReference(pieceId.value(), referenceWith(0.0F)).isOk());
+    auto names = pieces.listVariants(pieceId.value());
+    ASSERT_TRUE(names.isOk());
+    ASSERT_EQ(names.value().size(), 1U);
+    EXPECT_EQ(names.value()[0], "principal");
+
+    // Un acabado nuevo, sin tocar el anterior.
+    ASSERT_TRUE(pieces.saveReference(pieceId.value(), referenceWith(5.0F), "pulido").isOk());
+    names = pieces.listVariants(pieceId.value());
+    ASSERT_TRUE(names.isOk());
+    ASSERT_EQ(names.value().size(), 2U);
+
+    auto main = pieces.loadLatestReference(pieceId.value());
+    auto polished = pieces.loadLatestReference(pieceId.value(), "pulido");
+    ASSERT_TRUE(main.isOk());
+    ASSERT_TRUE(polished.isOk());
+    EXPECT_FLOAT_EQ(main.value().reference.mean[0], 1.0F)
+        << "guardar una variante nueva se llevó por delante la principal";
+    EXPECT_FLOAT_EQ(polished.value().reference.mean[0], 6.0F);
+
+    // El número de versión corre entre TODAS las variantes: es lo que mantiene
+    // válida la clave única (piece_id, version) sin recrear la tabla.
+    std::printf("  [variantes] version de principal %d, de pulido %d\n",
+                main.value().version, polished.value().version);
+    EXPECT_NE(main.value().version, polished.value().version);
+
+    // Y las dos salen juntas para poder juzgar contra ambas.
+    auto all = pieces.loadAllVariantReferences(pieceId.value());
+    ASSERT_TRUE(all.isOk());
+    EXPECT_EQ(all.value().size(), 2U)
+        << "juzgar solo contra una de las variantes es exactamente el fallo que esto "
+           "venía a arreglar";
+}
+
+// El aprendizaje incremental sigue funcionando POR VARIANTE: una versión nueva
+// de «pulido» no puede tocar a «principal».
+TEST_F(DatabaseTest, LearningAVariantDoesNotDisturbTheOthers) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    const auto pieceId = pieces.createPiece("brida");
+    ASSERT_TRUE(pieceId.isOk());
+
+    ml::Reference reference;
+    reference.mean = {1.0F, 1.0F};
+    reference.stddev = {0.1F, 0.1F};
+    reference.sampleCount = 30;
+    reference.simMean = 0.99;
+    reference.simStd = 0.004;
+
+    ASSERT_TRUE(pieces.saveReference(pieceId.value(), reference).isOk());
+    ml::Reference other = reference;
+    other.mean = {9.0F, 9.0F};
+    ASSERT_TRUE(pieces.saveReference(pieceId.value(), other, "pulido").isOk());
+    // Segunda versión de «pulido».
+    other.mean = {9.5F, 9.5F};
+    ASSERT_TRUE(pieces.saveReference(pieceId.value(), other, "pulido").isOk());
+
+    EXPECT_FLOAT_EQ(pieces.loadLatestReference(pieceId.value()).value().reference.mean[0],
+                    1.0F)
+        << "aprender sobre una variante movió la principal";
+    EXPECT_FLOAT_EQ(
+        pieces.loadLatestReference(pieceId.value(), "pulido").value().reference.mean[0],
+        9.5F);
+
+    // Y el historial de cada una es el suyo.
+    auto mainVersions = pieces.listReferenceVersions(pieceId.value());
+    auto polishedVersions = pieces.listReferenceVersions(pieceId.value(), "pulido");
+    ASSERT_TRUE(mainVersions.isOk());
+    ASSERT_TRUE(polishedVersions.isOk());
+    EXPECT_EQ(mainVersions.value().size(), 1U);
+    EXPECT_EQ(polishedVersions.value().size(), 2U);
+}
+
+// La principal no se puede borrar, y se dice por qué.
+TEST_F(DatabaseTest, TheMainVariantCannotBeDeletedByRemovingAFinish) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    const auto pieceId = pieces.createPiece("brida");
+    ASSERT_TRUE(pieceId.isOk());
+
+    ml::Reference reference;
+    reference.mean = {1.0F, 1.0F};
+    reference.stddev = {0.1F, 0.1F};
+    reference.sampleCount = 30;
+    reference.simMean = 0.99;
+    ASSERT_TRUE(pieces.saveReference(pieceId.value(), reference).isOk());
+    ASSERT_TRUE(pieces.saveReference(pieceId.value(), reference, "pulido").isOk());
+
+    const auto refused = pieces.deleteVariant(pieceId.value(), "principal");
+    ASSERT_FALSE(refused.isOk());
+    std::printf("  [variantes] al borrar la principal dice: %s\n",
+                refused.error().message.c_str());
+    EXPECT_NE(refused.error().message.find("principal"), std::string::npos);
+
+    // Una secundaria sí, y la principal se queda.
+    ASSERT_TRUE(pieces.deleteVariant(pieceId.value(), "pulido").isOk());
+    auto names = pieces.listVariants(pieceId.value());
+    ASSERT_TRUE(names.isOk());
+    ASSERT_EQ(names.value().size(), 1U);
+    EXPECT_EQ(names.value()[0], "principal");
+    EXPECT_TRUE(pieces.loadLatestReference(pieceId.value()).isOk())
+        << "quitar un acabado dejó a la pieza sin referencia";
+}

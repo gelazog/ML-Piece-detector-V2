@@ -776,3 +776,87 @@ TEST_F(EngineTest, TheShiftReportAnswersTheThreeQuestions) {
            "«1 vez cada uno» y no señalaría nada";
     EXPECT_NE(text.find("diámetro exterior"), std::string::npos);
 }
+
+// EL MOTOR CONSULTA TODAS LAS VARIANTES, de punta a punta.
+//
+// `tests/test_variants.cpp` ya mide la DECISIÓN —dos acabados en una sola media
+// dejan ciega la referencia, separados la recuperan—. Lo que falta comprobar es
+// el CABLEADO: que el motor carga todas las variantes de la pieza y juzga contra
+// todas, y no solo contra la principal.
+//
+// La segunda referencia de esta prueba es una forma claramente distinta, y es a
+// propósito. El embedding de este banco son cuatro medias por cuadrante y va
+// L2-normalizado, así que no distingue acabados: se probó con otros niveles de
+// gris (similitud 0,9999) y con un rasgo añadido (0,9994), y en los dos casos no
+// había dos grupos que separar. Para comprobar el cableado hace falta algo que
+// este embedding SÍ distinga, y la naturaleza de la segunda referencia no cambia
+// lo que se está comprobando: que registrarla hace que lo que antes era anómalo
+// se acepte, sin tocar lo que ya funcionaba.
+TEST_F(EngineTest, TheEngineJudgesAgainstEveryRegisteredVariant) {
+    const auto pieceId = registerLPiece();
+
+    const auto circleFrame = [] {
+        cv::Mat frame(480, 640, CV_8UC1, cv::Scalar(40));
+        cv::circle(frame, {320, 240}, 70, cv::Scalar(220), cv::FILLED, cv::LINE_8);
+        cv::Mat bgr;
+        cv::cvtColor(frame, bgr, cv::COLOR_GRAY2BGR);
+        return bgr;
+    };
+    const auto lFrame = [] {
+        const auto frame = drawLPiece({640, 480}, {306.0F, 236.0F}, 23.0, 40.0F, 40, 220);
+        cv::Mat bgr;
+        cv::cvtColor(frame, bgr, cv::COLOR_GRAY2BGR);
+        return bgr;
+    };
+
+    // Antes de registrar la segunda referencia, la otra forma sale anómala.
+    auto before = engine_->inspect(circleFrame(), pieceId);
+    ASSERT_TRUE(before.isOk()) << before.error().message;
+    ASSERT_TRUE(before.value().verdict.embedding.evaluated)
+        << "no se llegó a evaluar la apariencia: la prueba no mide lo que cree";
+    std::printf("  [variantes] sin registrar: similitud %.4f, umbral %.4f -> %s\n",
+                before.value().verdict.embedding.similarity,
+                before.value().verdict.embedding.threshold,
+                before.value().verdict.embedding.anomalous ? "ANÓMALA" : "acepta");
+    ASSERT_TRUE(before.value().verdict.embedding.anomalous)
+        << "ya se aceptaba antes de registrar nada: entonces esta prueba no demuestra "
+           "que registrar la variante haya servido de algo";
+
+    // El operador la registra como una variante admisible de la misma pieza.
+    vision::PipelineConfig cfg;
+    cfg.autoOrient = true;
+    engine::RegistrationSession session(fakeEmbed, 30, 5, std::nullopt, cfg);
+    for (int i = 0; i < 8; ++i) {
+        const auto feedback = session.addFrame(circleFrame());
+        ASSERT_TRUE(feedback.isOk()) << feedback.error().message;
+        ASSERT_TRUE(feedback.value().accepted) << feedback.value().reason;
+    }
+    auto variantReference = session.finish();
+    ASSERT_TRUE(variantReference.isOk()) << variantReference.error().message;
+    ASSERT_TRUE(pieces_->saveReference(pieceId, variantReference.value(), "pulido").isOk());
+
+    // Ahora se acepta.
+    auto after = engine_->inspect(circleFrame(), pieceId);
+    ASSERT_TRUE(after.isOk());
+    std::printf("  [variantes] ya registrada: similitud %.4f, umbral %.4f -> %s\n",
+                after.value().verdict.embedding.similarity,
+                after.value().verdict.embedding.threshold,
+                after.value().verdict.embedding.anomalous ? "ANÓMALA" : "acepta");
+    EXPECT_FALSE(after.value().verdict.embedding.anomalous)
+        << "registrarla como variante no cambió nada: el motor sigue juzgando solo "
+           "contra la principal";
+
+    // Y el umbral que se enseña es el de la variante que decidió, no el de la
+    // principal: si no, el informe pondría una cifra que no es la que se usó.
+    EXPECT_NE(after.value().verdict.embedding.threshold,
+              before.value().verdict.embedding.threshold)
+        << "el umbral del informe sigue siendo el de la principal aunque haya decidido "
+           "otra variante";
+
+    // Lo que ya funcionaba sigue funcionando: añadir una variante no puede
+    // romper el acabado que estaba registrado.
+    auto original = engine_->inspect(lFrame(), pieceId);
+    ASSERT_TRUE(original.isOk());
+    EXPECT_FALSE(original.value().verdict.embedding.anomalous)
+        << "añadir una variante rompió la pieza que ya se reconocía";
+}

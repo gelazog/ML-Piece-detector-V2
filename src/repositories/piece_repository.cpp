@@ -322,7 +322,8 @@ core::Result<std::optional<vision::OrientationAnchor>> PieceRepository::loadAnch
 }
 
 core::Result<int> PieceRepository::saveReference(std::int64_t pieceId,
-                                                 const ml::Reference& reference) {
+                                                 const ml::Reference& reference,
+                                                 const std::string& variant) {
     using ResultT = core::Result<int>;
 
     if (reference.mean.empty() || reference.mean.size() != reference.stddev.size()) {
@@ -345,9 +346,14 @@ core::Result<int> PieceRepository::saveReference(std::int64_t pieceId,
         }
         newVersion = static_cast<int>(maxStmt.value().columnInt(0)) + 1;
 
+        // El numero de version corre entre TODAS las variantes de la pieza —la
+        // consulta del maximo de arriba no filtra por variante— y eso es lo que
+        // mantiene valida la clave unica (piece_id, version) sin recrear la
+        // tabla. «La ultima de cada variante» se contesta con un MAX por
+        // variante, que es lo que hace `loadAllVariantReferences`.
         auto insert = db_.prepare(
             "INSERT INTO Embeddings (piece_id, version, dim, mean, stddev, sample_count, "
-            "sim_mean, sim_std, sim_min) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);");
+            "sim_mean, sim_std, sim_min, variant) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);");
         if (!insert.isOk()) {
             return core::Result<void>::err(insert.error().message);
         }
@@ -364,6 +370,10 @@ core::Result<int> PieceRepository::saveReference(std::int64_t pieceId,
         if (auto b = s.bindDouble(7, reference.simMean); !b.isOk()) return b;
         if (auto b = s.bindDouble(8, reference.simStd); !b.isOk()) return b;
         if (auto b = s.bindDouble(9, reference.simMin); !b.isOk()) return b;
+        if (auto b = s.bindText(10, variant.empty() ? std::string(kMainVariant) : variant);
+            !b.isOk()) {
+            return b;
+        }
 
         auto step = s.step();
         if (!step.isOk()) {
@@ -379,16 +389,21 @@ core::Result<int> PieceRepository::saveReference(std::int64_t pieceId,
     return ResultT::ok(newVersion);
 }
 
-core::Result<StoredReference> PieceRepository::loadLatestReference(std::int64_t pieceId) {
+core::Result<StoredReference> PieceRepository::loadLatestReference(
+    std::int64_t pieceId, const std::string& variant) {
     using ResultT = core::Result<StoredReference>;
 
     auto stmt = db_.prepare(
         "SELECT version, mean, stddev, sample_count, sim_mean, sim_std, sim_min "
-        "FROM Embeddings WHERE piece_id = ? ORDER BY version DESC LIMIT 1;");
+        "FROM Embeddings WHERE piece_id = ? AND variant = ? "
+        "ORDER BY version DESC LIMIT 1;");
     if (!stmt.isOk()) {
         return ResultT::err(stmt.error().message);
     }
     if (auto bind = stmt.value().bindInt(1, pieceId); !bind.isOk()) {
+        return ResultT::err(bind.error().message);
+    }
+    if (auto bind = stmt.value().bindText(2, variant); !bind.isOk()) {
         return ResultT::err(bind.error().message);
     }
     auto row = stmt.value().step();
@@ -422,15 +437,92 @@ core::Result<StoredReference> PieceRepository::loadLatestReference(std::int64_t 
     return ResultT::ok(std::move(stored));
 }
 
-core::Result<std::vector<int>> PieceRepository::listReferenceVersions(std::int64_t pieceId) {
-    using ResultT = core::Result<std::vector<int>>;
-
+core::Result<std::vector<std::string>> PieceRepository::listVariants(std::int64_t pieceId) {
+    using ResultT = core::Result<std::vector<std::string>>;
     auto stmt = db_.prepare(
-        "SELECT version FROM Embeddings WHERE piece_id = ? ORDER BY version;");
+        "SELECT DISTINCT variant FROM Embeddings WHERE piece_id = ? ORDER BY variant;");
     if (!stmt.isOk()) {
         return ResultT::err(stmt.error().message);
     }
     if (auto bind = stmt.value().bindInt(1, pieceId); !bind.isOk()) {
+        return ResultT::err(bind.error().message);
+    }
+    std::vector<std::string> names;
+    while (true) {
+        auto row = stmt.value().step();
+        if (!row.isOk()) {
+            return ResultT::err(row.error().message);
+        }
+        if (!row.value()) {
+            break;
+        }
+        names.push_back(stmt.value().columnText(0));
+    }
+    return ResultT::ok(std::move(names));
+}
+
+core::Result<std::vector<ml::Reference>> PieceRepository::loadAllVariantReferences(
+    std::int64_t pieceId) {
+    using ResultT = core::Result<std::vector<ml::Reference>>;
+    auto listed = listVariants(pieceId);
+    if (!listed.isOk()) {
+        return ResultT::err(listed.error().message);
+    }
+    std::vector<ml::Reference> references;
+    for (const auto& name : listed.value()) {
+        // La ULTIMA de cada variante. Las anteriores son historial: nunca se
+        // borran, pero juzgar con una referencia vieja seria juzgar con lo que
+        // la pieza era antes de la ultima corrección.
+        auto stored = loadLatestReference(pieceId, name);
+        if (stored.isOk()) {
+            references.push_back(stored.value().reference);
+        }
+    }
+    return ResultT::ok(std::move(references));
+}
+
+core::Result<void> PieceRepository::deleteVariant(std::int64_t pieceId,
+                                                  const std::string& variant) {
+    // La principal no se borra. Sin ninguna referencia la pieza deja de poder
+    // juzgarse por apariencia, y eso no puede ser el resultado de quitar un
+    // acabado secundario: quien quiera dejar la pieza sin referencia tiene que
+    // decirlo por otro camino, no de rebote.
+    if (variant.empty() || variant == kMainVariant) {
+        return core::Result<void>::err(
+            "La variante principal no se puede borrar. Si lo que quieres es dejar la "
+            "pieza sin referencia, hazlo desde la pieza y no quitando un acabado.");
+    }
+    auto stmt = db_.prepare("DELETE FROM Embeddings WHERE piece_id = ? AND variant = ?;");
+    if (!stmt.isOk()) {
+        return core::Result<void>::err(stmt.error().message);
+    }
+    if (auto bind = stmt.value().bindInt(1, pieceId); !bind.isOk()) {
+        return bind;
+    }
+    if (auto bind = stmt.value().bindText(2, variant); !bind.isOk()) {
+        return bind;
+    }
+    auto step = stmt.value().step();
+    if (!step.isOk()) {
+        return core::Result<void>::err(step.error().message);
+    }
+    return core::Result<void>::ok();
+}
+
+core::Result<std::vector<int>> PieceRepository::listReferenceVersions(
+    std::int64_t pieceId, const std::string& variant) {
+    using ResultT = core::Result<std::vector<int>>;
+
+    auto stmt = db_.prepare(
+        "SELECT version FROM Embeddings WHERE piece_id = ? AND variant = ? "
+        "ORDER BY version;");
+    if (!stmt.isOk()) {
+        return ResultT::err(stmt.error().message);
+    }
+    if (auto bind = stmt.value().bindInt(1, pieceId); !bind.isOk()) {
+        return ResultT::err(bind.error().message);
+    }
+    if (auto bind = stmt.value().bindText(2, variant); !bind.isOk()) {
         return ResultT::err(bind.error().message);
     }
 

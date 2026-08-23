@@ -86,9 +86,37 @@ public:
     core::Result<void> clearAnchor(std::int64_t pieceId);
     core::Result<std::optional<vision::OrientationAnchor>> loadAnchor(std::int64_t pieceId);
 
-    core::Result<int> saveReference(std::int64_t pieceId, const ml::Reference& reference);
-    core::Result<StoredReference> loadLatestReference(std::int64_t pieceId);
-    core::Result<std::vector<int>> listReferenceVersions(std::int64_t pieceId);
+    // VARIANTES ADMISIBLES de la misma pieza: dos acabados, dos proveedores,
+    // dos lotes. Cada una conserva su media y su banda, y una pieza es buena si
+    // ALGUNA la reconoce (`ml::matchVariants`).
+    //
+    // El motivo no es comodidad: mezclarlas en una sola media deja CIEGA la
+    // referencia. La media se coloca entre los grupos, la banda se ensancha —de
+    // 0,98 a 0,68 en el caso medido— y un defecto que se detectaba pasa. No da
+    // falsos NG, que es lo que lo hace peligroso.
+    //
+    // «principal» es la de siempre, y es el valor por defecto en todas partes:
+    // quien no use variantes no puede notar que esto existe.
+    static constexpr const char* kMainVariant = "principal";
+
+    core::Result<int> saveReference(std::int64_t pieceId, const ml::Reference& reference,
+                                    const std::string& variant = kMainVariant);
+    core::Result<StoredReference> loadLatestReference(
+        std::int64_t pieceId, const std::string& variant = kMainVariant);
+    core::Result<std::vector<int>> listReferenceVersions(
+        std::int64_t pieceId, const std::string& variant = kMainVariant);
+
+    // Los nombres de las variantes que tiene esta pieza, en orden alfabético.
+    core::Result<std::vector<std::string>> listVariants(std::int64_t pieceId);
+
+    // La ÚLTIMA referencia de CADA variante, que es lo que hace falta para
+    // juzgar: se compara contra todas y basta que una reconozca la pieza.
+    core::Result<std::vector<ml::Reference>> loadAllVariantReferences(std::int64_t pieceId);
+
+    // Borra una variante entera, con todas sus versiones. La «principal» no se
+    // puede borrar: sin ninguna referencia la pieza dejaría de poder juzgarse, y
+    // eso no puede ser el resultado de quitar un acabado secundario.
+    core::Result<void> deleteVariant(std::int64_t pieceId, const std::string& variant);
 
 private:
     database::Db& db_;
