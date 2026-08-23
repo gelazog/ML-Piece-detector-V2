@@ -6,6 +6,7 @@ add_library(pci_vision STATIC
   detection_tuning.cpp
   fitting.cpp
   geometry_features.cpp
+  lens_calibration.cpp
   fixture_stabilizer.cpp
   frame_geometry.cpp
   orientation.cpp
