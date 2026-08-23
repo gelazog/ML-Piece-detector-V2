@@ -3548,9 +3548,9 @@ cosas está hecha; son propuestas con su contrapartida dicha en voz alta.
 1. **Iluminación antes que software.** El salto de calidad más grande y más
    barato no está en el código: es un aro de luz difusa y un fondo mate de color
    contrastado. La mitad de los problemas de segmentación desaparecen.
-2. **Segmentación adaptativa** (umbral local en vez de Otsu global) para
-   sobrevivir a degradados de sombra sin tener que cambiar de perfil a mano.
-   Coste: más lento y con más parámetros que ajustar.
+2. ~~**Segmentación adaptativa** (umbral local en vez de Otsu global)~~ —
+   **probado y descartado**, con las medidas más abajo, en «Lo que se probó y no
+   salió».
 3. **Corrección de distorsión de lente** con un patrón de tablero de ajedrez
    (`calibrateCamera`). Hoy no se corrige, y en lentes angulares las medidas
    cerca del borde se estiran. Es la mejora de exactitud más seria que queda.
@@ -3589,6 +3589,73 @@ cosas está hecha; son propuestas con su contrapartida dicha en voz alta.
     así que falta solo generar los `.ts`/`.qm`.
 16. **Pruebas con cámara real automatizadas**: hoy toda la batería usa imágenes
     sintéticas y el hardware se prueba a mano.
+
+### Lo que se probó y no salió
+
+#### Segmentación adaptativa contra los degradados de luz
+
+Estaba en esta misma lista como la mejora número 2, y parecía evidente: Otsu
+elige **un** corte para toda la imagen, así que da por supuesto que el fondo es
+igual de claro en todas partes. Con una lámpara a un lado eso deja de ser
+cierto: el corte queda bien en el centro y mal en los extremos, y el contorno se
+desvía hacia el lado iluminado.
+
+Se probaron **cuatro** formas de arreglarlo. Ninguna se puede enviar, y todas
+fallan por el mismo motivo de fondo, que conviene decir primero:
+
+> **Los métodos de libro para un degradado suponen que el objeto es pequeño
+> comparado con el encuadre.** Todos necesitan estimar «cómo sería el fondo
+> aquí», y para eso miran un entorno que tiene que contener fondo de verdad. En
+> esta aplicación la pieza ocupa buena parte del encuadre **por diseño** —es una
+> cámara mirando UNA pieza—, así que ese entorno está lleno de pieza y la
+> estimación se contamina justo con lo que se pretendía separar.
+
+Medido con un banco de cuatro escenas: un degradado sintético de 40 a 200 con la
+pieza destacando 60 niveles sobre su fondo local; una escena fácil de contraste
+alto; una pieza que ocupa media imagen; y cinco fotografías del corpus real. La
+cifra de las tres primeras es intersección sobre unión contra la verdad conocida.
+
+| intento | degradado | escena fácil | fotografía real |
+|---|---|---|---|
+| Otsu global (lo que hay hoy) | 0,23 | **1,000** | referencia |
+| 1. `cv::adaptiveThreshold` | — | 0,178 | tres bolas **+268 %** |
+| 2. Restar un desenfoque muy ancho | 0,64 | 0,603 | tuerca **−69 %**, y 19 s en cinco fotos |
+| 3. Estimar el fondo excluyendo la pieza (dos pases) | 0,27 | 1,000 | — |
+| 4. Estimar el fondo por morfología | **resuelto** | 1,000 | tuerca **+153 %** |
+
+Lo que enseñó cada uno:
+
+1. **Umbral local.** Un umbral local sobre el interior liso de una pieza no ve
+   una zona lisa, ve grano: cualquier pieza más grande que el entorno de
+   comparación se vacía por dentro. Y aquí el caso malo es el normal.
+2. **Restar un desenfoque ancho.** El mismo fallo por otro camino: sobre una
+   pieza grande el desenfoque se come a la propia pieza, así que restarlo le
+   quita su señal y el interior se va a gris medio.
+3. **Excluir la pieza del cálculo** (un Otsu de tanteo, estimar la luz solo con
+   los píxeles de fondo, e interpolar por encima del hueco que deja la pieza).
+   Arregla lo de vaciar las piezas —la escena fácil vuelve a 1,000— pero **no
+   arregla el degradado**, que era para lo único que existía: de 0,23 a 0,27. El
+   tanteo se equivoca justo cuando el degradado es fuerte, o sea cuando hace
+   falta.
+4. **Morfología** (una apertura con un elemento mayor que la pieza borra la
+   pieza y deja el fondo). Es el único que resuelve el degradado, y además no
+   necesita saber dónde está la pieza. Pero al aplanar una escena que **no**
+   tenía degradado, el fondo queda pegado a un solo valor y ocupa el 96 % de la
+   imagen: Otsu se queda sin dos poblaciones que separar y corta dentro del
+   ruido. La tuerca del corpus pasaba de 18 095 a 45 828 px². Un guardián que
+   solo aplique la corrección cuando el recorrido de la luz supere cierto umbral
+   deja tres de las cinco fotografías **intactas**, pero las otras dos se siguen
+   moviendo — y elegir ese umbral para que la tuerca quede fuera es ajustarlo al
+   corpus, no medirlo.
+
+**Qué haría falta para retomarlo.** Un corpus de fotografías con degradado real
+y contorno de referencia conocido. Todo lo de arriba se midió contra escenas
+sintéticas y contra fotos que *no* tienen el problema: eso alcanza para
+descartar, y no alcanza para ajustar.
+
+Mientras tanto, lo que hay para una iluminación desigual sigue siendo lo de
+siempre, y es más barato: **arreglar la luz**, el umbral manual, o el pincel de
+corregir el borde.
 
 ### Lo que NO conviene hacer
 
