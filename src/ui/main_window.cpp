@@ -4007,14 +4007,78 @@ void MainWindow::onDeleteAllToolsClicked() {
     //
     // Y se dice que hay vuelta atrás: el miedo a un botón destructivo viene de
     // no saber si se puede deshacer, y aquí se puede.
+    // ¿HAY HERRAMIENTAS EN OTRAS PIEZAS?
+    //
+    // De esto salió una queja de uso: «el botón de borrar todas las herramientas
+    // no debería de ocupar seleccionar las piezas de una en una». Y era verdad:
+    // el botón borra las de la pieza ABIERTA, así que vaciar el trabajo entero
+    // obligaba a ir al combo, cambiar de pieza, confirmar, y repetir.
+    //
+    // No se añade un botón nuevo. Se añade una SEGUNDA SALIDA al diálogo que ya
+    // existe, y solo cuando de verdad hay algo en otras piezas: un botón para
+    // borrarlo todo, visible siempre, sería un botón peligroso a la vista de
+    // alguien que casi nunca lo necesita.
+    repositories::ToolRepository::ToolTally everywhere;
+    if (repos_.tools != nullptr) {
+        if (auto tally = repos_.tools->tallyAll(); tally.isOk()) {
+            everywhere = tally.value();
+        }
+    }
+    const bool othersHaveTools = everywhere.tools > total && everywhere.pieces > 1;
+
     QMessageBox box(QMessageBox::Warning, tr("Borrar todas las herramientas"),
                     tr("Se van a borrar las %n herramienta(s) de esta pieza.", nullptr, total),
                     QMessageBox::NoButton, this);
-    box.setInformativeText(tr("Se puede deshacer con Ctrl+Z."));
-    auto* confirm = box.addButton(tr("Borrar las %n", nullptr, total), QMessageBox::DestructiveRole);
+    if (othersHaveTools) {
+        // LA VERDAD SOBRE EL DESHACER, que es lo delicado de esta opción.
+        //
+        // Ctrl+Z guarda el estado de las herramientas de la pieza ABIERTA. Puede
+        // devolver las de esa y no tiene forma de devolver las de las demás,
+        // porque nunca las tuvo en memoria. Un «se puede deshacer» que solo
+        // funciona a medias es peor que no prometer nada, así que las dos
+        // salidas dicen exactamente lo que se puede recuperar de cada una.
+        box.setInformativeText(
+            tr("Borrar las de esta pieza se puede deshacer con Ctrl+Z.\n\n"
+               "En el programa hay %1 herramientas repartidas en %2 piezas. "
+               "Borrarlas TODAS de una vez NO se puede deshacer.")
+                .arg(everywhere.tools)
+                .arg(everywhere.pieces));
+    } else {
+        box.setInformativeText(tr("Se puede deshacer con Ctrl+Z."));
+    }
+    auto* confirm = box.addButton(tr("Borrar las %n de esta pieza", nullptr, total),
+                                  QMessageBox::DestructiveRole);
+    QPushButton* confirmAll = nullptr;
+    if (othersHaveTools) {
+        confirmAll = box.addButton(
+            tr("Borrar las %1 de las %2 piezas").arg(everywhere.tools).arg(everywhere.pieces),
+            QMessageBox::DestructiveRole);
+    }
     box.addButton(QMessageBox::Cancel);
     box.setDefaultButton(QMessageBox::Cancel);  // el defecto NUNCA es el destructivo
     box.exec();
+    if (confirmAll != nullptr && box.clickedButton() == confirmAll) {
+        auto removed = repos_.tools->removeAllTools();
+        if (!removed.isOk()) {
+            statusBar()->showMessage(QString::fromStdString(removed.error().message));
+            return;
+        }
+        liveTools_.clear();
+        // Se limpia también la pila de deshacer: dejarla con un estado anterior
+        // haría que Ctrl+Z devolviera las herramientas de ESTA pieza y ninguna de
+        // las demás, que es justo el medio deshacer que se acaba de prometer que
+        // no habría.
+        undoStack_.clear();
+        commitUndoState();
+        video_->setSelectedIndex(-1);
+        onLiveSelectionChanged(-1);
+        video_->clearResults();
+        statusBar()->showMessage(
+            tr("%1 herramientas borradas de %2 piezas. Esto no se puede deshacer.")
+                .arg(removed.value())
+                .arg(everywhere.pieces));
+        return;
+    }
     if (box.clickedButton() != confirm) {
         return;
     }

@@ -253,6 +253,44 @@ core::Result<void> ToolRepository::duplicateTemplate(std::int64_t pieceId,
     return ResultT::ok();
 }
 
+core::Result<ToolRepository::ToolTally> ToolRepository::tallyAll() {
+    auto stmt = db_.prepare(
+        "SELECT COUNT(*), COUNT(DISTINCT piece_id), COUNT(DISTINCT piece_id || '/' || "
+        "template) FROM InspectionTools;");
+    if (!stmt.isOk()) {
+        return core::Result<ToolTally>::err(stmt.error().message);
+    }
+    auto step = stmt.value().step();
+    if (!step.isOk()) {
+        return core::Result<ToolTally>::err(step.error().message);
+    }
+    ToolTally tally;
+    if (step.value()) {
+        tally.tools = static_cast<int>(stmt.value().columnInt(0));
+        tally.pieces = static_cast<int>(stmt.value().columnInt(1));
+        tally.templates = static_cast<int>(stmt.value().columnInt(2));
+    }
+    return core::Result<ToolTally>::ok(tally);
+}
+
+core::Result<int> ToolRepository::removeAllTools() {
+    // Se cuenta ANTES de borrar: después ya no hay a quién preguntarle cuántas
+    // eran, y el operador tiene derecho a que se le diga qué acaba de pasar.
+    auto before = tallyAll();
+    if (!before.isOk()) {
+        return core::Result<int>::err(before.error().message);
+    }
+    auto stmt = db_.prepare("DELETE FROM InspectionTools;");
+    if (!stmt.isOk()) {
+        return core::Result<int>::err(stmt.error().message);
+    }
+    auto step = stmt.value().step();
+    if (!step.isOk()) {
+        return core::Result<int>::err(step.error().message);
+    }
+    return core::Result<int>::ok(before.value().tools);
+}
+
 core::Result<void> ToolRepository::remove(std::int64_t toolId) {
     auto stmt = db_.prepare("DELETE FROM InspectionTools WHERE id = ?;");
     if (!stmt.isOk()) {

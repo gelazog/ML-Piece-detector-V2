@@ -24,6 +24,30 @@ public:
     core::Result<std::vector<std::string>> listTemplates(std::int64_t pieceId);
     core::Result<void> remove(std::int64_t toolId);
 
+    // CUÁNTAS HERRAMIENTAS HAY EN TODO EL PROGRAMA, y repartidas en cuántas
+    // piezas y plantillas.
+    //
+    // Existe para poder preguntar bien antes de un borrado global: «se van a
+    // borrar 47 herramientas de 5 piezas» se entiende y se puede reconocer;
+    // «¿seguro?» a secas no informa de nada, y sobre una acción que no tiene
+    // vuelta atrás eso no basta.
+    struct ToolTally {
+        int tools = 0;
+        int pieces = 0;
+        int templates = 0;
+    };
+    [[nodiscard]] core::Result<ToolTally> tallyAll();
+
+    // Borra TODAS las herramientas, de todas las piezas y todas las plantillas.
+    // Devuelve cuántas se borraron.
+    //
+    // NO SE PUEDE DESHACER, y quien la llame tiene que decirlo. El Ctrl+Z de la
+    // aplicación guarda el estado de las herramientas de la pieza ABIERTA: puede
+    // devolver las de esa y no tiene forma de devolver las de las demás, porque
+    // nunca las tuvo en memoria. Prometer un deshacer que solo funciona a medias
+    // es peor que no prometerlo.
+    [[nodiscard]] core::Result<int> removeAllTools();
+
     // Gestión de plantillas (M1). Todas operan sobre las herramientas de una
     // pieza agrupadas por su columna `template`.
     // Renombra `from` a `to`; error si `to` ya existe o los nombres son vacíos.

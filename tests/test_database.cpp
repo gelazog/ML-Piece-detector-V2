@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cstdio>
+
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -1042,4 +1044,97 @@ TEST_F(DatabaseTest, SettingsRemoveForgetsAKeyInsteadOfBlankingIt) {
     // ajustes borra las siete propiedades sin mirar cuales habia.
     EXPECT_TRUE(settings.remove("cam_exposure").isOk());
     EXPECT_TRUE(settings.remove("no_existe_esta_clave").isOk());
+}
+
+// ---------------------------------------------------------------------------
+// Vaciar el trabajo entero sin ir pieza por pieza
+// ---------------------------------------------------------------------------
+//
+// La queja: «el botón de borrar todas las herramientas no debería de ocupar
+// seleccionar las piezas de una en una». El botón borra las de la pieza ABIERTA,
+// así que vaciar el trabajo entero obligaba a ir al combo, cambiar de pieza,
+// confirmar, y repetir por cada una.
+
+TEST_F(DatabaseTest, TheToolTallyKnowsHowManyAndWhere) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    repositories::ToolRepository tools(db);
+
+    // Sin nada, cero — y no un error: «no hay herramientas» es una respuesta.
+    auto empty = tools.tallyAll();
+    ASSERT_TRUE(empty.isOk()) << empty.error().message;
+    EXPECT_EQ(empty.value().tools, 0);
+    EXPECT_EQ(empty.value().pieces, 0);
+
+    const auto tray = pieces.createPiece("bandeja");
+    const auto bolt = pieces.createPiece("tornillo");
+    ASSERT_TRUE(tray.isOk());
+    ASSERT_TRUE(bolt.isOk());
+
+    inspection::ToolConfig tool;
+    tool.type = inspection::ToolType::Caliper;
+    tool.name = "ancho";
+    tool.geometryJson = inspection::toJson(
+        inspection::ToolGeometry(inspection::CaliperGeometry{{0, 0}, {40, 0}, 6.0F}));
+
+    ASSERT_TRUE(tools.save(tray.value(), tool).isOk());
+    ASSERT_TRUE(tools.save(tray.value(), tool).isOk());
+    ASSERT_TRUE(tools.save(bolt.value(), tool).isOk());
+    // Y una en OTRA plantilla de la misma pieza: el recuento tiene que verla.
+    ASSERT_TRUE(tools.save(bolt.value(), tool, "reverso").isOk());
+
+    auto tally = tools.tallyAll();
+    ASSERT_TRUE(tally.isOk());
+    std::printf("  [herramientas] %d en %d piezas y %d plantillas\n", tally.value().tools,
+                tally.value().pieces, tally.value().templates);
+    EXPECT_EQ(tally.value().tools, 4);
+    EXPECT_EQ(tally.value().pieces, 2);
+    EXPECT_EQ(tally.value().templates, 3)
+        << "el recuento no ve las plantillas: quien borre todo se llevaría por "
+           "delante trabajo que el diálogo no le había contado";
+}
+
+TEST_F(DatabaseTest, RemovingEveryToolLeavesNothingBehindAndSaysHowMany) {
+    auto& db = openAndMigrate();
+    repositories::PieceRepository pieces(db);
+    repositories::ToolRepository tools(db);
+
+    const auto tray = pieces.createPiece("bandeja");
+    const auto bolt = pieces.createPiece("tornillo");
+    ASSERT_TRUE(tray.isOk());
+    ASSERT_TRUE(bolt.isOk());
+
+    inspection::ToolConfig tool;
+    tool.type = inspection::ToolType::Caliper;
+    tool.name = "ancho";
+    tool.geometryJson = inspection::toJson(
+        inspection::ToolGeometry(inspection::CaliperGeometry{{0, 0}, {40, 0}, 6.0F}));
+    for (int i = 0; i < 3; ++i) {
+        ASSERT_TRUE(tools.save(tray.value(), tool).isOk());
+    }
+    ASSERT_TRUE(tools.save(bolt.value(), tool).isOk());
+    ASSERT_TRUE(tools.save(bolt.value(), tool, "reverso").isOk());
+
+    auto removed = tools.removeAllTools();
+    ASSERT_TRUE(removed.isOk()) << removed.error().message;
+    // Cuenta ANTES de borrar: después ya no hay a quién preguntarle cuántas
+    // eran, y el operador tiene derecho a que se le diga qué acaba de pasar.
+    EXPECT_EQ(removed.value(), 5);
+
+    EXPECT_TRUE(tools.listForPiece(tray.value()).value().empty());
+    EXPECT_TRUE(tools.listForPiece(bolt.value()).value().empty());
+    EXPECT_TRUE(tools.listForPiece(bolt.value(), "reverso").value().empty())
+        << "quedó trabajo en una plantilla que no era la principal: «todas» no eran "
+           "todas";
+    EXPECT_EQ(tools.tallyAll().value().tools, 0);
+
+    // Y las PIEZAS siguen ahí: se borran las herramientas, no el trabajo de
+    // registrar la pieza ni su referencia.
+    EXPECT_TRUE(pieces.loadMeasurement(tray.value()).isOk());
+    EXPECT_TRUE(pieces.loadMeasurement(bolt.value()).isOk());
+
+    // Borrar dos veces no es un error, y la segunda dice cero.
+    auto again = tools.removeAllTools();
+    ASSERT_TRUE(again.isOk());
+    EXPECT_EQ(again.value(), 0);
 }
