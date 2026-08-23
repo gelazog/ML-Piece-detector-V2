@@ -4,6 +4,7 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include "vision/edge_segmentation.h"
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -75,10 +76,23 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     // CÓMO se separa la pieza del fondo. Va ANTES del umbral y la polaridad
     // porque decide si esos dos significan algo: segmentando por el canto no hay
     // corte de gris que ajustar.
+    // El aviso va JUSTO ENCIMA del selector de metodo, no al final de la
+    // pestaña: un consejo lejos del control que hay que tocar obliga a buscarlo.
+    sceneHint_ = new QLabel(this);
+    sceneHint_->setWordWrap(true);
+    sceneHint_->setVisible(false);
+    form->addRow(sceneHint_);
+    useEdgesButton_ = new QPushButton(tr("Cambiar a «por el canto»"), this);
+    useEdgesButton_->setVisible(false);
+    form->addRow(useEdgesButton_);
+
     method_ = new QComboBox(this);
     method_->addItem(tr("Por nivel de gris (lo habitual)"));
     method_->addItem(tr("Por el canto de la pieza"));
     method_->setCurrentIndex(static_cast<int>(current.method));
+    connect(useEdgesButton_, &QPushButton::clicked, this, [this] {
+        method_->setCurrentIndex(static_cast<int>(vision::SegmentationMethod::Edges));
+    });
     method_->setToolTip(
         tr("«Por nivel» busca un corte de gris que deje la pieza a un lado y el\n"
            "fondo al otro. Es lo que funciona casi siempre.\n"
@@ -301,6 +315,35 @@ double DetectionPage::minAreaFraction() const {
 
 double DetectionPage::maxAreaFraction() const {
     return maxArea_ != nullptr ? maxArea_->value() / 100.0 : 0.9;
+}
+
+// Lo que la imagen de ahora dice de sí misma.
+//
+// Solo se enseña cuando hay algo que hacer: si la escena pide el canto y el
+// método puesto es el de nivel. Un aviso que sale siempre se aprende a ignorar,
+// y uno que sale cuando ya está bien puesto es ruido.
+void DetectionPage::setSceneReading(const vision::SceneReading& reading) {
+    if (sceneHint_ == nullptr || method_ == nullptr) {
+        return;
+    }
+    const bool usingLevel =
+        method_->currentIndex() == static_cast<int>(vision::SegmentationMethod::Level);
+    const bool worthSaying = reading.piecesStraddleTheBackground && usingLevel;
+    sceneHint_->setVisible(worthSaying);
+    useEdgesButton_->setVisible(worthSaying);
+    if (!worthSaying) {
+        return;
+    }
+    // Con las CIFRAS dentro. «Prueba el otro método» es una corazonada; «el 27 %
+    // de la imagen es más oscuro que la mesa y el 2 % más claro» es un motivo, y
+    // el operador puede comprobarlo mirando su propia pieza.
+    sceneHint_->setText(
+        tr("En esta imagen, el %1 % es más claro que la mesa y el %2 % más oscuro. "
+           "Ningún umbral por nivel puede separar las dos cosas a la vez: el corte que "
+           "recoge unas partes deja fuera a otras.")
+            .arg(100.0 * reading.brighterThanBackground, 0, 'f', 1)
+            .arg(100.0 * reading.darkerThanBackground, 0, 'f', 1));
+    sceneHint_->setStyleSheet(QStringLiteral("color:#ffc861;"));
 }
 
 vision::SegmentationOptions DetectionPage::options() const {

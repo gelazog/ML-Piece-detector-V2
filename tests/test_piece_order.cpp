@@ -196,3 +196,71 @@ TEST(PieceOrder, OrderingTrivialListsIsSafe) {
     ASSERT_EQ(one.size(), 1U);
     EXPECT_FLOAT_EQ(one.front().centroid.x, 5.0F);
 }
+
+// CIEN PIEZAS EN UNA BANDEJA, Y NINGUNA DE MENOS.
+//
+// Sale de un caso de uso: una bandeja de 100 tuercas. La detección las
+// encontraba TODAS —las cien pasaban el filtro de área, cada una con su contorno
+// bien trazado— y `findPieceContours` devolvía 64 sin decir nada, porque ese era
+// su tope interno. El operador veía «64 piezas» y no tenía forma de saber que le
+// faltaban 36.
+//
+// El tope estaba mal elegido, y se puede razonar sin probar: con el área mínima
+// en 0,5 % del encuadre no caben más de 200 piezas, así que un tope de 64 estaba
+// POR DEBAJO del límite natural y lo único que podía recortar eran escenas
+// reales.
+TEST(PieceOrder, AHundredPiecesAreAHundredAndNotSixtyFour) {
+    // Diez por diez, como vienen en una bandeja de proveedor.
+    cv::Mat mask = cv::Mat::zeros(1000, 1000, CV_8UC1);
+    for (int row = 0; row < 10; ++row) {
+        for (int col = 0; col < 10; ++col) {
+            cv::circle(mask, {50 + col * 100, 50 + row * 100}, 45, cv::Scalar(255),
+                       cv::FILLED, cv::LINE_8);
+        }
+    }
+
+    int discarded = -1;
+    const auto pieces = findPieceContours(mask, 0.005, 0.9, pci::vision::kMaxPieces,
+                                          &discarded);
+    std::printf("  [orden] bandeja de 100: se devuelven %d, descartadas %d\n",
+                static_cast<int>(pieces.size()), discarded);
+    EXPECT_EQ(pieces.size(), 100U)
+        << "una bandeja de cien piezas sale con menos: el tope interno está cortando "
+           "escenas legítimas";
+    EXPECT_EQ(discarded, 0) << "se descartó alguna sin que hiciera falta";
+
+    // Y siguen en orden de lectura: la primera arriba a la izquierda, la última
+    // abajo a la derecha.
+    EXPECT_NEAR(pieces.front().centroid.x, 50.0F, 3.0);
+    EXPECT_NEAR(pieces.front().centroid.y, 50.0F, 3.0);
+    EXPECT_NEAR(pieces.back().centroid.x, 950.0F, 3.0);
+    EXPECT_NEAR(pieces.back().centroid.y, 950.0F, 3.0);
+}
+
+// Y CUANDO SÍ HAY QUE RECORTAR, SE DICE.
+//
+// Truncar en silencio es el fallo que trajo todo esto. El tope sigue existiendo
+// —protege de una segmentación degenerada que devuelva cientos de manchas— pero
+// ahora quien recorta puede decirlo.
+TEST(PieceOrder, TruncatingIsReportedAndNoLongerSilent) {
+    cv::Mat mask = cv::Mat::zeros(1000, 1000, CV_8UC1);
+    for (int row = 0; row < 10; ++row) {
+        for (int col = 0; col < 10; ++col) {
+            cv::circle(mask, {50 + col * 100, 50 + row * 100}, 45, cv::Scalar(255),
+                       cv::FILLED, cv::LINE_8);
+        }
+    }
+
+    int discarded = -1;
+    const auto pieces = findPieceContours(mask, 0.005, 0.9, 30, &discarded);
+    std::printf("  [orden] con el tope en 30: se devuelven %d, descartadas %d\n",
+                static_cast<int>(pieces.size()), discarded);
+    EXPECT_EQ(pieces.size(), 30U);
+    EXPECT_EQ(discarded, 70)
+        << "se recortaron piezas y no se dijo cuántas: el operador vería un recuento "
+           "corto sin saber que lo era";
+
+    // Sin pedir la cifra, la función se comporta como siempre: nadie tiene que
+    // cambiar su llamada para que esto funcione.
+    EXPECT_EQ(findPieceContours(mask, 0.005, 0.9, 30).size(), 30U);
+}

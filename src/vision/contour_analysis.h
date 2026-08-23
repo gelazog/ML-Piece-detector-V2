@@ -44,10 +44,33 @@ core::Result<PieceContour> findLargestContour(const cv::Mat& mask,
 // una iluminacion mala pueden salir cientos de manchas, y analizarlas todas
 // costaria mas que decir que la escena no sirve. Se queda con las MAYORES —que
 // son las candidatas a ser piezas— y solo despues las pone en orden de lectura.
+//
+// EL TOPE ERA 64 Y TRUNCABA EN SILENCIO. Lo destapo un caso de uso: una bandeja
+// de 100 tuercas. La deteccion las encontraba TODAS —las 100 pasaban el filtro
+// de area, cada una con su contorno bien trazado— y esta funcion devolvia 64 sin
+// decir nada. El operador veia «64 piezas» y no tenia forma de saber que le
+// faltaban 36.
+//
+// Y el motivo por el que 64 era demasiado bajo se puede razonar, no hace falta
+// elegirlo a ojo: con `minAreaFraction` en 0,005, en un encuadre no caben mas de
+// 200 piezas. O sea que el tope estaba POR DEBAJO del limite natural que ya
+// impone el filtro de area, y lo unico que podia recortar eran escenas
+// legitimas. Puesto por encima de ese limite, protege de la segmentacion
+// degenerada —que es para lo que esta— sin cortar nada real.
+//
+// El coste que supuestamente justificaba el tope tambien se midio: encontrar los
+// contornos de esas 100 tuercas cuesta 1,86 ms.
+//
+// `discarded`, si se pasa, recibe cuantas se quedaron fuera. Truncar en silencio
+// es el fallo que trajo todo esto, asi que quien recorte tiene ahora como
+// decirlo.
+inline constexpr int kMaxPieces = 256;
+
 [[nodiscard]] std::vector<PieceContour> findPieceContours(const cv::Mat& mask,
                                                           double minAreaFraction = 0.005,
                                                           double maxAreaFraction = 0.9,
-                                                          int maxCount = 64);
+                                                          int maxCount = kMaxPieces,
+                                                          int* discarded = nullptr);
 
 // Pone en orden de lectura una lista ya encontrada. Publica porque el orden es
 // una decision que hay que poder comprobar por separado de la deteccion.

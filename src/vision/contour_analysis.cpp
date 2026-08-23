@@ -28,7 +28,11 @@ PieceContour describe(const std::vector<cv::Point>& points, double area) {
 }  // namespace
 
 std::vector<PieceContour> findPieceContours(const cv::Mat& mask, double minAreaFraction,
-                                            double maxAreaFraction, int maxCount) {
+                                            double maxAreaFraction, int maxCount,
+                                            int* discarded) {
+    if (discarded != nullptr) {
+        *discarded = 0;
+    }
     std::vector<PieceContour> pieces;
     if (mask.empty() || mask.type() != CV_8UC1 || maxCount <= 0) {
         return pieces;
@@ -62,6 +66,9 @@ std::vector<PieceContour> findPieceContours(const cv::Mat& mask, double minAreaF
         return boxA.x < boxB.x;
     });
     if (static_cast<int>(accepted.size()) > maxCount) {
+        if (discarded != nullptr) {
+            *discarded = static_cast<int>(accepted.size()) - maxCount;
+        }
         accepted.resize(static_cast<std::size_t>(maxCount));
     }
     pieces.reserve(accepted.size());

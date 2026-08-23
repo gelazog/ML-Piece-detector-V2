@@ -6,10 +6,12 @@
 
 #include "repositories/detection_profile_repository.h"
 #include "vision/pipeline.h"
+#include "vision/edge_segmentation.h"
 #include "vision/segmentation.h"
 
 class QCheckBox;
 class QComboBox;
+class QPushButton;
 class QLabel;
 class QSlider;
 class QDoubleSpinBox;
@@ -74,8 +76,20 @@ private:
     QCheckBox* subpixel_ = nullptr;
     QSlider* threshold_ = nullptr;
     QLabel* thresholdValue_ = nullptr;
+    QLabel* sceneHint_ = nullptr;
+    QPushButton* useEdgesButton_ = nullptr;
     QComboBox* method_ = nullptr;
     QComboBox* polarity_ = nullptr;
+
+public:
+    // LO QUE LA IMAGEN DE AHORA DICE DE SI MISMA.
+    //
+    // Sin esto, «Por el canto de la pieza» solo lo encuentra quien ya sabe que
+    // esta ahi — y quien esta en esta pestaña justo esta aqui porque la
+    // deteccion no le funciona. La lectura de la escena sabe distinguir cuando
+    // ningun umbral por nivel puede servir (`vision/edge_segmentation.h`), y ese
+    // es el momento de decirlo, no despues.
+    void setSceneReading(const vision::SceneReading& reading);
     QSpinBox* blur_ = nullptr;
     QSpinBox* morph_ = nullptr;
     QDoubleSpinBox* minArea_ = nullptr;

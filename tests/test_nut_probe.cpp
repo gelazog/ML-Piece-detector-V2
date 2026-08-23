@@ -27,6 +27,15 @@
 
 namespace {
 
+// Las imágenes con las que el operador está probando de verdad. Están fuera del
+// repositorio a propósito —son suyas— y por eso esta sonda se salta sin ruido si
+// no están: nadie más que él las tiene.
+std::filesystem::path ownImages() {
+    const std::filesystem::path dir("C:/Users/furro/Pictures/IMG-MC");
+    std::error_code ec;
+    return std::filesystem::exists(dir, ec) ? dir : std::filesystem::path();
+}
+
 std::filesystem::path corpus() {
     for (const auto* candidate : {"testdata/real", "../testdata/real", "../../testdata/real",
                                   "../../../testdata/real"}) {
@@ -62,8 +71,16 @@ void annotate(const cv::Mat& image, const std::vector<pci::vision::PieceContour>
     cv::imwrite((outputDir() / name).string(), shown);
 }
 
+void reportAt(const std::filesystem::path& dir, const char* file, int maxPieces);
+
 void report(const char* file, int maxPieces) {
-    const auto dir = corpus();
+    reportAt(corpus(), file, maxPieces);
+}
+
+void reportAt(const std::filesystem::path& dir, const char* file, int maxPieces) {
+    if (dir.empty()) {
+        return;
+    }
     const cv::Mat image = cv::imread((dir / file).string(), cv::IMREAD_COLOR);
     if (image.empty()) {
         std::printf("  [tuercas] %s: no se pudo leer\n", file);
@@ -106,8 +123,9 @@ TEST(NutProbe, WhatTheDetectionActuallyDoesWithNuts) {
     if (corpus().empty()) {
         GTEST_SKIP() << "corpus no descargado";
     }
-    report("tuerca_dominio_publico.jpg", 1);
-    report("arandelas_con_agujero.jpg", 6);
+    report("tuerca_dominio_publico.jpg", 7);
+    reportAt(ownImages(), "Producto_Tuerca_Liv_02.jpg", 1);
+    reportAt(ownImages(), "producto-tuercas-prueba.jpg", 100);
     std::printf("\n  [tuercas] imágenes anotadas en: %s\n", outputDir().string().c_str());
     SUCCEED();
 }
