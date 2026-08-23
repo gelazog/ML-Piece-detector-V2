@@ -36,6 +36,7 @@ add_executable(pci_tests
   test_probe.cpp
   test_result.cpp
   test_shape_class.cpp
+  test_shift_report.cpp
   test_shape_measure.cpp
   test_shape_proposals.cpp
   test_tool_options.cpp

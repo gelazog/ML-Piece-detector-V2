@@ -1,5 +1,6 @@
 # Lógica de negocio pura: sin Qt y sin OpenCV (regla estricta del proyecto).
 add_library(pci_domain STATIC
+  shift_report.cpp
   calibration.cpp
   capture_quality.cpp
   measurement_mode.cpp
