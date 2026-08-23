@@ -158,7 +158,7 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                              double mmPerPixel, inspection::LengthUnit unit,
                              bool freezePose, double arucoMarkerMm,
                              vision::BoardConfig boardConfig, bool countPieces,
-                             bool measureStages) {
+                             int wantedPiece, bool measureStages) {
     AnalysisOverlay overlay;
     overlay.frameSize = frame.size();
 
@@ -222,14 +222,28 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                 // la de arriba a la izquierda. Cambiar en silencio QUÉ pieza se
                 // mide es el tipo de fallo que nadie ve hasta que compara dos
                 // informes de la misma bandeja.
-                std::size_t biggest = 0;
+                std::size_t chosen = 0;
                 for (std::size_t i = 1; i < all.value().size(); ++i) {
-                    if (all.value()[i].contour.area > all.value()[biggest].contour.area) {
-                        biggest = i;
+                    if (all.value()[i].contour.area > all.value()[chosen].contour.area) {
+                        chosen = i;
                     }
                 }
+                // Y si el operador ha señalado una en concreto, esa. El cero
+                // significa «la que decidas tú», que es lo de siempre: así,
+                // quien no toque el navegador sigue midiendo exactamente lo que
+                // medía antes.
+                //
+                // Si el número señalado se sale —las piezas cambiaron de sitio o
+                // desapareció una— se vuelve a la mayor en vez de no medir nada.
+                // Un encuadre que deja de dar cotas porque falta la pieza 5 es
+                // peor que uno que mide la que hay y dice cuál es.
+                if (wantedPiece >= 1 &&
+                    wantedPiece <= static_cast<int>(all.value().size())) {
+                    chosen = static_cast<std::size_t>(wantedPiece - 1);
+                }
+                overlay.measuredPiece = static_cast<int>(chosen) + 1;
                 analysis = core::Result<vision::PieceAnalysis>::ok(
-                    std::move(all.value()[biggest]));
+                    std::move(all.value()[chosen]));
             } else {
                 overlay.piecesFound = 0;
                 analysis = core::Result<vision::PieceAnalysis>::err(all.error().message);
@@ -620,9 +634,38 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // y ahí no lo ve quien está trabajando: con seis piezas en el encuadre la
     // ventana no decía nada y se medía la mayor en silencio.
     piecesChip_ = new QLabel(central);
+    // Nombre estable: las pruebas lo buscaban por su texto, y en cuanto apareció
+    // otra etiqueta que también dice «pieza» empezaron a leer la equivocada.
+    piecesChip_->setObjectName(QStringLiteral("piecesChip"));
     piecesChip_->setAlignment(Qt::AlignCenter);
     piecesChip_->setVisible(false);  // sin recuento no ocupa sitio
     pieceLayout->addWidget(piecesChip_);
+
+    // El navegador de piezas: solo aparece cuando hay mas de una, porque con una
+    // sola no hay nada entre lo que elegir y un control apagado permanente es
+    // ruido en una barra que ya esta llena.
+    pieceNav_ = new QWidget(central);
+    auto* navLayout = new QHBoxLayout(pieceNav_);
+    navLayout->setContentsMargins(0, 0, 0, 0);
+    navLayout->setSpacing(2);
+    piecePrevButton_ = new QToolButton(pieceNav_);
+    piecePrevButton_->setText(QStringLiteral("\u2039"));
+    piecePrevButton_->setAutoRaise(true);
+    piecePrevButton_->setFocusPolicy(Qt::NoFocus);
+    navLayout->addWidget(piecePrevButton_);
+    pieceNavLabel_ = new QLabel(pieceNav_);
+    pieceNavLabel_->setObjectName(QStringLiteral("pieceNavLabel"));
+    pieceNavLabel_->setAlignment(Qt::AlignCenter);
+    navLayout->addWidget(pieceNavLabel_);
+    pieceNextButton_ = new QToolButton(pieceNav_);
+    pieceNextButton_->setText(QStringLiteral("\u203a"));
+    pieceNextButton_->setAutoRaise(true);
+    pieceNextButton_->setFocusPolicy(Qt::NoFocus);
+    navLayout->addWidget(pieceNextButton_);
+    pieceNav_->setVisible(false);
+    pieceLayout->addWidget(pieceNav_);
+    connect(piecePrevButton_, &QToolButton::clicked, this, [this] { stepFocusedPiece(-1); });
+    connect(pieceNextButton_, &QToolButton::clicked, this, [this] { stepFocusedPiece(1); });
 
     // Que hay una correccion a mano puesta.
     //
@@ -3548,6 +3591,16 @@ void MainWindow::onAnalysisFinished() {
 
     if (overlay.piecesFound >= 0) {
         lastPieceCount_ = overlay.piecesFound;
+        lastMeasuredPiece_ = overlay.measuredPiece;
+        // Si la elección se salió del encuadre —cambiaron las piezas de sitio, o
+        // desapareció una— el análisis ya ha medido la mayor en su lugar. Aquí se
+        // deja constancia de que la elección ya no vale, para que el indicador no
+        // siga diciendo que se está midiendo una pieza que no existe.
+        if (focusedPiece_ > lastPieceCount_) {
+            focusedPiece_ = 0;
+            statusBar()->showMessage(
+                tr("Ya no hay tantas piezas en el encuadre: se vuelve a medir la mayor."));
+        }
     }
     if (configureDialog_ != nullptr) {
         if (auto* pieces = configureDialog_->piecesPage(); pieces != nullptr) {
@@ -3692,9 +3745,10 @@ void MainWindow::maybeStartAnalysis() {
         [frame, anchor, offset = currentOrientationOffset_, configs = std::move(configs),
          pipeline = working, previous = liveFixture_,
          mm = calibration_.mmPerPixel, unit = currentUnit(), freeze, markerMm,
-         board = boardConfig_, countPieces, measureStages = measureStages_] {
+         board = boardConfig_, countPieces, wanted = focusedPiece_,
+         measureStages = measureStages_] {
             return buildOverlay(frame, anchor, offset, configs, pipeline, previous, mm, unit,
-                                freeze, markerMm, board, countPieces, measureStages);
+                                freeze, markerMm, board, countPieces, wanted, measureStages);
         }));
 }
 
@@ -4278,6 +4332,10 @@ void MainWindow::updatePiecesChip() {
     }
     if (lastPieceCount_ < 0 || !countingPieces()) {
         piecesChip_->setVisible(false);
+        // Y el selector de pieza con el. Sin esta linea se quedaba a la vista
+        // diciendo «pieza 1/2» despues de que el operador declarara que hay una
+        // sola: estado viejo en pantalla, que es peor que no enseñar nada.
+        updatePieceNavigator();
         return;
     }
     const bool several = lastPieceCount_ > 1;
@@ -4293,11 +4351,83 @@ void MainWindow::updatePiecesChip() {
                                  " padding:1px 6px;"));
     piecesChip_->setToolTip(
         several ? tr("Se ven %1 piezas en el encuadre.\n\n"
-                     "Las herramientas miden la MAYOR; las demás se cuentan pero no se "
-                     "miden. Si quieres medir otra, dibuja una zona de trabajo a su "
-                     "alrededor.")
+                     "Las herramientas miden UNA: la que dice el selector de al lado. "
+                     "Las demás se cuentan y se pueden mirar una a una con las flechas.")
                       .arg(lastPieceCount_)
                 : tr("Se ve una sola pieza en el encuadre."));
+    updatePieceNavigator();
+}
+
+// Cuál de las piezas se está midiendo, y cómo pasar a otra.
+//
+// El número va en ORDEN DE LECTURA —filas de arriba abajo, izquierda a derecha—
+// que es el mismo con el que salen de la detección, y por eso «la tercera»
+// significa lo mismo en la pantalla, en el informe y en la mesa.
+void MainWindow::updatePieceNavigator() {
+    if (pieceNav_ == nullptr) {
+        return;
+    }
+    const bool several = lastPieceCount_ > 1 && countingPieces();
+    pieceNav_->setVisible(several);
+    if (!several) {
+        return;
+    }
+    const int shown = lastMeasuredPiece_ > 0 ? lastMeasuredPiece_ : 1;
+    // Se dice cuándo la elección es del programa y cuándo es del operador. Sin
+    // eso, «3 / 6» no distingue «he elegido la 3» de «te ha tocado la 3».
+    pieceNavLabel_->setText(focusedPiece_ == 0
+                                ? tr(" pieza %1/%2 (la mayor) ").arg(shown).arg(lastPieceCount_)
+                                : tr(" pieza %1/%2 ").arg(shown).arg(lastPieceCount_));
+    pieceNavLabel_->setStyleSheet(
+        focusedPiece_ == 0
+            ? QStringLiteral("color:#ddd; background:#3a3a3a; border-radius:8px;"
+                             " padding:1px 6px;")
+            : QStringLiteral("color:#08243a; background:#7fd1ff; border-radius:8px;"
+                             " padding:1px 6px; font-weight:bold;"));
+    const QString tip =
+        tr("Qué pieza del encuadre están midiendo las herramientas.\n\n"
+           "Numeradas en orden de lectura: por filas de arriba abajo, y dentro de\n"
+           "cada fila de izquierda a derecha. Las flechas pasan de una a otra para\n"
+           "ver cómo sale cada una.\n\n"
+           "Sin elegir ninguna se mide la mayor, que es lo de siempre. Pasa de la\n"
+           "última a «la mayor» para volver a ese modo.");
+    pieceNavLabel_->setToolTip(tip);
+    piecePrevButton_->setToolTip(tip);
+    pieceNextButton_->setToolTip(tip);
+}
+
+// Pasar a la pieza siguiente o a la anterior.
+//
+// El recorrido incluye el estado «la mayor» como si fuera una posición más, al
+// final: así se sale del modo manual con el mismo gesto con el que se entró, y
+// no hace falta descubrir otro control para volver.
+void MainWindow::stepFocusedPiece(int delta) {
+    if (lastPieceCount_ <= 1) {
+        return;
+    }
+    const int positions = lastPieceCount_ + 1;  // 1..N, más «la mayor» en el 0
+    // UN RECORRIDO LLANO: 0 (la mayor), 1, 2, ... N, y vuelta a empezar.
+    //
+    // La primera versión intentaba ser lista: avanzar desde «la mayor» llevaba a
+    // la siguiente de la que se estaba midiendo, para que el salto fuera al
+    // vecino de lo que el operador tiene delante. La prueba lo tumbó, y con
+    // razón — al volver a «la mayor» se recalculaba lo mismo, así que se quedaba
+    // rebotando entre esas dos posiciones y las demás piezas eran INALCANZABLES
+    // avanzando. Con tres piezas, dos no se podían mirar.
+    //
+    // Un recorrido predecible en el que todas las posiciones salen antes o
+    // después vale más que uno que acierta el atajo y pierde piezas.
+    focusedPiece_ = ((focusedPiece_ + delta) % positions + positions) % positions;
+    if (focusedPiece_ == 0) {
+        statusBar()->showMessage(tr("Midiendo la pieza mayor del encuadre."));
+    } else {
+        statusBar()->showMessage(
+            tr("Midiendo la pieza %1 de %2, en orden de lectura.")
+                .arg(focusedPiece_)
+                .arg(lastPieceCount_));
+    }
+    updatePieceNavigator();
+    reanalyseCurrentFrame();
 }
 
 // El aviso de que el borde lleva una correccion a mano.

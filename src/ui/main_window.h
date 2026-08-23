@@ -421,6 +421,24 @@ private:
     QComboBox* pieceCombo_ = nullptr;
     QLabel* modeChip_ = nullptr;
     QLabel* piecesChip_ = nullptr;
+    // NAVEGADOR DE PIEZAS: con varias en el encuadre, cuál se está midiendo y
+    // cómo pasar a la siguiente.
+    //
+    // Antes la única forma de medir una que no fuese la mayor era dibujarle una
+    // zona de trabajo alrededor — el propio tooltip del recuento lo decía. Eso
+    // es rehacer la zona por cada pieza que se quiera mirar.
+    //
+    // `focusedPiece_` va numerado en ORDEN DE LECTURA y empezando por 1. El cero
+    // es un estado con nombre: «la mayor», que es lo que la aplicación ha hecho
+    // siempre, así que quien no toque esto no nota ningún cambio.
+    QWidget* pieceNav_ = nullptr;
+    QLabel* pieceNavLabel_ = nullptr;
+    QToolButton* piecePrevButton_ = nullptr;
+    QToolButton* pieceNextButton_ = nullptr;
+    int focusedPiece_ = 0;
+    int lastMeasuredPiece_ = -1;
+    void updatePieceNavigator();
+    void stepFocusedPiece(int delta);
     QLabel* edgeChip_ = nullptr;           // modo de medición activo (M3)
     QComboBox* templateCombo_ = nullptr;   // plantillas de la pieza
     QPushButton* newTemplateButton_ = nullptr;

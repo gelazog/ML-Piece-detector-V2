@@ -50,6 +50,13 @@ struct AnalysisOverlay {
     // Piezas encontradas en el frame (C5). -1 = no se contaron: contar cuesta y
     // solo se hace cuando alguien mira el número.
     int piecesFound = -1;
+    // CUÁL de ellas es la que se ha medido, numerada en orden de lectura y
+    // empezando por 1. -1 = no se contaron, así que la pregunta no aplica.
+    //
+    // Hace falta decirlo, y no solo elegirlo: con seis piezas en la mesa, un
+    // informe que no dice de cuál de las seis son las cotas no se puede
+    // interpretar ni repetir al día siguiente.
+    int measuredPiece = -1;
     // Si este frame llegó a SEGMENTARSE. Con la pose congelada (contorno
     // oculto) no se segmenta: las herramientas se miden con el fixture del
     // frame anterior y no hay contorno nuevo. Distinguirlo de «se segmentó y no

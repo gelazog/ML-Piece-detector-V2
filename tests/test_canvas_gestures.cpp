@@ -4539,10 +4539,9 @@ TEST(PieceCountMode, WithOneDeclaredPieceAShadowIsNotASecondPiece) {
     QString seen;
     while (timer.elapsed() < 3000) {
         QApplication::processEvents(QEventLoop::AllEvents, 20);
-        for (auto* label : window.findChildren<QLabel*>()) {
-            if (label->isVisible() && label->text().contains(QStringLiteral("pieza"))) {
-                seen = label->text().trimmed();
-            }
+        if (auto* chip = window.findChild<QLabel*>(QStringLiteral("piecesChip"));
+            chip != nullptr && chip->isVisible()) {
+            seen = chip->text().trimmed();
         }
         if (seen.contains(QStringLiteral("2"))) {
             break;
@@ -4563,10 +4562,11 @@ TEST(PieceCountMode, WithOneDeclaredPieceAShadowIsNotASecondPiece) {
     while (timer.elapsed() < 2000) {
         QApplication::processEvents(QEventLoop::AllEvents, 20);
         afterDeclaring.clear();
-        for (auto* label : window.findChildren<QLabel*>()) {
-            if (label->isVisible() && label->text().contains(QStringLiteral("pieza"))) {
-                afterDeclaring = label->text().trimmed();
-            }
+        // Por NOMBRE y no por texto: el selector de pieza también dice «pieza»,
+        // y buscando por texto esta comprobación leía la etiqueta equivocada.
+        if (auto* chip = window.findChild<QLabel*>(QStringLiteral("piecesChip"));
+            chip != nullptr && chip->isVisible()) {
+            afterDeclaring = chip->text().trimmed();
         }
         if (afterDeclaring.contains(QStringLiteral("2"))) {
             stillCounting = true;
@@ -4739,4 +4739,162 @@ TEST(DarkOnDark, TheContourIsDrawnWithAHaloSoItSurvivesAnyBackground) {
     EXPECT_GT(dark, 200)
         << "el contorno no lleva halo: sobre una escena clara la línea verde "
            "desaparece y no hay forma de ver qué está detectando";
+}
+
+// ---------------------------------------------------------------------------
+// Pasar de una pieza a otra para ver cómo sale cada una
+// ---------------------------------------------------------------------------
+//
+// La queja: «si son más de una, poder cambiar de una en una para poder ver cómo
+// salen». Hasta ahora las herramientas medían siempre la MAYOR y el tooltip del
+// recuento lo decía con todas las letras: «si quieres medir otra, dibuja una
+// zona de trabajo a su alrededor». O sea, rehacer la zona por cada pieza que se
+// quisiera mirar.
+
+TEST(PieceNavigator, TheArrowsChangeWhichPieceIsMeasured) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    // Tres piezas de tamaños claramente distintos: el área dice cuál se midió
+    // sin tener que adivinarlo.
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(60, 60, 60, 50), QColor(230, 230, 230));    // 1: pequeña
+        painter.fillRect(QRect(250, 50, 120, 100), QColor(230, 230, 230)); // 2: LA MAYOR
+        painter.fillRect(QRect(70, 200, 90, 70), QColor(230, 230, 230));   // 3: mediana
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("tres.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+    const auto waitFor = [](auto predicate, int ms = 4000) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (predicate()) {
+                return true;
+            }
+        }
+        return false;
+    };
+    ASSERT_TRUE(waitFor([&] { return canvas->liveContour().size() >= 4; }));
+
+    // De fábrica se mide LA MAYOR, como siempre: 120x100 = 12 000 px2.
+    ASSERT_TRUE(waitFor([&] {
+        return std::abs(polygonArea(canvas->liveContour())) > 10000.0;
+    })) << "sin tocar nada no está midiendo la mayor: se cambió el comportamiento de "
+           "siempre sin que nadie lo pidiera";
+    std::printf("  [navegador] de fábrica mide %.0f px2 (la mayor son 12 000)\n",
+                std::abs(polygonArea(canvas->liveContour())));
+
+    // Y el navegador aparece, porque hay más de una.
+    QLabel* nav = nullptr;
+    for (auto* label : window.findChildren<QLabel*>()) {
+        if (label->isVisible() && label->text().contains(QStringLiteral("pieza 2/3"))) {
+            nav = label;
+        }
+    }
+    ASSERT_NE(nav, nullptr) << "con tres piezas no aparece el selector, o no dice cuál "
+                               "de las tres se está midiendo";
+    EXPECT_TRUE(nav->text().contains(QStringLiteral("la mayor")))
+        << "no distingue «he elegido la 2» de «te ha tocado la 2». Dice: "
+        << nav->text().toStdString();
+
+    QToolButton* next = nullptr;
+    for (auto* button : window.findChildren<QToolButton*>()) {
+        if (button->isVisible() && button->text() == QStringLiteral("›")) {
+            next = button;
+        }
+    }
+    ASSERT_NE(next, nullptr) << "no hay flecha para pasar a la siguiente pieza";
+
+    // El recorrido es llano: 0 (la mayor), 1, 2, 3 y vuelta. Todas salen.
+    next->click();
+    ASSERT_TRUE(waitFor([&] {
+        const double area = std::abs(polygonArea(canvas->liveContour()));
+        return area > 2000.0 && area < 4000.0;  // la 1: 60x50 = 3 000
+    })) << "la flecha no cambió la pieza medida. Mide "
+        << std::abs(polygonArea(canvas->liveContour()));
+    std::printf("  [navegador] pieza 1: %.0f px2 (son 3 000)\n",
+                std::abs(polygonArea(canvas->liveContour())));
+
+    next->click();  // la 2, que resulta ser la mayor
+    ASSERT_TRUE(waitFor([&] {
+        return std::abs(polygonArea(canvas->liveContour())) > 10000.0;
+    }));
+
+    next->click();  // la 3
+    ASSERT_TRUE(waitFor([&] {
+        const double area = std::abs(polygonArea(canvas->liveContour()));
+        return area > 5000.0 && area < 8000.0;  // la 3: 90x70 = 6 300
+    })) << "no se llega a la tercera. Mide "
+        << std::abs(polygonArea(canvas->liveContour()));
+    std::printf("  [navegador] pieza 3: %.0f px2 (son 6 300)\n",
+                std::abs(polygonArea(canvas->liveContour())));
+
+    // Y la vuelta entera devuelve a «la mayor»: se sale del modo manual con el
+    // mismo gesto con el que se entró, sin tener que descubrir otro control.
+    next->click();
+    ASSERT_TRUE(waitFor([&] {
+        return std::abs(polygonArea(canvas->liveContour())) > 10000.0;
+    })) << "dando la vuelta no se recupera «la mayor»";
+    bool backToLargest = false;
+    for (auto* label : window.findChildren<QLabel*>()) {
+        if (label->isVisible() && label->text().contains(QStringLiteral("la mayor"))) {
+            backToLargest = true;
+        }
+    }
+    EXPECT_TRUE(backToLargest) << "mide la mayor pero el indicador no dice que se ha "
+                                  "vuelto al modo automático";
+}
+
+// Con UNA sola pieza el selector no está: un control apagado permanente es ruido
+// en una barra que ya va llena.
+TEST(PieceNavigator, WithOnePieceThereIsNothingToNavigate) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(120, 90, 160, 120), QColor(230, 230, 230));
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("una_sola.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    QElapsedTimer timer;
+    timer.start();
+    bool sawCount = false;
+    while (timer.elapsed() < 3000) {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+        for (auto* label : window.findChildren<QLabel*>()) {
+            if (label->isVisible() && label->text().contains(QStringLiteral("1 pieza"))) {
+                sawCount = true;
+            }
+        }
+        if (sawCount) {
+            break;
+        }
+    }
+    ASSERT_TRUE(sawCount) << "ni siquiera llegó a contar la pieza";
+
+    for (auto* button : window.findChildren<QToolButton*>()) {
+        EXPECT_FALSE(button->isVisible() && button->text() == QStringLiteral("›"))
+            << "el selector de pieza está a la vista con una sola pieza";
+    }
 }
