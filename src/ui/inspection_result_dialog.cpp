@@ -17,10 +17,40 @@
 #include <utility>
 
 #include "camera/frame_utils.h"
+#include <algorithm>
+#include "vision/difference_map.h"
 #include "inspection_editor/execution/measurement_report.h"
 #include "ui/video_widget.h"
 
 namespace pci::ui {
+
+namespace {
+
+// El punto peor, dicho en palabras.
+//
+// Unas coordenadas del recorte normalizado no le sirven de nada a quien tiene la
+// pieza en la mano: ese recorte está centrado y girado al eje principal, así que
+// «x=100, y=150» no señala ningún sitio del mundo. Partido en nueve, en cambio,
+// sí se puede ir a mirar.
+QString describeSpot(const cv::Point& point, const cv::Size& crop) {
+    if (crop.width <= 0 || crop.height <= 0) {
+        return QObject::tr("en algún punto");
+    }
+    const int col = std::clamp(point.x * 3 / crop.width, 0, 2);
+    const int row = std::clamp(point.y * 3 / crop.height, 0, 2);
+    static const char* const kRows[3] = {QT_TR_NOOP("arriba"), QT_TR_NOOP("en el centro"),
+                                         QT_TR_NOOP("abajo")};
+    static const char* const kCols[3] = {QT_TR_NOOP("a la izquierda"), QT_TR_NOOP(""),
+                                         QT_TR_NOOP("a la derecha")};
+    const QString vertical = QObject::tr(kRows[row]);
+    const QString horizontal = QObject::tr(kCols[col]);
+    if (horizontal.isEmpty()) {
+        return row == 1 ? QObject::tr("justo en el centro") : vertical;
+    }
+    return vertical + QStringLiteral(" ") + horizontal;
+}
+
+}  // namespace
 
 InspectionResultDialog::InspectionResultDialog(
     const QImage& frame, engine::InspectionEngine::Outcome outcome,
@@ -77,8 +107,40 @@ InspectionResultDialog::InspectionResultDialog(
     };
     addThumb(tr("Registrada"), referenceThumb);
     addThumb(tr("Actual"), camera::matToQImage(outcome_.analysis.normalized));
+
+    // DÓNDE se diferencia, y no sólo cuánto.
+    //
+    // Hasta aquí el diálogo daba dos miniaturas y un número de similitud, y
+    // encontrar qué le pasa a la pieza era cosa del ojo del operador. Con
+    // piezas pequeñas o defectos finos eso no se puede hacer, y lo que acaba
+    // pasando es que se acepta el veredicto sin entenderlo.
+    //
+    // La tercera miniatura sólo aparece si hay algo que señalar. Un hueco vacío
+    // donde a veces sale una imagen se entiende peor que no tener el hueco, y
+    // un mapa que siempre enseña algo enseña a ignorarlo.
+    QString differenceNote;
+    if (!referenceThumb.isNull() && !outcome_.analysis.normalized.empty()) {
+        const cv::Mat reference = camera::qImageToMat(referenceThumb);
+        const auto map = vision::compareToReference(outcome_.analysis.normalized, reference);
+        if (map.ok && map.worstValue >= 0.05) {
+            const cv::Mat painted =
+                vision::paintDifference(outcome_.analysis.normalized, map);
+            addThumb(tr("Dónde difiere"), camera::matToQImage(painted).copy());
+            differenceNote =
+                tr("Lo más distinto está %1 de la pieza, y ocupa el %2 % de su superficie.")
+                    .arg(describeSpot(map.worst, outcome_.analysis.normalized.size()))
+                    .arg(100.0 * map.litFraction, 0, 'f', 1);
+        }
+    }
+
     compareLayout->addStretch(1);
     sideLayout->addLayout(compareLayout);
+
+    if (!differenceNote.isEmpty()) {
+        auto* where = new QLabel(differenceNote, this);
+        where->setWordWrap(true);
+        sideLayout->addWidget(where);
+    }
 
     if (outcome_.verdict.embedding.evaluated) {
         auto* similarity = new QLabel(

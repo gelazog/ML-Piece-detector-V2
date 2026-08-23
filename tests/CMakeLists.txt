@@ -74,6 +74,7 @@ add_executable(pci_gui_tests
   test_canvas_gestures.cpp
   test_lens_wizard.cpp
   test_readme_paths.cpp
+  test_result_dialog.cpp
   test_configure_dialog.cpp
   test_frame_sources.cpp
   test_session_state.cpp

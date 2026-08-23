@@ -1380,6 +1380,21 @@ del día en la barra de estado). Tras un OK, **"Actualizar referencia"**
 ejecuta el aprendizaje incremental: nueva versión de la referencia (Welford,
 O(dim)), las anteriores nunca se borran.
 
+**Dónde difiere.** Un NG por apariencia era hasta ahora un número: la similitud
+cayó por debajo de la banda y a buscar a ojo qué le pasa a la pieza. Ahora el
+diálogo de resultado añade una tercera miniatura que **señala el sitio**, y lo
+dice también en palabras: *«lo más distinto está arriba a la izquierda de la
+pieza, y ocupa el 2,0 % de su superficie»*. Esa cifra de superficie separa un
+arañazo de una pieza equivocada — medido, un arañazo enciende el 0,1 % y otra
+pieza distinta el 8,9 %.
+
+La comparación es **tolerante al desalineamiento**, y sin eso no serviría: dos
+fotos de la misma pieza nunca coinciden píxel a píxel, así que una resta a secas
+encendería el contorno de todas las piezas. Medido: la misma pieza desplazada
+uno o dos píxeles, o fotografiada con otra luz, no enciende **nada**. Y si no
+hay nada que señalar, la miniatura no aparece: un mapa que siempre enseña algo
+enseña a ignorarlo.
+
 Arquitectura: `domain/` (veredicto y criterios de calidad, sin Qt ni OpenCV)
 y `engine/` (orquestador). El extractor de embeddings se inyecta como función:
 los tests end-to-end corren con embeddings sintéticos sin el modelo ONNX, y
