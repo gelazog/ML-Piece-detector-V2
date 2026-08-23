@@ -20,6 +20,7 @@
 #include "inspection_editor/execution/edge_detection.h"
 #include "vision/auto_roi.h"
 #include "vision/brush_snap.h"
+#include "vision/view_enhance.h"
 #include "vision/fitting.h"
 #include "vision/position_fixture.h"
 
@@ -2678,6 +2679,20 @@ void EditorCanvas::paintLiveOverlay(QPainter& painter) const {
         painter.translate(target.topLeft());
         painter.scale(target.width() / image_.width(), target.height() / image_.height());
 
+        // DOS PLUMAS, oscura debajo y verde encima.
+        //
+        // El verde solo se ve sobre lo que es mas oscuro que el. Sobre una pieza
+        // clara, sobre un reflejo o sobre un fondo blanco desaparece; y una pieza
+        // negra sobre fondo negro tampoco ayuda, porque lo que no se distingue
+        // entonces es DONDE acaba una cosa y empieza la otra. Con un trazo oscuro
+        // mas ancho por debajo, el contorno se ve encima de cualquier cosa. Es el
+        // mismo truco que el borde de los subtitulos, y por el mismo motivo.
+        QPen haloPen(QColor(0, 0, 0, 180));
+        haloPen.setWidthF(4.0);
+        haloPen.setCosmetic(true);
+        painter.setPen(haloPen);
+        painter.drawPolygon(liveContour_);
+
         QPen contourPen(QColor(0, 220, 0));
         contourPen.setWidthF(2.0);
         contourPen.setCosmetic(true);
@@ -2724,7 +2739,21 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
 
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
-    painter.drawImage(targetRect(), image_);
+    painter.drawImage(targetRect(), displayImage());
+    // UN MARCO ALREDEDOR DEL ENCUADRE.
+    //
+    // El fondo del widget es casi negro, asi que con una escena oscura no se
+    // distingue donde acaba la imagen y empieza el hueco de la ventana: el
+    // operador no sabe si la pieza esta fuera de cuadro o es que no se ve. Una
+    // linea basta, y no tapa nada porque va por fuera del borde.
+    {
+        QPen framePen(QColor(120, 130, 145));
+        framePen.setWidthF(1.0);
+        framePen.setCosmetic(true);
+        painter.setPen(framePen);
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRect(targetRect().adjusted(-0.5, -0.5, 0.5, 0.5));
+    }
 
     paintBoard(painter);  // por debajo de la pieza y de las herramientas
     paintLiveOverlay(painter);
@@ -2794,6 +2823,62 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
     paintEdgeCorrection(painter);
     // El ultimo, y por encima de todo: es el cursor.
     paintBrushCursor(painter);
+}
+
+void EditorCanvas::setViewEnhance(bool on) {
+    if (viewEnhance_ == on) {
+        return;
+    }
+    viewEnhance_ = on;
+    enhancedKey_ = 0;  // fuerza recalcular con el fotograma que haya
+    update();
+}
+
+// La imagen que se PINTA. Puede ser la original o una copia realzada; lo que
+// nunca es, es `image_` modificada.
+const QImage& EditorCanvas::displayImage() {
+    if (!viewEnhance_ || image_.isNull()) {
+        enhancedUseful_ = false;
+        return image_;
+    }
+    if (enhancedKey_ == image_.cacheKey() && !enhanced_.isNull()) {
+        return enhanced_;
+    }
+    enhancedKey_ = image_.cacheKey();
+
+    const auto stretch = vision::autoContrastLut(qimageToGray(image_));
+    enhancedUseful_ = stretch.useful;
+    if (!stretch.useful) {
+        // La imagen ya usa la escala: no se copia nada. Aplicar una tabla que es
+        // la identidad costaria una pasada entera por fotograma para no ver
+        // ninguna diferencia.
+        enhanced_ = QImage();
+        return image_;
+    }
+
+    // La tabla se aplica byte a byte sobre la copia. Vale igual para gris y para
+    // color porque es la MISMA tabla en los tres canales — una por canal
+    // equilibraria los blancos y de paso cambiaria el color de la pieza, que es
+    // una de las cosas por las que el operador la reconoce.
+    QImage working = image_;
+    const bool byteAligned = working.format() == QImage::Format_Grayscale8 ||
+                             working.format() == QImage::Format_RGB888 ||
+                             working.format() == QImage::Format_BGR888;
+    if (!byteAligned) {
+        working = working.convertToFormat(QImage::Format_RGB888);
+    } else {
+        working = working.copy();  // no se toca el original bajo ningun concepto
+    }
+    const int channels = working.format() == QImage::Format_Grayscale8 ? 1 : 3;
+    const int usable = working.width() * channels;
+    for (int y = 0; y < working.height(); ++y) {
+        uchar* row = working.scanLine(y);
+        for (int x = 0; x < usable; ++x) {
+            row[x] = stretch.map(row[x]);
+        }
+    }
+    enhanced_ = working;
+    return enhanced_;
 }
 
 // Lo que el operador ha marcado a mano, encima de la imagen.

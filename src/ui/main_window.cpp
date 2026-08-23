@@ -1256,6 +1256,13 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     }
     if (repos_.settings != nullptr) {
         rulerVisible_ = repos_.settings->getInt("ruler_visible", 0).value() != 0;
+        // El realce se recuerda: quien inspecciona piezas negras las inspecciona
+        // todos los días, y volver a encenderlo cada mañana es un impuesto.
+        const bool enhance = repos_.settings->getInt("view_enhance", 0).value() != 0;
+        if (viewEnhanceAction_ != nullptr) {
+            viewEnhanceAction_->setChecked(enhance);
+        }
+        video_->setViewEnhance(enhance);
     }
     video_->setRulerVisible(rulerVisible_);
     video_->setBoardVisible(boardVisible_);
@@ -1591,6 +1598,44 @@ void MainWindow::buildMenuBar() {
         video_->setRulerVisible(on);
         if (repos_.settings != nullptr) {
             repos_.settings->setInt("ruler_visible", on ? 1 : 0);
+        }
+    });
+
+    // REALZAR PARA VER, que no es lo mismo que subir el brillo de la camara.
+    //
+    // La diferencia esta escrita en el propio texto de ayuda porque es la que
+    // importa: los controles de «Camara e imagen» cambian el fotograma que se
+    // ANALIZA —y con el, el umbral, la polaridad y todas las cotas—. Esto solo
+    // cambia lo que se pinta. Un operador que no vea la pieza va a tocar lo
+    // primero que encuentre, y conviene que lo primero que encuentre sea lo que
+    // no le mueve las medidas.
+    viewEnhanceAction_ = viewMenu->addAction(tr("Realzar la imagen para verla"));
+    viewEnhanceAction_->setCheckable(true);
+    viewEnhanceAction_->setToolTip(
+        tr("Estira el contraste de lo que se ve en pantalla: una pieza oscura\n"
+           "sobre fondo oscuro pasa a distinguirse.\n\n"
+           "SOLO cambia lo que se pinta. Las medidas salen del fotograma tal\n"
+           "como llega de la cámara, así que realzar no mueve ninguna cota.\n"
+           "Si lo que quieres es arreglar la iluminación de verdad, eso está en\n"
+           "Fuente ▸ Configurar…, pestaña Cámara e imagen — y eso sí cambia lo\n"
+           "que se mide."));
+    connect(viewEnhanceAction_, &QAction::toggled, this, [this](bool on) {
+        video_->setViewEnhance(on);
+        if (repos_.settings != nullptr) {
+            repos_.settings->setInt("view_enhance", on ? 1 : 0);
+        }
+        if (!on) {
+            statusBar()->showMessage(tr("Realce de vista apagado."));
+        } else if (video_->viewEnhanceActive()) {
+            statusBar()->showMessage(
+                tr("Realce de vista activo. Solo cambia lo que se ve: las medidas "
+                   "salen del fotograma original."));
+        } else {
+            // Decirlo, en vez de dejar al operador dudando de si el interruptor
+            // hace algo.
+            statusBar()->showMessage(
+                tr("Realce de vista activo, pero esta imagen ya usa todo el rango: "
+                   "no hay nada que estirar."));
         }
     });
 

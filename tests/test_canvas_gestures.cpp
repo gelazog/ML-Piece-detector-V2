@@ -4580,3 +4580,163 @@ TEST(PieceCountMode, WithOneDeclaredPieceAShadowIsNotASecondPiece) {
     EXPECT_FALSE(afterDeclaring.contains(QStringLiteral("2")))
         << "el recuento se quedo en 2 despues de declarar que hay una sola pieza";
 }
+
+// ---------------------------------------------------------------------------
+// Pieza negra sobre fondo negro
+// ---------------------------------------------------------------------------
+//
+// La queja: «si la pieza es negra, y el demás cuadro es negro no se alcanza a
+// ver correctamente». Una pieza mate oscura sobre fondo oscuro ocupa treinta
+// niveles de gris de los 256 que hay: la detección puede estar funcionando
+// perfectamente y el operador no tiene forma de saberlo.
+//
+// EL RIESGO DE ESTE ARREGLO, y por eso esta prueba: ya existe otra forma de
+// subir el brillo —los controles de la cámara— y esa SÍ cambia el fotograma que
+// se analiza. Si el realce de vista llegara al análisis, las cotas se moverían
+// por haber subido el brillo para poder mirar. Aquí se comprueba que no.
+
+TEST(DarkOnDark, EnhancingTheViewDoesNotMoveASingleMeasurement) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    // Pieza casi negra (46) sobre fondo casi negro (18): la escena del problema.
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(18, 18, 18));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(120, 90, 160, 120), QColor(46, 46, 46));
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("negro.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+    const auto waitFor = [](auto predicate, int ms = 4000) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (predicate()) {
+                return true;
+            }
+        }
+        return false;
+    };
+    ASSERT_TRUE(waitFor([&] { return canvas->liveContour().size() >= 4; }))
+        << "ni siquiera detecta la pieza en la escena oscura";
+    const double areaBefore = std::abs(polygonArea(canvas->liveContour()));
+    ASSERT_GT(areaBefore, 1000.0);
+
+    // Lo que se ve, ANTES de realzar.
+    const auto shot = [&canvas] {
+        QImage image(canvas->size(), QImage::Format_RGB888);
+        canvas->render(&image);
+        return image;
+    };
+    const QImage plain = shot();
+
+    // El operador enciende el realce desde el menú Ver.
+    QAction* enhance = nullptr;
+    for (auto* action : window.findChildren<QAction*>()) {
+        if (action->text().startsWith(QStringLiteral("Realzar"))) {
+            enhance = action;
+        }
+    }
+    ASSERT_NE(enhance, nullptr) << "no hay forma de realzar la vista desde el menú";
+    ASSERT_TRUE(enhance->isCheckable());
+    enhance->setChecked(true);
+    QApplication::processEvents(QEventLoop::AllEvents, 50);
+    ASSERT_TRUE(canvas->viewEnhance());
+    ASSERT_TRUE(canvas->viewEnhanceActive())
+        << "encendido, pero dice que esta imagen no necesitaba realce";
+
+    // 1) LO QUE SE VE CAMBIA, y mucho.
+    const QImage enhanced = shot();
+    long long lifted = 0;
+    long long counted = 0;
+    for (int y = 0; y < plain.height(); y += 3) {
+        for (int x = 0; x < plain.width(); x += 3) {
+            const int a = qGray(plain.pixel(x, y));
+            const int b = qGray(enhanced.pixel(x, y));
+            lifted += std::abs(b - a);
+            ++counted;
+        }
+    }
+    const double averageLift = counted > 0 ? static_cast<double>(lifted) / counted : 0.0;
+    std::printf("  [oscuro] el realce mueve %.1f niveles de gris de media en pantalla\n",
+                averageLift);
+    EXPECT_GT(averageLift, 15.0)
+        << "el realce apenas cambia lo que se ve: no sirve para lo único que existe";
+
+    // 2) LO QUE SE MIDE NO CAMBIA. Ni un píxel.
+    QApplication::processEvents(QEventLoop::AllEvents, 200);
+    const double areaAfter = std::abs(polygonArea(canvas->liveContour()));
+    std::printf("  [oscuro] contorno: %.0f px2 antes, %.0f px2 con el realce puesto\n",
+                areaBefore, areaAfter);
+    EXPECT_DOUBLE_EQ(areaBefore, areaAfter)
+        << "realzar la vista movió el contorno medido. Es el fallo que esta prueba "
+           "existe para impedir: las cotas cambiarían por subir el brillo para mirar";
+
+    // 3) Y al apagarlo, todo vuelve.
+    enhance->setChecked(false);
+    QApplication::processEvents(QEventLoop::AllEvents, 50);
+    EXPECT_FALSE(canvas->viewEnhance());
+    EXPECT_DOUBLE_EQ(std::abs(polygonArea(canvas->liveContour())), areaBefore);
+}
+
+// El contorno se ve encima de cualquier cosa, que era la otra mitad del
+// problema: sobre una pieza clara el verde desaparece, y sobre una escena oscura
+// no se distingue dónde acaba una cosa y empieza la otra.
+TEST(DarkOnDark, TheContourIsDrawnWithAHaloSoItSurvivesAnyBackground) {
+    EditorCanvas canvas;
+    canvas.resize(kWidgetWidth, kWidgetHeight);
+    // Escena BLANCA: el verde del contorno, solo, se pierde encima.
+    QImage white(kImageWidth, kImageHeight, QImage::Format_RGB888);
+    white.fill(QColor(245, 245, 245));
+    canvas.setScene(white, pci::vision::Fixture{});
+    canvas.setFrame(white);  // entra en modo vivo
+
+    QPolygonF contour;
+    contour << QPointF(700, 400) << QPointF(1200, 400) << QPointF(1200, 700)
+            << QPointF(700, 700);
+    canvas.setLivePiece(true, contour, QPointF(950, 550), 0.0, QString());
+
+    QImage shot(canvas.size(), QImage::Format_RGB888);
+    canvas.render(&shot);
+
+    // SOLO DENTRO DE LA IMAGEN, y esta acotación es la prueba misma.
+    //
+    // Contando el fotograma entero salían 119 636 píxeles oscuros y la
+    // comprobación pasaba... porque el fondo del propio widget es casi negro y
+    // rodea a la imagen por los cuatro lados. Habría pasado igual sin halo
+    // ninguno. Acotado al interior blanco de la escena, lo único que puede
+    // salir oscuro es el halo.
+    const ViewTransform view = viewAt(1.0);
+    const QPointF topLeft = toScreen(view, {650.0F, 350.0F});
+    const QPointF bottomRight = toScreen(view, {1250.0F, 750.0F});
+    int dark = 0;
+    int green = 0;
+    for (int y = static_cast<int>(topLeft.y()); y < static_cast<int>(bottomRight.y()); ++y) {
+        for (int x = static_cast<int>(topLeft.x()); x < static_cast<int>(bottomRight.x());
+             ++x) {
+            const QColor c = shot.pixelColor(x, y);
+            if (qGray(c.rgb()) < 90) {
+                ++dark;
+            }
+            if (c.green() > 150 && c.green() - c.red() > 80) {
+                ++green;
+            }
+        }
+    }
+    std::printf("  [oscuro] dentro de la escena blanca: %d px de halo, %d px de verde\n",
+                dark, green);
+    EXPECT_GT(green, 200) << "no se está pintando el contorno: la prueba no mide nada";
+    EXPECT_GT(dark, 200)
+        << "el contorno no lleva halo: sobre una escena clara la línea verde "
+           "desaparece y no hay forma de ver qué está detectando";
+}

@@ -37,6 +37,7 @@ add_executable(pci_tests
   test_shape_measure.cpp
   test_shape_proposals.cpp
   test_tool_options.cpp
+  test_view_enhance.cpp
   test_vision.cpp
   test_detection_tuning.cpp
   test_documented_numbers.cpp

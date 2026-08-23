@@ -152,6 +152,23 @@ public:
     [[nodiscard]] bool canUndoEdgeCorrection() const { return !undoSteps_.empty(); }
     [[nodiscard]] bool canRedoEdgeCorrection() const { return !redoSteps_.empty(); }
 
+    // REALCE DE VISTA: estirar el contraste de lo que se PINTA, nada mas.
+    //
+    // Viene de «si la pieza es negra, y el demas cuadro es negro no se alcanza a
+    // ver correctamente». Una pieza mate oscura sobre fondo oscuro ocupa treinta
+    // niveles de gris de 256: en pantalla es una mancha negra dentro de otra.
+    //
+    // NO TOCA `image_`. Ya existe otra forma de subir el brillo —los controles de
+    // la camara— y esa si cambia el fotograma que se analiza: mueve el umbral,
+    // mueve la polaridad y mueve todas las cotas. Son dos cosas distintas y
+    // confundirlas haria que las medidas se movieran por mirar.
+    void setViewEnhance(bool on);
+    [[nodiscard]] bool viewEnhance() const { return viewEnhance_; }
+    // Si el realce esta encendido Y la imagen de ahora lo necesitaba. Sirve para
+    // poder decir «esta imagen no hace falta realzarla» en vez de dejar al
+    // operador dudando de si el interruptor funciona.
+    [[nodiscard]] bool viewEnhanceActive() const { return viewEnhance_ && enhancedUseful_; }
+
     // Si la pincelada se PINTA sobre la imagen.
     //
     // El trazo es un gesto, no un resultado. Una vez que la corrección se ha
@@ -446,6 +463,15 @@ private:
     cv::Mat forcePiece_;
     cv::Mat forceBackground_;
     bool showCorrection_ = true;
+
+    // Realce de vista. `enhanced_` es una COPIA que solo se pinta; se recalcula
+    // cuando cambia el fotograma y no en cada repintado, que si no seria una
+    // pasada por toda la imagen por cada movimiento del raton.
+    bool viewEnhance_ = false;
+    QImage enhanced_;
+    qint64 enhancedKey_ = 0;
+    bool enhancedUseful_ = false;
+    const QImage& displayImage();
 
     // Un paso de deshacer: la zona que tocó la pincelada, y su contenido antes
     // y después. Guardar las dos caras deja deshacer y rehacer simétricos, sin

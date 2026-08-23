@@ -375,6 +375,7 @@ private:
     QAction* brushSteadyAction_ = nullptr;
     QAction* brushStraightAction_ = nullptr;
     QAction* brushSnapAction_ = nullptr;
+    QAction* viewEnhanceAction_ = nullptr;
     void updateEdgeBrushAvailability();
     void applyBrushRadius(int radiusPx, bool fromCanvas);
     void onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& forceBackground);

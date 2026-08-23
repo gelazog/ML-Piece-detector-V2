@@ -18,6 +18,7 @@ add_library(pci_vision STATIC
   segmentation.cpp
   shape_class.cpp
   subpixel_edge.cpp
+  view_enhance.cpp
 )
 target_include_directories(pci_vision PUBLIC ${CMAKE_SOURCE_DIR}/src)
 # OpenCV, core y domain son PUBLIC: los headers públicos exponen cv::Mat,
