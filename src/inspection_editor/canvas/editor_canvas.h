@@ -92,9 +92,54 @@ public:
     // en cuanto la pieza se moviera un píxel — quien lo encienda debe ofrecerlo
     // solo con foto o fichero.
     enum class EdgeBrush { Off, AddPiece, RemovePiece };
-    void setEdgeBrush(EdgeBrush mode, int radiusPx = 12);
+
+    // El modo y el TAMAÑO se ponen por separado, y esa separacion es el arreglo
+    // de un fallo, no una preferencia de estilo.
+    //
+    // Antes esto era `setEdgeBrush(mode, radiusPx = 12)`, y la ventana lo
+    // llamaba sin radio cada vez que se encendia el pincel. El valor por defecto
+    // del parametro pisaba en silencio el tamaño que el operador acababa de
+    // elegir con la rueda: se ajustaba el pincel, se apagaba, se volvia a
+    // encender y estaba otra vez en 12. Con dos funciones eso ya no se puede
+    // escribir.
+    void setEdgeBrush(EdgeBrush mode);
+    void setBrushRadius(int radiusPx);
     [[nodiscard]] EdgeBrush edgeBrush() const { return brush_; }
     [[nodiscard]] int brushRadius() const { return brushRadius_; }
+
+    // --- Las tres ayudas del pincel ---
+    //
+    // Son TRES interruptores y no un modo con tres posiciones porque atacan
+    // tres problemas distintos y se combinan: uno arregla la entrada, otro la
+    // restringe y el tercero arregla la salida.
+    //
+    //   - Pulso estable  : el trazo deja de copiar el temblor de la mano.
+    //   - Trazo recto    : el trazo va en linea recta del principio al final.
+    //   - Ceñir al borde : el resultado sigue el contraste real de la imagen en
+    //                      vez de tener el ancho del pincel.
+    //
+    // DE FABRICA: «pulso estable» encendido, los otros dos apagados. La razon
+    // por la que no son iguales importa.
+    //
+    // El pulso estable solo FILTRA el temblor de la mano: no hay ninguna
+    // pincelada que se pudiera dar antes y no se pueda dar ahora, asi que puede
+    // venir puesto sin quitarle nada a nadie.
+    //
+    // «Ceñir al borde» si quita algo, y se descubrio al romper una prueba de
+    // punta a punta que llevaba tiempo verde: con el ceñido puesto, el pincel ya
+    // no puede forzar una zona que NO se parece a lo que se señalo —un rebaje
+    // oscuro, una pestaña de poco contraste, un trozo que uno quiere incluir
+    // aunque la imagen no lo respalde—. Eso es un cambio de lo que la
+    // herramienta PUEDE hacer, no un afinado de como lo hace, y en este proyecto
+    // esas cosas se eligen (la misma regla que tiene el subpixel en
+    // `vision/pipeline.h`). Esta a un clic, en el menu del propio pincel, y el
+    // programa dice en la barra de estado que ha hecho cada pincelada.
+    void setBrushSteady(bool on);
+    void setBrushStraight(bool on);
+    void setBrushSnap(bool on);
+    [[nodiscard]] bool brushSteady() const { return brushSteady_; }
+    [[nodiscard]] bool brushStraight() const { return brushStraight_; }
+    [[nodiscard]] bool brushSnap() const { return brushSnap_; }
 
     // Deshacer y rehacer las pinceladas.
     //
@@ -224,6 +269,10 @@ signals:
     void edgeCorrected(const cv::Mat& forcePiece, const cv::Mat& forceBackground);
     // El tamaño del pincel cambió con la rueda: quien lo muestre debe seguirlo.
     void brushRadiusChanged(int radiusPx);
+    // Que ha hecho la ultima pincelada. Existe para poder DECIRLO: una ayuda que
+    // unas veces actua y otras no, sin explicar cual de las dos ha pasado, se
+    // vive como que el programa va a rachas.
+    void edgeStrokeFinished(bool snapped, double contrast, int keptPixels, int bandPixels);
     void toolRightClicked(int index);
     // Un gesto claramente intencionado que no pudo convertirse en herramienta.
     // Existe para que nada se descarte en silencio: si el operador traza y no
@@ -377,6 +426,20 @@ private:
     EdgeBrush brush_ = EdgeBrush::Off;
     int brushRadius_ = 12;
     bool painting_ = false;
+    bool brushSteady_ = true;
+    bool brushStraight_ = false;
+    bool brushSnap_ = false;
+    // Punto suavizado del trazo en curso: el pincel pinta AQUI y no donde esta
+    // el raton. Es el estabilizador clasico de los programas de dibujo, y lo que
+    // quita es el temblor, no la intencion.
+    std::optional<cv::Point2f> steadyPoint_;
+    // Trazo recto en curso: donde empezo, y si esta pincelada concreta va recta
+    // (el interruptor y la tecla Mayus se combinan al pulsar, no despues).
+    std::optional<cv::Point2f> straightStart_;
+    bool straightStroke_ = false;
+    // Gris del entorno del punto donde empezo el trazo: la semilla que decide
+    // con que mitad de la banda se queda «ceñir al borde».
+    double strokeSeed_ = 0.0;
     // Último punto del trazo en curso: el pincel une puntos consecutivos en vez
     // de pintar círculos sueltos, o un movimiento rápido dejaría huecos.
     std::optional<cv::Point> lastPaint_;
@@ -406,6 +469,19 @@ private:
     void applyEdgeStep(const cv::Rect& area, const cv::Mat& piece, const cv::Mat& background);
     void forgetEdgeCorrection();
     void paintAt(const cv::Point2f& imagePoint);
+    // Ciñe al borde lo que acaba de pintar este trazo. Se hace AL SOLTAR y no
+    // durante el arrastre a proposito: durante el trazo el operador tiene que
+    // ver por donde va pasando el pincel, y al soltar la pincelada se asienta
+    // sobre el borde. Ademas, ceñir en cada movimiento del raton reevaluaria una
+    // banda que aun esta creciendo, y el resultado dependeria de a que velocidad
+    // se movio la mano.
+    void snapStrokeToEdge();
+    // El anillo del pincel bajo el cursor. FUERA de `paintEdgeCorrection`, y ese
+    // cambio de sitio es el arreglo de «el tamaño desaparece despues de usarlo»:
+    // estaba detras del mismo `return` que retira la mancha del trazo, asi que
+    // al soltar la primera pincelada se dejaba de dibujar el indicador de
+    // tamaño. El anillo es el CURSOR, no la correccion.
+    void paintBrushCursor(QPainter& painter) const;
 
     bool freeZonePick_ = false;
     bool freeZoneVisible_ = false;

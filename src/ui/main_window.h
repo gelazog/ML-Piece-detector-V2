@@ -355,7 +355,17 @@ private:
     QAction* brushRedoAction_ = nullptr;
     QAction* brushTuneAction_ = nullptr;
     QAction* brushClearAction_ = nullptr;
+    // El tamaño del pincel, visible y manejable sin tener que descubrir la
+    // rueda. La rueda sigue siendo la forma rapida —se ajusta el grosor
+    // constantemente mientras se corrige— pero un gesto que no se ve en ningun
+    // sitio no lo encuentra quien no lo sabe ya.
+    QSlider* brushSizeSlider_ = nullptr;
+    QLabel* brushSizeLabel_ = nullptr;
+    QAction* brushSteadyAction_ = nullptr;
+    QAction* brushStraightAction_ = nullptr;
+    QAction* brushSnapAction_ = nullptr;
     void updateEdgeBrushAvailability();
+    void applyBrushRadius(int radiusPx, bool fromCanvas);
     void onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& forceBackground);
     void onTuneDetectionFromEdge();
     // Barra de transporte del vídeo. Solo aparece con un vídeo abierto: con una

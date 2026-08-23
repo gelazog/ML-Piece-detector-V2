@@ -10,6 +10,7 @@
 #include <QFileDialog>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QWidgetAction>
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
@@ -467,6 +468,63 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     brushRemoveAction_ = brushMenu->addAction(tr("Pincel: quitar de la pieza"));
     brushRemoveAction_->setCheckable(true);
     brushMenu->addSeparator();
+
+    // EL TAMAÑO, A LA VISTA.
+    //
+    // Antes solo se podia cambiar con la rueda del raton, y la rueda no la
+    // encuentra quien no sabe ya que esta ahi. Peor: el unico sitio donde se
+    // veia el tamaño era el anillo bajo el cursor, y ese anillo se dejaba de
+    // dibujar justo al terminar la primera pincelada. El resultado era un ajuste
+    // que existia, no se veia y ademas se reiniciaba solo.
+    auto* sizeRow = new QWidget(brushMenu);
+    auto* sizeLayout = new QHBoxLayout(sizeRow);
+    sizeLayout->setContentsMargins(12, 4, 12, 4);
+    sizeLayout->addWidget(new QLabel(tr("Tamaño:"), sizeRow));
+    brushSizeSlider_ = new QSlider(Qt::Horizontal, sizeRow);
+    brushSizeSlider_->setRange(2, 120);  // los mismos topes que el lienzo
+    brushSizeSlider_->setMinimumWidth(150);
+    brushSizeSlider_->setToolTip(
+        tr("Radio del pincel, en píxeles de la imagen.\n"
+           "La rueda del ratón sobre la imagen hace lo mismo, más rápido."));
+    sizeLayout->addWidget(brushSizeSlider_);
+    brushSizeLabel_ = new QLabel(sizeRow);
+    brushSizeLabel_->setMinimumWidth(52);
+    sizeLayout->addWidget(brushSizeLabel_);
+    auto* sizeAction = new QWidgetAction(brushMenu);
+    sizeAction->setDefaultWidget(sizeRow);
+    brushMenu->addAction(sizeAction);
+    brushMenu->addSeparator();
+
+    // LAS TRES AYUDAS.
+    //
+    // Tres y no una porque son tres problemas distintos, y quien pide «que el
+    // pincel ayude» no siempre quiere las tres a la vez: una arregla la mano que
+    // dibuja, otra restringe lo que se puede dibujar, y la tercera arregla el
+    // resultado. Cada una se puede apagar por su cuenta.
+    auto* assistTitle = brushMenu->addAction(tr("Ayuda del pincel"));
+    assistTitle->setEnabled(false);
+    brushSteadyAction_ = brushMenu->addAction(tr("   Pulso estable"));
+    brushSteadyAction_->setCheckable(true);
+    brushSteadyAction_->setToolTip(
+        tr("El pincel persigue al ratón en vez de seguirlo al píxel.\n"
+           "Filtra el temblor de la mano; la intención llega igual.\n"
+           "Medido sobre un trazo con temblor: de 3,6 px de desviación a 1,4."));
+    brushStraightAction_ = brushMenu->addAction(tr("   Trazo recto"));
+    brushStraightAction_->setCheckable(true);
+    brushStraightAction_->setToolTip(
+        tr("La pincelada va en línea recta del principio al final, y el rodeo\n"
+           "que dé la mano por el camino no cuenta.\n"
+           "Mantener Mayús mientras se pinta hace lo CONTRARIO de lo que diga\n"
+           "este interruptor, para no tener que venir a cambiarlo por un trazo."));
+    brushSnapAction_ = brushMenu->addAction(tr("   Ceñir al borde"));
+    brushSnapAction_->setCheckable(true);
+    brushSnapAction_->setToolTip(
+        tr("El resultado sigue el contraste real de la imagen en vez de tener\n"
+           "el ancho del pincel: menos uniforme y más pegado a la pieza.\n\n"
+           "Se queda con la mitad de la pincelada que se parece al punto donde\n"
+           "EMPEZASTE el trazo, así que empieza encima de lo que quieres marcar.\n"
+           "Donde no hay contraste que seguir, pinta como el pincel de siempre."));
+    brushMenu->addSeparator();
     // UN solo deshacer, no dos.
     //
     // La aplicación ya tiene Ctrl+Z para las herramientas dibujadas. Darle al
@@ -723,6 +781,79 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // `video_` ya creado; sólo esta línea se evaluaba en el momento equivocado.
     // Por eso el fallo parecía «el pincel no hace su función» y no «falta una
     // conexión».
+    // TODO ESTO VIVE AQUI Y NO JUNTO AL MENU, y no es orden estetico.
+    //
+    // `video_` se construye unas lineas mas arriba. Conectar o llamar al lienzo
+    // desde donde se arma el menu del pincel seria hacerlo sobre un puntero
+    // nulo: `connect` sobre nulo no conecta nada y solo avisa por consola —el
+    // fallo que ya costo cuatro rondas con `edgeCorrected`— y una llamada como
+    // `video_->brushRadius()` directamente tumba el programa al arrancar.
+    connect(brushSizeSlider_, &QSlider::valueChanged, this,
+            [this](int value) { applyBrushRadius(value, false); });
+    // La rueda del raton sobre la imagen y el deslizador son el MISMO ajuste, y
+    // tienen que enseñar el mismo numero. Antes el lienzo emitia este aviso y no
+    // lo escuchaba nadie: se podia cambiar el tamaño sin que nada lo dijera.
+    connect(video_, &inspection::EditorCanvas::brushRadiusChanged, this,
+            [this](int radiusPx) { applyBrushRadius(radiusPx, true); });
+    // Que ha hecho la ultima pincelada. Una ayuda que unas veces actua y otras
+    // no, sin decir cual de las dos ha pasado, se vive como que el programa va a
+    // rachas.
+    connect(video_, &inspection::EditorCanvas::edgeStrokeFinished, this,
+            [this](bool snapped, double contrast, int kept, int band) {
+                if (!video_->brushSnap() || band <= 0) {
+                    return;
+                }
+                if (snapped) {
+                    statusBar()->showMessage(
+                        tr("Pincelada ceñida al borde: se queda con %1 de %2 px "
+                           "(contraste %3).")
+                            .arg(kept)
+                            .arg(band)
+                            .arg(contrast, 0, 'f', 0));
+                } else {
+                    statusBar()->showMessage(
+                        tr("Sin borde que seguir bajo la pincelada (contraste %1, hace "
+                           "falta 12): se marcó entera, como el pincel de siempre.")
+                            .arg(contrast, 0, 'f', 0));
+                }
+            });
+    const auto rememberAssist = [this](const char* key, QAction* action,
+                                       void (inspection::EditorCanvas::*apply)(bool)) {
+        connect(action, &QAction::toggled, this, [this, key, apply](bool on) {
+            (video_->*apply)(on);
+            if (repos_.settings != nullptr) {
+                repos_.settings->setInt(key, on ? 1 : 0);
+            }
+        });
+    };
+    rememberAssist("brush_steady", brushSteadyAction_,
+                   &inspection::EditorCanvas::setBrushSteady);
+    rememberAssist("brush_straight", brushStraightAction_,
+                   &inspection::EditorCanvas::setBrushStraight);
+    rememberAssist("brush_snap", brushSnapAction_, &inspection::EditorCanvas::setBrushSnap);
+
+    // Lo guardado, o lo que trae el lienzo de fabrica. Los valores por defecto
+    // viven en UN solo sitio —el lienzo— para que restablecer los ajustes
+    // devuelva exactamente lo que hace una instalacion nueva.
+    if (repos_.settings != nullptr) {
+        const auto saved = repos_.settings->getInt("brush_radius", video_->brushRadius());
+        applyBrushRadius(saved.isOk() ? saved.value() : video_->brushRadius(), true);
+        const auto steady = repos_.settings->getInt("brush_steady", video_->brushSteady());
+        brushSteadyAction_->setChecked(steady.isOk() ? steady.value() != 0
+                                                      : video_->brushSteady());
+        const auto straight =
+            repos_.settings->getInt("brush_straight", video_->brushStraight());
+        brushStraightAction_->setChecked(straight.isOk() ? straight.value() != 0
+                                                          : video_->brushStraight());
+        const auto snap = repos_.settings->getInt("brush_snap", video_->brushSnap());
+        brushSnapAction_->setChecked(snap.isOk() ? snap.value() != 0 : video_->brushSnap());
+    } else {
+        applyBrushRadius(video_->brushRadius(), true);
+        brushSteadyAction_->setChecked(video_->brushSteady());
+        brushStraightAction_->setChecked(video_->brushStraight());
+        brushSnapAction_->setChecked(video_->brushSnap());
+    }
+
     connect(video_, &inspection::EditorCanvas::edgeCorrected, this,
             &MainWindow::onEdgeCorrected);
     rootLayout->addWidget(video_, 1);
@@ -2997,6 +3128,36 @@ void MainWindow::onSaveCapturesClicked() {
 // corregido a mano sería mentira en cuanto la pieza se moviera un píxel. Y
 // apagado con su motivo, no muerto y en silencio: un control que no responde sin
 // explicación se lee como que la aplicación está rota.
+// El tamaño del pincel, en los tres sitios donde se ve, sin que ninguno mande
+// sobre los otros.
+//
+// `fromCanvas` evita el ida y vuelta: si el cambio viene de la rueda del raton,
+// mover el deslizador volveria a llamar al lienzo. Se bloquean las señales del
+// deslizador en vez de comparar valores, que es lo unico que funciona cuando el
+// valor se acota por el camino.
+void MainWindow::applyBrushRadius(int radiusPx, bool fromCanvas) {
+    if (brushSizeSlider_ == nullptr) {
+        return;
+    }
+    const int wanted = std::clamp(radiusPx, brushSizeSlider_->minimum(),
+                                  brushSizeSlider_->maximum());
+    {
+        const QSignalBlocker block(brushSizeSlider_);
+        brushSizeSlider_->setValue(wanted);
+    }
+    if (!fromCanvas && video_ != nullptr) {
+        video_->setBrushRadius(wanted);
+    }
+    if (brushSizeLabel_ != nullptr) {
+        // El DIAMETRO, no el radio: es lo que se ve pintado, y lo que uno compara
+        // con el hueco que quiere rellenar.
+        brushSizeLabel_->setText(tr("%1 px").arg(wanted * 2));
+    }
+    if (repos_.settings != nullptr) {
+        repos_.settings->setInt("brush_radius", wanted);
+    }
+}
+
 void MainWindow::updateEdgeBrushAvailability() {
     if (edgeBrushButton_ == nullptr) {
         return;

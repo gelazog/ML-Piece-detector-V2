@@ -2384,7 +2384,9 @@ TEST(EdgeBrush, PaintingMarksTheAreaAndEmitsItOnRelease) {
                          ++emissions;
                      });
 
-    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece, 20);
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece);
+
+    canvas.setBrushRadius(20);
     const ViewTransform view = viewAt(1.0);
     press(&canvas, toScreen(view, {600.0F, 400.0F}));
     moveTo(&canvas, toScreen(view, {700.0F, 400.0F}));
@@ -2425,14 +2427,17 @@ TEST(EdgeBrush, PaintingOneColourErasesFromTheOther) {
     const ViewTransform view = viewAt(1.0);
     const QPointF spot = toScreen(view, {600.0F, 400.0F});
 
-    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece, 20);
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece);
+
+    canvas.setBrushRadius(20);
     press(&canvas, spot);
     release(&canvas, spot);
     ASSERT_FALSE(add.empty());
     ASSERT_EQ(add.at<uchar>(400, 600), 255);
 
     // Ahora se pinta lo mismo como fondo: tiene que desaparecer de «añadir».
-    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::RemovePiece, 20);
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::RemovePiece);
+    canvas.setBrushRadius(20);
     press(&canvas, spot);
     release(&canvas, spot);
     ASSERT_FALSE(remove.empty());
@@ -2475,7 +2480,8 @@ TEST(EdgeBrush, TheWheelResizesTheBrushInsteadOfZooming) {
     EXPECT_GT(canvas.zoomFactor(), zoomBefore) << "sin pincel, la rueda dejó de hacer zoom";
 
     // Con el pincel encendido, cambia SU tamaño y el zoom no se mueve.
-    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece, 12);
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece);
+    canvas.setBrushRadius(12);
     const double zoomKept = canvas.zoomFactor();
     const int before = canvas.brushRadius();
     QWheelEvent bigger(QPointF(400, 300), canvas.mapToGlobal(QPointF(400, 300)), QPoint(),
@@ -2542,7 +2548,9 @@ TEST(EdgeBrush, TheCorrectionActuallyChangesWhatTheAnalysisFinds) {
                          remove = r.clone();
                      });
 
-    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece, 60);
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece);
+
+    canvas.setBrushRadius(60);
     const ViewTransform view = viewAt(1.0);
     const float midY = static_cast<float>(eaten.y + eaten.height / 2);
     press(&canvas, toScreen(view, {static_cast<float>(eaten.x + 10), midY}));
@@ -2595,7 +2603,8 @@ TEST(EdgeBrush, TheEmittedCorrectionIsNotTheCanvasBuffer) {
                      });
 
     const ViewTransform view = viewAt(1.0);
-    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece, 20);
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece);
+    canvas.setBrushRadius(20);
     press(&canvas, toScreen(view, {600.0F, 400.0F}));
     release(&canvas, toScreen(view, {600.0F, 400.0F}));
     ASSERT_FALSE(firstDelivery.empty());
@@ -2750,7 +2759,9 @@ TEST(EdgeBrush, PaintingOnARealOpenedImageMovesTheGreenLine) {
     EXPECT_TRUE(brush->toolTip().startsWith(QStringLiteral("Corrige")))
         << "encendido pero explicando por qué está apagado";
 
-    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece, 18);
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece);
+
+    canvas->setBrushRadius(18);
     paintStroke(canvas, QPoint(250, 120), QPoint(300, 180));
 
     // Y se espera a que el reanálisis termine. NO hay que confirmar nada: el
@@ -2884,7 +2895,9 @@ TEST(EdgeBrush, CorrectingTheEdgeUnlocksTuningTheDetection) {
     };
     ASSERT_TRUE(waitFor([&] { return canvas->liveContour().size() >= 4; }));
 
-    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece, 18);
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece);
+
+    canvas->setBrushRadius(18);
     paintStroke(canvas, QPoint(255, 125), QPoint(295, 175));
     ASSERT_TRUE(waitFor([&] { return tune->isEnabled(); }))
         << "se corrigió el borde y afinar sigue apagado";
@@ -3132,7 +3145,9 @@ TEST(EdgeBrush, TheStrokeIsRemovedOnceItHasDoneItsWorkButTheCorrectionStays) {
     ASSERT_TRUE(waitFor([&] { return canvas->liveContour().size() >= 4; }));
     const double areaBefore = std::abs(polygonArea(canvas->liveContour()));
 
-    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece, 18);
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece);
+
+    canvas->setBrushRadius(18);
     paintStroke(canvas, QPoint(255, 125), QPoint(295, 175));
 
     // Mientras se pinta el trazo SE VE: es la única realimentación de dónde
@@ -3205,7 +3220,9 @@ TEST(EdgeBrush, UndoAndRedoMoveTheContourBackAndForward) {
 
     EXPECT_FALSE(canvas->canUndoEdgeCorrection()) << "hay algo que deshacer sin haber pintado";
 
-    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece, 18);
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece);
+
+    canvas->setBrushRadius(18);
     paintStroke(canvas, QPoint(255, 125), QPoint(295, 175));
     ASSERT_TRUE(waitFor([&] {
         return std::abs(polygonArea(canvas->liveContour())) > clean * 1.01;
@@ -3246,7 +3263,8 @@ TEST(EdgeBrush, ClearingEveryCorrectionCanBeUndone) {
     EditorCanvas canvas;
     canvas.resize(kWidgetWidth, kWidgetHeight);
     canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
-    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece, 20);
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece);
+    canvas.setBrushRadius(20);
 
     const ViewTransform view = viewAt(1.0);
     press(&canvas, toScreen(view, {600.0F, 400.0F}));
@@ -3273,7 +3291,8 @@ TEST(EdgeBrush, RememberingManyStrokesDoesNotEatTheMemory) {
     EditorCanvas canvas;
     canvas.resize(kWidgetWidth, kWidgetHeight);
     canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
-    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece, 12);
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece);
+    canvas.setBrushRadius(12);
     const ViewTransform view = viewAt(1.0);
 
     for (int stroke = 0; stroke < 60; ++stroke) {
@@ -3356,7 +3375,9 @@ TEST(EdgeBrush, OneUndoThatKnowsWhetherTheBrushIsInYourHand) {
     }
     ASSERT_NE(undo, nullptr) << "no hay ninguna acción con Ctrl+Z";
 
-    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece, 18);
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece);
+
+    canvas->setBrushRadius(18);
     paintStroke(canvas, QPoint(255, 125), QPoint(295, 175));
     ASSERT_TRUE(waitFor([&] { return canvas->correctedPixelCount() > 0; }));
 
@@ -3395,7 +3416,8 @@ TEST(EdgeBrush, ChangingTheImageDoesNotLeaveUndoStepsThatCrash) {
     EditorCanvas canvas;
     canvas.resize(kWidgetWidth, kWidgetHeight);
     canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
-    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece, 20);
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece);
+    canvas.setBrushRadius(20);
 
     const ViewTransform view = viewAt(1.0);
     press(&canvas, toScreen(view, {1500.0F, 900.0F}));
@@ -3482,7 +3504,9 @@ TEST(EdgeBrush, OpeningAnotherFileLeavesNoCorrectionBehind) {
     };
     ASSERT_TRUE(waitFor([&] { return canvas->liveContour().size() >= 4; }));
 
-    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece, 18);
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece);
+
+    canvas->setBrushRadius(18);
     paintStroke(canvas, QPoint(255, 125), QPoint(295, 175));
     ASSERT_TRUE(waitFor([&] { return canvas->correctedPixelCount() > 0; }));
 
@@ -3514,7 +3538,8 @@ TEST(EdgeBrush, OpeningAnotherFileLeavesNoCorrectionBehind) {
         << "el aviso sigue diciendo «Borde corregido» sobre una imagen sin corregir";
 
     // Y se puede corregir la nueva sin que nada de lo anterior estorbe.
-    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece, 12);
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece);
+    canvas->setBrushRadius(12);
     paintStroke(canvas, QPoint(130, 100), QPoint(160, 120));
     EXPECT_GT(canvas->correctedPixelCount(), 0)
         << "el pincel dejó de funcionar tras cambiar de fichero";
@@ -4099,3 +4124,327 @@ TEST(PieceReportWarnings, TheDialogShowsThemBeforeTheNumbers) {
         << "el aviso sale debajo de las cifras: para entonces ya se han leido";
 }
 
+
+// ---------------------------------------------------------------------------
+// Los cuatro fallos del pincel, y las tres ayudas
+// ---------------------------------------------------------------------------
+//
+// Todo lo que sigue nace de una queja de uso: «el tamaño de los pinceles
+// desaparece después de usarlos, aparte es muy dispareja la línea que da como
+// resultado». Al ir a buscarlo no había UN fallo: había cuatro causas
+// independientes que producían el mismo síntoma, y cada una necesita su
+// comprobación o volverá por su cuenta.
+
+// CAUSA 1: `setEdgeBrush(mode, radiusPx = 12)` llevaba el tamaño como parámetro
+// con valor por defecto, y la ventana lo llamaba sin él. Encender el pincel
+// pisaba en silencio el tamaño que el operador acababa de elegir.
+TEST(EdgeBrushSize, TheSizeSurvivesTurningTheBrushOffAndOn) {
+    EditorCanvas canvas;
+    canvas.resize(kWidgetWidth, kWidgetHeight);
+    canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece);
+    canvas.setBrushRadius(40);
+    ASSERT_EQ(canvas.brushRadius(), 40);
+
+    // Lo que hace la ventana cada vez que se toca el botón del pincel.
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::Off);
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::RemovePiece);
+    EXPECT_EQ(canvas.brushRadius(), 40)
+        << "encender el pincel volvió a reiniciar el tamaño: el fallo ha vuelto";
+
+    // Y tampoco lo pierde al pintar.
+    const ViewTransform view = viewAt(1.0);
+    drag(&canvas, toScreen(view, {600.0F, 400.0F}), toScreen(view, {700.0F, 400.0F}));
+    EXPECT_EQ(canvas.brushRadius(), 40) << "el tamaño se perdió al usar el pincel";
+}
+
+// CAUSA 2: el anillo que enseña el tamaño se dibujaba DENTRO de
+// `paintEdgeCorrection`, detrás del mismo `return` que retira la mancha del
+// trazo cuando ya ha hecho su trabajo. Al soltar la primera pincelada
+// desaparecía la mancha (querido) y con ella el indicador de tamaño (no
+// querido). Esta es la causa que coincide literalmente con la queja.
+TEST(EdgeBrushSize, TheRingIsStillDrawnAfterTheStrokeIsHidden) {
+    EditorCanvas canvas;
+    canvas.resize(kWidgetWidth, kWidgetHeight);
+    canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece);
+    canvas.setBrushRadius(30);
+
+    // Con el pincel encendido hay que seguir al ratón, o el anillo solo se
+    // movería con el botón pulsado: para saber qué tamaño tienes, pintar.
+    EXPECT_TRUE(canvas.hasMouseTracking())
+        << "el pincel no sigue al cursor: el anillo se queda congelado";
+
+    const ViewTransform view = viewAt(1.0);
+    drag(&canvas, toScreen(view, {600.0F, 400.0F}), toScreen(view, {700.0F, 400.0F}));
+    // Justo lo que hace la ventana al terminar de analizar la corrección.
+    canvas.setEdgeCorrectionVisible(false);
+    ASSERT_FALSE(canvas.edgeCorrectionVisible());
+
+    // El cursor, quieto sobre el lienzo.
+    moveTo(&canvas, toScreen(view, {800.0F, 500.0F}));
+
+    const auto greenPixels = [&canvas] {
+        QImage shot(canvas.size(), QImage::Format_RGB888);
+        canvas.render(&shot);
+        int count = 0;
+        for (int y = 0; y < shot.height(); ++y) {
+            for (int x = 0; x < shot.width(); ++x) {
+                const QColor c = shot.pixelColor(x, y);
+                // El verde del pincel (0,210,90), con holgura por el suavizado.
+                if (c.green() > 150 && c.red() < 110 && c.blue() < 150 &&
+                    c.green() - c.red() > 80) {
+                    ++count;
+                }
+            }
+        }
+        return count;
+    };
+
+    const int withBrush = greenPixels();
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::Off);
+    const int withoutBrush = greenPixels();
+    std::printf("  [pincel] verde en pantalla: %d con pincel, %d sin pincel\n", withBrush,
+                withoutBrush);
+    EXPECT_GT(withBrush, 40)
+        << "con la mancha oculta ya no se dibuja nada del pincel: el tamaño ha vuelto a "
+           "desaparecer justo al usarlo, que es la queja original";
+    EXPECT_LT(withoutBrush, withBrush / 4)
+        << "sigue pintándose el anillo con el pincel apagado";
+}
+
+// AYUDA 1: TRAZO RECTO. El trazo va del principio al final en línea recta, y el
+// rodeo que dio la mano por el camino no cuenta.
+TEST(EdgeBrushAssist, AStraightStrokeIgnoresTheDetourTheHandTook) {
+    const ViewTransform view = viewAt(1.0);
+    const auto strokeWithDetour = [&view](bool straight) {
+        EditorCanvas canvas;
+        canvas.resize(kWidgetWidth, kWidgetHeight);
+        canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+        canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece);
+        canvas.setBrushRadius(15);
+        canvas.setBrushStraight(straight);
+        canvas.setBrushSteady(false);  // aquí se mide el camino, no el pulso
+        canvas.setBrushSnap(false);    // ni el ceñido
+
+        cv::Mat painted;
+        QObject::connect(&canvas, &EditorCanvas::edgeCorrected,
+                         [&](const cv::Mat& add, const cv::Mat&) { painted = add.clone(); });
+        press(&canvas, toScreen(view, {500.0F, 400.0F}));
+        // El rodeo: la mano se va muy abajo y vuelve.
+        moveTo(&canvas, toScreen(view, {600.0F, 700.0F}));
+        moveTo(&canvas, toScreen(view, {700.0F, 700.0F}));
+        moveTo(&canvas, toScreen(view, {800.0F, 400.0F}));
+        release(&canvas, toScreen(view, {800.0F, 400.0F}));
+        return painted;
+    };
+
+    const cv::Mat freehand = strokeWithDetour(false);
+    const cv::Mat straight = strokeWithDetour(true);
+    ASSERT_FALSE(freehand.empty());
+    ASSERT_FALSE(straight.empty());
+
+    // A mano alzada, el rodeo se pinta.
+    EXPECT_GT(freehand.at<unsigned char>(700, 650), 0)
+        << "sin la ayuda, el trazo debería haber pasado por el rodeo";
+    // Recto, no.
+    EXPECT_EQ(straight.at<unsigned char>(700, 650), 0)
+        << "con «trazo recto» el rodeo de la mano sigue pintándose";
+    // Y la recta entre los extremos sí, entera.
+    for (int x = 520; x <= 780; x += 20) {
+        EXPECT_GT(straight.at<unsigned char>(400, x), 0)
+            << "el trazo recto tiene un hueco en x=" << x;
+    }
+    std::printf("  [pincel] recto: %d px marcados; a mano alzada con rodeo: %d px\n",
+                cv::countNonZero(straight), cv::countNonZero(freehand));
+}
+
+// AYUDA 2: PULSO ESTABLE. Lo que se filtra es el temblor, no la intención.
+TEST(EdgeBrushAssist, ASteadyHandSmoothsTheWobbleOutOfTheStroke) {
+    const ViewTransform view = viewAt(1.0);
+    const auto wobblyStroke = [&view](bool steady) {
+        EditorCanvas canvas;
+        canvas.resize(kWidgetWidth, kWidgetHeight);
+        canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+        canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece);
+        canvas.setBrushRadius(6);
+        canvas.setBrushSteady(steady);
+        canvas.setBrushSnap(false);
+
+        cv::Mat painted;
+        QObject::connect(&canvas, &EditorCanvas::edgeCorrected,
+                         [&](const cv::Mat& add, const cv::Mat&) { painted = add.clone(); });
+        press(&canvas, toScreen(view, {400.0F, 400.0F}));
+        // Zigzag: la mano tiembla 14 px arriba y abajo mientras avanza.
+        for (int step = 1; step <= 30; ++step) {
+            const float x = 400.0F + static_cast<float>(step) * 10.0F;
+            const float y = 400.0F + ((step % 2 == 0) ? 14.0F : -14.0F);
+            moveTo(&canvas, toScreen(view, {x, y}));
+        }
+        release(&canvas, toScreen(view, {700.0F, 400.0F}));
+        return painted;
+    };
+
+    // Desviación de la línea central del trazo respecto a y = 400.
+    const auto wobbleOf = [](const cv::Mat& mask) {
+        double sum = 0.0;
+        int columns = 0;
+        for (int x = 420; x < 690; ++x) {
+            double weighted = 0.0;
+            double total = 0.0;
+            for (int y = 350; y < 460; ++y) {
+                if (mask.at<unsigned char>(y, x) != 0) {
+                    weighted += y;
+                    total += 1.0;
+                }
+            }
+            if (total > 0.0) {
+                sum += std::abs(weighted / total - 400.0);
+                ++columns;
+            }
+        }
+        return columns > 0 ? sum / columns : 0.0;
+    };
+
+    const double loose = wobbleOf(wobblyStroke(false));
+    const double steady = wobbleOf(wobblyStroke(true));
+    std::printf("  [pincel] temblor de la línea: %.2f px sin ayuda, %.2f px con pulso "
+                "estable\n",
+                loose, steady);
+    EXPECT_GT(loose, 3.0) << "el zigzag de la prueba no llegó a temblar: no se está "
+                             "midiendo lo que se cree";
+    EXPECT_LT(steady, loose * 0.75)
+        << "el pulso estable no está quitando el temblor de la mano";
+}
+
+// AYUDA 3: CEÑIR AL BORDE. La razón entera de que exista: el resultado deja de
+// tener el ancho del pincel y pasa a tener la forma de la pieza.
+TEST(EdgeBrushAssist, SnappingKeepsOnlyTheSideTheStrokeStartedOn) {
+    const ViewTransform view = viewAt(1.0);
+    // La escena tiene un borde vertical nítido en x = 1000: oscuro a la
+    // izquierda (30), claro a la derecha (220).
+    const auto crossTheEdge = [&view](bool snap) {
+        EditorCanvas canvas;
+        canvas.resize(kWidgetWidth, kWidgetHeight);
+        canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+        canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece);
+        canvas.setBrushRadius(25);
+        canvas.setBrushSnap(snap);
+        canvas.setBrushSteady(false);
+
+        cv::Mat painted;
+        QObject::connect(&canvas, &EditorCanvas::edgeCorrected,
+                         [&](const cv::Mat& add, const cv::Mat&) { painted = add.clone(); });
+        // Empieza bien dentro de lo OSCURO y cruza el borde.
+        drag(&canvas, toScreen(view, {900.0F, 540.0F}), toScreen(view, {1100.0F, 540.0F}));
+        return painted;
+    };
+
+    const cv::Mat plain = crossTheEdge(false);
+    const cv::Mat snapped = crossTheEdge(true);
+    ASSERT_FALSE(plain.empty());
+    ASSERT_FALSE(snapped.empty());
+
+    // Cuántos píxeles marca cada uno del lado CLARO, que es el que el operador
+    // no señaló.
+    const auto lightSide = [](const cv::Mat& mask) {
+        return cv::countNonZero(mask(cv::Rect(1005, 480, 180, 120)));
+    };
+    const int plainLight = lightSide(plain);
+    const int snappedLight = lightSide(snapped);
+    std::printf("  [pincel] del lado claro: %d px sin ceñir, %d px ceñido\n", plainLight,
+                snappedLight);
+
+    EXPECT_GT(plainLight, 1000) << "sin ceñir, la banda debería invadir el lado claro";
+    EXPECT_EQ(snappedLight, 0)
+        << "ceñido al borde y aun así marca el lado que el operador no señaló: el "
+           "resultado sigue teniendo la forma del pincel y no la de la pieza";
+    // Y del lado oscuro se sigue marcando: ceñir no es dejar de pintar.
+    EXPECT_GT(cv::countNonZero(snapped(cv::Rect(880, 480, 100, 120))), 1000)
+        << "ceñir se llevó también lo que sí había que marcar";
+}
+
+// Y cuando NO hay borde que seguir, la pincelada hace lo de siempre. Un pincel
+// que unas veces marca y otras no, sin decir por qué, se vive como averiado.
+TEST(EdgeBrushAssist, WithNoEdgeToFollowTheStrokeBehavesAsAlways) {
+    EditorCanvas canvas;
+    canvas.resize(kWidgetWidth, kWidgetHeight);
+    canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+    canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece);
+    canvas.setBrushRadius(20);
+    canvas.setBrushSnap(true);
+    canvas.setBrushSteady(false);
+
+    bool snapped = true;
+    double contrast = -1.0;
+    QObject::connect(&canvas, &EditorCanvas::edgeStrokeFinished,
+                     [&](bool did, double howMuch, int, int) {
+                         snapped = did;
+                         contrast = howMuch;
+                     });
+    cv::Mat painted;
+    QObject::connect(&canvas, &EditorCanvas::edgeCorrected,
+                     [&](const cv::Mat& add, const cv::Mat&) { painted = add.clone(); });
+
+    // Un trazo entero dentro de la zona oscura y lisa.
+    const ViewTransform view = viewAt(1.0);
+    drag(&canvas, toScreen(view, {400.0F, 300.0F}), toScreen(view, {600.0F, 300.0F}));
+
+    std::printf("  [pincel] zona lisa: ceñido=%s, contraste %.1f\n", snapped ? "sí" : "no",
+                contrast);
+    EXPECT_FALSE(snapped) << "se ciñó a un borde que no existe";
+    ASSERT_FALSE(painted.empty()) << "sin borde que seguir, la pincelada dejó de marcar: "
+                                     "eso parece un pincel averiado";
+    EXPECT_GT(cv::countNonZero(painted), 5000);
+}
+
+// EL PRECIO DE CEÑIR, ESCRITO PARA QUE NO SE OLVIDE.
+//
+// Esta comprobación no defiende una mejora: documenta lo que la ayuda QUITA.
+// Salió de romper una prueba de punta a punta que llevaba tiempo verde, y es la
+// razón por la que «ceñir al borde» viene apagado de fábrica.
+//
+// Con el ceñido puesto, una pincelada NO puede meter en la pieza algo que no se
+// parece a lo que se señaló. Casi siempre eso es lo que se quiere. Pero hay
+// correcciones legítimas que son exactamente eso —incluir un rebaje oscuro, una
+// pestaña de poco contraste, un trozo que uno sabe que es pieza aunque la imagen
+// no lo respalde— y con el ceñido puesto dejan de poder hacerse.
+TEST(EdgeBrushAssist, SnappingRefusesToForceARegionThatDoesNotMatch) {
+    const ViewTransform view = viewAt(1.0);
+    // Un trazo que empieza en lo OSCURO y quiere llevarse lo claro por delante:
+    // la corrección «a la fuerza» que el ceñido ya no permite.
+    const auto forceAcross = [&view](bool snap) {
+        EditorCanvas canvas;
+        canvas.resize(kWidgetWidth, kWidgetHeight);
+        canvas.setScene(sceneWithAnEdge(), pci::vision::Fixture{});
+        canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece);
+        canvas.setBrushRadius(25);
+        canvas.setBrushSnap(snap);
+        canvas.setBrushSteady(false);
+        cv::Mat painted;
+        QObject::connect(&canvas, &EditorCanvas::edgeCorrected,
+                         [&](const cv::Mat& add, const cv::Mat&) { painted = add.clone(); });
+        drag(&canvas, toScreen(view, {900.0F, 540.0F}), toScreen(view, {1100.0F, 540.0F}));
+        return painted.empty() ? 0 : cv::countNonZero(painted(cv::Rect(1005, 480, 180, 120)));
+    };
+
+    const int free = forceAcross(false);
+    const int snapped = forceAcross(true);
+    std::printf("  [pincel] forzar el lado contrario: %d px sin ceñir, %d px ceñido\n", free,
+                snapped);
+    EXPECT_GT(free, 1000) << "sin la ayuda tiene que poder forzarse: es una corrección "
+                             "legítima y el pincel manual existe justo para eso";
+    EXPECT_EQ(snapped, 0) << "el ceñido ya no está ciñendo";
+
+    // Y de fábrica el pincel puede forzar: la ayuda que quita capacidad se
+    // enciende a mano, no llega puesta.
+    EditorCanvas fresh;
+    EXPECT_FALSE(fresh.brushSnap())
+        << "«ceñir al borde» viene encendido de fábrica y le quita al operador una "
+           "corrección que antes podía hacer, sin que él lo haya pedido";
+    EXPECT_TRUE(fresh.brushSteady())
+        << "«pulso estable» solo filtra el temblor y no quita ninguna pincelada "
+           "posible: no hay motivo para que venga apagado";
+    EXPECT_FALSE(fresh.brushStraight()) << "«trazo recto» es un modo, no un valor por defecto";
+}

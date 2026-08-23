@@ -19,6 +19,7 @@
 
 #include "inspection_editor/execution/edge_detection.h"
 #include "vision/auto_roi.h"
+#include "vision/brush_snap.h"
 #include "vision/fitting.h"
 #include "vision/position_fixture.h"
 
@@ -37,6 +38,14 @@ constexpr double kZoomStep = 1.15;
 // media pieza ya no está corrigiendo un borde: está borrando la pieza.
 constexpr int kMinBrushRadius = 2;
 constexpr int kMaxBrushRadius = 120;
+
+// Cuanto persigue el pincel al raton en cada movimiento, con el pulso estable.
+//
+// 0,4 sale de probar los dos extremos: con 0,8 apenas filtra nada y el trazo
+// sigue temblando; con 0,15 el pincel se queda tan atras que uno cree que ha
+// dejado de pintar y vuelve sobre sus pasos, que es peor que el temblor. Con
+// 0,4 el retraso es de unos pocos pixeles y el temblor de mano desaparece.
+constexpr float kSteadyFollow = 0.4F;
 
 // Convierte la imagen visible a un cv::Mat gris (copia propia) para poder
 // detectar bordes bajo el cursor sin depender del origen del frame.
@@ -258,14 +267,43 @@ void EditorCanvas::finishFreeZone(const std::vector<cv::Point>& trace) {
 }
 
 
-void EditorCanvas::setEdgeBrush(EdgeBrush mode, int radiusPx) {
+void EditorCanvas::setEdgeBrush(EdgeBrush mode) {
     brush_ = mode;
-    brushRadius_ = std::max(1, radiusPx);
     painting_ = false;
+    steadyPoint_.reset();
+    straightStart_.reset();
+    // SEGUIR EL RATON con el pincel encendido.
+    //
+    // Sin esto, el anillo que dice cuanto abarca el pincel solo se movia con el
+    // boton pulsado: para saber que tamaño se tiene hay que pintar, y para eso
+    // ya se ha pintado. Se queda encendido si el tablero o la regla lo pedian,
+    // que tienen su propia razon para seguir el cursor.
+    setMouseTracking(mode != EdgeBrush::Off || boardVisible_ || rulerVisible_);
     // Cruz al pintar: el cursor tiene que decir que el clic va a marcar y no a
     // seleccionar.
     restoreCursor();
     update();
+}
+
+void EditorCanvas::setBrushRadius(int radiusPx) {
+    const int wanted = std::clamp(radiusPx, kMinBrushRadius, kMaxBrushRadius);
+    if (wanted == brushRadius_) {
+        return;
+    }
+    brushRadius_ = wanted;
+    update();
+}
+
+void EditorCanvas::setBrushSteady(bool on) {
+    brushSteady_ = on;
+}
+
+void EditorCanvas::setBrushStraight(bool on) {
+    brushStraight_ = on;
+}
+
+void EditorCanvas::setBrushSnap(bool on) {
+    brushSnap_ = on;
 }
 
 void EditorCanvas::setEdgeCorrection(const cv::Mat& forcePiece,
@@ -550,9 +588,10 @@ void EditorCanvas::setBoardVisible(bool visible) {
 
 void EditorCanvas::leaveEvent(QEvent* event) {
     cursorWidget_.reset();  // sin cursor sobre el lienzo no hay lectura que dar
-    if (boardVisible_) {
-        update();
-    }
+    // Se repinta SIEMPRE. Antes solo con el tablero encendido, y por eso el
+    // anillo del pincel se quedaba dibujado donde salio el raton: un pincel
+    // fantasma en un sitio donde ya no esta el cursor.
+    update();
     QWidget::leaveEvent(event);
 }
 
@@ -781,8 +820,13 @@ void EditorCanvas::wheelEvent(QWheelEvent* event) {
         // gesto, y con paso fijo llegar a un pincel grande cuesta veinte
         // muescas.
         const double factor = std::pow(1.2, steps);
-        setEdgeBrush(brush_, std::clamp(static_cast<int>(std::lround(brushRadius_ * factor)),
-                                        kMinBrushRadius, kMaxBrushRadius));
+        // Un paso MINIMO de un pixel: con radios pequeños el factor 1,2
+        // redondeaba al mismo numero y la rueda no hacia nada.
+        const int scaled = static_cast<int>(std::lround(brushRadius_ * factor));
+        const int wanted = scaled == brushRadius_
+                               ? brushRadius_ + (steps > 0 ? 1 : -1)
+                               : scaled;
+        setBrushRadius(wanted);
         emit brushRadiusChanged(brushRadius_);
         event->accept();
         return;
@@ -996,7 +1040,33 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
         // hecho su trabajo y lo que importa es el contorno.
         showCorrection_ = true;
         beginEdgeStroke();
-        paintAt(pressPoint);
+        // El gris del frame, que hasta ahora solo se cacheaba para el imantado
+        // de las herramientas: el pincel nunca llegaba a esa rama, asi que con
+        // el pincel encendido estaba vacio y no habia imagen que seguir.
+        dragGray_ = qimageToGray(image_);
+        // La semilla de «ceñir»: el gris del ENTORNO del punto donde se empieza,
+        // no el de un pixel. Un reflejo especular justo bajo el cursor
+        // invertiria con que mitad de la banda se queda.
+        strokeSeed_ = vision::seedIntensity(
+            dragGray_, cv::Point(cvRound(pressPoint.x), cvRound(pressPoint.y)),
+            std::min(brushRadius_, 5));
+        steadyPoint_ = pressPoint;
+        // Mayus hace lo CONTRARIO de lo que diga el interruptor: con la ayuda
+        // apagada fuerza el trazo recto, y con la ayuda puesta deja hacer una
+        // curva sin tener que ir a desactivarla y volver.
+        const bool shift = (event->modifiers() & Qt::ShiftModifier) != 0;
+        straightStroke_ = (brushStraight_ != shift);
+        if (straightStroke_) {
+            // Recto: no se pinta nada todavia. Se enseña una linea elastica y la
+            // pincelada se aplica entera al soltar, porque hasta entonces el
+            // otro extremo aun se esta eligiendo.
+            straightStart_ = pressPoint;
+            dragStart_ = pressPoint;
+            dragCurrent_ = pressPoint;
+        } else {
+            straightStart_.reset();
+            paintAt(pressPoint);
+        }
         update();
         return;
     }
@@ -1077,7 +1147,19 @@ void EditorCanvas::mouseMoveEvent(QMouseEvent* event) {
         return;
     }
     if (painting_) {
-        paintAt(widgetToImage(event->position()));
+        const cv::Point2f raw = widgetToImage(event->position());
+        if (straightStroke_) {
+            dragCurrent_ = raw;  // solo la linea elastica; se pinta al soltar
+        } else if (brushSteady_ && steadyPoint_.has_value()) {
+            // Estabilizador: el pincel persigue al raton en vez de seguirlo. Lo
+            // que se filtra es el temblor de la mano; la intencion llega igual,
+            // solo que un poco despues.
+            *steadyPoint_ += (raw - *steadyPoint_) * kSteadyFollow;
+            paintAt(*steadyPoint_);
+        } else {
+            steadyPoint_ = raw;
+            paintAt(raw);
+        }
         update();
         return;
     }
@@ -1208,7 +1290,21 @@ void EditorCanvas::mouseReleaseEvent(QMouseEvent* event) {
         // Se emite al SOLTAR y no en cada punto del trazo: reanalizar la imagen
         // en cada píxel de la pincelada dejaría el pincel a tirones.
         painting_ = false;
+        if (straightStroke_ && straightStart_.has_value()) {
+            // La pincelada recta entera, de una vez: `paintAt` une puntos
+            // consecutivos, asi que dos llamadas dejan el segmento.
+            paintAt(*straightStart_);
+            paintAt(p);
+        } else if (brushSteady_ && steadyPoint_.has_value()) {
+            // El estabilizador va por detras del raton, asi que al soltar
+            // faltaria el ultimo tramo. Sin esto el trazo se queda corto justo
+            // donde el operador acaba de decidir que pare.
+            paintAt(p);
+        }
         lastPaint_.reset();
+        steadyPoint_.reset();
+        straightStart_.reset();
+        snapStrokeToEdge();
         commitEdgeStroke();
         // COPIAS PROFUNDAS, y no es una precaución de más.
         //
@@ -2696,6 +2792,8 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
     }
     paintFreeZone(painter);
     paintEdgeCorrection(painter);
+    // El ultimo, y por encima de todo: es el cursor.
+    paintBrushCursor(painter);
 }
 
 // Lo que el operador ha marcado a mano, encima de la imagen.
@@ -2736,18 +2834,126 @@ void EditorCanvas::paintEdgeCorrection(QPainter& painter) const {
     };
     tint(forcePiece_, QColor(0, 210, 90));
     tint(forceBackground_, QColor(230, 60, 60));
+}
 
-    // El tamaño del pincel bajo el cursor: sin verlo hay que pintar para
-    // descubrir cuánto abarca, y eso ya es una pincelada que deshacer.
-    if (brush_ != EdgeBrush::Off && cursorWidget_.has_value()) {
-        QPen pen(brush_ == EdgeBrush::AddPiece ? QColor(0, 210, 90) : QColor(230, 60, 60));
-        pen.setWidthF(1.5);
-        pen.setCosmetic(true);
-        painter.setPen(pen);
-        painter.setBrush(Qt::NoBrush);
-        painter.drawEllipse(*cursorWidget_, brushRadius_ * displayScale(),
-                            brushRadius_ * displayScale());
+// Ceñir al borde lo que acaba de pintar esta pincelada.
+//
+// La banda que ha pintado el trazo es `lo que hay ahora` menos `lo que habia`.
+// De esa banda se queda solo la mitad que se parece al punto donde el operador
+// empezo, y el resto vuelve a como estaba. El razonamiento de por que esa mitad
+// y no otra esta en `vision/brush_snap.h`.
+void EditorCanvas::snapStrokeToEdge() {
+    if (!brushSnap_ || brush_ == EdgeBrush::Off || strokeArea_.empty() || dragGray_.empty()) {
+        return;
     }
+    cv::Mat& target = brush_ == EdgeBrush::AddPiece ? forcePiece_ : forceBackground_;
+    cv::Mat& other = brush_ == EdgeBrush::AddPiece ? forceBackground_ : forcePiece_;
+    const cv::Mat& targetBefore =
+        brush_ == EdgeBrush::AddPiece ? strokeBeforePiece_ : strokeBeforeBackground_;
+    const cv::Mat& otherBefore =
+        brush_ == EdgeBrush::AddPiece ? strokeBeforeBackground_ : strokeBeforePiece_;
+    if (target.empty() || target.size() != dragGray_.size()) {
+        return;
+    }
+
+    // La banda: lo que este trazo ha AÑADIDO. Lo que ya estaba marcado de antes
+    // no se toca — ceñir no puede deshacer pinceladas anteriores.
+    cv::Mat band = cv::Mat::zeros(dragGray_.size(), CV_8UC1);
+    cv::Mat bandRoi = band(strokeArea_);
+    target(strokeArea_).copyTo(bandRoi);
+    if (!targetBefore.empty() && targetBefore.size() == target.size()) {
+        cv::Mat previous;
+        cv::bitwise_not(targetBefore(strokeArea_), previous);
+        cv::bitwise_and(bandRoi, previous, bandRoi);
+    }
+
+    const auto snapped =
+        vision::snapBrushBand(dragGray_, band, strokeArea_, strokeSeed_);
+    emit edgeStrokeFinished(snapped.snapped, snapped.contrast, snapped.keptPixels,
+                            snapped.bandPixels);
+    if (!snapped.snapped || snapped.kept.empty()) {
+        return;  // sin borde que seguir, la pincelada se queda como estaba
+    }
+
+    // Lo que se descarta vuelve a lo que habia antes del trazo.
+    cv::Mat discarded;
+    cv::bitwise_not(snapped.kept, discarded);
+    cv::bitwise_and(bandRoi, discarded, discarded);
+
+    cv::Mat keepMask;
+    cv::bitwise_not(discarded, keepMask);
+    cv::Mat targetRoi = target(strokeArea_);
+    cv::bitwise_and(targetRoi, keepMask, targetRoi);
+
+    // Y la mascara contraria, que el trazo habia borrado por donde paso, se
+    // restaura tambien en lo descartado. Sin esto, ceñir dejaria un hueco en la
+    // otra correccion por una zona que al final no se marco.
+    if (!other.empty() && other.size() == target.size() && !otherBefore.empty() &&
+        otherBefore.size() == other.size()) {
+        cv::Mat otherRoi = other(strokeArea_);
+        otherBefore(strokeArea_).copyTo(otherRoi, discarded);
+    }
+    update();
+}
+
+// El anillo del pincel bajo el cursor, con su tamaño escrito al lado.
+//
+// Vive aparte de la mancha del trazo porque son cosas distintas: la mancha es
+// el resultado y se retira cuando ya ha hecho su trabajo; el anillo es el
+// cursor y tiene que estar SIEMPRE que el pincel este encendido. Tenerlos
+// juntos es lo que hacia que el tamaño desapareciera al usar el pincel.
+void EditorCanvas::paintBrushCursor(QPainter& painter) const {
+    if (brush_ == EdgeBrush::Off || image_.isNull()) {
+        return;
+    }
+    const QColor colour =
+        brush_ == EdgeBrush::AddPiece ? QColor(0, 210, 90) : QColor(230, 60, 60);
+
+    // La linea elastica del trazo recto: sin ella, «recto» seria un modo que no
+    // se ve hasta que ya se ha soltado.
+    if (painting_ && straightStroke_ && straightStart_.has_value()) {
+        QPen guide(colour);
+        guide.setWidthF(std::max(1.5, brushRadius_ * 2.0 * displayScale()));
+        guide.setCosmetic(false);
+        guide.setCapStyle(Qt::RoundCap);
+        painter.setPen(guide);
+        painter.setOpacity(0.45);
+        painter.drawLine(imageToWidget(*straightStart_), imageToWidget(dragCurrent_));
+        painter.setOpacity(1.0);
+    }
+
+    if (!cursorWidget_.has_value()) {
+        return;
+    }
+    const double screenRadius = brushRadius_ * displayScale();
+    // Anillo de DOS plumas: una oscura debajo y la de color encima. Sobre una
+    // pieza clara el color se ve; sobre una oscura, no —y corregir el borde de
+    // una pieza oscura es justo el caso en el que hace falta ver el pincel.
+    QPen halo(QColor(0, 0, 0, 160));
+    halo.setWidthF(3.0);
+    halo.setCosmetic(true);
+    painter.setPen(halo);
+    painter.setBrush(Qt::NoBrush);
+    painter.drawEllipse(*cursorWidget_, screenRadius, screenRadius);
+    QPen pen(colour);
+    pen.setWidthF(1.5);
+    pen.setCosmetic(true);
+    painter.setPen(pen);
+    painter.drawEllipse(*cursorWidget_, screenRadius, screenRadius);
+
+    // El tamaño, en pixeles de imagen y escrito. El anillo dice cuanto abarca en
+    // pantalla; el numero dice cuanto abarca en la PIEZA, que es lo que no
+    // cambia al hacer zoom y lo unico que se puede repetir otro dia.
+    const QString label = QStringLiteral("%1 px").arg(brushRadius_ * 2);
+    const QFontMetrics metrics(painter.font());
+    const QPointF at = *cursorWidget_ + QPointF(screenRadius + 6.0, -screenRadius - 4.0);
+    const QRectF box(at.x() - 3.0, at.y() - metrics.ascent() - 2.0,
+                     metrics.horizontalAdvance(label) + 6.0, metrics.height() + 4.0);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(0, 0, 0, 170));
+    painter.drawRect(box);
+    painter.setPen(colour);
+    painter.drawText(at, label);
 }
 
 // La zona libre: la activa y la que se está trazando.
