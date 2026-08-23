@@ -50,6 +50,17 @@ struct AnalysisOverlay {
     // Piezas encontradas en el frame (C5). -1 = no se contaron: contar cuesta y
     // solo se hace cuando alguien mira el número.
     int piecesFound = -1;
+    // EL CONTORNO DE TODAS, en orden de lectura.
+    //
+    // Sale de una queja de uso: «solo toma un borde de una sola pieza, aunque
+    // diga que haya muchos». Era literal — el recuento decía «6 piezas» y en
+    // pantalla se dibujaba UNA línea verde. El operador no tenía forma de saber
+    // cuáles eran las otras cinco, ni si el programa las había encontrado donde
+    // él las veía o en cualquier otro sitio.
+    //
+    // Vacío = no se contaron. `contour` sigue siendo el de la pieza MEDIDA, que
+    // es el que usa todo lo demás.
+    std::vector<QPolygonF> pieceContours;
     // CUÁL de ellas es la que se ha medido, numerada en orden de lectura y
     // empezando por 1. -1 = no se contaron, así que la pregunta no aplica.
     //
@@ -57,6 +68,16 @@ struct AnalysisOverlay {
     // informe que no dice de cuál de las seis son las cotas no se puede
     // interpretar ni repetir al día siguiente.
     int measuredPiece = -1;
+    // Cuantas se estan TRATANDO como piezas, que con un numero declarado a mano
+    // puede ser menos que las que se ven.
+    //
+    // Son dos cifras y no una porque dicen cosas distintas, y juntarlas seria
+    // mentir en una de las dos direcciones: `piecesFound` es lo que hay delante
+    // de la camara y `piecesUsed` es con lo que trabaja el programa. Si se
+    // guardara solo la segunda, una sombra de mas desapareceria del informe sin
+    // dejar rastro; si se guardara solo la primera, el operador que declaro seis
+    // veria siete y no sabria cuales se han medido.
+    int piecesUsed = -1;
     // Si este frame llegó a SEGMENTARSE. Con la pose congelada (contorno
     // oculto) no se segmenta: las herramientas se miden con el fixture del
     // frame anterior y no hay contorno nuevo. Distinguirlo de «se segmentó y no

@@ -199,6 +199,18 @@ public:
     void setLivePiece(bool found, const QPolygonF& contour, const QPointF& centroid,
                       double angleDeg, const QString& statusText);
     void setLiveContourVisible(bool visible);
+
+    // EL CONTORNO DE TODAS LAS PIEZAS DEL ENCUADRE, en orden de lectura, y cuál
+    // de ellas es la que se está midiendo (numerada desde 1; 0 = ninguna).
+    //
+    // Sin esto, el programa decía «6 piezas» y dibujaba una sola línea verde: el
+    // operador no podía saber cuáles eran las otras cinco ni si estaban donde él
+    // las veía. Y con el selector de pieza —que numera en orden de lectura— hace
+    // falta además poder LEER ese número encima de cada una, o «pieza 3» no se
+    // puede comprobar contra la mesa.
+    //
+    // Lista vacía = no se contaron; se dibuja solo la medida, como siempre.
+    void setLivePieceOutlines(const std::vector<QPolygonF>& outlines, int measured);
     // El contorno detectado que se está pintando. Existe para poder comprobar
     // desde fuera que una corrección del borde LLEGA a mover la línea verde:
     // sin esto, «se corrige» solo se podía verificar mirando la pantalla.
@@ -424,6 +436,8 @@ private:
     bool pieceVisible_ = false;
     bool showLiveContour_ = true;
     QPolygonF liveContour_;
+    std::vector<QPolygonF> livePieceOutlines_;
+    int liveMeasuredPiece_ = 0;
     QPointF liveCentroid_;
     QString liveStatus_;
 

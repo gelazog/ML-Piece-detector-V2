@@ -171,6 +171,13 @@ void EditorCanvas::forgetEdgeCorrection() {
     showCorrection_ = true;
 }
 
+void EditorCanvas::setLivePieceOutlines(const std::vector<QPolygonF>& outlines,
+                                        int measured) {
+    livePieceOutlines_ = outlines;
+    liveMeasuredPiece_ = measured;
+    update();
+}
+
 void EditorCanvas::setLivePiece(bool found, const QPolygonF& contour, const QPointF& centroid,
                                 double angleDeg, const QString& statusText) {
     liveMode_ = true;
@@ -2678,6 +2685,69 @@ void EditorCanvas::paintLiveOverlay(QPainter& painter) const {
         const QRectF target = targetRect();
         painter.translate(target.topLeft());
         painter.scale(target.width() / image_.width(), target.height() / image_.height());
+
+        // LAS DEMAS PIEZAS DEL ENCUADRE, antes que la medida para que esta
+        // quede encima.
+        //
+        // Existen aqui porque el programa decia «6 piezas» y dibujaba UNA linea:
+        // el operador no podia saber cuales eran las otras cinco ni si el
+        // programa las habia encontrado donde el las veia. Van en un verde
+        // apagado y mas fino —son contexto, no la medida— y con su NUMERO
+        // encima, que es el mismo del selector de pieza y el del informe.
+        if (livePieceOutlines_.size() > 1) {
+            const QFont numberFont = painter.font();
+            for (std::size_t i = 0; i < livePieceOutlines_.size(); ++i) {
+                const int number = static_cast<int>(i) + 1;
+                const bool measured = number == liveMeasuredPiece_;
+                const QPolygonF& outline = livePieceOutlines_[i];
+                if (outline.isEmpty()) {
+                    continue;
+                }
+                if (!measured) {
+                    QPen otherHalo(QColor(0, 0, 0, 150));
+                    otherHalo.setWidthF(3.0);
+                    otherHalo.setCosmetic(true);
+                    painter.setPen(otherHalo);
+                    painter.drawPolygon(outline);
+                    QPen other(QColor(90, 170, 110));
+                    other.setWidthF(1.2);
+                    other.setCosmetic(true);
+                    painter.setPen(other);
+                    painter.drawPolygon(outline);
+                }
+                // El numero, encima del centro de la envolvente. Se dibuja SIN
+                // la escala del contorno para que no crezca ni encoja con el
+                // zoom: un numero de tres pixeles no lo lee nadie.
+                painter.save();
+                painter.resetTransform();
+                const QRectF bounds = outline.boundingRect();
+                const QPointF centre = imageToWidget(
+                    cv::Point2f(static_cast<float>(bounds.center().x()),
+                                static_cast<float>(bounds.center().y())));
+                QFont bold = numberFont;
+                bold.setBold(true);
+                bold.setPointSizeF(numberFont.pointSizeF() + (measured ? 2.0 : 0.0));
+                painter.setFont(bold);
+                const QString text = QString::number(number);
+                const QFontMetrics metrics(bold);
+                const QRectF box(centre.x() - metrics.horizontalAdvance(text) / 2.0 - 4.0,
+                                 centre.y() - metrics.height() / 2.0 - 1.0,
+                                 metrics.horizontalAdvance(text) + 8.0,
+                                 metrics.height() + 2.0);
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(measured ? QColor(0, 190, 0, 210) : QColor(0, 0, 0, 170));
+                painter.drawRoundedRect(box, 4.0, 4.0);
+                painter.setPen(measured ? QColor(10, 30, 10) : QColor(200, 230, 205));
+                painter.drawText(box, Qt::AlignCenter, text);
+                painter.restore();
+                painter.setFont(numberFont);
+            }
+            // Se restaura la transformacion del contorno para lo que viene.
+            const QRectF target = targetRect();
+            painter.resetTransform();
+            painter.translate(target.topLeft());
+            painter.scale(target.width() / image_.width(), target.height() / image_.height());
+        }
 
         // DOS PLUMAS, oscura debajo y verde encima.
         //

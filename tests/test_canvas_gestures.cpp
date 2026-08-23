@@ -4898,3 +4898,179 @@ TEST(PieceNavigator, WithOnePieceThereIsNothingToNavigate) {
             << "el selector de pieza está a la vista con una sola pieza";
     }
 }
+
+// TODAS LAS PIEZAS SE DIBUJAN, Y LLEVAN SU NÚMERO.
+//
+// La queja: «solo toma un borde de una sola pieza, aunque diga que haya
+// muchos». Era literal — el recuento decía «6 piezas» y en pantalla había UNA
+// línea verde. El operador no tenía forma de saber cuáles eran las otras cinco,
+// ni si el programa las había encontrado donde él las veía.
+//
+// Y con el selector de pieza numerando en orden de lectura, hace falta además
+// poder LEER ese número encima de cada una: «pieza 3» no se puede comprobar
+// contra la mesa si en la mesa no pone 3 en ningún sitio.
+TEST(PieceNavigator, EveryPieceIsOutlinedAndNumberedNotJustTheMeasuredOne) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    const QRect boxes[3] = {QRect(60, 60, 60, 50), QRect(250, 50, 120, 100),
+                            QRect(70, 200, 90, 70)};
+    {
+        QPainter painter(&photo);
+        for (const auto& box : boxes) {
+            painter.fillRect(box, QColor(230, 230, 230));
+        }
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("tres_marcadas.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 4000) {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+        if (canvas->liveContour().size() >= 4) {
+            break;
+        }
+    }
+    ASSERT_GE(canvas->liveContour().size(), 4);
+    // Un respiro para que llegue el análisis con TODAS.
+    timer.restart();
+    while (timer.elapsed() < 600) {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+
+    QImage shot(canvas->size(), QImage::Format_RGB888);
+    canvas->render(&shot);
+
+    // De coordenadas de imagen a coordenadas del lienzo, igual que hace el
+    // propio canvas.
+    const ViewTransform view({canvas->imageSize().width(), canvas->imageSize().height()},
+                             {canvas->width(), canvas->height()}, 1.0, {0.0, 0.0});
+    const auto onScreen = [&view](QPoint p) {
+        const cv::Point2d q = view.imageToWidget(
+            cv::Point2f(static_cast<float>(p.x()), static_cast<float>(p.y())));
+        return QPoint(static_cast<int>(q.x), static_cast<int>(q.y));
+    };
+
+    // Verde de cualquiera de los dos tonos: el vivo de la medida (0,220,0) y el
+    // apagado de las demás (90,170,110).
+    const auto greenishAround = [&](const QRect& box) {
+        const QPoint a = onScreen(box.topLeft() - QPoint(6, 6));
+        const QPoint b = onScreen(box.bottomRight() + QPoint(6, 6));
+        int count = 0;
+        for (int y = a.y(); y <= b.y() && y < shot.height(); ++y) {
+            for (int x = a.x(); x <= b.x() && x < shot.width(); ++x) {
+                if (x < 0 || y < 0) {
+                    continue;
+                }
+                const QColor c = shot.pixelColor(x, y);
+                if (c.green() - c.red() > 30 && c.green() - c.blue() > 20) {
+                    ++count;
+                }
+            }
+        }
+        return count;
+    };
+
+    const int first = greenishAround(boxes[0]);
+    const int second = greenishAround(boxes[1]);
+    const int third = greenishAround(boxes[2]);
+    std::printf("  [contornos] verde alrededor de cada pieza: %d, %d, %d\n", first,
+                second, third);
+    EXPECT_GT(first, 50) << "la pieza 1 no lleva contorno dibujado: el programa dice que "
+                            "hay tres y solo enseña dónde está una";
+    EXPECT_GT(second, 50) << "la pieza 2 no lleva contorno dibujado";
+    EXPECT_GT(third, 50) << "la pieza 3 no lleva contorno dibujado";
+}
+
+// EL NÚMERO QUE CONFIGURA EL OPERADOR ES EL QUE SE DETECTA.
+//
+// La queja: «detecta muchos cuando en las configuraciones solo debería de
+// detectar uno; dependiendo de lo que ponga el usuario, eso debería detectar».
+// El número esperado solo servía para juzgar el recuento al final: la detección
+// seguía tratando como pieza a cualquier mancha que pasara el filtro de área, y
+// una sombra se numeraba, se dibujaba y se podía llegar a medir.
+TEST(PieceCountMode, DeclaringTwoPiecesWorksWithTheTwoBiggestAndSaysWhatWasLeftOut) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    // Dos piezas de verdad y dos manchas más pequeñas que también pasan el
+    // filtro de área: reflejos, o el borde iluminado del útil.
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(40, 40, 110, 90), QColor(230, 230, 230));
+        painter.fillRect(QRect(240, 40, 110, 90), QColor(230, 230, 230));
+        painter.fillRect(QRect(60, 210, 45, 40), QColor(210, 210, 210));
+        painter.fillRect(QRect(280, 210, 45, 40), QColor(210, 210, 210));
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("dos_y_manchas.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    const auto chipText = [&window] {
+        auto* chip = window.findChild<QLabel*>(QStringLiteral("piecesChip"));
+        return (chip != nullptr && chip->isVisible()) ? chip->text().trimmed() : QString();
+    };
+    const auto settle = [&](int ms) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+        }
+    };
+
+    // En automático se ven las cuatro: si no, esta prueba no mide nada.
+    settle(1200);
+    std::printf("  [recorte] en automático el chip dice: «%s»\n",
+                chipText().toStdString().c_str());
+    // «4 piezas» y no «1 de 4»: en automático no se recorta nada. La primera
+    // versión de esta comprobación solo buscaba un «4» en el texto y por eso
+    // dejó pasar exactamente ese fallo — el pipeline traía un valor de fábrica
+    // distinto del de la pieza y recortaba sin que nadie lo hubiera pedido.
+    ASSERT_TRUE(chipText().contains(QStringLiteral("4 piezas")))
+        << "en automático no se trabaja con las cuatro que hay; dice: "
+        << chipText().toStdString();
+
+    // El operador declara DOS.
+    window.declareExpectedPieces(2);
+    settle(1200);
+    const QString declared = chipText();
+    std::printf("  [recorte] declaradas 2, el chip dice: «%s»\n",
+                declared.toStdString().c_str());
+    EXPECT_TRUE(declared.contains(QStringLiteral("2 de 4")))
+        << "no dice las dos cifras. Enseñar solo las usadas haría desaparecer del "
+           "informe una sombra de más sin dejar rastro; enseñar solo las vistas "
+           "contradiría al selector, que numera las usadas. Dice: "
+        << declared.toStdString();
+
+    // Y el selector navega entre DOS, no entre cuatro.
+    auto* nav = window.findChild<QLabel*>(QStringLiteral("pieceNavLabel"));
+    ASSERT_NE(nav, nullptr);
+    ASSERT_TRUE(nav->isVisible());
+    std::printf("  [recorte] el selector dice: «%s»\n",
+                nav->text().trimmed().toStdString().c_str());
+    EXPECT_TRUE(nav->text().contains(QStringLiteral("/2")))
+        << "el selector sigue ofreciendo piezas que ya no se tratan como tales. Dice: "
+        << nav->text().toStdString();
+
+    // Con UNA declarada no se enumera en absoluto.
+    window.declareExpectedPieces(1);
+    settle(1000);
+    EXPECT_TRUE(chipText().isEmpty())
+        << "declarada una pieza, el recuento sigue a la vista: " << chipText().toStdString();
+}

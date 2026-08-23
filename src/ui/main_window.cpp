@@ -214,6 +214,46 @@ AnalysisOverlay buildOverlay(const QImage& frame,
             auto all = vision::analyzeFrames(image, pipeline);
             if (all.isOk()) {
                 overlay.piecesFound = static_cast<int>(all.value().size());
+                // EL NUMERO DECLARADO MANDA SOBRE QUE SE TRATA COMO PIEZA.
+                //
+                // De una queja de uso: «detecta muchos cuando en las
+                // configuraciones solo deberia de detectar uno; dependiendo de
+                // lo que ponga el usuario, eso deberia detectar». Hasta ahora el
+                // numero esperado solo servia para juzgar el recuento al final:
+                // la deteccion seguia tratando como pieza a cualquier mancha que
+                // pasara el filtro de area, y una sombra se numeraba, se
+                // dibujaba y se podia llegar a medir.
+                //
+                // Con un numero declarado se trabaja con las N MAYORES. Las
+                // demas no desaparecen del informe —`piecesFound` sigue diciendo
+                // cuantas manchas se vieron, y el veredicto sigue pudiendo dar
+                // NG por el recuento—, pero dejan de ser piezas.
+                if (pipeline.expectedPieces >= 1 &&
+                    static_cast<int>(all.value().size()) > pipeline.expectedPieces) {
+                    std::vector<double> areas;
+                    areas.reserve(all.value().size());
+                    for (const auto& piece : all.value()) {
+                        areas.push_back(piece.contour.area);
+                    }
+                    // El area de la que hace de corte: la N-esima mayor.
+                    std::nth_element(areas.begin(),
+                                     areas.begin() + pipeline.expectedPieces - 1, areas.end(),
+                                     std::greater<double>());
+                    const double cutoff =
+                        areas[static_cast<std::size_t>(pipeline.expectedPieces - 1)];
+                    std::vector<vision::PieceAnalysis> kept;
+                    kept.reserve(static_cast<std::size_t>(pipeline.expectedPieces));
+                    for (auto& piece : all.value()) {
+                        // Se conserva el ORDEN DE LECTURA al filtrar: el numero
+                        // de cada pieza tiene que seguir significando su sitio.
+                        if (piece.contour.area >= cutoff &&
+                            static_cast<int>(kept.size()) < pipeline.expectedPieces) {
+                            kept.push_back(std::move(piece));
+                        }
+                    }
+                    all.value() = std::move(kept);
+                }
+                overlay.piecesUsed = static_cast<int>(all.value().size());
                 // LA MAYOR, PEDIDA POR SU NOMBRE.
                 //
                 // Antes esto era `front()`, y funcionaba porque la lista venía
@@ -242,6 +282,17 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                     chosen = static_cast<std::size_t>(wantedPiece - 1);
                 }
                 overlay.measuredPiece = static_cast<int>(chosen) + 1;
+                // El contorno de TODAS, para poder dibujarlas y numerarlas. Se
+                // copian antes de mover la elegida fuera de la lista.
+                overlay.pieceContours.reserve(all.value().size());
+                for (const auto& piece : all.value()) {
+                    QPolygonF outline;
+                    outline.reserve(static_cast<int>(piece.contour.points.size()));
+                    for (const auto& point : piece.contour.points) {
+                        outline << QPointF(point.x, point.y);
+                    }
+                    overlay.pieceContours.push_back(std::move(outline));
+                }
                 analysis = core::Result<vision::PieceAnalysis>::ok(
                     std::move(all.value()[chosen]));
             } else {
@@ -3590,7 +3641,11 @@ void MainWindow::onAnalysisFinished() {
     }
 
     if (overlay.piecesFound >= 0) {
-        lastPieceCount_ = overlay.piecesFound;
+        lastPiecesSeen_ = overlay.piecesFound;
+        // El recuento con el que trabaja todo lo demas es el de las piezas que
+        // se estan TRATANDO como tales: son las que se dibujan, las que se
+        // numeran y entre las que navega el selector.
+        lastPieceCount_ = overlay.piecesUsed >= 0 ? overlay.piecesUsed : overlay.piecesFound;
         lastMeasuredPiece_ = overlay.measuredPiece;
         // Si la elección se salió del encuadre —cambiaron las piezas de sitio, o
         // desapareció una— el análisis ya ha medido la mayor en su lugar. Aquí se
@@ -3604,7 +3659,12 @@ void MainWindow::onAnalysisFinished() {
     }
     if (configureDialog_ != nullptr) {
         if (auto* pieces = configureDialog_->piecesPage(); pieces != nullptr) {
-            pieces->setDetectedCount(lastPieceCount_);
+            // A la pagina Piezas se le dan las MANCHAS y no las usadas: el boton
+            // «usar lo que se ve ahora» tiene que poder subir el numero cuando
+            // de verdad hay mas piezas de las declaradas. Con las usadas siempre
+            // coincidiria con lo declarado y el boton no serviria para corregir
+            // nada.
+            pieces->setDetectedCount(lastPiecesSeen_);
         }
     }
     updatePiecesChip();
@@ -3631,6 +3691,7 @@ void MainWindow::onAnalysisFinished() {
                        static_cast<float>(overlay.boundsCenter.y())});
             video_->setLivePiece(true, overlay.contour, overlay.centroid,
                                  overlay.angleDeg, status);
+            video_->setLivePieceOutlines(overlay.pieceContours, overlay.measuredPiece);
             currentThumbLabel_->setPixmap(QPixmap::fromImage(overlay.normalized)
                                               .scaled(currentThumbLabel_->size(),
                                                       Qt::KeepAspectRatio,
@@ -4339,16 +4400,30 @@ void MainWindow::updatePiecesChip() {
         return;
     }
     const bool several = lastPieceCount_ > 1;
+    const bool someLeftOut = lastPiecesSeen_ > lastPieceCount_;
     piecesChip_->setVisible(true);
     // Sin `%n`: el plural de Qt sólo se resuelve con un traductor cargado, y sin
     // él esto se queda en «6 pieza(s)» de forma permanente en pantalla.
-    piecesChip_->setText(several ? tr(" %1 piezas ").arg(lastPieceCount_)
-                                 : tr(" 1 pieza "));
+    // Cuando sobran manchas se dicen LAS DOS cifras. Enseñar solo las usadas
+    // haria desaparecer del informe una sombra de mas sin dejar rastro; enseñar
+    // solo las vistas contradiria al selector, que numera las usadas.
+    piecesChip_->setText(
+        someLeftOut ? tr(" %1 de %2 ").arg(lastPieceCount_).arg(lastPiecesSeen_)
+                    : (several ? tr(" %1 piezas ").arg(lastPieceCount_) : tr(" 1 pieza ")));
     piecesChip_->setStyleSheet(
-        several ? QStringLiteral("color:#3a2a00; background:#ffc861; border-radius:8px;"
+        (several || someLeftOut) ? QStringLiteral("color:#3a2a00; background:#ffc861; border-radius:8px;"
                                  " padding:1px 6px; font-weight:bold;")
                 : QStringLiteral("color:#ddd; background:#3a3a3a; border-radius:8px;"
                                  " padding:1px 6px;"));
+    if (someLeftOut) {
+        piecesChip_->setToolTip(
+            tr("Se ven %1 manchas y has declarado %2 piezas: se trabaja con las %2 "
+               "mayores y el resto no se mide.")
+                .arg(lastPiecesSeen_)
+                .arg(lastPieceCount_));
+        updatePieceNavigator();
+        return;
+    }
     piecesChip_->setToolTip(
         several ? tr("Se ven %1 piezas en el encuadre.\n\n"
                      "Las herramientas miden UNA: la que dice el selector de al lado. "
@@ -4530,7 +4605,15 @@ void MainWindow::loadMeasurementForSelectedPiece() {
         // Las piezas esperadas viajan con la pieza (C5): al cambiar de trabajo
         // se recupera su recuento, y el de la anterior no se arrastra.
         expectedPieces_ = loaded.value().expectedPieces;
+        // Y AL PIPELINE, que es quien decide con cuantas manchas se trabaja.
+        // Sin esta linea, cambiar de pieza recuperaba su recuento en la ventana
+        // y dejaba a la deteccion con el de la pieza anterior.
+        pipelineConfig_.expectedPieces = expectedPieces_;
         lastPieceCount_ = -1;
+        lastPiecesSeen_ = -1;
+        // Y la eleccion de pieza no se arrastra de un trabajo a otro: «la
+        // tercera» de la bandeja anterior no significa nada en esta.
+        focusedPiece_ = 0;
     }
 }
 

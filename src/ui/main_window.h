@@ -437,6 +437,11 @@ private:
     QToolButton* pieceNextButton_ = nullptr;
     int focusedPiece_ = 0;
     int lastMeasuredPiece_ = -1;
+    // Manchas vistas, que con un numero declarado a mano puede ser mas que las
+    // que se tratan como piezas (`lastPieceCount_`). Se guardan las dos porque
+    // dicen cosas distintas y esconder cualquiera de ellas seria mentir en una
+    // de las dos direcciones.
+    int lastPiecesSeen_ = -1;
     void updatePieceNavigator();
     void stepFocusedPiece(int delta);
     QLabel* edgeChip_ = nullptr;           // modo de medición activo (M3)

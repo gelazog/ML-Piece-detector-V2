@@ -75,9 +75,18 @@ struct PipelineConfig {
     // tiene que ofrecerlo solo con una foto o un fichero.
     cv::Mat forcePiece;
     cv::Mat forceBackground;
-    // Cuántas piezas se esperan en la imagen (C5). No cambia la detección: la
-    // usa quien juzga, para poder decir "esperaba 6, veo 5". 0 = no vigilar.
-    int expectedPieces = 1;
+    // Cuantas piezas se esperan en la imagen (C5).
+    //
+    // 0 = automatico: no se vigila el recuento y no se recorta nada.
+    // N >= 1 = manual: se trabaja con las N MAYORES y el resto de manchas dejan
+    // de tratarse como piezas, ademas de que el veredicto compara el recuento.
+    //
+    // EL VALOR DE FABRICA ERA 1 Y AHORA ES 0. Lo destapo una prueba: la pieza en
+    // la base de datos ya venia con 0 (automatico) pero esta estructura seguia
+    // en 1, asi que en una instalacion recien hecha el recorte se aplicaba sin
+    // que nadie lo hubiera pedido y con cuatro manchas delante se media una. Dos
+    // valores de fabrica para la misma decision, y no se hablaban.
+    int expectedPieces = 0;
 };
 
 // Reparto del tiempo de un análisis, en milisegundos (R2).
