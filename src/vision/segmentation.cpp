@@ -1,5 +1,7 @@
 #include "vision/segmentation.h"
 
+#include "vision/edge_segmentation.h"
+
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
@@ -46,6 +48,26 @@ core::Result<cv::Mat> segmentPiece(const cv::Mat& image, const SegmentationOptio
         default:
             return core::Result<cv::Mat>::err("Formato de imagen no soportado: " +
                                               std::to_string(image.channels()) + " canales");
+    }
+
+    // Segmentar por el CANTO es un camino aparte: no hay corte de gris que
+    // ajustar, así que ni el umbral ni la polaridad tienen nada que decir.
+    if (options.method == SegmentationMethod::Edges) {
+        EdgeSegmentationOptions edges;
+        auto mask = segmentByEdges(gray, edges);
+        if (!mask.isOk()) {
+            return mask;
+        }
+        // La limpieza morfológica sí se comparte: quitar grano suelto y cerrar
+        // huecos pequeños vale igual venga la máscara de donde venga.
+        const int morphology = options.morphKernel | 1;
+        if (morphology >= 3) {
+            const cv::Mat kernel = cv::getStructuringElement(
+                cv::MORPH_ELLIPSE, cv::Size(morphology, morphology));
+            cv::morphologyEx(mask.value(), mask.value(), cv::MORPH_OPEN, kernel);
+            cv::morphologyEx(mask.value(), mask.value(), cv::MORPH_CLOSE, kernel);
+        }
+        return mask;
     }
 
     cv::Mat blurred;

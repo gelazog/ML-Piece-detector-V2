@@ -72,6 +72,28 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     sliderRow->addWidget(thresholdValue_);
     form->addRow(tr("Umbral manual:"), sliderRow);
 
+    // CÓMO se separa la pieza del fondo. Va ANTES del umbral y la polaridad
+    // porque decide si esos dos significan algo: segmentando por el canto no hay
+    // corte de gris que ajustar.
+    method_ = new QComboBox(this);
+    method_->addItem(tr("Por nivel de gris (lo habitual)"));
+    method_->addItem(tr("Por el canto de la pieza"));
+    method_->setCurrentIndex(static_cast<int>(current.method));
+    method_->setToolTip(
+        tr("«Por nivel» busca un corte de gris que deje la pieza a un lado y el\n"
+           "fondo al otro. Es lo que funciona casi siempre.\n"
+           "\n"
+           "«Por el canto» no mira el nivel sino el borde, y hace falta cuando la\n"
+           "pieza tiene a la vez reflejos más claros y sombras más oscuras que la\n"
+           "mesa: entonces NINGÚN corte único la separa — el que recoge unas\n"
+           "partes deja fuera a otras.\n"
+           "\n"
+           "Medido sobre una foto de siete tuercas metálicas: por nivel salen seis\n"
+           "piezas, con tres fundidas por puentes de sombra; por el canto salen\n"
+           "las siete enteras. En una pieza oscura sobre fondo claro es al revés,\n"
+           "así que no es «mejor»: es para otra escena."));
+    form->addRow(tr("Cómo separar la pieza:"), method_);
+
     polarity_ = new QComboBox(this);
     polarity_->addItem(tr("Automática (el fondo domina el borde)"));
     polarity_->addItem(tr("Pieza oscura sobre fondo claro"));
@@ -178,6 +200,7 @@ void DetectionPage::applyOptions(const vision::SegmentationOptions& options) {
     autoThreshold_->setChecked(options.manualThreshold < 0);
     threshold_->setValue(options.manualThreshold >= 0 ? options.manualThreshold : 128);
     threshold_->setEnabled(options.manualThreshold >= 0);
+    method_->setCurrentIndex(static_cast<int>(options.method));
     polarity_->setCurrentIndex(static_cast<int>(options.polarity));
     blur_->setValue(options.blurKernel);
     morph_->setValue(options.morphKernel);
@@ -282,6 +305,7 @@ double DetectionPage::maxAreaFraction() const {
 
 vision::SegmentationOptions DetectionPage::options() const {
     vision::SegmentationOptions result;
+    result.method = static_cast<vision::SegmentationMethod>(method_->currentIndex());
     result.manualThreshold = autoThreshold_->isChecked() ? -1 : threshold_->value();
     result.polarity = static_cast<vision::SegmentationPolarity>(polarity_->currentIndex());
     result.blurKernel = blur_->value();

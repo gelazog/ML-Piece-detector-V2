@@ -4,6 +4,7 @@ add_library(pci_vision STATIC
   brush_snap.cpp
   contour_analysis.cpp
   detection_tuning.cpp
+  edge_segmentation.cpp
   difference_map.cpp
   fitting.cpp
   geometry_features.cpp

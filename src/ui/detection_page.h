@@ -74,6 +74,7 @@ private:
     QCheckBox* subpixel_ = nullptr;
     QSlider* threshold_ = nullptr;
     QLabel* thresholdValue_ = nullptr;
+    QComboBox* method_ = nullptr;
     QComboBox* polarity_ = nullptr;
     QSpinBox* blur_ = nullptr;
     QSpinBox* morph_ = nullptr;

@@ -19,6 +19,7 @@ add_executable(pci_tests
   test_domain.cpp
   test_difference_map.cpp
   test_diverse_images.cpp
+  test_edge_segmentation.cpp
   test_engine.cpp
   test_fitting.cpp
   test_geometry_features.cpp
@@ -29,6 +30,7 @@ add_executable(pci_tests
   test_measure_units.cpp
   test_measurement_report.cpp
   test_ml.cpp
+  test_nut_probe.cpp
   test_periodicity.cpp
   test_piece_order.cpp
   test_piece_report.cpp
