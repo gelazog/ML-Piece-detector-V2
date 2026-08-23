@@ -54,4 +54,41 @@ private:
 bool isAnomalous(const std::vector<float>& embedding, const Reference& reference,
                  double kSigma = 3.0, double minBand = 0.02);
 
+// VARIANTES ADMISIBLES DE LA MISMA PIEZA.
+//
+// La referencia es una sola media, y eso da por supuesto que todas las piezas
+// buenas se parecen entre si. En produccion no siempre: la misma pieza de dos
+// proveedores, con dos acabados admisibles, o antes y despues de un cambio de
+// lote, forma DOS grupos y no uno.
+//
+// Meterlos en la misma media no falla ruidosamente. Falla al reves, y es peor.
+// Medido con dos acabados a 0,71 de parecido entre si:
+//
+//   un solo acabado registrado -> banda 0,9800, el defecto puntua 0,8481: se detecta
+//   los dos mezclados          -> banda 0,6812, el defecto puntua 0,9381: SE COLO
+//
+// La media se coloca entre los dos grupos, asi que ninguna muestra se le parece
+// del todo y la banda se ensancha hasta dejar de vigilar. La referencia no
+// protesta: se queda CIEGA.
+//
+// La solucion es no mezclarlos: cada variante conserva su media y su banda, y
+// una pieza es buena si ALGUNA de ellas la reconoce.
+struct VariantMatch {
+    // Que variante la ha reconocido, empezando por 0. -1 = ninguna.
+    int index = -1;
+    // Parecido contra la variante MAS parecida, se acepte o no. Es lo que hay
+    // que enseñar: «se parece un 0,84 a la variante 2» explica un rechazo, y un
+    // «no se parece a ninguna» no explica nada.
+    double similarity = 0.0;
+    bool anomalous = true;
+};
+
+// Una pieza es buena si alguna variante la reconoce. Con la lista vacia, la
+// respuesta es «anomala» y no «buena»: sin ninguna referencia no se ha
+// comprobado nada, y dar por bueno lo que no se ha mirado es el fallo que este
+// programa existe para evitar.
+[[nodiscard]] VariantMatch matchVariants(const std::vector<float>& embedding,
+                                         const std::vector<Reference>& variants,
+                                         double kSigma = 3.0, double minBand = 0.02);
+
 }  // namespace pci::ml

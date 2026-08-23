@@ -106,4 +106,31 @@ bool isAnomalous(const std::vector<float>& embedding, const Reference& reference
     return sim < reference.simMean - band;
 }
 
+VariantMatch matchVariants(const std::vector<float>& embedding,
+                           const std::vector<Reference>& variants, double kSigma,
+                           double minBand) {
+    VariantMatch match;
+    for (std::size_t i = 0; i < variants.size(); ++i) {
+        const auto& variant = variants[i];
+        const double sim = cosineSimilarity(embedding, variant.mean);
+        // El parecido que se guarda es contra la variante MAS parecida, la
+        // acepte o no: es lo que explica un rechazo.
+        if (match.index < 0 && sim > match.similarity) {
+            match.similarity = sim;
+        }
+        const double band = std::max(kSigma * variant.simStd, minBand);
+        if (sim >= variant.simMean - band) {
+            // Reconocida. Se sigue mirando el resto solo si alguna se le parece
+            // MAS, para poder decir a cual se parece de verdad — dos variantes
+            // pueden aceptarla y el informe tiene que nombrar una.
+            if (match.index < 0 || sim > match.similarity) {
+                match.index = static_cast<int>(i);
+                match.similarity = sim;
+            }
+        }
+    }
+    match.anomalous = match.index < 0;
+    return match;
+}
+
 }  // namespace pci::ml
