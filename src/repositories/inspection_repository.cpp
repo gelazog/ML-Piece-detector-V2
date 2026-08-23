@@ -1,5 +1,7 @@
 #include "repositories/inspection_repository.h"
 
+#include <algorithm>
+
 #include <utility>
 
 #include "database/statement.h"
@@ -174,10 +176,42 @@ InspectionRepository::recentForPiece(std::int64_t pieceId, int limit) {
 }
 
 core::Result<std::vector<InspectionRepository::ReportRow>>
-InspectionRepository::reportForPiece(std::int64_t pieceId, int limit) {
+InspectionRepository::reportForPiece(std::int64_t pieceId, const ReportWindow& window,
+                                     int limit, int* discarded) {
+    if (discarded != nullptr) {
+        *discarded = 0;
+    }
+    // El filtro de periodo se escribe una vez y se usa en las dos consultas —la
+    // que cuenta y la que trae— para que no puedan discrepar.
+    const std::string period =
+        " AND (?2 = '' OR h.started_at >= ?2) AND (?3 = '' OR h.started_at <= ?3)";
+
+    // CUÁNTAS HAY DE VERDAD, antes de recortar. Sin esto no se puede decir que
+    // se ha truncado, y un informe truncado en silencio da un rendimiento
+    // calculado sobre parte del turno con pinta de ser el del turno entero.
+    if (discarded != nullptr) {
+        auto counter = db_.prepare("SELECT COUNT(*) FROM InspectionHistory h "
+                                   "WHERE h.piece_id = ?1" + period + ";");
+        if (counter.isOk()) {
+            auto& c = counter.value();
+            if (c.bindInt(1, pieceId).isOk() && c.bindText(2, window.from).isOk() &&
+                c.bindText(3, window.to).isOk()) {
+                if (auto row = c.step(); row.isOk() && row.value()) {
+                    const int total = static_cast<int>(c.columnInt(0));
+                    *discarded = std::max(0, total - limit);
+                }
+            }
+        }
+    }
+
     // Los motivos se traen en la MISMA consulta con dos subconsultas. Hacerlo
     // con una consulta por inspección serían cientos de idas y vueltas a la base
     // por cada informe, y un informe de turno se pide con el turno acabando.
+    //
+    // Y se ordena DESCENDENTE para recortar. Ascendente, el tope se quedaba con
+    // las inspecciones MÁS VIEJAS de la pieza: a una con historial le daba un
+    // informe de hace meses y lo titulaba «turno». La lista se le da la vuelta
+    // después, porque quien lo lee lo quiere en orden cronológico.
     auto stmt = db_.prepare(
         "SELECT h.started_at, h.verdict, h.similarity, h.reference_version, "
         "  COALESCE((SELECT group_concat(DISTINCT t.name) FROM ToolResults tr "
@@ -186,8 +220,8 @@ InspectionRepository::reportForPiece(std::int64_t pieceId, int limit) {
         "  COALESCE((SELECT group_concat(DISTINCT ir.kind) FROM InspectionResults ir "
         "            WHERE ir.inspection_id = h.id AND ir.ok = 0 "
         "              AND ir.kind <> 'final'), '') "
-        "FROM InspectionHistory h WHERE h.piece_id = ? "
-        "ORDER BY h.started_at LIMIT ?;");
+        "FROM InspectionHistory h WHERE h.piece_id = ?1" + period +
+        " ORDER BY h.started_at DESC LIMIT ?4;");
     if (!stmt.isOk()) {
         return core::Result<std::vector<ReportRow>>::err(stmt.error().message);
     }
@@ -195,7 +229,13 @@ InspectionRepository::reportForPiece(std::int64_t pieceId, int limit) {
     if (auto b = s.bindInt(1, pieceId); !b.isOk()) {
         return core::Result<std::vector<ReportRow>>::err(b.error().message);
     }
-    if (auto b = s.bindInt(2, limit); !b.isOk()) {
+    if (auto b = s.bindText(2, window.from); !b.isOk()) {
+        return core::Result<std::vector<ReportRow>>::err(b.error().message);
+    }
+    if (auto b = s.bindText(3, window.to); !b.isOk()) {
+        return core::Result<std::vector<ReportRow>>::err(b.error().message);
+    }
+    if (auto b = s.bindInt(4, limit); !b.isOk()) {
         return core::Result<std::vector<ReportRow>>::err(b.error().message);
     }
 
@@ -255,6 +295,9 @@ InspectionRepository::reportForPiece(std::int64_t pieceId, int limit) {
         }
         rows.push_back(std::move(row));
     }
+    // De vuelta a orden cronológico: se pidió al revés solo para que el tope se
+    // quedara con las últimas.
+    std::reverse(rows.begin(), rows.end());
     return core::Result<std::vector<ReportRow>>::ok(std::move(rows));
 }
 

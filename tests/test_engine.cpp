@@ -860,3 +860,99 @@ TEST_F(EngineTest, TheEngineJudgesAgainstEveryRegisteredVariant) {
     EXPECT_FALSE(original.value().verdict.embedding.anomalous)
         << "añadir una variante rompió la pieza que ya se reconocía";
 }
+
+// EL INFORME DE TURNO TIENE QUE SER DE UN TURNO.
+//
+// Se escribió con un tope de 2 000 filas y sin filtro de fechas, y las dos cosas
+// juntas lo rompían de una forma que no se ve: un turno de ocho horas a cinco
+// segundos por pieza son 5 760 inspecciones, así que el tope se quedaba corto
+// para el caso normal — y como la consulta ordenaba de más antigua a más nueva
+// ANTES de recortar, lo que salía eran las 2 000 más VIEJAS de la pieza.
+//
+// O sea que a una pieza con historial le daba un informe de hace meses y lo
+// titulaba «turno». No fallaba, no avisaba: daba un rendimiento creíble de un
+// periodo que no era el que se pedía.
+TEST_F(EngineTest, TheShiftReportCoversTheShiftAndNotTheOldestRows) {
+    auto pieceId = pieces_->createPiece("brida");
+    ASSERT_TRUE(pieceId.isOk());
+
+    domain::InspectionVerdict good;
+    good.ok = true;
+    domain::InspectionVerdict bad;
+    bad.ok = false;
+
+    // Se escriben las fechas a mano para poder distinguir «lo viejo» de «hoy».
+    const auto saveAt = [&](const std::string& when, bool ok) {
+        ASSERT_TRUE(history_->saveInspection(pieceId.value(), 1, ok ? good : bad, {}, {})
+                        .isOk());
+        auto stmt = db_->prepare(
+            "UPDATE InspectionHistory SET started_at = ? WHERE id = "
+            "(SELECT MAX(id) FROM InspectionHistory);");
+        ASSERT_TRUE(stmt.isOk());
+        ASSERT_TRUE(stmt.value().bindText(1, when).isOk());
+        ASSERT_TRUE(stmt.value().step().isOk());
+    };
+
+    // Cinco de hace un mes, todas buenas. Y tres de hoy, todas malas.
+    for (int i = 0; i < 5; ++i) {
+        saveAt("2026-07-15 08:0" + std::to_string(i) + ":00", true);
+    }
+    for (int i = 0; i < 3; ++i) {
+        saveAt("2026-08-23 14:0" + std::to_string(i) + ":00", false);
+    }
+
+    // CON EL TOPE EN 3, lo que tiene que salir son las TRES DE HOY. Con el orden
+    // ascendente de antes salían las tres de julio, y el informe habría dicho
+    // «rendimiento 100 %» de un turno en el que no pasó ninguna.
+    int discarded = -1;
+    auto recent = history_->reportForPiece(pieceId.value(), {}, 3, &discarded);
+    ASSERT_TRUE(recent.isOk()) << recent.error().message;
+    ASSERT_EQ(recent.value().size(), 3U);
+    std::printf("  [informe] con tope 3, la primera es %s y la ultima %s (descartadas %d)\n",
+                recent.value().front().startedAt.c_str(),
+                recent.value().back().startedAt.c_str(), discarded);
+    EXPECT_EQ(recent.value().front().startedAt.substr(0, 10), "2026-08-23")
+        << "el informe trae las inspecciones más VIEJAS de la pieza en vez de las "
+           "últimas: el rendimiento que daría es el de otro día";
+    EXPECT_EQ(discarded, 5) << "se recortaron cinco y no se dijo";
+
+    // Y en orden cronológico, que es como se lee.
+    EXPECT_LT(recent.value().front().startedAt, recent.value().back().startedAt);
+
+    // CON UN PERIODO, solo ese periodo — que es lo que hace que «informe del
+    // turno» signifique algo.
+    auto today = history_->reportForPiece(
+        pieceId.value(), {"2026-08-23 00:00:00", "2026-08-23 23:59:59"});
+    ASSERT_TRUE(today.isOk());
+    EXPECT_EQ(today.value().size(), 3U)
+        << "el filtro de fechas no acota: el informe sigue trayendo el historial entero";
+    for (const auto& row : today.value()) {
+        EXPECT_EQ(row.startedAt.substr(0, 10), "2026-08-23");
+    }
+
+    auto july = history_->reportForPiece(
+        pieceId.value(), {"2026-07-01 00:00:00", "2026-07-31 23:59:59"});
+    ASSERT_TRUE(july.isOk());
+    EXPECT_EQ(july.value().size(), 5U);
+
+    // Sin periodo y sin tope apretado, salen las ocho.
+    auto everything = history_->reportForPiece(pieceId.value());
+    ASSERT_TRUE(everything.isOk());
+    EXPECT_EQ(everything.value().size(), 8U);
+}
+
+// Y el tope nuevo cubre un turno de verdad, con margen.
+TEST_F(EngineTest, TheReportLimitCoversARealShift) {
+    // Ocho horas a cinco segundos por pieza son 5 760 inspecciones. El tope
+    // anterior eran 2 000, o sea que se quedaba corto para el caso NORMAL.
+    constexpr int kEightHourShift = 8 * 3600 / 5;
+    std::printf("  [informe] un turno de 8 h a 5 s/pieza son %d inspecciones; el tope es "
+                "%d\n",
+                kEightHourShift,
+                repositories::InspectionRepository::kMaxReportRows);
+    EXPECT_GT(repositories::InspectionRepository::kMaxReportRows, kEightHourShift)
+        << "el tope del informe no cubre ni un turno de ocho horas";
+    // Y un día de tres turnos.
+    EXPECT_GT(repositories::InspectionRepository::kMaxReportRows, 3 * kEightHourShift)
+        << "no cubre un día de tres turnos, que es lo que se pide al cerrar la jornada";
+}

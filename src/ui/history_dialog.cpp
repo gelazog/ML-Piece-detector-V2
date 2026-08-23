@@ -8,6 +8,7 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QMessageBox>
+#include <QDate>
 #include <vector>
 #include "domain/shift_report.h"
 #include <QSaveFile>
@@ -171,15 +172,52 @@ void HistoryDialog::exportCsv() {
                                  tr("No hay ninguna pieza seleccionada."));
         return;
     }
-    auto listed = inspections_->reportForPiece(pieceId);
+    // QUÉ PERIODO. Se pregunta, y no se da por supuesto, porque «el informe del
+    // turno» sin decir de qué turno era el fallo de la primera versión: la
+    // consulta se llevaba el historial entero de la pieza y lo titulaba turno.
+    QMessageBox period(QMessageBox::Question, tr("Informe del turno"),
+                       tr("¿De qué periodo?"), QMessageBox::NoButton, this);
+    auto* todayButton = period.addButton(tr("Hoy"), QMessageBox::AcceptRole);
+    auto* weekButton = period.addButton(tr("Últimos 7 días"), QMessageBox::AcceptRole);
+    auto* allButton = period.addButton(tr("Todo el historial"), QMessageBox::AcceptRole);
+    period.addButton(QMessageBox::Cancel);
+    period.setDefaultButton(todayButton);
+    period.exec();
+    if (period.clickedButton() == nullptr ||
+        (period.clickedButton() != todayButton && period.clickedButton() != weekButton &&
+         period.clickedButton() != allButton)) {
+        return;
+    }
+
+    repositories::InspectionRepository::ReportWindow window;
+    QString periodName = tr("todo el historial");
+    const QDate today = QDate::currentDate();
+    if (period.clickedButton() == todayButton) {
+        window.from = today.toString(QStringLiteral("yyyy-MM-dd")).toStdString() +
+                      " 00:00:00";
+        window.to = today.toString(QStringLiteral("yyyy-MM-dd")).toStdString() +
+                    " 23:59:59";
+        periodName = tr("hoy");
+    } else if (period.clickedButton() == weekButton) {
+        window.from = today.addDays(-6).toString(QStringLiteral("yyyy-MM-dd")).toStdString() +
+                      " 00:00:00";
+        window.to = today.toString(QStringLiteral("yyyy-MM-dd")).toStdString() +
+                    " 23:59:59";
+        periodName = tr("los últimos 7 días");
+    }
+
+    int discarded = 0;
+    auto listed = inspections_->reportForPiece(
+        pieceId, window, repositories::InspectionRepository::kMaxReportRows, &discarded);
     if (!listed.isOk()) {
         QMessageBox::warning(this, tr("No se pudo leer el historial"),
                              QString::fromStdString(listed.error().message));
         return;
     }
     if (listed.value().empty()) {
-        QMessageBox::information(this, tr("Sin datos"),
-                                 tr("Esta pieza no tiene ninguna inspección registrada."));
+        QMessageBox::information(
+            this, tr("Sin datos"),
+            tr("No hay ninguna inspección de esta pieza en %1.").arg(periodName));
         return;
     }
 
@@ -230,9 +268,23 @@ void HistoryDialog::exportCsv() {
     QMessageBox done(QMessageBox::Information, tr("Informe del turno"),
                      QString::fromStdString(domain::shiftReportText(rows, summary)),
                      QMessageBox::Ok, this);
-    done.setInformativeText(tr("Guardado en %1 — con las %2 inspecciones y sus motivos.")
-                                .arg(path)
-                                .arg(rows.size()));
+    QString note = tr("Guardado en %1 — %2 inspecciones de %3, con sus motivos.")
+                       .arg(path)
+                       .arg(rows.size())
+                       .arg(periodName);
+    if (discarded > 0) {
+        // Se dice, y no se calla. Un informe recortado da un rendimiento
+        // calculado sobre PARTE del periodo con pinta de ser el del periodo
+        // entero, y quien lo lea no tiene forma de notarlo.
+        note += tr("\n\nATENCIÓN: había %1 inspecciones más en ese periodo y no caben en un "
+                   "solo informe. Estas son las %2 últimas, así que el rendimiento de "
+                   "arriba es el de ese tramo y no el del periodo completo. Pide un "
+                   "periodo más corto para cubrirlo entero.")
+                    .arg(discarded)
+                    .arg(rows.size());
+        done.setIcon(QMessageBox::Warning);
+    }
+    done.setInformativeText(note);
     done.exec();
 }
 

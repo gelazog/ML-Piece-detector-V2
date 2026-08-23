@@ -53,8 +53,30 @@ public:
         int referenceVersion = 0;
         std::string reason;  // vacío si pasó
     };
+    // EL PERIODO DEL INFORME. Vacio = sin limite por ese lado.
+    //
+    // Existe porque sin el, «informe del turno» era mentira: la consulta se
+    // llevaba TODO el historial de la pieza. Y como ordenaba de mas antigua a
+    // mas nueva antes de recortar, lo que salia eran las 2000 inspecciones MAS
+    // VIEJAS — o sea que a una pieza con historial le daba un informe de hace
+    // meses y lo titulaba «turno».
+    struct ReportWindow {
+        std::string from;  // "YYYY-MM-DD HH:MM:SS"
+        std::string to;
+    };
+
+    // Tope de filas. Un turno de ocho horas a cinco segundos por pieza son 5 760
+    // inspecciones, asi que el limite anterior —2 000— se quedaba corto para el
+    // caso normal. Este cubre un dia entero de tres turnos con margen.
+    static constexpr int kMaxReportRows = 25000;
+
+    // `discarded`, si se pasa, recibe cuantas quedaron fuera del tope. Truncar
+    // un informe en silencio es peor que no darlo: sale un rendimiento calculado
+    // sobre una parte del turno, con pinta de ser el del turno entero.
     core::Result<std::vector<ReportRow>> reportForPiece(std::int64_t pieceId,
-                                                        int limit = 2000);
+                                                        const ReportWindow& window = {},
+                                                        int limit = kMaxReportRows,
+                                                        int* discarded = nullptr);
 
     struct DayStats {
         int total = 0;
