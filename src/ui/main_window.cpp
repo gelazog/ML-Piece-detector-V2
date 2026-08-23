@@ -69,6 +69,7 @@
 #include <QApplication>
 
 #include "vision/detection_tuning.h"
+#include "vision/contour_analysis.h"
 #include "vision/pipeline.h"
 #include "vision/plane_scale.h"
 #include <opencv2/imgproc.hpp>
@@ -263,12 +264,7 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                 // la de arriba a la izquierda. Cambiar en silencio QUÉ pieza se
                 // mide es el tipo de fallo que nadie ve hasta que compara dos
                 // informes de la misma bandeja.
-                std::size_t chosen = 0;
-                for (std::size_t i = 1; i < all.value().size(); ++i) {
-                    if (all.value()[i].contour.area > all.value()[chosen].contour.area) {
-                        chosen = i;
-                    }
-                }
+                std::size_t chosen = vision::largestPieceIndex(all.value());
                 // Y si el operador ha señalado una en concreto, esa. El cero
                 // significa «la que decidas tú», que es lo de siempre: así,
                 // quien no toque el navegador sigue midiendo exactamente lo que

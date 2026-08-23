@@ -65,9 +65,18 @@ struct BoardSpec {
 struct BoardView {
     std::vector<cv::Point2f> corners;
     cv::Size imageSize;
-    // Fracción del encuadre que ocupa la envolvente del tablero (0..1). Sirve
-    // para exigir variedad: veinte tomas del tablero en el mismo sitio no
-    // calibran mejor que una.
+    // Fracción del encuadre que ocupa la envolvente del tablero (0..1).
+    //
+    // ES INFORMATIVA, y esto está dicho porque antes prometía otra cosa: decía
+    // que servía «para exigir variedad», y no la usaba nadie. La variedad la
+    // comprueba `coverageOf`, que mira DÓNDE cae cada toma y no cuánto ocupa.
+    //
+    // Al ir a darle ese papel se midió si el tamaño importaba, y la respuesta
+    // fue que ya está cubierto: con el tablero lo bastante lejos como para que
+    // la toma menor ocupe el 0,4 % del encuadre, el error de reproyección sube a
+    // 3,85 px y `calibrateLens` se niega por su cuenta. Una regla de tamaño
+    // aparte sería un segundo guardián para lo mismo, y con un umbral inventado
+    // en vez de medido. Se queda el dato, sin la promesa.
     double coverage = 0.0;
     // Centro de la envolvente, en fracción del encuadre (0..1 en cada eje).
     cv::Point2f center;

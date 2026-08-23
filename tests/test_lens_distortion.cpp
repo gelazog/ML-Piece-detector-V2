@@ -25,6 +25,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "vision/lens_calibration.h"
@@ -527,4 +528,80 @@ TEST(LensDistortion, SpreadOutViewsPassTheCoverageCheck) {
     EXPECT_TRUE(coverage.goodEnough()) << coverage.advice();
     EXPECT_TRUE(coverage.advice().empty());
     EXPECT_EQ(coverage.cornersTouched, 4);
+}
+
+// ¿IMPORTA LO GRANDE QUE SE VEA EL TABLERO?
+//
+// `BoardView` guarda `coverage` —qué parte del encuadre ocupa cada toma— con un
+// comentario que decía que servía «para exigir variedad». No lo usaba nadie: la
+// variedad la comprueba la rejilla de nueve zonas, que mira el CENTRO de cada
+// toma y no su tamaño. O sea que el campo prometía un papel que no tenía.
+//
+// Antes de quitarlo o de darle uno, la pregunta que hay que contestar es si el
+// tamaño importa de verdad. Se calibra dos veces con las tomas repartidas por
+// las mismas nueve zonas y cambiando sólo la distancia: cerca (el tablero llena
+// buena parte del encuadre) y lejos (se ve pequeño).
+TEST(LensDistortion, ABoardTooSmallInTheFrameCalibratesWorse) {
+    const pci::vision::BoardSpec spec;
+    const cv::Mat trueK = cameraMatrix();
+    const cv::Mat trueD = distortion(-0.25);
+
+    // Las mismas nueve zonas, pero a 1200 mm en vez de a 400: el tablero se ve
+    // a un tercio de tamaño.
+    const std::vector<cv::Vec3d> faraway = {
+        {400.0, 310.0, 1200.0},  {-560.0, 310.0, 1200.0},  {400.0, -410.0, 1200.0},
+        {-560.0, -410.0, 1200.0}, {-80.0, 310.0, 1200.0},  {-80.0, -410.0, 1200.0},
+        {400.0, -50.0, 1200.0},  {-560.0, -50.0, 1200.0},  {-80.0, -50.0, 1200.0},
+        {200.0, 150.0, 1300.0},  {-400.0, -250.0, 1300.0}, {-80.0, -50.0, 1100.0}};
+    const auto turns = boardRotations();
+
+    const auto calibrateFrom = [&](const std::vector<cv::Vec3d>& places) {
+        std::vector<pci::vision::BoardView> views;
+        double smallest = 1.0;
+        for (std::size_t i = 0; i < places.size(); ++i) {
+            const cv::Mat shot =
+                renderBoardThroughLens(spec, turns[i], places[i], trueK, trueD);
+            if (auto view = pci::vision::findBoard(shot, spec); view.has_value()) {
+                smallest = std::min(smallest, view->coverage);
+                views.push_back(*view);
+            }
+        }
+        return std::pair<std::vector<pci::vision::BoardView>, double>{views, smallest};
+    };
+
+    const auto [nearViews, nearSmallest] = calibrateFrom(boardTranslations());
+    const auto [farViews, farSmallest] = calibrateFrom(faraway);
+    ASSERT_GE(nearViews.size(), static_cast<std::size_t>(pci::vision::kMinimumViews));
+    ASSERT_GE(farViews.size(), static_cast<std::size_t>(pci::vision::kMinimumViews))
+        << "a esa distancia ya no se detecta el tablero: la prueba no llega a comparar";
+
+    const auto nearModel = pci::vision::calibrateLens(nearViews, spec);
+    const auto farModel = pci::vision::calibrateLens(farViews, spec);
+    ASSERT_TRUE(nearModel.isOk()) << nearModel.error().message;
+    if (!farModel.isOk()) {
+        // Que se NIEGUE con el tablero lejos es ya una respuesta, y hay que
+        // leerla antes de sacar conclusiones sobre el tamaño.
+        std::printf("  [lente] lejos: la toma menor ocupa %.3f del encuadre y la "
+                    "calibracion se niega: %s\n",
+                    farSmallest, farModel.error().message.c_str());
+        EXPECT_LT(farSmallest, nearSmallest);
+        return;
+    }
+
+    const double nearK1 = nearModel.value().distortion.at<double>(0);
+    const double farK1 = farModel.value().distortion.at<double>(0);
+    std::printf("  [lente] cerca: la toma menor ocupa %.3f del encuadre, k1 %.4f "
+                "(reproyeccion %.3f)\n",
+                nearSmallest, nearK1, nearModel.value().reprojectionError);
+    std::printf("  [lente] lejos: la toma menor ocupa %.3f del encuadre, k1 %.4f "
+                "(reproyeccion %.3f)\n",
+                farSmallest, farK1, farModel.value().reprojectionError);
+    std::printf("  [lente] error en k1: %.4f cerca, %.4f lejos\n", std::abs(nearK1 + 0.25),
+                std::abs(farK1 + 0.25));
+
+    // No se afirma un umbral: lo que se quiere de esta prueba es la CIFRA, para
+    // decidir con ella si `coverage` merece ser una regla o merece irse.
+    EXPECT_LT(farSmallest, nearSmallest)
+        << "el montaje no llegó a alejar el tablero: no se está midiendo lo que se cree";
+    EXPECT_GT(nearSmallest, 0.0);
 }

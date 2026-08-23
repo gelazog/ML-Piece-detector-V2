@@ -10,6 +10,7 @@
 #include "domain/measurement_mode.h"
 #include "ml/reference.h"
 #include "vision/orientation_anchor.h"
+#include "vision/contour_analysis.h"
 #include "vision/pipeline.h"
 
 namespace pci::engine {
@@ -128,12 +129,7 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
             // primero dejaría fuera a la de arriba a la izquierda y metería dos
             // veces a la mayor: una pieza sin medir y otra medida dos veces, sin
             // que nada lo dijera.
-            std::size_t biggest = 0;
-            for (std::size_t i = 1; i < all.value().size(); ++i) {
-                if (all.value()[i].contour.area > all.value()[biggest].contour.area) {
-                    biggest = i;
-                }
-            }
+            const std::size_t biggest = vision::largestPieceIndex(all.value());
             for (std::size_t i = 0; i < all.value().size(); ++i) {
                 if (i != biggest) {
                     extraFixtures.push_back(all.value()[i].fixture);

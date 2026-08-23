@@ -66,4 +66,16 @@ void orderPiecesForReading(std::vector<PieceContour>& pieces);
 // hasta que alguien compara dos informes.
 [[nodiscard]] const PieceContour* largestPiece(const std::vector<PieceContour>& pieces);
 
+// Lo mismo sobre una lista de piezas ya ANALIZADAS, devolviendo su indice. 0 si
+// la lista esta vacia.
+//
+// Existe porque `largestPiece` no encajaba donde hacia falta —los llamadores
+// tienen `PieceAnalysis` y no `PieceContour`— y el resultado fue que los dos
+// sitios que necesitaban «la mayor» escribieran el bucle a mano. Dos copias de
+// la misma decision en dos ficheros distintos es una que se puede cambiar sin
+// la otra, y «que pieza se mide» es exactamente la decision que no se puede
+// permitir divergir en silencio: en vivo se veria una y el informe traeria la
+// de la otra.
+[[nodiscard]] std::size_t largestPieceIndex(const std::vector<PieceAnalysis>& pieces);
+
 }  // namespace pci::vision

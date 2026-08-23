@@ -132,6 +132,16 @@ void orderPiecesForReading(std::vector<PieceContour>& pieces) {
     }
 }
 
+std::size_t largestPieceIndex(const std::vector<PieceAnalysis>& pieces) {
+    std::size_t biggest = 0;
+    for (std::size_t i = 1; i < pieces.size(); ++i) {
+        if (pieces[i].contour.area > pieces[biggest].contour.area) {
+            biggest = i;
+        }
+    }
+    return biggest;
+}
+
 const PieceContour* largestPiece(const std::vector<PieceContour>& pieces) {
     const PieceContour* best = nullptr;
     for (const auto& piece : pieces) {
