@@ -1,8 +1,12 @@
 #include "ui/pieces_page.h"
 
+#include <algorithm>
+
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
@@ -19,17 +23,34 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
     intro->setWordWrap(true);
     root->addWidget(intro);
 
-    auto* form = new QFormLayout();
+    // El modo, primero: decide qué significa todo lo que hay debajo.
+    automatic_ = new QRadioButton(tr("Automática: cuenta las que haya"), this);
+    automatic_->setToolTip(
+        tr("El programa dice cuántas piezas ve y no se queja del número.\n"
+           "Para cuando la cantidad cambia de una bandeja a otra."));
+    root->addWidget(automatic_);
+    manual_ = new QRadioButton(tr("Manual: deben ser exactamente"), this);
+    manual_->setToolTip(
+        tr("Tú dices cuántas tiene que haber. Si aparecen más o menos, es NG\n"
+           "diciendo cuántas esperaba y cuántas ve.\n\n"
+           "Con UNA pieza, además, el programa deja de enumerar: mide la mayor\n"
+           "y una sombra o un reflejo ya no se cuentan como una segunda pieza."));
+
+    auto* manualRow = new QHBoxLayout();
+    manualRow->addWidget(manual_);
     expected_ = new QSpinBox(this);
-    expected_->setRange(0, 64);
-    expected_->setValue(expectedPieces);
-    expected_->setSpecialValueText(tr("no vigilar el recuento"));
-    expected_->setToolTip(
-        tr("1 es lo de siempre: una pieza por imagen.\n"
-           "0 desactiva la comprobación — un aviso que salta siempre acaba\n"
-           "ignorándose, así que se puede apagar."));
-    form->addRow(tr("Piezas esperadas:"), expected_);
-    root->addLayout(form);
+    expected_->setRange(1, 64);
+    expected_->setSuffix(tr(" piezas"));
+    expected_->setValue(expectedPieces > 0 ? expectedPieces : 1);
+    manualRow->addWidget(expected_);
+    manualRow->addStretch(1);
+    root->addLayout(manualRow);
+
+    // El cero guardado sigue significando «no vigilar»: es el mismo dato de
+    // siempre, solo que ahora se enseña como un modo en vez de como un valor
+    // especial escondido dentro de un campo numérico.
+    automatic_->setChecked(expectedPieces <= 0);
+    manual_->setChecked(expectedPieces > 0);
 
     useDetected_ = new QPushButton(tr("Usar lo que se ve ahora"), this);
     useDetected_->setToolTip(
@@ -44,11 +65,43 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
     root->addStretch(1);
 
     connect(expected_, &QSpinBox::valueChanged, this, [this] { refreshStatus(); });
-    refreshStatus();
+    // El campo solo tiene sentido en manual: dejarlo manejable en automático
+    // invita a ponerle un número que no se va a usar.
+    const auto syncEnabled = [this] {
+        expected_->setEnabled(manual_->isChecked());
+        refreshStatus();
+    };
+    connect(manual_, &QRadioButton::toggled, this, syncEnabled);
+    syncEnabled();
+}
+
+PiecesPage::CountMode PiecesPage::countMode() const {
+    return (manual_ != nullptr && manual_->isChecked()) ? CountMode::Manual
+                                                        : CountMode::Automatic;
 }
 
 int PiecesPage::expectedPieces() const {
+    if (countMode() == CountMode::Automatic) {
+        return 0;  // 0 = no vigilar, igual que antes
+    }
     return expected_ != nullptr ? expected_->value() : 1;
+}
+
+void PiecesPage::setExpectedPieces(int expected) {
+    if (expected_ == nullptr) {
+        return;
+    }
+    if (expected <= 0) {
+        if (automatic_ != nullptr) {
+            automatic_->setChecked(true);
+        }
+    } else {
+        expected_->setValue(std::min(expected, expected_->maximum()));
+        if (manual_ != nullptr) {
+            manual_->setChecked(true);
+        }
+    }
+    refreshStatus();
 }
 
 void PiecesPage::setDetectedCount(int found) {

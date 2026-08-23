@@ -214,8 +214,22 @@ AnalysisOverlay buildOverlay(const QImage& frame,
             auto all = vision::analyzeFrames(image, pipeline);
             if (all.isOk()) {
                 overlay.piecesFound = static_cast<int>(all.value().size());
+                // LA MAYOR, PEDIDA POR SU NOMBRE.
+                //
+                // Antes esto era `front()`, y funcionaba porque la lista venía
+                // ordenada por área. Ahora viene en orden de lectura para que el
+                // número de cada pieza signifique algo, así que `front()` sería
+                // la de arriba a la izquierda. Cambiar en silencio QUÉ pieza se
+                // mide es el tipo de fallo que nadie ve hasta que compara dos
+                // informes de la misma bandeja.
+                std::size_t biggest = 0;
+                for (std::size_t i = 1; i < all.value().size(); ++i) {
+                    if (all.value()[i].contour.area > all.value()[biggest].contour.area) {
+                        biggest = i;
+                    }
+                }
                 analysis = core::Result<vision::PieceAnalysis>::ok(
-                    std::move(all.value().front()));
+                    std::move(all.value()[biggest]));
             } else {
                 overlay.piecesFound = 0;
                 analysis = core::Result<vision::PieceAnalysis>::err(all.error().message);
@@ -1737,11 +1751,39 @@ void MainWindow::updateRoiButton() {
     }
 }
 
+void MainWindow::declareExpectedPieces(int expected) {
+    expectedPieces_ = std::max(0, expected);
+    pipelineConfig_.expectedPieces = expectedPieces_;
+    updatePiecesChip();
+    reanalyseCurrentFrame();
+}
+
 bool MainWindow::countingPieces() const {
     // La pieza declara que espera varias: el recuento es parte del veredicto y
     // se cuenta siempre.
     if (expectedPieces_ > 1) {
         return true;
+    }
+    // UNA PIEZA DECLARADA A MANO ES UNA PIEZA, Y SE DEJA DE ENUMERAR.
+    //
+    // Esta línea sale de una queja de uso: «por defecto le tengo una pieza, e
+    // intenta detectar más de una». Era exacto, y de dos maneras a la vez: la
+    // regla del final de esta función manda contar por defecto, y con el
+    // recuento en marcha cualquier sombra o reflejo que pase el filtro de área
+    // sale como una segunda pieza; y como el número esperado también era 1, esa
+    // sombra daba directamente NG «esperaba 1, veo 2».
+    //
+    // Quien pone «manual, una pieza» está diciendo que lo que hay en la mesa es
+    // una pieza. Se mide la mayor y se acabó.
+    //
+    // Esto NO deshace la razón por la que contar venía puesto —seis piezas
+    // delante y la aplicación midiendo la mayor sin decir que había otras
+    // cinco—: ese caso es el modo AUTOMÁTICO, que ahora es un botón con su
+    // nombre en la pestaña Piezas en vez de un cero mágico escondido dentro de
+    // un campo numérico.
+    if (expectedPieces_ == 1 &&
+        !(configureDialog_ != nullptr && configureDialog_->showingPieceCount())) {
+        return false;
     }
     // O el operador está mirando la pestaña Piezas. Antes bastaba con que el
     // panel Configurar estuviera abierto, y eso era demasiado: contar cuesta
@@ -5151,8 +5193,17 @@ void MainWindow::onConfigureClicked() {
         applyPiecesPage(dialog->piecesPage());
     });
     if (auto* pieces = dialog->piecesPage(); pieces != nullptr) {
-        connect(pieces, &PiecesPage::useDetectedRequested, this,
-                [this, pieces] { pieces->setDetectedCount(lastPieceCount_); });
+        // EL BOTON QUE NO HACIA NADA.
+        //
+        // Decia «pone en el campo el numero de piezas que la camara esta
+        // detectando», y llamaba a `setDetectedCount`, que solo refresca el texto
+        // de estado de mas abajo. El campo no se movia. Un boton que promete algo
+        // y no lo hace es peor que no tenerlo: quien lo pulsa se queda creyendo
+        // que el numero ya esta puesto.
+        connect(pieces, &PiecesPage::useDetectedRequested, this, [this, pieces] {
+            pieces->setDetectedCount(lastPieceCount_);
+            pieces->setExpectedPieces(lastPieceCount_);
+        });
     }
     connect(dialog, &ConfigureDialog::scaleWizardRequested, this,
             &MainWindow::onCalibrateClicked);

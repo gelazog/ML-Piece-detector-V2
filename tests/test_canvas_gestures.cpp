@@ -58,6 +58,7 @@
 #include "inspection_editor/auto_measure_dialog.h"
 #include "inspection_editor/piece_report.h"
 #include "ui/main_window.h"
+#include "ui/pieces_page.h"
 #include "ui/piece_report_dialog.h"
 #include "inspection_editor/canvas/editor_canvas.h"
 #include "inspection_editor/canvas/tool_icons.h"
@@ -4447,4 +4448,135 @@ TEST(EdgeBrushAssist, SnappingRefusesToForceARegionThatDoesNotMatch) {
         << "«pulso estable» solo filtra el temblor y no quita ninguna pincelada "
            "posible: no hay motivo para que venga apagado";
     EXPECT_FALSE(fresh.brushStraight()) << "«trazo recto» es un modo, no un valor por defecto";
+}
+
+// ---------------------------------------------------------------------------
+// AUTOMÁTICA O MANUAL: cuántas piezas hay que buscar
+// ---------------------------------------------------------------------------
+//
+// La queja: «hay veces en donde por default le tengo una pieza, e intenta
+// detectar más de una pieza». Era exacto, y por dos motivos que se sumaban.
+// Contar venía puesto por defecto, así que cualquier sombra o reflejo que
+// pasara el filtro de área salía como una segunda pieza; y como el número
+// esperado también era 1, esa sombra daba NG «esperaba 1, veo 2».
+//
+// El nudo estaba en que «nadie ha configurado esto» y «el operador ha dicho que
+// hay una pieza» eran EL MISMO NÚMERO, y piden lo contrario: al primero hay que
+// contarle, al segundo hay que dejarlo en paz. Separarlos es todo el arreglo.
+
+TEST(PieceCountMode, AutomaticAndManualAreTheSameNumberSaidClearly) {
+    // De fábrica: automático, que se guarda como el 0 de siempre.
+    pci::ui::PiecesPage automatic(0);
+    EXPECT_EQ(automatic.countMode(), pci::ui::PiecesPage::CountMode::Automatic);
+    EXPECT_EQ(automatic.expectedPieces(), 0)
+        << "automático tiene que seguir guardándose como 0: el modo es una forma "
+           "de enseñar el dato que ya había, no un dato nuevo que se pueda "
+           "desincronizar del otro";
+
+    // Un número guardado es manual, con ese número.
+    pci::ui::PiecesPage manual(6);
+    EXPECT_EQ(manual.countMode(), pci::ui::PiecesPage::CountMode::Manual);
+    EXPECT_EQ(manual.expectedPieces(), 6);
+
+    // Y una pieza declarada a mano es manual, no automático.
+    pci::ui::PiecesPage one(1);
+    EXPECT_EQ(one.countMode(), pci::ui::PiecesPage::CountMode::Manual);
+    EXPECT_EQ(one.expectedPieces(), 1);
+}
+
+// EL BOTÓN QUE NO HACÍA NADA.
+//
+// «Usar lo que se ve ahora» prometía poner en el campo el número de piezas que
+// la cámara está detectando. Su manejador llamaba a `setDetectedCount`, que solo
+// refresca el texto de estado: el campo no se movía. Un botón que promete algo y
+// no lo hace es peor que no tenerlo, porque quien lo pulsa se queda creyendo que
+// el número ya está puesto.
+TEST(PieceCountMode, UsingWhatIsSeenActuallyFillsTheField) {
+    pci::ui::PiecesPage page(0);
+    ASSERT_EQ(page.expectedPieces(), 0);
+
+    page.setDetectedCount(6);
+    page.setExpectedPieces(6);  // lo que hace ahora la ventana al pulsar el botón
+    EXPECT_EQ(page.countMode(), pci::ui::PiecesPage::CountMode::Manual)
+        << "rellenar el número no pasó a manual: el número quedaría puesto y sin usar";
+    EXPECT_EQ(page.expectedPieces(), 6)
+        << "el botón sigue sin escribir en el campo, que es justo lo que prometía";
+
+    // Y volver a automático se puede.
+    page.setExpectedPieces(0);
+    EXPECT_EQ(page.countMode(), pci::ui::PiecesPage::CountMode::Automatic);
+    EXPECT_EQ(page.expectedPieces(), 0);
+}
+
+// LA COMPROBACIÓN DE PUNTA A PUNTA: con «manual, una pieza», una sombra que pasa
+// el filtro de área deja de contarse como una segunda pieza.
+TEST(PieceCountMode, WithOneDeclaredPieceAShadowIsNotASecondPiece) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    // Una pieza clara y, aparte, una mancha más pequeña que también pasa el
+    // filtro: exactamente lo que hace un reflejo o el borde iluminado del útil.
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(60, 90, 150, 120), QColor(230, 230, 230));
+        painter.fillRect(QRect(280, 200, 70, 60), QColor(200, 200, 200));
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("con_reflejo.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    // De fábrica (automático) sí las cuenta: es lo que tiene que hacer cuando
+    // nadie ha dicho nada, y sirve además para comprobar que la escena de esta
+    // prueba de verdad produce dos manchas.
+    QElapsedTimer timer;
+    timer.start();
+    QString seen;
+    while (timer.elapsed() < 3000) {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+        for (auto* label : window.findChildren<QLabel*>()) {
+            if (label->isVisible() && label->text().contains(QStringLiteral("pieza"))) {
+                seen = label->text().trimmed();
+            }
+        }
+        if (seen.contains(QStringLiteral("2"))) {
+            break;
+        }
+    }
+    std::printf("  [contar] en automático, con pieza + reflejo dice: «%s»\n",
+                seen.toStdString().c_str());
+    EXPECT_TRUE(seen.contains(QStringLiteral("2")))
+        << "el montaje no llegó a producir dos manchas: esta prueba no estaría "
+           "midiendo lo que cree (dijo: "
+        << seen.toStdString() << ")";
+
+    // Y AHORA LA MITAD QUE IMPORTA: el operador dice que hay UNA pieza.
+    window.declareExpectedPieces(1);
+    timer.restart();
+    QString afterDeclaring;
+    bool stillCounting = false;
+    while (timer.elapsed() < 2000) {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+        afterDeclaring.clear();
+        for (auto* label : window.findChildren<QLabel*>()) {
+            if (label->isVisible() && label->text().contains(QStringLiteral("pieza"))) {
+                afterDeclaring = label->text().trimmed();
+            }
+        }
+        if (afterDeclaring.contains(QStringLiteral("2"))) {
+            stillCounting = true;
+        }
+    }
+    std::printf("  [contar] tras declarar una pieza dice: %s\n",
+                afterDeclaring.isEmpty() ? "(nada)" : afterDeclaring.toStdString().c_str());
+    EXPECT_FALSE(stillCounting)
+        << "declarada UNA pieza, el reflejo se sigue contando como una segunda: es "
+           "exactamente la queja de partida, y ademas daria NG «esperaba 1, veo 2»";
+    EXPECT_FALSE(afterDeclaring.contains(QStringLiteral("2")))
+        << "el recuento se quedo en 2 despues de declarar que hay una sola pieza";
 }

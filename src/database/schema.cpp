@@ -170,10 +170,24 @@ ALTER TABLE Pieces ADD COLUMN detection_profile_id INTEGER NOT NULL DEFAULT 0;
 
 // v9: cuantas piezas se esperan en la imagen (C5). Va POR PIEZA y no en los
 // ajustes globales porque "seis tornillos en bandeja" es una propiedad del
-// trabajo, no de la maquina. 1 = una pieza, que es como se comportaba hasta
-// ahora.
+// trabajo, no de la maquina. 0 = no vigilar el recuento (modo automatico);
+// N >= 1 = tienen que ser exactamente N.
+//
+// EL VALOR DE FABRICA ERA 1 Y AHORA ES 0, y la diferencia no es cosmetica:
+// hacia que «nadie ha configurado esto» y «el operador ha dicho que hay una
+// pieza» fueran EL MISMO NUMERO, y son dos cosas que piden lo contrario.
+//
+//   - Nadie ha dicho nada: hay que contar y decir cuantas se ven. Si no, seis
+//     piezas delante se miden como una y nadie se entera de las otras cinco.
+//   - El operador ha dicho «una»: hay que dejar de enumerar. Si no, cualquier
+//     sombra que pase el filtro de area sale como segunda pieza —y ademas da NG
+//     «esperaba 1, veo 2», que es la queja que trajo este cambio.
+//
+// Con 0 de fabrica las dos cosas se pueden pedir por separado. Las bases de
+// datos que ya existen conservan el 1 que se les escribio, que ahora significa
+// «una pieza, declarada», que es justo lo que quiere quien tiene una pieza.
 const char* const kMigrationV9 = R"sql(
-ALTER TABLE Pieces ADD COLUMN expected_pieces INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE Pieces ADD COLUMN expected_pieces INTEGER NOT NULL DEFAULT 0;
 )sql";
 
 // v10: de que pieza del frame es cada medida (C6). 0 = la pieza principal,

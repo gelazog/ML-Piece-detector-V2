@@ -923,17 +923,32 @@ TEST_F(DatabaseTest, RemovingAPieceOnlyTakesItsOwnTools) {
 // v9: piezas esperadas por pieza (C5)
 // ---------------------------------------------------------------------------
 
-TEST_F(DatabaseTest, ExpectedPiecesRoundTripsAndDefaultsToOne) {
+// EL VALOR DE FÁBRICA PASÓ DE 1 A 0, Y ES UNA DECISIÓN, NO UN DESCUIDO.
+//
+// Era 1, y eso hacía que «nadie ha configurado esto» y «el operador ha dicho
+// que hay una pieza» fueran el mismo número. Son dos cosas que piden lo
+// contrario: al primero hay que contarle las piezas y decírselo —si no, seis
+// piezas delante se miden como una y nadie se entera de las otras cinco—, y al
+// segundo hay que dejarlo en paz, porque con el recuento en marcha cualquier
+// sombra que pase el filtro de área sale como una segunda pieza y da NG
+// «esperaba 1, veo 2».
+//
+// Con 0 = automático, las dos se pueden pedir por separado. Las bases de datos
+// que ya existen conservan el 1 que se les escribió, que ahora significa «una
+// pieza, declarada» — que es justo lo que quiere quien tiene una pieza.
+TEST_F(DatabaseTest, ExpectedPiecesRoundTripsAndDefaultsToAutomatic) {
     auto& db = openAndMigrate();
     repositories::PieceRepository pieces(db);
 
     auto id = pieces.createPiece("bandeja");
     ASSERT_TRUE(id.isOk());
 
-    // Por defecto, una pieza: las que ya existían se comportan como siempre.
+    // Por defecto, automático: cuenta las que haya y no se queja del número.
     auto initial = pieces.loadMeasurement(id.value());
     ASSERT_TRUE(initial.isOk());
-    EXPECT_EQ(initial.value().expectedPieces, 1);
+    EXPECT_EQ(initial.value().expectedPieces, 0)
+        << "una pieza recién creada viene con un número exigido: cualquier sombra "
+           "que pase el filtro de área daría NG sin que nadie lo haya pedido";
 
     auto measurement = initial.value();
     measurement.expectedPieces = 6;
@@ -964,6 +979,16 @@ TEST_F(DatabaseTest, EachPieceKeepsItsOwnExpectedCount) {
     ASSERT_TRUE(pieces.saveMeasurement(tray.value(), measurement.value()).isOk());
 
     EXPECT_EQ(pieces.loadMeasurement(tray.value()).value().expectedPieces, 6);
+    EXPECT_EQ(pieces.loadMeasurement(single.value()).value().expectedPieces, 0)
+        << "la pieza de al lado heredó el número de la bandeja, o trae uno de fábrica "
+           "que nadie pidió";
+
+    // Y declarar UNA pieza es una elección con efecto propio: no es lo mismo que
+    // no haber dicho nada.
+    auto lonely = pieces.loadMeasurement(single.value());
+    ASSERT_TRUE(lonely.isOk());
+    lonely.value().expectedPieces = 1;
+    ASSERT_TRUE(pieces.saveMeasurement(single.value(), lonely.value()).isOk());
     EXPECT_EQ(pieces.loadMeasurement(single.value()).value().expectedPieces, 1);
 }
 

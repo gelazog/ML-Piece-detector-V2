@@ -121,8 +121,23 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
     if (expectedPieces > 1) {
         if (auto all = vision::analyzeFrames(frameBgr, options_.pipeline); all.isOk()) {
             outcome.piecesFound = static_cast<int>(all.value().size());
+            // Las DEMÁS, que es la mayor la que ya se analizó aparte.
+            //
+            // Antes se saltaba el índice 0 porque la lista venía por área y el 0
+            // era la mayor. Ahora viene en orden de lectura, así que saltarse el
+            // primero dejaría fuera a la de arriba a la izquierda y metería dos
+            // veces a la mayor: una pieza sin medir y otra medida dos veces, sin
+            // que nada lo dijera.
+            std::size_t biggest = 0;
             for (std::size_t i = 1; i < all.value().size(); ++i) {
-                extraFixtures.push_back(all.value()[i].fixture);
+                if (all.value()[i].contour.area > all.value()[biggest].contour.area) {
+                    biggest = i;
+                }
+            }
+            for (std::size_t i = 0; i < all.value().size(); ++i) {
+                if (i != biggest) {
+                    extraFixtures.push_back(all.value()[i].fixture);
+                }
             }
         } else {
             outcome.piecesFound = 0;

@@ -69,6 +69,15 @@ public:
     // comprobar lo que ocurre DESPUÉS de abrir.
     bool startFileSourceAtPath(pci::camera::SourceKind kind, const QString& path);
 
+    // Declarar cuántas piezas hay que esperar, sin abrir el panel Configurar.
+    // 0 = automático (contar las que haya y no quejarse); N >= 1 = manual.
+    //
+    // Es lo mismo que hace la pestaña Piezas, y está aquí por la misma razón que
+    // `startFileSourceAtPath`: sin una entrada así, la regla que decide si se
+    // enumera o no solo se puede comprobar a mano, y es justo la regla que
+    // acababa contando una sombra como segunda pieza.
+    void declareExpectedPieces(int expected);
+
 public:
     // Los servicios pueden venir vacíos: la app funciona sin persistencia
     // si la BD no pudo abrirse (error ya loggeado por quien la abrió).
@@ -290,7 +299,9 @@ private:
     // quedaban fuera y la aplicación decía que solo había una.
     vision::WorkingZoneMode zoneMode_ = vision::WorkingZoneMode::Off;
     vision::AutoRoiTracker autoRoi_;
-    int expectedPieces_ = 1;  // de la pieza seleccionada (C5)
+    // De la pieza seleccionada (C5). 0 = automático (contar y no quejarse),
+    // N >= 1 = manual (tienen que ser exactamente N). Ver la migración v9.
+    int expectedPieces_ = 0;
     int lastPieceCount_ = -1;  // piezas vistas en el último análisis
     QAction* registerWizardAction_ = nullptr;
     QAction* managePiecesAction_ = nullptr;
