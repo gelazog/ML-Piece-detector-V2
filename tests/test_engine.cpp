@@ -1,4 +1,8 @@
 #include <gtest/gtest.h>
+
+#include <cstdio>
+
+#include "domain/shift_report.h"
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
@@ -639,4 +643,136 @@ TEST_F(EngineTest, TheHistoryRemembersWhichPieceEachMeasurementCameFrom) {
         stored.push_back(stmt.value().columnInt(0));
     }
     EXPECT_EQ(stored, (std::vector<int>{0, 1, 2}));
+}
+
+// EL MOTIVO DE CADA RECHAZO, que es lo que convierte el historial en
+// información.
+//
+// `recentForPiece` devuelve fecha y veredicto, así que un turno con 47 rechazos
+// es un número. El informe de turno necesita saber POR QUÉ, y eso hay que
+// traerlo de dos sitios distintos —la herramienta que falló y el tipo de
+// comprobación que falló— sin hacer una consulta por inspección.
+TEST_F(EngineTest, TheReportBringsTheReasonOfEachReject) {
+    auto pieceId = pieces_->createPiece("brida");
+    ASSERT_TRUE(pieceId.isOk());
+
+    // Una herramienta de verdad, para que su NOMBRE pueda salir como motivo.
+    inspection::ToolConfig caliper;
+    caliper.type = inspection::ToolType::Caliper;
+    caliper.name = "diámetro exterior";
+    caliper.geometryJson = inspection::toJson(
+        inspection::ToolGeometry(inspection::CaliperGeometry{{0, 0}, {40, 0}, 6.0F}));
+    const auto toolId = tools_->save(pieceId.value(), caliper);
+    ASSERT_TRUE(toolId.isOk()) << toolId.error().message;
+
+    const auto runResult = [&](bool ok) {
+        inspection::ToolRunResult result;
+        result.toolId = toolId.value();
+        result.name = caliper.name;
+        result.ok = ok;
+        result.measured = ok ? 40.0 : 44.0;
+        result.detail = ok ? "dentro" : "44,0 mm (max 42,0)";
+        return result;
+    };
+
+    domain::InspectionVerdict good;
+    good.ok = true;
+    good.summary = "OK";
+
+    // Un rechazo POR HERRAMIENTA.
+    domain::InspectionVerdict byTool;
+    byTool.ok = false;
+    byTool.summary = "NG";
+
+    // Y otro por APARIENCIA, sin herramienta fallida.
+    domain::InspectionVerdict byLook;
+    byLook.ok = false;
+    byLook.summary = "NG";
+    byLook.embedding.evaluated = true;
+    byLook.embedding.anomalous = true;
+
+    ASSERT_TRUE(history_->saveInspection(pieceId.value(), 1, good, {runResult(true)}, {}).isOk());
+    ASSERT_TRUE(
+        history_->saveInspection(pieceId.value(), 1, byTool, {runResult(false)}, {}).isOk());
+    ASSERT_TRUE(history_->saveInspection(pieceId.value(), 1, byLook, {}, {}).isOk());
+
+    auto report = history_->reportForPiece(pieceId.value());
+    ASSERT_TRUE(report.isOk()) << report.error().message;
+    ASSERT_EQ(report.value().size(), 3U);
+    for (const auto& row : report.value()) {
+        std::printf("  [informe] %s  %-3s  motivo: %s\n", row.startedAt.c_str(),
+                    row.verdict.c_str(), row.reason.empty() ? "(pasó)" : row.reason.c_str());
+    }
+
+    // La que pasó no lleva motivo: un informe que le pone un motivo a cada fila
+    // no distingue las buenas de las malas de un vistazo.
+    EXPECT_TRUE(report.value()[0].reason.empty());
+
+    // El rechazo por herramienta se nombra CON LA HERRAMIENTA, no con su
+    // detalle. El detalle lleva la medida —«44,0 mm»— y con eso cada rechazo
+    // sería un motivo distinto y no se agruparían nunca.
+    EXPECT_EQ(report.value()[1].reason, "diámetro exterior");
+    EXPECT_EQ(report.value()[1].reason.find("44"), std::string::npos)
+        << "el motivo lleva la medida dentro, así que dos rechazos de la misma "
+           "herramienta contarían como motivos distintos";
+
+    // Y el de apariencia se dice en castellano, no «embedding»: un informe que
+    // pone el nombre interno obliga a saber qué es eso para leerlo.
+    EXPECT_EQ(report.value()[2].reason, "apariencia");
+}
+
+// Y el informe completo, armado sobre esos datos: el resumen contesta las tres
+// preguntas sin que nadie tenga que leer las filas.
+TEST_F(EngineTest, TheShiftReportAnswersTheThreeQuestions) {
+    auto pieceId = pieces_->createPiece("brida");
+    ASSERT_TRUE(pieceId.isOk());
+
+    inspection::ToolConfig caliper;
+    caliper.type = inspection::ToolType::Caliper;
+    caliper.name = "diámetro exterior";
+    caliper.geometryJson = inspection::toJson(
+        inspection::ToolGeometry(inspection::CaliperGeometry{{0, 0}, {40, 0}, 6.0F}));
+    const auto toolId = tools_->save(pieceId.value(), caliper);
+    ASSERT_TRUE(toolId.isOk());
+
+    inspection::ToolRunResult bad;
+    bad.toolId = toolId.value();
+    bad.name = caliper.name;
+    bad.ok = false;
+    domain::InspectionVerdict good;
+    good.ok = true;
+    domain::InspectionVerdict ng;
+    ng.ok = false;
+
+    for (int i = 0; i < 7; ++i) {
+        ASSERT_TRUE(history_->saveInspection(pieceId.value(), 1, good, {}, {}).isOk());
+    }
+    for (int i = 0; i < 3; ++i) {
+        ASSERT_TRUE(history_->saveInspection(pieceId.value(), 1, ng, {bad}, {}).isOk());
+    }
+
+    auto report = history_->reportForPiece(pieceId.value());
+    ASSERT_TRUE(report.isOk());
+    std::vector<domain::InspectionRow> rows;
+    for (const auto& entry : report.value()) {
+        domain::InspectionRow row;
+        row.startedAt = entry.startedAt;
+        row.piece = "brida";
+        row.ok = entry.verdict == "OK";
+        row.similarity = entry.similarity;
+        row.reason = entry.reason;
+        rows.push_back(std::move(row));
+    }
+    const auto summary = domain::summarise(rows);
+    const std::string text = domain::shiftReportText(rows, summary);
+    std::printf("  [informe] parte del turno:\n%s", text.c_str());
+
+    EXPECT_EQ(summary.total, 10);
+    EXPECT_EQ(summary.ngCount, 3);
+    ASSERT_FALSE(summary.reasons.empty());
+    EXPECT_EQ(summary.reasons.front().reason, "diámetro exterior");
+    EXPECT_EQ(summary.reasons.front().count, 3)
+        << "los tres rechazos de la misma herramienta no se agruparon: el informe diría "
+           "«1 vez cada uno» y no señalaría nada";
+    EXPECT_NE(text.find("diámetro exterior"), std::string::npos);
 }

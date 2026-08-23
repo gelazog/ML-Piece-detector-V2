@@ -173,6 +173,91 @@ InspectionRepository::recentForPiece(std::int64_t pieceId, int limit) {
     return ResultT::ok(std::move(entries));
 }
 
+core::Result<std::vector<InspectionRepository::ReportRow>>
+InspectionRepository::reportForPiece(std::int64_t pieceId, int limit) {
+    // Los motivos se traen en la MISMA consulta con dos subconsultas. Hacerlo
+    // con una consulta por inspección serían cientos de idas y vueltas a la base
+    // por cada informe, y un informe de turno se pide con el turno acabando.
+    auto stmt = db_.prepare(
+        "SELECT h.started_at, h.verdict, h.similarity, h.reference_version, "
+        "  COALESCE((SELECT group_concat(DISTINCT t.name) FROM ToolResults tr "
+        "            JOIN InspectionTools t ON t.id = tr.tool_id "
+        "            WHERE tr.inspection_id = h.id AND tr.ok = 0), ''), "
+        "  COALESCE((SELECT group_concat(DISTINCT ir.kind) FROM InspectionResults ir "
+        "            WHERE ir.inspection_id = h.id AND ir.ok = 0 "
+        "              AND ir.kind <> 'final'), '') "
+        "FROM InspectionHistory h WHERE h.piece_id = ? "
+        "ORDER BY h.started_at LIMIT ?;");
+    if (!stmt.isOk()) {
+        return core::Result<std::vector<ReportRow>>::err(stmt.error().message);
+    }
+    auto& s = stmt.value();
+    if (auto b = s.bindInt(1, pieceId); !b.isOk()) {
+        return core::Result<std::vector<ReportRow>>::err(b.error().message);
+    }
+    if (auto b = s.bindInt(2, limit); !b.isOk()) {
+        return core::Result<std::vector<ReportRow>>::err(b.error().message);
+    }
+
+    // Los tipos internos, dichos como los diría un operador. Un informe que pone
+    // «embedding» obliga a saber qué es eso para leerlo.
+    const auto sayKind = [](const std::string& kind) -> std::string {
+        if (kind == "embedding") {
+            return "apariencia";
+        }
+        if (kind == "count") {
+            return "recuento de piezas";
+        }
+        if (kind == "position") {
+            return "posición en el tablero";
+        }
+        return kind;
+    };
+
+    std::vector<ReportRow> rows;
+    while (true) {
+        auto step = s.step();
+        if (!step.isOk()) {
+            return core::Result<std::vector<ReportRow>>::err(step.error().message);
+        }
+        if (!step.value()) {
+            break;
+        }
+        ReportRow row;
+        row.startedAt = s.columnText(0);
+        row.verdict = s.columnText(1);
+        row.similarity = s.columnDouble(2);
+        row.referenceVersion = static_cast<int>(s.columnInt(3));
+        const std::string tools = s.columnText(4);
+        if (!tools.empty()) {
+            row.reason = tools;
+        } else {
+            std::string kinds = s.columnText(5);
+            std::string said;
+            std::size_t start = 0;
+            while (start <= kinds.size()) {
+                const std::size_t comma = kinds.find(',', start);
+                const std::string one =
+                    kinds.substr(start, comma == std::string::npos ? std::string::npos
+                                                                   : comma - start);
+                if (!one.empty()) {
+                    if (!said.empty()) {
+                        said += ", ";
+                    }
+                    said += sayKind(one);
+                }
+                if (comma == std::string::npos) {
+                    break;
+                }
+                start = comma + 1;
+            }
+            row.reason = said;
+        }
+        rows.push_back(std::move(row));
+    }
+    return core::Result<std::vector<ReportRow>>::ok(std::move(rows));
+}
+
 core::Result<InspectionRepository::DayStats> InspectionRepository::todayStats(
     std::int64_t pieceId) {
     using ResultT = core::Result<DayStats>;

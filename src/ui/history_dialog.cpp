@@ -8,6 +8,9 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QMessageBox>
+#include <vector>
+#include "domain/shift_report.h"
+#include <QSaveFile>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTableWidget>
@@ -20,16 +23,9 @@
 
 namespace pci::ui {
 
-namespace {
-
-// Comilla CSV: encierra en comillas y duplica las internas.
-QString csvField(const QString& value) {
-    QString escaped = value;
-    escaped.replace(QChar('"'), QStringLiteral("\"\""));
-    return QChar('"') + escaped + QChar('"');
-}
-
-}  // namespace
+// El escapado del CSV ya no vive aquí: lo hace `domain/shift_report.cpp`, que es
+// quien arma el fichero. Tener dos versiones del mismo escapado es tener dos
+// sitios donde una comilla puede romper un informe.
 
 HistoryDialog::HistoryDialog(repositories::InspectionRepository* inspections,
                              repositories::PieceRepository* pieces,
@@ -157,35 +153,87 @@ void HistoryDialog::reload() {
     }
 }
 
+// EXPORTAR EL TURNO, no la tabla.
+//
+// Antes esto escribía las filas que se veían en pantalla: fecha, veredicto,
+// similitud y versión. Es una lista, y una lista de cuatrocientas filas contesta
+// «qué pasó exactamente a las 14:32» —que casi nunca se pregunta— y esconde las
+// tres que sí: cuántas van, QUÉ está fallando y DESDE CUÁNDO.
+//
+// Ahora se pide al historial las inspecciones CON SU MOTIVO y se arma el informe
+// de `domain/shift_report.h`, que pone el resumen arriba y las filas debajo. Las
+// filas siguen estando enteras: quien quiera cruzarlas con otra cosa las
+// necesita.
 void HistoryDialog::exportCsv() {
-    if (table_->rowCount() == 0) {
+    const std::int64_t pieceId = currentPieceId();
+    if (pieceId < 0 || inspections_ == nullptr) {
         QMessageBox::information(this, tr("Sin datos"),
-                                 tr("No hay inspecciones que exportar."));
+                                 tr("No hay ninguna pieza seleccionada."));
         return;
     }
+    auto listed = inspections_->reportForPiece(pieceId);
+    if (!listed.isOk()) {
+        QMessageBox::warning(this, tr("No se pudo leer el historial"),
+                             QString::fromStdString(listed.error().message));
+        return;
+    }
+    if (listed.value().empty()) {
+        QMessageBox::information(this, tr("Sin datos"),
+                                 tr("Esta pieza no tiene ninguna inspección registrada."));
+        return;
+    }
+
+    const QString pieceName =
+        pieceCombo_ != nullptr ? pieceCombo_->currentText() : QString();
+    std::vector<domain::InspectionRow> rows;
+    rows.reserve(listed.value().size());
+    for (const auto& entry : listed.value()) {
+        domain::InspectionRow row;
+        row.startedAt = entry.startedAt;
+        row.piece = pieceName.toStdString();
+        row.ok = entry.verdict == "OK";
+        row.similarity = entry.similarity;
+        row.referenceVersion = entry.referenceVersion;
+        row.reason = entry.reason;
+        rows.push_back(std::move(row));
+    }
+    const auto summary = domain::summarise(rows);
+
     const QString path = QFileDialog::getSaveFileName(
-        this, tr("Exportar historial"), QStringLiteral("historial.csv"),
+        this, tr("Exportar informe del turno"), QStringLiteral("informe_turno.csv"),
         tr("CSV (*.csv)"));
     if (path.isEmpty()) {
         return;
     }
-    QFile file(path);
+    // QSaveFile y no QFile: un informe a medio escribir porque se llenó el disco
+    // o se quitó el pendrive parece un informe completo, y quien lo abra leerá
+    // un turno truncado sin saberlo.
+    QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         QMessageBox::warning(this, tr("No se pudo escribir"),
                              tr("No se pudo abrir el archivo para escribir."));
         return;
     }
-    QTextStream out(&file);
-    out << "fecha,veredicto,similitud,version_ref\n";
-    for (int row = 0; row < table_->rowCount(); ++row) {
-        out << csvField(table_->item(row, 0)->text()) << ','
-            << csvField(table_->item(row, 1)->text()) << ','
-            << csvField(table_->item(row, 2)->text()) << ','
-            << csvField(table_->item(row, 3)->text()) << '\n';
+    {
+        QTextStream out(&file);
+        out << QString::fromStdString(domain::shiftReportCsv(rows, summary));
     }
-    file.close();
-    QMessageBox::information(this, tr("Exportado"),
-                             tr("Historial exportado (%1 filas).").arg(table_->rowCount()));
+    if (!file.commit()) {
+        QMessageBox::warning(this, tr("No se pudo escribir"),
+                             tr("El archivo no se pudo guardar del todo, así que no se ha "
+                                "dejado a medias."));
+        return;
+    }
+
+    // Y se le enseña el resumen por pantalla, que es lo que iba a mirar de todas
+    // formas antes de abrir el fichero.
+    QMessageBox done(QMessageBox::Information, tr("Informe del turno"),
+                     QString::fromStdString(domain::shiftReportText(rows, summary)),
+                     QMessageBox::Ok, this);
+    done.setInformativeText(tr("Guardado en %1 — con las %2 inspecciones y sus motivos.")
+                                .arg(path)
+                                .arg(rows.size()));
+    done.exec();
 }
 
 }  // namespace pci::ui

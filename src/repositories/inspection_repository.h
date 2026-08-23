@@ -34,6 +34,28 @@ public:
     core::Result<std::vector<HistoryEntry>> recentForPiece(std::int64_t pieceId,
                                                            int limit = 20);
 
+    // Las inspecciones de una pieza con el MOTIVO de cada rechazo, para el
+    // informe de turno (`domain/shift_report.h`).
+    //
+    // No vale con `recentForPiece`: aquello devuelve fecha y veredicto, y un
+    // turno con 47 rechazos es entonces un número. El motivo es lo que lo
+    // convierte en «31 de los 47 fueron por el diámetro exterior», que ya dice
+    // qué hay que ir a mirar.
+    //
+    // El motivo sale del NOMBRE de la herramienta que falló, no de su detalle:
+    // el detalle lleva la medida concreta —«12,4 mm»— y con eso cada rechazo
+    // sería un motivo distinto y no se agruparían nunca. Sin herramientas
+    // fallidas, se usa el tipo de comprobación que falló.
+    struct ReportRow {
+        std::string startedAt;
+        std::string verdict;
+        double similarity = 0.0;
+        int referenceVersion = 0;
+        std::string reason;  // vacío si pasó
+    };
+    core::Result<std::vector<ReportRow>> reportForPiece(std::int64_t pieceId,
+                                                        int limit = 2000);
+
     struct DayStats {
         int total = 0;
         int okCount = 0;

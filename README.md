@@ -1164,9 +1164,28 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    Todo queda en el historial. Se puede prender/apagar cuando quieras con la
    pieza seleccionada. **Inspección ▸ Ver historial…** abre la tabla de
    inspecciones recientes (fecha, veredicto, similitud, versión de referencia)
-   por pieza, con la cantidad a mostrar ajustable y **exportación a CSV**, más
-   un **gráfico de tendencia OK/NG por día** (barras dibujadas con QPainter,
-   últimos 30 días).
+   por pieza, con la cantidad a mostrar ajustable, más un **gráfico de tendencia
+   OK/NG por día** (barras dibujadas con QPainter, últimos 30 días).
+
+   **Exportar el informe del turno.** El botón de exportar no saca la lista que
+   se ve en pantalla, sino un informe: un turno son cientos de inspecciones, y
+   una hoja con cuatrocientas filas contesta «qué pasó exactamente a las 14:32»
+   —que casi nunca se pregunta— y esconde las tres que sí:
+
+   - **¿Cuántas van?** Total, correctas, rechazadas y rendimiento.
+   - **¿Qué está fallando?** Los motivos contados y ordenados: *«3 × diámetro
+     exterior»*. Es lo que convierte 47 rechazos en algo que se puede ir a
+     mirar. El motivo es el **nombre de la herramienta** que falló, no su
+     detalle: si llevara la medida dentro, cada rechazo sería un motivo distinto
+     y no se agruparía ninguno.
+   - **¿Desde cuándo?** Un desglose por horas — *09h: 0 de 12; 10h: 1 de 11;
+     11h: 10 de 11* — que enseña de un vistazo cuándo empezó a torcerse. Una
+     lista ordenada por fecha no lo contesta: hay que leerla entera llevando la
+     cuenta a mano.
+
+   El resumen va **arriba** del fichero y las filas enteras debajo, para quien
+   quiera cruzarlas con otra cosa. Al terminar se enseña el mismo resumen en
+   pantalla, en texto corto para pegar en un parte o un correo.
 8. **Guardar plantilla (Ctrl+S)**: las herramientas que dibujas o ajustas en
    vivo se guardan en la plantilla activa de la pieza **sin tener que volver a
    registrarla** — pulsa **Guardar plantilla** o `Ctrl+S`. Antes solo se
