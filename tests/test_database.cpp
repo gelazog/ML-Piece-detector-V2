@@ -103,10 +103,78 @@ TEST_F(DatabaseTest, MigratesEmptyDatabaseToCurrentVersion) {
     EXPECT_EQ(tables.value().columnInt(0), 9);
 }
 
+// MIGRAR DOS VECES NO PUEDE CAMBIAR NADA.
+//
+// La versión anterior de esta prueba migraba, cerraba y volvía a migrar, y su
+// comentario decía «no debe fallar ni duplicar nada». Lo primero sí se
+// comprobaba —el ayudante del banco lo exige—; lo segundo NO lo comprobaba
+// nadie. O sea que el nombre prometía idempotencia y lo que se verificaba era
+// «no dio error», que es bastante menos.
+//
+// Importa ahora más que antes: la cadena va por once migraciones y la última
+// añadió una columna. Una migración escrita a medias —un ALTER sin guarda, un
+// INSERT de datos por defecto— puede no dar error la segunda vez y aun así
+// dejar el esquema o los datos distintos.
 TEST_F(DatabaseTest, MigrateIsIdempotentAcrossReopen) {
-    openAndMigrate();
+    const auto readOne = [](database::Db& db, const std::string& sql) {
+        auto stmt = db.prepare(sql);
+        EXPECT_TRUE(stmt.isOk()) << (stmt.isOk() ? "" : stmt.error().message);
+        if (!stmt.isOk()) {
+            return std::string();
+        }
+        auto row = stmt.value().step();
+        EXPECT_TRUE(row.isOk());
+        if (!row.isOk() || !row.value()) {
+            return std::string();
+        }
+        return stmt.value().columnText(0);
+    };
+    // El esquema entero como texto: tablas, índices y sus definiciones.
+    const std::string kSchemaQuery =
+        "SELECT COALESCE(group_concat(sql, char(10)), '') FROM sqlite_master "
+        "WHERE sql IS NOT NULL ORDER BY name;";
+    const std::string kVersionQuery = "PRAGMA user_version;";
+
+    auto& first = openAndMigrate();
+    const std::string schemaBefore = readOne(first, kSchemaQuery);
+    const std::string versionBefore = readOne(first, kVersionQuery);
+    ASSERT_FALSE(schemaBefore.empty()) << "no se pudo leer el esquema: la comprobación "
+                                          "no estaría comprobando nada";
+
+    // Y DATOS DENTRO, que es la mitad que la versión anterior no miraba. Un
+    // esquema idéntico con las filas duplicadas sigue siendo una migración rota.
+    repositories::PieceRepository pieces(first);
+    const auto pieceId = pieces.createPiece("brida");
+    ASSERT_TRUE(pieceId.isOk());
+    ml::Reference reference;
+    reference.mean = {1.0F, 2.0F};
+    reference.stddev = {0.1F, 0.1F};
+    reference.sampleCount = 30;
+    reference.simMean = 0.99;
+    ASSERT_TRUE(pieces.saveReference(pieceId.value(), reference).isOk());
+    ASSERT_TRUE(pieces.saveReference(pieceId.value(), reference, "pulido").isOk());
+
     db_.reset();
-    openAndMigrate();  // no debe fallar ni duplicar nada
+    auto& second = openAndMigrate();
+
+    EXPECT_EQ(readOne(second, kSchemaQuery), schemaBefore)
+        << "migrar sobre una base ya migrada cambió el esquema";
+    EXPECT_EQ(readOne(second, kVersionQuery), versionBefore)
+        << "la versión del esquema se movió al volver a migrar";
+
+    repositories::PieceRepository again(second);
+    auto listed = again.listPieces();
+    ASSERT_TRUE(listed.isOk());
+    EXPECT_EQ(listed.value().size(), 1U)
+        << "volver a migrar duplicó las piezas, que es justo lo que el nombre de esta "
+           "prueba prometía descartar";
+    auto variants = again.listVariants(pieceId.value());
+    ASSERT_TRUE(variants.isOk());
+    EXPECT_EQ(variants.value().size(), 2U)
+        << "las variantes no sobrevivieron a volver a migrar, o se duplicaron";
+    auto stored = again.loadLatestReference(pieceId.value(), "pulido");
+    ASSERT_TRUE(stored.isOk()) << "la referencia de una variante se perdió al migrar";
+    EXPECT_FLOAT_EQ(stored.value().reference.mean[0], 1.0F);
 }
 
 TEST_F(DatabaseTest, CorruptFileFailsControlled) {
