@@ -30,6 +30,7 @@
 #include "ui/app_repositories.h"
 #include "repositories/piece_repository.h"
 #include "vision/board_frame.h"
+#include "vision/lens_calibration.h"
 #include "vision/orientation_anchor.h"
 
 class QAction;
@@ -89,7 +90,7 @@ private slots:
     void refreshCameras();
     void onCamerasEnumerated();
     void onStartStopClicked();
-    void onFrame(const QImage& frame);
+    void onFrame(const QImage& rawFrame);
     void onStats(double fps, int width, int height);
     void updateRateReadout();
     void onCameraError(const QString& message);
@@ -376,6 +377,24 @@ private:
     QAction* brushStraightAction_ = nullptr;
     QAction* brushSnapAction_ = nullptr;
     QAction* viewEnhanceAction_ = nullptr;
+
+    // CORRECCION DE LA DISTORSION DE LA LENTE.
+    //
+    // A diferencia del realce de vista, esto SI cambia lo que se mide, y a
+    // proposito: es una correccion geometrica del fotograma, no una ayuda para
+    // mirarlo. Toda pieza ya registrada tiene sus tolerancias ajustadas contra
+    // el borde de ANTES, asi que encender esto mueve todas sus cotas a la vez y
+    // hay que volver a mirarlas. Por eso es una decision con aviso, y no algo
+    // que se aplique solo porque haya un modelo guardado.
+    //
+    // Medido: con una lente de gama de consumo, la misma pieza medida en una
+    // esquina salia un 18,5 % mas pequeña que en el centro.
+    QAction* lensCorrectionAction_ = nullptr;
+    vision::LensCorrector lensCorrector_;
+    bool lensCorrectionOn_ = false;
+    class LensCalibrationDialog* lensDialog_ = nullptr;
+    void onCalibrateLensClicked();
+    void applyLensCalibration(const vision::LensCalibration& calibration, bool enable);
     void updateEdgeBrushAvailability();
     void applyBrushRadius(int radiusPx, bool fromCanvas);
     void onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& forceBackground);

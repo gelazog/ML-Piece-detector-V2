@@ -71,6 +71,7 @@ gtest_discover_tests(pci_tests DISCOVERY_MODE PRE_TEST)
 # y las señales encoladas del hilo del vídeo no llegan sin él.
 add_executable(pci_gui_tests
   test_canvas_gestures.cpp
+  test_lens_wizard.cpp
   test_readme_paths.cpp
   test_configure_dialog.cpp
   test_frame_sources.cpp

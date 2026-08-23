@@ -57,6 +57,7 @@
 #include "ui/detection_page.h"
 #include "ui/inspection_result_dialog.h"
 #include "ui/history_dialog.h"
+#include "ui/lens_calibration_dialog.h"
 #include "ui/piece_manager_dialog.h"
 #include "ui/setup_guide.h"
 #include "ui/measurement_mode_dialog.h"
@@ -1352,6 +1353,20 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         rulerVisible_ = repos_.settings->getInt("ruler_visible", 0).value() != 0;
         // El realce se recuerda: quien inspecciona piezas negras las inspecciona
         // todos los días, y volver a encenderlo cada mañana es un impuesto.
+        // El modelo de la lente que quedara guardado. Se carga SIEMPRE; que se
+        // aplique o no es otra cosa, y va en su propio ajuste.
+        if (auto stored = repos_.settings->getString("lens_model", ""); stored.isOk()) {
+            if (auto model = vision::parseCalibration(stored.value()); model.has_value()) {
+                lensCorrector_ = vision::LensCorrector(*model);
+            }
+        }
+        const bool lensOn = repos_.settings->getInt("lens_enabled", 0).value() != 0;
+        lensCorrectionOn_ = lensOn && lensCorrector_.isReady();
+        if (lensCorrectionAction_ != nullptr) {
+            lensCorrectionAction_->setEnabled(lensCorrector_.isReady());
+            const QSignalBlocker block(lensCorrectionAction_);
+            lensCorrectionAction_->setChecked(lensCorrectionOn_);
+        }
         const bool enhance = repos_.settings->getInt("view_enhance", 0).value() != 0;
         if (viewEnhanceAction_ != nullptr) {
             viewEnhanceAction_->setChecked(enhance);
@@ -1524,6 +1539,33 @@ void MainWindow::buildMenuBar() {
     auto* measureMenu = menuBar()->addMenu(tr("&Medida"));
     calibrateAction_ = measureMenu->addAction(tr("Calibrar escala (mm)…"), this,
                                              &MainWindow::onCalibrateClicked);
+    measureMenu->addSeparator();
+    measureMenu->addAction(tr("Calibrar la lente…"), this,
+                           &MainWindow::onCalibrateLensClicked);
+    lensCorrectionAction_ = measureMenu->addAction(tr("Corregir la distorsión de la lente"));
+    lensCorrectionAction_->setCheckable(true);
+    lensCorrectionAction_->setEnabled(false);  // hasta que haya un modelo
+    lensCorrectionAction_->setToolTip(
+        tr("Endereza lo que curva la lente, antes de medir.\n"
+           "\n"
+           "OJO: esto SÍ cambia las medidas, y es lo que se pretende. Una pieza ya\n"
+           "registrada tiene sus tolerancias ajustadas contra el borde de antes,\n"
+           "así que al encender esto hay que volver a mirarlas.\n"
+           "\n"
+           "Medido con una lente de gama de consumo: la misma pieza salía un 18,5 %\n"
+           "más pequeña en una esquina que en el centro."));
+    connect(lensCorrectionAction_, &QAction::toggled, this, [this](bool on) {
+        lensCorrectionOn_ = on && lensCorrector_.isReady();
+        if (repos_.settings != nullptr) {
+            repos_.settings->setInt("lens_enabled", lensCorrectionOn_ ? 1 : 0);
+        }
+        statusBar()->showMessage(
+            lensCorrectionOn_
+                ? tr("Distorsión de la lente corregida. Las medidas han cambiado: vuelve "
+                     "a comprobar las tolerancias de las piezas registradas.")
+                : tr("Corrección de la lente apagada."));
+        reanalyseCurrentFrame();
+    });
     measureMenu->addSeparator();
     auto* arucoAction = measureMenu->addAction(tr("Escala por marcador ArUco (en vivo)"));
     arucoAction->setCheckable(true);
@@ -3339,6 +3381,74 @@ void MainWindow::applyBrushRadius(int radiusPx, bool fromCanvas) {
     }
 }
 
+// El asistente de calibracion de la lente.
+//
+// Come de la camara en vivo mientras esta abierto: `onFrame` le va pasando los
+// fotogramas SIN corregir, que son los que hay que medir. Corregirlos antes
+// seria pedirle a la lente que se mida a si misma ya enderezada.
+void MainWindow::onCalibrateLensClicked() {
+    if (lensDialog_ != nullptr) {
+        lensDialog_->raise();
+        lensDialog_->activateWindow();
+        return;
+    }
+    auto* dialog = new LensCalibrationDialog(this);
+    lensDialog_ = dialog;
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &QObject::destroyed, this, [this] { lensDialog_ = nullptr; });
+    connect(dialog, &QDialog::accepted, this, [this, dialog] {
+        if (dialog->result().has_value()) {
+            applyLensCalibration(*dialog->result(), true);
+        }
+    });
+    // Si ya hay una imagen parada —una foto o un fichero en pausa—, el asistente
+    // tiene que verla igual: sin esto solo serviria con la camara en marcha.
+    if (!lastFrame_.isNull()) {
+        dialog->offerFrame(lastFrame_);
+    }
+    dialog->show();
+}
+
+// Guardar el modelo y, si se pide, encenderlo.
+//
+// Se GUARDA aunque no se encienda: calibrar cuesta un rato con un tablero en la
+// mano, y perder ese trabajo por no querer mover las cotas hoy seria un castigo
+// absurdo.
+void MainWindow::applyLensCalibration(const vision::LensCalibration& calibration,
+                                      bool enable) {
+    lensCorrector_ = vision::LensCorrector(calibration);
+    if (repos_.settings != nullptr) {
+        repos_.settings->setString("lens_model", vision::serializeCalibration(calibration));
+    }
+    const double worst = vision::worstDisplacementPx(calibration);
+    if (lensCorrectionAction_ != nullptr) {
+        lensCorrectionAction_->setEnabled(lensCorrector_.isReady());
+        // Se dice en PIXELES y no en coeficientes: «tu lente desplaza hasta 34 px
+        // en las esquinas» se entiende, y «k1 = -0,2478» no.
+        if (vision::distortionIsNegligible(calibration)) {
+            statusBar()->showMessage(
+                tr("Lente calibrada: desplaza %1 px como mucho, así que corregirla no "
+                   "cambiaría ninguna medida. Se guarda por si cambias de cámara.")
+                    .arg(worst, 0, 'f', 1));
+            enable = false;
+        } else {
+            statusBar()->showMessage(
+                tr("Lente calibrada con %1 tomas: desplaza hasta %2 px en el borde "
+                   "(error de ajuste %3 px).")
+                    .arg(calibration.views)
+                    .arg(worst, 0, 'f', 1)
+                    .arg(calibration.reprojectionError, 0, 'f', 3));
+        }
+        const QSignalBlocker block(lensCorrectionAction_);
+        lensCorrectionAction_->setChecked(enable && lensCorrector_.isReady());
+    }
+    lensCorrectionOn_ = enable && lensCorrector_.isReady();
+    if (repos_.settings != nullptr) {
+        repos_.settings->setInt("lens_enabled", lensCorrectionOn_ ? 1 : 0);
+    }
+    reanalyseCurrentFrame();
+}
+
 void MainWindow::updateEdgeBrushAvailability() {
     if (edgeBrushButton_ == nullptr) {
         return;
@@ -3539,7 +3649,25 @@ void MainWindow::onTuneDetectionFromEdge() {
                                  .arg(percent(suggestion.agreementSuggested)));
 }
 
-void MainWindow::onFrame(const QImage& frame) {
+void MainWindow::onFrame(const QImage& rawFrame) {
+    // LA LENTE SE ENDEREZA LO PRIMERO, antes de que nadie vea el fotograma.
+    //
+    // A diferencia del realce de vista —que solo toca lo que se pinta— esto
+    // tiene que llegar TAMBIEN al analisis: es una correccion geometrica, y la
+    // pieza que se mide y la que se ve tienen que ser la misma. Corregir solo
+    // una de las dos dejaria al operador señalando un borde que no esta donde
+    // el programa cree.
+    QImage frame = rawFrame;
+    if (lensCorrectionOn_ && lensCorrector_.isReady()) {
+        const cv::Mat straight = lensCorrector_.apply(camera::qImageToMat(rawFrame));
+        if (!straight.empty()) {
+            frame = camera::matToQImage(straight).copy();
+        }
+    }
+    // El asistente de calibracion, si esta abierto, come de la camara en vivo.
+    if (lensDialog_ != nullptr) {
+        lensDialog_->offerFrame(rawFrame);  // SIN corregir: es lo que hay que medir
+    }
     video_->setFrame(frame);
     // Si cambia la resolución del frame, reevaluar si la calibración sigue
     // siendo válida (D1); barato porque solo ocurre al cambiar de fuente.

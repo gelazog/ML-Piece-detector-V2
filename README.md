@@ -1012,6 +1012,23 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    **sensibilidad de anomalía (kσ)** de apariencia. Se aplican al aceptar y
    quedan guardados.
 
+   **Calibrar la lente** (menú *Medida ▸ Calibrar la lente…*): imprime un
+   tablero de ajedrez, pégalo a algo rígido y enséñaselo a la cámara desde
+   varios sitios. Toda lente curva las rectas, y con una lente corriente **la
+   misma pieza mide hasta un 18,5 % menos en una esquina que en el centro** —sin
+   que nada en pantalla diga cuál de las dos medidas es la buena.
+
+   Lo único que hay que hacer bien es **llevar el tablero a las esquinas del
+   encuadre**, no solo al centro. La ventana lleva una rejilla de nueve zonas que
+   se va poniendo verde, y no deja calibrar hasta que las cuatro esquinas estén
+   cubiertas. No es rigor de más: una calibración hecha solo por el centro parece
+   perfecta —el programa la puntúa igual de bien— y deja el borde un 35 %
+   desviado, que es peor que no corregir nada.
+
+   Una vez calibrada, se enciende y se apaga en *Medida ▸ Corregir la distorsión
+   de la lente*. **Encenderla cambia todas las medidas**, que es justo lo que se
+   pretende: si ya tienes piezas registradas, vuelve a mirar sus tolerancias.
+
    **Calibración a milímetros** (menú *Medida ▸ Calibrar escala (mm)…*): dos
    métodos —
    **A)** haz dos clics sobre una distancia real conocida (una regla, el

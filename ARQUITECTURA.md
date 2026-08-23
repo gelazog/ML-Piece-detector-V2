@@ -3551,9 +3551,18 @@ cosas está hecha; son propuestas con su contrapartida dicha en voz alta.
 2. ~~**Segmentación adaptativa** (umbral local en vez de Otsu global)~~ —
    **probado y descartado**, con las medidas más abajo, en «Lo que se probó y no
    salió».
-3. **Corrección de distorsión de lente** con un patrón de tablero de ajedrez
-   (`calibrateCamera`). Hoy no se corrige, y en lentes angulares las medidas
-   cerca del borde se estiran. Es la mejora de exactitud más seria que queda.
+3. ~~**Corrección de distorsión de lente**~~ — **hecha**. Era, en efecto, la
+   mejora de exactitud más seria que quedaba, y ahora tiene la cifra que le
+   faltaba: con una lente de gama de consumo (k1 = -0,25), la misma pieza medía
+   un **18,5 % menos** en una esquina que en el centro. Corregida, el peor error
+   por posición baja de **14,01 % a 0,11 %**.
+
+   Lo que no era evidente: **una calibración mal cubierta es peor que ninguna.**
+   Con las tomas apiñadas por el centro, el ajuste sale con un error de
+   reproyección de 0,404 px —indistinguible del de una buena— y deja el borde un
+   **34,88 %** desviado. Por eso `calibrateLens` **rechaza** una cobertura pobre
+   en vez de avisar, y por eso media ventana del asistente es una rejilla que
+   dice qué zonas del encuadre faltan por cubrir.
 4. **Subpíxel en el contorno**, no solo en las herramientas de borde: hoy el
    contorno es de resolución entera.
 
