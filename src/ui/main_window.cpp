@@ -2051,7 +2051,18 @@ void MainWindow::applyPiecesPage(PiecesPage* page) {
     if (page == nullptr) {
         return;
     }
-    expectedPieces_ = page->expectedPieces();
+    // POR LA MISMA PUERTA QUE TODO LO DEMÁS.
+    //
+    // Antes esto solo asignaba `expectedPieces_` y se olvidaba de la mitad: no
+    // tocaba la configuración del pipeline ni pedía reanalizar, así que cambiar
+    // el número en la ventana no cambiaba NADA hasta el siguiente fotograma que
+    // llegara por otro motivo — y con una imagen parada, nunca.
+    //
+    // Lo peor es por qué no saltó: `declareExpectedPieces` sí lo hacía bien, y
+    // era la que usaban las pruebas. Un camino de prueba que funciona mientras
+    // el camino de verdad no, y las dos con el mismo nombre en la cabeza de
+    // quien las escribió. Ahora hay uno solo.
+    declareExpectedPieces(page->expectedPieces());
     const std::int64_t pieceId = selectedPieceId();
     if (pieceId < 0 || repos_.pieces == nullptr) {
         statusBar()->showMessage(
@@ -5667,6 +5678,11 @@ void MainWindow::onConfigureClicked() {
         // de estado de mas abajo. El campo no se movia. Un boton que promete algo
         // y no lo hace es peor que no tenerlo: quien lo pulsa se queda creyendo
         // que el numero ya esta puesto.
+        // El número cambia en la pantalla al momento; guardarlo espera a
+        // Aceptar. Son dos cosas distintas y mezclarlas obligaría a escribir en
+        // la base por cada número intermedio.
+        connect(pieces, &PiecesPage::expectedPiecesChangedLive, this,
+                &MainWindow::declareExpectedPieces);
         connect(pieces, &PiecesPage::useDetectedRequested, this, [this, pieces] {
             pieces->setDetectedCount(lastPieceCount_);
             pieces->setExpectedPieces(lastPieceCount_);

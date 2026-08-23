@@ -62,6 +62,18 @@ signals:
     // El operador pidió rellenar el número con lo que se ve ahora.
     void useDetectedRequested();
 
+    // El número ha cambiado AHORA MISMO, sin esperar a Aceptar.
+    //
+    // Hace falta porque quien está en esta pestaña está mirando el recuento
+    // mientras mueve el campo: poner «2» y que la pantalla siga diciendo lo de
+    // antes hasta pulsar Aceptar se lee como que el ajuste no funciona.
+    //
+    // Lo que NO viaja por aquí es el guardado. Escribir en la base a cada
+    // pulsación del campo seria una fila reescrita por cada número intermedio
+    // que el operador pase de camino al que quiere. Eso sigue pasando al
+    // aceptar.
+    void expectedPiecesChangedLive(int expected);
+
 private:
     void refreshStatus();
 

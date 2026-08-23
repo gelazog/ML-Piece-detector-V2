@@ -73,6 +73,12 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
     };
     connect(manual_, &QRadioButton::toggled, this, syncEnabled);
     syncEnabled();
+
+    // El aviso en vivo va DESPUÉS de `syncEnabled`, para que montar la ventana
+    // no lo dispare: al construirla nadie ha cambiado nada todavía.
+    const auto announce = [this] { emit this->expectedPiecesChangedLive(this->expectedPieces()); };
+    connect(expected_, &QSpinBox::valueChanged, this, announce);
+    connect(manual_, &QRadioButton::toggled, this, announce);
 }
 
 PiecesPage::CountMode PiecesPage::countMode() const {

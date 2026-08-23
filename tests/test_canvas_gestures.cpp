@@ -8,6 +8,8 @@
 #include <gtest/gtest.h>
 
 #include <QApplication>
+#include <QRadioButton>
+#include <QSpinBox>
 #include <QAbstractButton>
 #include <QColor>
 #include <QComboBox>
@@ -5073,4 +5075,63 @@ TEST(PieceCountMode, DeclaringTwoPiecesWorksWithTheTwoBiggestAndSaysWhatWasLeftO
     settle(1000);
     EXPECT_TRUE(chipText().isEmpty())
         << "declarada una pieza, el recuento sigue a la vista: " << chipText().toStdString();
+}
+
+// CAMBIAR EL NÚMERO TIENE QUE VERSE AL MOMENTO.
+//
+// Esta prueba existe por un fallo que las otras no podían ver. `applyPiecesPage`
+// —el camino que recorre la ventana de verdad— asignaba el número y se olvidaba
+// de la mitad: no tocaba la configuración del pipeline ni pedía reanalizar. Con
+// una imagen parada eso significa que cambiar el número no cambiaba NADA.
+//
+// Y no saltó porque `declareExpectedPieces` sí lo hacía bien, y era la que
+// usaban las pruebas. Un camino de prueba que funciona mientras el de verdad no.
+// Ahora hay uno solo, y esto vigila la puerta por la que entra el operador.
+TEST(PieceCountMode, ChangingTheNumberIsAnnouncedImmediately) {
+    pci::ui::PiecesPage page(0);
+    std::vector<int> announced;
+    QObject::connect(&page, &pci::ui::PiecesPage::expectedPiecesChangedLive,
+                     [&announced](int value) { announced.push_back(value); });
+
+    // Construir la ventana no anuncia nada: nadie ha cambiado todavía.
+    EXPECT_TRUE(announced.empty())
+        << "la página avisa de un cambio nada más abrirse: eso reanalizaría el "
+           "fotograma sin que el operador haya tocado nada";
+
+    QSpinBox* field = nullptr;
+    QRadioButton* manual = nullptr;
+    for (auto* box : page.findChildren<QSpinBox*>()) {
+        field = box;
+    }
+    for (auto* radio : page.findChildren<QRadioButton*>()) {
+        if (radio->text().contains(QStringLiteral("Manual"))) {
+            manual = radio;
+        }
+    }
+    ASSERT_NE(field, nullptr);
+    ASSERT_NE(manual, nullptr);
+
+    // Pasar a manual ya es un cambio: de «no vigilar» a «tienen que ser N».
+    manual->setChecked(true);
+    ASSERT_FALSE(announced.empty())
+        << "elegir «manual» no avisa: la pantalla seguiría contando como en automático";
+
+    announced.clear();
+    field->setValue(4);
+    ASSERT_FALSE(announced.empty())
+        << "mover el número no avisa: el operador lo cambia mirando el recuento y el "
+           "recuento no se entera";
+    EXPECT_EQ(announced.back(), 4)
+        << "se avisa de un número distinto del que puso el operador";
+    std::printf("  [contar] al poner 4 se anuncia %d\n", announced.back());
+
+    // Y volver a automático se anuncia como 0, que es como se guarda.
+    announced.clear();
+    for (auto* radio : page.findChildren<QRadioButton*>()) {
+        if (radio->text().contains(QStringLiteral("Automática"))) {
+            radio->setChecked(true);
+        }
+    }
+    ASSERT_FALSE(announced.empty());
+    EXPECT_EQ(announced.back(), 0);
 }
