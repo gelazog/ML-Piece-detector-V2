@@ -2689,10 +2689,29 @@ void MainWindow::onCalibrateClicked() {
     if (snapshot.isNull()) {
         return;
     }
-    CalibrationDialog dialog(snapshot, calibration_, this);
+    // LA REFERENCIA QUE SE ESCRIBIÓ LA VEZ ANTERIOR.
+    //
+    // Es lo único que hay que teclear cada vez que se calibra, y era lo único
+    // que no se recordaba: el campo volvía a 100 mm aunque la regla del puesto
+    // midiera 6 pulgadas. La distancia de cámara y el FOV sí se recuperaban, lo
+    // que lo hacía aún más difícil de entender.
+    ScaleEntry last;
+    if (repos_.settings != nullptr) {
+        const double saved = repos_.settings->getDouble("scale_known_length", 0.0).value();
+        if (saved > 0.0) {
+            last.knownLength = saved;
+        }
+        last.unitIndex = repos_.settings->getInt("scale_known_unit", 0).value();
+    }
+    CalibrationDialog dialog(snapshot, calibration_, last, this);
     keepDialogSize(dialog, repos_.settings, "calibration", 1000, 640);
     if (dialog.exec() != QDialog::Accepted) {
         return;
+    }
+    if (repos_.settings != nullptr) {
+        const ScaleEntry entered = dialog.lastEntry();
+        repos_.settings->setDouble("scale_known_length", entered.knownLength);
+        repos_.settings->setInt("scale_known_unit", entered.unitIndex);
     }
     calibration_ = dialog.calibration();
     calibration_.calibratedWidth = snapshot.width();

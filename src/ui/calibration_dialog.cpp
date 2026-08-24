@@ -1,5 +1,8 @@
 #include "ui/calibration_dialog.h"
 
+#include <iterator>
+
+#include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -14,10 +17,36 @@
 
 namespace pci::ui {
 
+namespace {
+
+// LAS UNIDADES EN LAS QUE SE PUEDE DAR LA REFERENCIA.
+//
+// El campo solo aceptaba milímetros, y quien tiene delante una regla en
+// pulgadas o una marca de 5 cm tenía que convertir a mano — con lo que un
+// error de conversión se convierte en un error de escala en TODAS las medidas
+// de la pieza, y encima uno silencioso: las cotas salen, solo que mal.
+//
+// Se guarda la conversión a milímetros porque es lo que entiende el cálculo; el
+// resto de la aplicación sigue trabajando igual.
+struct KnownUnit {
+    const char* label;
+    double millimetres;
+};
+
+const KnownUnit kKnownUnits[] = {
+    {"mm", 1.0},
+    {"cm", 10.0},
+    {"m", 1000.0},
+    {"pulgadas", 25.4},
+};
+
+}  // namespace
+
 CalibrationDialog::CalibrationDialog(const QImage& snapshot,
-                                     domain::ScaleCalibration current, QWidget* parent)
+                                     domain::ScaleCalibration current, ScaleEntry last,
+                                     QWidget* parent)
     : QDialog(parent), snapshot_(snapshot), result_(current) {
-    setWindowTitle(tr("Calibración de escala (px → mm)"));
+    setWindowTitle(tr("Calibrar la escala: cuántos milímetros mide un píxel"));
     resize(1000, 640);
 
     auto* rootLayout = new QHBoxLayout(this);
@@ -49,11 +78,31 @@ CalibrationDialog::CalibrationDialog(const QImage& snapshot,
     formA->addRow(help);
     measuredLabel_ = new QLabel(tr("Distancia marcada: —"), methodA);
     formA->addRow(measuredLabel_);
-    knownMm_ = new QDoubleSpinBox(methodA);
-    knownMm_->setRange(0.1, 10000.0);
-    knownMm_->setValue(100.0);
-    knownMm_->setSuffix(QStringLiteral(" mm"));
-    formA->addRow(tr("Longitud real:"), knownMm_);
+    knownLength_ = new QDoubleSpinBox(methodA);
+    knownLength_->setRange(0.001, 100000.0);
+    knownLength_->setDecimals(3);
+    knownLength_->setValue(last.knownLength > 0.0 ? last.knownLength : 100.0);
+    knownLength_->setToolTip(
+        tr("Lo que mide DE VERDAD la distancia que acabas de marcar con los dos\n"
+           "clics. Se recuerda para la próxima vez: si el puesto tiene una regla\n"
+           "fija, se escribe una sola vez."));
+    knownUnit_ = new QComboBox(methodA);
+    for (const auto& unit : kKnownUnits) {
+        knownUnit_->addItem(QString::fromUtf8(unit.label));
+    }
+    knownUnit_->setCurrentIndex(
+        last.unitIndex >= 0 && last.unitIndex < unitCount() ? last.unitIndex : 0);
+    knownUnit_->setToolTip(
+        tr("En qué unidad estás dando la longitud. El programa la pasa a\n"
+           "milímetros por dentro; las medidas se siguen mostrando en la unidad\n"
+           "que elijas en Medida ▸ Unidad de medida.\n\n"
+           "Está aquí para que nadie tenga que convertir a mano: un error de\n"
+           "conversión aquí sale como un error en TODAS las cotas de la pieza, y\n"
+           "encima silencioso — las medidas salen, solo que mal."));
+    auto* knownRow = new QHBoxLayout();
+    knownRow->addWidget(knownLength_, 1);
+    knownRow->addWidget(knownUnit_);
+    formA->addRow(tr("Longitud real:"), knownRow);
     sideLayout->addWidget(methodA);
 
     auto* methodB = new QGroupBox(tr("Método B: distancia de cámara"), this);
@@ -100,7 +149,9 @@ CalibrationDialog::CalibrationDialog(const QImage& snapshot,
 
     connect(canvas_, &inspection::EditorCanvas::pointPicked, this,
             &CalibrationDialog::onPointPicked);
-    connect(knownMm_, &QDoubleSpinBox::valueChanged, this,
+    connect(knownUnit_, &QComboBox::currentIndexChanged, this,
+            [this](int) { onKnownLengthChanged(); });
+    connect(knownLength_, &QDoubleSpinBox::valueChanged, this,
             &CalibrationDialog::onKnownLengthChanged);
     connect(fovDeg_, &QDoubleSpinBox::valueChanged, this,
             &CalibrationDialog::onKnownLengthChanged);
@@ -151,7 +202,7 @@ void CalibrationDialog::updateFromKnownLength() {
     if (measuredPx_ <= 0.0) {
         return;
     }
-    result_ = domain::calibrationFromKnownLength(measuredPx_, knownMm_->value(),
+    result_ = domain::calibrationFromKnownLength(measuredPx_, knownLengthMm(),
                                                  snapshot_.width(), fovDeg_->value());
     showResult();
 }
@@ -179,6 +230,36 @@ void CalibrationDialog::onApply() {
     if (result_.valid()) {
         accept();
     }
+}
+
+double CalibrationDialog::millimetresPerUnit(int unitIndex) {
+    if (unitIndex < 0 || unitIndex >= unitCount()) {
+        return 1.0;
+    }
+    return kKnownUnits[static_cast<std::size_t>(unitIndex)].millimetres;
+}
+
+int CalibrationDialog::unitCount() {
+    return static_cast<int>(std::size(kKnownUnits));
+}
+
+double CalibrationDialog::knownLengthMm() const {
+    if (knownLength_ == nullptr) {
+        return 0.0;
+    }
+    const int index = knownUnit_ != nullptr ? knownUnit_->currentIndex() : 0;
+    return knownLength_->value() * millimetresPerUnit(index);
+}
+
+ScaleEntry CalibrationDialog::lastEntry() const {
+    ScaleEntry last;
+    if (knownLength_ != nullptr) {
+        last.knownLength = knownLength_->value();
+    }
+    if (knownUnit_ != nullptr) {
+        last.unitIndex = knownUnit_->currentIndex();
+    }
+    return last;
 }
 
 }  // namespace pci::ui

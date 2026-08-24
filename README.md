@@ -1048,13 +1048,20 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    **Calibración a milímetros** (menú *Medida ▸ Calibrar escala (mm)…*): dos
    métodos —
    **A)** haz dos clics sobre una distancia real conocida (una regla, el
-   diámetro de una moneda) y escribe los mm: la escala se calcula y además se
+   diámetro de una moneda) y escribe cuánto mide **en mm, cm, m o pulgadas**
+   —la unidad se elige al lado del campo, para que nadie tenga que convertir
+   de cabeza: un error de conversión ahí no sale como un error, sale como cotas
+   bien formateadas y todas mal—. La escala se calcula y además se
    **estima la distancia de la cámara a la superficie**; **B)** escribe la
    distancia cámara→superficie y el FOV horizontal de tu cámara (webcams:
    55–70°) y la escala sale del modelo pinhole. Con la escala calibrada,
    todas las medidas se muestran en mm además de px (al dibujar, en Probar y
    en los reportes de inspección). La escala queda guardada y vale mientras
    la cámara no cambie de altura; las tolerancias internas siguen en px.
+   **La longitud y su unidad se recuerdan** de una calibración a la siguiente:
+   es lo único que hay que teclear cada vez, y era lo único que volvía al
+   valor de fábrica mientras la distancia de cámara y el FOV sí se recuperaban.
+   Si el puesto tiene una regla fija, se escribe una sola vez.
    La calibración se **sella con la cámara y la resolución** en que se hizo: si
    cambias de cámara o de resolución, la barra de estado avisa **«⚠ Calibración
    obsoleta»** en lugar de mostrar milímetros silenciosamente equivocados —
