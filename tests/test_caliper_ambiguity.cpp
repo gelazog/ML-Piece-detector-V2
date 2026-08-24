@@ -18,17 +18,29 @@
 // buena dar NG cada dos ciclos sin nada que lo explique.
 //
 // La herramienta no puede saber cuál de los dos quería el operador: la silueta
-// y el taladro son cotas legítimas y sólo él lo sabe. Pero SÍ puede saber que
-// su propia elección fue una moneda al aire, y eso es lo que se comprueba aquí.
+// y el taladro son cotas legítimas y sólo él lo sabe. Pero SÍ puede saber que su
+// lectura no se sostiene, y eso es lo que se comprueba aquí.
+//
+// LA INESTABILIDAD SE MIDE, NO SE INFIERE. La primera versión la deducía —«si
+// dos pares de bordes puntean parecido, esto es inestable»— y medido sobre las
+// fotos reales rechazaba el 53 % de lo que antes se aceptaba: 61 falsas alarmas
+// de 136, y encima se le escapaban 3 lecturas que SÍ saltaban. Peor en las dos
+// direcciones.
+//
+// Repetir la medida con la línea corrida un tercio de píxel y mirar si salta
+// marca 14 de 136 (el 10 %), y son exactamente las que de verdad saltarían.
 
 #include <gtest/gtest.h>
 
 #include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
 
 #include <cstdio>
 
 #include "inspection_editor/execution/tool_executor.h"
 #include "inspection_editor/tools/tool_geometry.h"
+#include <filesystem>
+#include "vision/pipeline.h"
 #include "synthetic_scenes.h"
 
 using namespace pci;
@@ -74,59 +86,85 @@ TEST(CaliperAmbiguity, ASingleFeatureIsMeasuredAndAcceptedAsBefore) {
         << result.detail;
 }
 
-TEST(CaliperAmbiguity, TwoFeaturesOfSimilarStrengthAreNotSilentlyResolved) {
-    // Una barra con un hueco dentro: la línea cruza la silueta Y el hueco, y
-    // los cuatro bordes marcan parecido porque el contraste es el mismo.
-    //
-    // Cuál de los dos pares gane no lo puede decidir la herramienta —las dos
-    // cotas son legítimas— pero tampoco puede fingir que lo ha decidido.
-    cv::Mat scene(300, 500, CV_8UC1, cv::Scalar(kSceneBackground));
-    cv::rectangle(scene, cv::Rect(140, 80, 220, 140), cv::Scalar(kScenePiece), cv::FILLED,
-                  cv::LINE_8);
-    // El hueco, del color del fondo: mismos saltos de gris que la silueta.
-    cv::rectangle(scene, cv::Rect(225, 120, 50, 60), cv::Scalar(kSceneBackground),
-                  cv::FILLED, cv::LINE_8);
+// LA MITAD «que el aviso SÍ salte» VA SOBRE LA FOTO REAL, y no sobre una figura
+// dibujada. Por la misma razón que en la comprobación de umbral: una escena de
+// rellenos planos NO puede reproducir el fallo.
+//
+// Se intentó: una barra con un hueco dentro, cuatro bordes, dos pares válidos.
+// Con el criterio deducido saltaba; con el medido no, **y con razón** — en esa
+// imagen la lectura da 85,00 px y no se mueve al correr la línea, porque los
+// bordes son escalones perfectos. No hay nada inestable que detectar.
+//
+// La inestabilidad necesita el continuo de grises que tiene una foto y no un
+// `fillRect`: es justo lo que hace que el ganador cambie con medio píxel.
+// Forzarla en una figura dibujada sería ajustar la escena hasta que la prueba
+// pase, que es fabricar la respuesta.
 
-    const auto result = measure(scene, {250.0F, 150.0F}, 200.0F);
-    std::printf("  [calibre] barra con hueco: %.2f px | %s | %s\n", result.measured,
-                result.ok ? "OK" : "no", result.detail.c_str());
+TEST(CaliperAmbiguity, TheRealNutThatFlippedIsCaught) {
+    const std::filesystem::path dir("C:/Users/furro/Pictures/IMG-MC");
+    std::error_code ec;
+    if (!std::filesystem::exists(dir, ec)) {
+        GTEST_SKIP() << "las imágenes del usuario no están en esta máquina";
+    }
+    const cv::Mat gray =
+        cv::imread((dir / "Producto_Tuerca_Liv_02.jpg").string(), cv::IMREAD_GRAYSCALE);
+    if (gray.empty()) {
+        GTEST_SKIP() << "no se pudo leer la tuerca";
+    }
+    auto all = vision::analyzeFrames(gray, {});
+    ASSERT_TRUE(all.isOk());
+    ASSERT_FALSE(all.value().empty());
+    const auto& piece = all.value().front();
+    const cv::Rect box = cv::boundingRect(piece.contour.points);
 
-    // LO QUE HAY QUE EXIGIR ES QUE NO LO DÉ POR BUENO, no un número concreto.
-    //
-    // La primera versión de esta prueba exigía que midiera 220 (la silueta) o 50
-    // (el hueco), y salió 85. No era un fallo del código: con cuatro bordes hay
-    // MÁS de dos pares válidos, y 85 es el borde izquierdo de la barra con el
-    // izquierdo del hueco — subida y bajada, par legítimo. Mi premisa de «hay
-    // dos rasgos» era demasiado simple.
-    //
-    // Y ahí está el punto: **cuál de todos esos pares gana no lo puede decidir
-    // la herramienta**, porque todos son geométricamente válidos y sólo el
-    // operador sabe cuál quiso trazar. Lo único exigible es que no finja
-    // haberlo decidido.
-    EXPECT_FALSE(result.ok)
-        << "da por buena una lectura entre varios pares de bordes que puntean "
-           "parecido: ese número salta de un rasgo a otro con medio píxel. Midió "
-        << result.measured << " px";
-    EXPECT_NE(result.detail.find("AMBIGUO"), std::string::npos)
-        << "lo rechaza sin decir por qué: " << result.detail;
-    // Y el aviso nombra LAS DOS candidatas, que es lo que permite al operador
-    // saber cuál quería y acortar la línea en consecuencia.
-    EXPECT_NE(result.detail.find("px y "), std::string::npos)
-        << "el aviso no dice entre qué dos cotas está dudando: " << result.detail;
+    // La colocación exacta que destapó el biestable: una línea que cruza la
+    // tuerca por su centro, y por tanto corta las caras exteriores Y el taladro.
+    const float half = static_cast<float>(box.width) * 0.6F;
+    inspection::ToolConfig config;
+    config.type = inspection::ToolType::Caliper;
+    config.name = "ancho";
+    config.geometryJson = inspection::toJson(inspection::ToolGeometry(
+        inspection::CaliperGeometry{{-half, 0.0F}, {half, 0.0F}, 12.0F}));
+
+    const auto results = inspection::runTools(gray, piece.fixture, {config}, 0.0,
+                                              inspection::LengthUnit::Pixels);
+    ASSERT_FALSE(results.empty());
+    std::printf("  [calibre] tuerca real: %.2f px | %s\n",
+                results.front().measured, results.front().detail.c_str());
+
+    EXPECT_FALSE(results.front().ok)
+        << "da por buena la lectura que salta entre 22,61 y 227,81 px con cuarto de "
+           "píxel de desplazamiento";
+    EXPECT_NE(results.front().detail.find("INESTABLE"), std::string::npos)
+        << "la rechaza sin decir por qué: " << results.front().detail;
+    // Y dice ENTRE QUÉ VALORES oscila, que es lo que permite reconocer los dos
+    // rasgos y decidir cuál se quería.
+    EXPECT_NE(results.front().detail.find(" y "), std::string::npos)
+        << "no dice el rango: " << results.front().detail;
 }
 
-TEST(CaliperAmbiguity, TheWarningNamesWhatToDoAboutIt) {
-    // Un aviso que dice «ambiguo» y nada más deja al operador igual de atascado.
+TEST(CaliperAmbiguity, StableReadingsAreStillAccepted) {
+    // El contrapeso de la prueba de arriba, y la que decide si la herramienta
+    // sigue siendo usable: medido sobre las fotos reales con 136 colocaciones,
+    // el criterio rechaza el 10 %. El criterio deducido que había antes
+    // rechazaba el 53 %, y un aviso que salta una de cada dos veces se apaga.
+    //
+    // Una barra sola no puede ser inestable: un solo par de bordes.
     cv::Mat scene(300, 500, CV_8UC1, cv::Scalar(kSceneBackground));
-    cv::rectangle(scene, cv::Rect(140, 80, 220, 140), cv::Scalar(kScenePiece), cv::FILLED,
+    cv::rectangle(scene, cv::Rect(180, 80, 140, 140), cv::Scalar(kScenePiece), cv::FILLED,
                   cv::LINE_8);
-    cv::rectangle(scene, cv::Rect(225, 120, 50, 60), cv::Scalar(kSceneBackground),
-                  cv::FILLED, cv::LINE_8);
-    const auto result = measure(scene, {250.0F, 150.0F}, 200.0F);
-    if (result.ok) {
-        GTEST_SKIP() << "esta escena no resulta ambigua; el texto se comprueba en la "
-                        "prueba de la imagen real";
+    for (float y : {-40.0F, -20.0F, 0.0F, 20.0F, 40.0F}) {
+        const vision::Fixture fixture{{250.0F, 150.0F}, 0.0};
+        inspection::ToolConfig config;
+        config.type = inspection::ToolType::Caliper;
+        config.name = "ancho";
+        config.geometryJson = inspection::toJson(inspection::ToolGeometry(
+            inspection::CaliperGeometry{{-200.0F, y}, {200.0F, y}, 10.0F}));
+        const auto r = inspection::runTools(scene, fixture, {config}, 0.0,
+                                            inspection::LengthUnit::Pixels);
+        ASSERT_FALSE(r.empty());
+        EXPECT_TRUE(r.front().ok)
+            << "avisa a la altura " << y << " sobre una barra sola: " << r.front().detail;
+        EXPECT_NEAR(r.front().measured, 140.0, 3.0);
     }
-    EXPECT_NE(result.detail.find("Acorta"), std::string::npos)
-        << "el aviso no dice qué hacer: " << result.detail;
 }

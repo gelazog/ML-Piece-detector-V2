@@ -34,7 +34,7 @@ enum class LengthUnit { Auto, Millimeters, Centimeters, Pixels, Inches };
 // Devuelve el número ya convertido, su sufijo y con cuántos decimales tiene
 // sentido escribirlo, que es distinto por unidad: una pulgada son 25,4 mm, así
 // que con dos decimales la resolución sería de un cuarto de milímetro.
-// CUÁNDO UNA MEDIDA DE CALIBRE ES UNA MONEDA AL AIRE.
+// CUÁNDO UNA MEDIDA DE CALIBRE NO SE SOSTIENE.
 //
 // El calibre elige entre pares de bordes por su fuerza, sin mirar dónde están.
 // Cuando la línea cruza dos rasgos —la silueta y un taladro— hay dos pares
@@ -42,15 +42,18 @@ enum class LengthUnit { Auto, Millimeters, Centimeters, Pixels, Inches };
 // una tuerca real: 22,61 px y 227,81 px alternándose con cuarto de píxel de
 // desplazamiento, las dos marcadas OK.
 //
-// Hacen falta las DOS condiciones. Sólo con la primera, dos pares parejos que
-// midan casi lo mismo darían una alarma que no importa; sólo con la segunda,
-// dos rasgos muy distintos pero con un ganador claro darían alarma sin motivo.
+// La inestabilidad se MIDE corriendo la línea y mirando si la respuesta salta,
+// en vez de deducirla de que dos pares punteen parecido. La versión deducida
+// rechazaba el 53 % de lo que antes se aceptaba (61 falsas alarmas de 136) y
+// se le escapaban 3 lecturas que sí saltaban; la medida marca el 10 %, y son
+// las que de verdad saltarían.
 //
-// El 15 % de diferencia de puntuación sale de que el salto medido ocurre con
-// diferencias muy por debajo de eso; el 25 % de distancia deja pasar la
-// dispersión normal de un mismo rasgo y no el salto a otro.
-inline constexpr double kCaliperAmbiguousScoreGap = 0.15;
-inline constexpr double kCaliperAmbiguousDistanceGap = 0.25;
+// Un tercio de píxel es bastante para destapar el salto —el biestable medido
+// cambia a 0,25 px— y poco para no mover una lectura sana.
+inline constexpr float kCaliperProbeStepPx = 0.34F;
+// El 10 % deja pasar la dispersión normal de un mismo rasgo (las lecturas sanas
+// se movieron menos del 1 %) y no el salto a otro, que es de factor diez.
+inline constexpr double kCaliperUnstableSpread = 0.10;
 
 struct UnitPick {
     double value = 0.0;

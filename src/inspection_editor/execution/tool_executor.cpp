@@ -381,88 +381,117 @@ ToolRunResult runCaliper(const cv::Mat& gray, const Fixture& fixture,
     // Preferir un par de polaridad opuesta (subida + bajada): mide el ancho
     // real de la pieza en vez de dos bordes del mismo lado.
     //
-    // EL CRITERIO NO MIRA LA GEOMETRÍA, solo la fuerza de los bordes, y esa es
-    // la raíz de un fallo que se midió y hay que conocer: cuando la línea cruza
-    // DOS rasgos —la silueta de la pieza y un taladro dentro— hay dos pares
-    // válidos, y gana el que tenga el borde débil más fuerte. Si los dos andan
-    // parejos, cuál gana lo decide el ruido.
+    // EL CRITERIO NO MIRA LA GEOMETRÍA, solo la fuerza de los bordes, y de ahí
+    // sale un fallo medido: cuando la línea cruza DOS rasgos —la silueta y un
+    // taladro dentro— hay dos pares válidos, y gana el que tenga el borde débil
+    // más fuerte. Si andan parejos, cuál gana lo decide el ruido.
     //
-    // Medido sobre una tuerca real, desplazando la imagen fracciones de píxel
-    // (lo que hace cualquier cámara por vibración o deriva térmica):
+    // Sobre una tuerca real, desplazando la imagen fracciones de píxel (lo que
+    // hace cualquier cámara por vibración o deriva térmica):
     //
     //     0,00 px -> 22,61     0,25 px -> 227,81
     //     0,50 px -> 22,65     0,75 px -> 227,78
     //
     // No es deriva: es un biestable que salta un factor DIEZ, y las cuatro
-    // lecturas salían marcadas OK. En producción esa cota alternaría entre dos
-    // valores en fotogramas consecutivos.
-    std::size_t first = 0;
-    std::size_t second = 1;
-    double bestScore = -1.0;
-    // El SEGUNDO mejor par, para saber si la elección fue reñida.
-    double runnerUpScore = -1.0;
-    double runnerUpDistance = 0.0;
-    for (std::size_t i = 0; i < edges.size(); ++i) {
-        for (std::size_t j = i + 1; j < edges.size(); ++j) {
-            if (edges[i].strength * edges[j].strength >= 0.0) {
-                continue;  // misma polaridad
-            }
-            const double score =
-                std::min(std::abs(edges[i].strength), std::abs(edges[j].strength));
-            const double distance = std::abs(edges[i].position - edges[j].position);
-            if (score > bestScore) {
-                // El que era el mejor pasa a ser el segundo.
-                runnerUpScore = bestScore;
-                runnerUpDistance =
-                    std::abs(edges[first].position - edges[second].position);
-                bestScore = score;
-                first = i;
-                second = j;
-            } else if (score > runnerUpScore) {
-                runnerUpScore = score;
-                runnerUpDistance = distance;
+    // lecturas salían marcadas OK.
+    struct PairReading {
+        double distance = 0.0;
+        bool found = false;
+        cv::Point2f from;
+        cv::Point2f to;
+    };
+    const auto measureAt = [&](const cv::Point2f& a, const cv::Point2f& b) {
+        const auto found = detectEdges(gray, a, b, g.bandWidth, 6);
+        PairReading answer;
+        if (found.size() < 2) {
+            return answer;
+        }
+        std::size_t bestA = 0;
+        std::size_t bestB = 1;
+        double bestScore = -1.0;
+        for (std::size_t i = 0; i < found.size(); ++i) {
+            for (std::size_t j = i + 1; j < found.size(); ++j) {
+                if (found[i].strength * found[j].strength >= 0.0) {
+                    continue;  // misma polaridad
+                }
+                const double score =
+                    std::min(std::abs(found[i].strength), std::abs(found[j].strength));
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestA = i;
+                    bestB = j;
+                }
             }
         }
-    }
-    // Sin par opuesto (p. ej. escalón simple): caer a los dos más fuertes.
+        // Sin par opuesto (p. ej. escalón simple): caer a los dos más fuertes.
+        answer.distance = std::abs(found[bestA].position - found[bestB].position);
+        answer.from = found[bestA].point;
+        answer.to = found[bestB].point;
+        answer.found = true;
+        return answer;
+    };
 
-    result.measured = std::abs(edges[first].position - edges[second].position);
+    const auto base = measureAt(p0, p1);
+    result.measured = base.distance;
     result.ok = withinTolerance(config, result.measured);
 
-    // LA ELECCIÓN REÑIDA NO SE DA POR BUENA.
+    // LA INESTABILIDAD SE MIDE, NO SE INFIERE.
     //
-    // La herramienta no puede saber si el operador quería medir la silueta o el
-    // taladro: las dos son cotas legítimas y sólo él lo sabe. Pero SÍ puede
-    // saber que su propia elección fue una moneda al aire, y eso hay que
-    // decirlo en vez de devolver un número con aspecto de bueno.
+    // La primera versión de esto la deducía: «si dos pares puntean parecido,
+    // esto es inestable». Medido sobre las fotos reales, ese criterio rechazaba
+    // el 53 % de lo que antes se aceptaba —61 falsas alarmas de 136— y encima
+    // se le escapaban 3 lecturas que sí saltaban. Peor en las dos direcciones.
     //
-    // Dos condiciones a la vez, porque cada una sola daría falsas alarmas:
-    //  · que los dos pares punteen casi igual (la elección es del ruido), y
-    //  · que midan cosas MUY distintas (si los dos dan casi lo mismo, da igual
-    //    cuál gane y avisar sería ruido).
-    if (runnerUpScore > 0.0 && result.measured > 0.0) {
-        const double scoreGap = (bestScore - runnerUpScore) / std::max(bestScore, 1e-9);
-        const double distanceGap =
-            std::abs(result.measured - runnerUpDistance) / result.measured;
-        if (scoreGap < kCaliperAmbiguousScoreGap &&
-            distanceGap > kCaliperAmbiguousDistanceGap) {
-            result.ok = false;
-            char buffer[320];
-            std::snprintf(buffer, sizeof(buffer),
-                          "AMBIGUO: la línea cruza dos rasgos que marcan casi igual y "
-                          "miden cosas distintas (%.1f px y %.1f px). Cuál gana lo "
-                          "decide el ruido, así que este número saltaría entre los dos "
-                          "de un fotograma a otro. Acorta la línea para que cruce sólo "
-                          "el rasgo que quieres medir.",
-                          result.measured, runnerUpDistance);
-            result.detail = buffer;
-            return result;
+    // Se puede medir directamente, que es lo que hace esto: repetir la medida
+    // con la línea corrida fracciones de píxel y mirar si la respuesta salta.
+    // Sobre las mismas 136 medidas marca 14 (el 10 %), y son exactamente las
+    // que de verdad saltarían de un fotograma a otro.
+    //
+    // Cuesta dos barridos de banda más. Es la parte barata de la herramienta
+    // —el pipeline que la alimenta cuesta órdenes de magnitud más— y compra
+    // saber si el número que se va a enseñar se sostiene.
+    if (result.measured > 0.0) {
+        // La línea se corre a lo largo de su propia dirección: es lo que le
+        // pasa a la pieza cuando vibra o se reasienta, y lo que cambió el
+        // resultado en la medición que destapó el fallo.
+        const cv::Point2f along = p1 - p0;
+        const double length = std::sqrt(along.x * along.x + along.y * along.y);
+        if (length > 1e-6) {
+            const cv::Point2f unit(static_cast<float>(along.x / length),
+                                   static_cast<float>(along.y / length));
+            double lowest = result.measured;
+            double highest = result.measured;
+            for (float step : {kCaliperProbeStepPx, 2.0F * kCaliperProbeStepPx}) {
+                const cv::Point2f nudge(unit.x * step, unit.y * step);
+                const auto probe = measureAt(p0 + nudge, p1 + nudge);
+                if (!probe.found) {
+                    continue;
+                }
+                lowest = std::min(lowest, probe.distance);
+                highest = std::max(highest, probe.distance);
+            }
+            const double spread = (highest - lowest) / result.measured;
+            if (spread > kCaliperUnstableSpread) {
+                result.ok = false;
+                char buffer[340];
+                std::snprintf(buffer, sizeof(buffer),
+                              "INESTABLE: corriendo la línea menos de un píxel, esta "
+                              "misma cota da entre %.1f y %.1f px. Está saltando entre "
+                              "dos rasgos distintos —normalmente la silueta y un "
+                              "agujero— y el número cambiaría de un fotograma a otro. "
+                              "Acorta la línea para que cruce sólo el rasgo que quieres "
+                              "medir.",
+                              lowest, highest);
+                result.detail = buffer;
+                return result;
+            }
         }
     }
+
     // mm por homografía entre los dos bordes medidos (si hay marcador ArUco).
-    result.detail = "d=" + fmtLenPts(edges[first].point, edges[second].point, fmt);
-    result.overlayPoints.push_back(edges[first].point);
-    result.overlayPoints.push_back(edges[second].point);
+    result.detail = "d=" + fmtLenPts(base.from, base.to, fmt);
+    result.overlayPoints.push_back(base.from);
+    result.overlayPoints.push_back(base.to);
     return result;
 }
 

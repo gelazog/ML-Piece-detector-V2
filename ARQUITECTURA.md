@@ -3537,24 +3537,48 @@ nada que lo explicara.
 **Lo que NO se puede hacer** es elegir mejor. La silueta y el taladro son las dos
 cotas legítimas y sólo el operador sabe cuál quiso trazar; preferir siempre la más
 ancha rompería a quien mide una ranura interior. **Lo que SÍ se puede** es saber que
-la propia elección fue una moneda al aire y dejar de fingir que se decidió.
+la lectura no se sostiene.
 
-Se guarda el **segundo mejor par** y se marca ambiguo cuando se cumplen las DOS
-condiciones: que punteen casi igual (menos del 15 % de diferencia) **y** que midan
-cosas muy distintas (más del 25 %). Cada una sola daría falsas alarmas — dos pares
-parejos que midan lo mismo dan igual, y dos rasgos distintos con un ganador claro no
-tienen problema. El aviso nombra **las dos candidatas** y dice qué hacer: acortar la
-línea para que cruce sólo el rasgo que se quiere.
+#### La inestabilidad se mide, no se infiere
+
+La primera versión la **deducía**: guardaba el segundo mejor par y marcaba ambiguo
+cuando los dos punteaban parecido y medían cosas distintas. Sonaba razonable. Medido
+sobre las fotos reales con 136 colocaciones de calibre:
+
+| criterio | rechaza | falsas alarmas | se le escapan |
+|---|---|---|---|
+| deducido (dos pares parejos) | **72 (53 %)** | **61** | 3 |
+| medido (correr la línea y mirar) | **14 (10 %)** | — | — |
+
+El deducido era **peor en las dos direcciones**: rechazaba más de la mitad de lo que
+antes se aceptaba —y un aviso que salta una de cada dos veces se apaga en una semana—
+y además se le escapaban tres lecturas que sí saltaban.
+
+Lo que hace ahora: repetir la medida con la línea corrida un tercio y dos tercios de
+píxel a lo largo de su propia dirección, y mirar si la respuesta salta más del 10 %.
+Eso marca exactamente las lecturas que cambiarían de un fotograma a otro. Cuesta dos
+barridos de banda más — la parte barata de la herramienta.
+
+Y el aviso mejoró de paso: en vez de nombrar dos candidatas deducidas, dice **el
+rango real entre el que oscila** («da entre 22,6 y 227,8 px»), que está medido.
+
+**Y dos correcciones de mí mismo por el camino**, las dos por leer mal mi propia
+sonda:
+
+- Creí ver lecturas de **0,00 px marcadas OK** y añadí una guarda de span mínimo. Era
+  falso: esos casos ya los rechazaba el control de «se necesitan 2 bordes», y mi sonda
+  los etiquetaba mal porque sólo buscaba la palabra del aviso nuevo. Comprobado que la
+  guarda **no es alcanzable** —ni con un rasgo de 1 px, que el suavizado separa a
+  3,00— y retirada.
+- La prueba sintética de «barra con hueco» dejó de saltar con el criterio medido, **y
+  con razón**: en una figura de rellenos planos la lectura da 85,00 px y no se mueve.
+  La inestabilidad necesita el continuo de grises de una foto; forzarla en un
+  `fillRect` sería ajustar la escena hasta que la prueba pase. La prueba se mudó a la
+  tuerca real.
 
 Comprobado que **no salta con lo que ya funcionaba**: una barra sola sigue midiendo
-140,00 px y sigue dando OK. Un aviso que salta con las buenas se apaga en una semana.
+140,00 px y sigue dando OK a cinco alturas distintas.
 
-**Y una corrección de la prueba, no del código.** La primera versión exigía que sobre
-una barra con un hueco midiera 220 (la silueta) o 50 (el hueco). Salió 85 — y no era
-un fallo: con cuatro bordes hay **más de dos** pares válidos, y 85 es el borde
-izquierdo de la barra con el izquierdo del hueco, subida y bajada, par legítimo. La
-premisa de «hay dos rasgos» era demasiado simple, y ahí está justo el punto: lo único
-exigible es que no finja haber decidido.
 
 #### Lo que queda sin tocar, y por qué
 
