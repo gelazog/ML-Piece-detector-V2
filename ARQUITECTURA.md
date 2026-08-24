@@ -3512,6 +3512,37 @@ mayores; no puede ser lo que **enciende** la medición.
 declaraba nada —o sea, corría en automático— y exigía que de tres barras se midiera
 una. Ahora declara el uno que su nombre dice.
 
+### Abrir Configurar y aceptar sin tocar nada
+
+Hay una familia de fallos que encaja con «el menú de configuración tiene bastantes
+fallos en sus características» y que **no se ve mirando la pantalla**: un valor que
+la ventana enseña pero no devuelve, o que devuelve distinto de como lo recibió.
+
+El síntoma es de los peores. Entras a cambiar el umbral, aceptas, y de paso se te
+ha movido la polaridad o el área mínima. Nadie lo relaciona con la ventana de
+ajustes; se nota semanas después como «la detección va peor desde hace un tiempo».
+
+La comprobación va en dos alturas, porque un campo puede caerse en cualquiera:
+
+- **Por página**: se construye con valores distintos de los de fábrica en TODOS los
+  campos y se leen de vuelta. Con los de fábrica puestos, un campo perdido daría el
+  mismo resultado que uno conservado y la prueba pasaría sin comprobar nada.
+- **De extremo a extremo**: ventana real, abrir Configurar, emitir `applied()` sin
+  tocar un solo control, y comparar los ajustes guardados **clave a clave**. Los
+  dos tramos que las pruebas de página no ven —la ventana rellenando los `Inputs`
+  y la ventana leyendo la página para aplicar— solo se cubren aquí.
+
+La comparación es clave a clave a propósito: un «no son iguales» a secas obligaría
+a investigarlo desde cero. Mutando el aplicado para que pierda la polaridad, la
+prueba dice literalmente «aceptar sin tocar nada cambió det_polarity: era 1 y quedó
+0».
+
+**Lo que encontró**: la sensibilidad de anomalía tenía el campo a **un decimal**.
+Un valor que llegara con más precisión —importando la configuración de otro puesto,
+que copia los ajustes verbatim— se redondeaba **al abrir la ventana**: 2,75 pasaba
+a 2,8 al aceptar, sin tocarlo nadie. El paso sigue siendo 0,1, que es como se
+ajusta a mano; los dos decimales son para no estropear lo que ya había.
+
 ### La misma decisión de unidad, tomada nueve veces
 
 Para añadir pulgadas había que tocar nueve sitios, y los nueve tenían copiada la

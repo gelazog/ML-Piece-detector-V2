@@ -87,6 +87,7 @@ add_executable(pci_gui_tests
   test_brush_persistence.cpp
   test_mosaic_numbering.cpp
   test_configure_dialog.cpp
+  test_configure_roundtrip.cpp
   test_frame_sources.cpp
   test_session_state.cpp
 )

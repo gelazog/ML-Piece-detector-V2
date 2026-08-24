@@ -26,7 +26,17 @@ PreferencesPage::PreferencesPage(int autoIntervalMs, double kSigma, QWidget* par
     sigmaSpin_ = new QDoubleSpinBox(this);
     sigmaSpin_->setRange(0.5, 6.0);
     sigmaSpin_->setSingleStep(0.1);
-    sigmaSpin_->setDecimals(1);
+    // DOS DECIMALES, aunque las flechas sigan moviendo de una en una décima.
+    //
+    // Con uno solo, un valor que llegara con más precisión —importando una
+    // configuración de otro puesto, por ejemplo— se redondeaba **al abrir la
+    // ventana**: entrabas a cambiar otra cosa, aceptabas, y de paso se te había
+    // movido la sensibilidad. Nadie relaciona eso con la ventana de ajustes; se
+    // nota semanas después como «esto juzga distinto desde hace un tiempo».
+    //
+    // El paso sigue siendo 0,1 porque es la granularidad con la que se ajusta a
+    // mano; los dos decimales son para no ESTROPEAR lo que ya había.
+    sigmaSpin_->setDecimals(2);
     sigmaSpin_->setValue(kSigma);
     sigmaSpin_->setToolTip(
         tr("Sensibilidad de anomalía de apariencia (k·σ). Más bajo = más estricto: "
