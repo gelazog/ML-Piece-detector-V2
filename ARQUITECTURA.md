@@ -3512,6 +3512,54 @@ mayores; no puede ser lo que **enciende** la medición.
 declaraba nada —o sea, corría en automático— y exigía que de tres barras se midiera
 una. Ahora declara el uno que su nombre dice.
 
+### Escenas dibujadas a partir de sus cotas
+
+Las fotos reales dicen cómo se **comporta** el programa; solo una imagen construida
+dice si el número es **correcto**. En una foto de un engranaje no se sabe cuánto mide
+de verdad su agujero: se puede medir dos veces y comprobar que coinciden, pero no se
+puede afirmar que el resultado sea el bueno.
+
+`tests/synthetic_scenes.h` le da la vuelta: **la cota va primero y la imagen se dibuja
+a partir de ella**, así que la verdad de campo es exacta por construcción. Eso es lo
+que permite escribir «esto tiene que dar 62,5 mm» en vez de «esto tiene que dar lo
+mismo que la vez anterior».
+
+Las tres escenas reproducen las piezas reales del usuario porque cada una rompe el
+pipeline por un sitio distinto:
+
+| Escena | Qué rompe | Resultado medido |
+|---|---|---|
+| Tablero 8×8 acotado a 500 mm | la escala | calibra a **1,041667 mm/px**, idéntico al de dibujo; casilla **62,5000 mm** |
+| Ídem, esquinas internas | la rejilla | paso **60,000 px**, peor desvío **0,000 px** |
+| Engranaje con agujero y 28 dientes | agujeros y dentado | área 59 383 px²; el agujero son 3 632 (**6,8 %** del cuerpo) |
+| Tres tornillos de 320/440/560 px | recuento y orden | 3 de 3, izquierda a derecha, alturas exactas |
+| Ídem con escala | la cadena entera | **45,71 / 62,86 / 80,00 mm**, clavados |
+
+Todo se dibuja con `cv::LINE_8` (sin antialias) a propósito: con bordes suavizados el
+recuento de píxeles depende del umbral y deja de ser exacto, que es justo lo que se
+viene a evitar.
+
+**El área del engranaje incluye su agujero**, y conviene saberlo: `contour.area` es el
+área del contorno EXTERIOR, así que un agujero de 3 632 px² sobre un cuerpo de 53 093
+no se resta. No es un fallo —es lo que significa ese campo— pero en una cota de área
+con tolerancia del 5 %, un 6,8 % es la diferencia entre OK y NG. La prueba comprueba de
+**qué lado cae** para que nadie cambie el significado sin enterarse.
+
+#### Lo que las fotos reales sí dicen
+
+La sonda de `test_nut_probe.cpp` —que informa y no falla nunca— encontró dos cosas
+sobre las imágenes del usuario que ninguna figura dibujada habría destapado:
+
+- **`engranaje-1.webp`: 2 piezas donde hay 1.** La segunda es una tira de 84×8 px
+  (0,59 % del encuadre) que pasa el filtro de área mínima.
+- **`engranajes-1.jpg`: 1 pieza donde hay 2.** Los dos engranajes se **tocan**, y
+  `RETR_EXTERNAL` los devuelve como un solo blob de 407×210. Además se pierde la
+  esquina superior izquierda del engranaje claro, que se funde con el fondo casi
+  blanco.
+
+Los tres tornillos salen 3 de 3. El caso de las piezas que se tocan es el único de la
+tanda que la aplicación **hoy no resuelve**, y es justo el que importa en una bandeja.
+
 ### Cambiar de pieza con Configurar abierto
 
 La ventana de Configurar es **única**: volver a pulsarla trae al frente la que ya

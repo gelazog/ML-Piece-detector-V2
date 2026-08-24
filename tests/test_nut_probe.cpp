@@ -131,6 +131,32 @@ TEST(NutProbe, WhatTheDetectionActuallyDoesWithNuts) {
     SUCCEED();
 }
 
+// LAS DEMÁS PIEZAS DEL USUARIO: engranajes y tornillos.
+//
+// Es una SONDA, no una guarda: informa de lo que hace la detección sobre las
+// fotos reales y no falla nunca. Lo que se puede afirmar de verdad —que un
+// número es el correcto y no solo repetible— está en
+// `test_synthetic_measures.cpp`, donde la cota va antes que la imagen. En una
+// foto de un engranaje no se sabe cuánto mide su agujero de verdad.
+//
+// Aquí se busca lo otro: que las formas reales no rompan el pipeline por sitios
+// que las figuras dibujadas no tocan — brillos especulares, sombras de
+// contacto, fondos que no son planos.
+TEST(NutProbe, WhatTheDetectionDoesWithGearsAndScrews) {
+    if (ownImages().empty()) {
+        GTEST_SKIP() << "las imágenes del usuario no están en esta máquina";
+    }
+    // El segundo número es cuántas piezas se ven a simple vista, para poder
+    // comparar de un vistazo con lo que encuentra el programa.
+    reportAt(ownImages(), "engranaje-1.webp", 1);
+    reportAt(ownImages(), "engranajes-1.jpg", 2);
+    reportAt(ownImages(), "tornillo-1.webp", 1);
+    reportAt(ownImages(), "tornillo-2.webp", 1);
+    reportAt(ownImages(), "tornillos-1.webp", 3);
+    std::printf("\n  [piezas] imágenes anotadas en: %s\n", outputDir().string().c_str());
+    SUCCEED();
+}
+
 // ¿CUÁNTO CUESTA MIRAR TODAS LAS PIEZAS EN VEZ DE UNA?
 //
 // El motor solo buscaba las demás piezas cuando había un número declarado, y la

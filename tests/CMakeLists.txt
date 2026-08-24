@@ -18,6 +18,7 @@ add_executable(pci_tests
   test_database.cpp
   test_domain.cpp
   test_units.cpp
+  test_synthetic_measures.cpp
   test_difference_map.cpp
   test_diverse_images.cpp
   test_edge_segmentation.cpp
