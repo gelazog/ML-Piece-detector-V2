@@ -34,6 +34,24 @@ enum class LengthUnit { Auto, Millimeters, Centimeters, Pixels, Inches };
 // Devuelve el número ya convertido, su sufijo y con cuántos decimales tiene
 // sentido escribirlo, que es distinto por unidad: una pulgada son 25,4 mm, así
 // que con dos decimales la resolución sería de un cuarto de milímetro.
+// CUÁNDO UNA MEDIDA DE CALIBRE ES UNA MONEDA AL AIRE.
+//
+// El calibre elige entre pares de bordes por su fuerza, sin mirar dónde están.
+// Cuando la línea cruza dos rasgos —la silueta y un taladro— hay dos pares
+// válidos y, si puntúan parecido, cuál gana lo decide el ruido. Medido sobre
+// una tuerca real: 22,61 px y 227,81 px alternándose con cuarto de píxel de
+// desplazamiento, las dos marcadas OK.
+//
+// Hacen falta las DOS condiciones. Sólo con la primera, dos pares parejos que
+// midan casi lo mismo darían una alarma que no importa; sólo con la segunda,
+// dos rasgos muy distintos pero con un ganador claro darían alarma sin motivo.
+//
+// El 15 % de diferencia de puntuación sale de que el salto medido ocurre con
+// diferencias muy por debajo de eso; el 25 % de distancia deja pasar la
+// dispersión normal de un mismo rasgo y no el salto a otro.
+inline constexpr double kCaliperAmbiguousScoreGap = 0.15;
+inline constexpr double kCaliperAmbiguousDistanceGap = 0.25;
+
 struct UnitPick {
     double value = 0.0;
     const char* suffix = "mm";

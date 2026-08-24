@@ -380,9 +380,28 @@ ToolRunResult runCaliper(const cv::Mat& gray, const Fixture& fixture,
 
     // Preferir un par de polaridad opuesta (subida + bajada): mide el ancho
     // real de la pieza en vez de dos bordes del mismo lado.
+    //
+    // EL CRITERIO NO MIRA LA GEOMETRÍA, solo la fuerza de los bordes, y esa es
+    // la raíz de un fallo que se midió y hay que conocer: cuando la línea cruza
+    // DOS rasgos —la silueta de la pieza y un taladro dentro— hay dos pares
+    // válidos, y gana el que tenga el borde débil más fuerte. Si los dos andan
+    // parejos, cuál gana lo decide el ruido.
+    //
+    // Medido sobre una tuerca real, desplazando la imagen fracciones de píxel
+    // (lo que hace cualquier cámara por vibración o deriva térmica):
+    //
+    //     0,00 px -> 22,61     0,25 px -> 227,81
+    //     0,50 px -> 22,65     0,75 px -> 227,78
+    //
+    // No es deriva: es un biestable que salta un factor DIEZ, y las cuatro
+    // lecturas salían marcadas OK. En producción esa cota alternaría entre dos
+    // valores en fotogramas consecutivos.
     std::size_t first = 0;
     std::size_t second = 1;
     double bestScore = -1.0;
+    // El SEGUNDO mejor par, para saber si la elección fue reñida.
+    double runnerUpScore = -1.0;
+    double runnerUpDistance = 0.0;
     for (std::size_t i = 0; i < edges.size(); ++i) {
         for (std::size_t j = i + 1; j < edges.size(); ++j) {
             if (edges[i].strength * edges[j].strength >= 0.0) {
@@ -390,10 +409,18 @@ ToolRunResult runCaliper(const cv::Mat& gray, const Fixture& fixture,
             }
             const double score =
                 std::min(std::abs(edges[i].strength), std::abs(edges[j].strength));
+            const double distance = std::abs(edges[i].position - edges[j].position);
             if (score > bestScore) {
+                // El que era el mejor pasa a ser el segundo.
+                runnerUpScore = bestScore;
+                runnerUpDistance =
+                    std::abs(edges[first].position - edges[second].position);
                 bestScore = score;
                 first = i;
                 second = j;
+            } else if (score > runnerUpScore) {
+                runnerUpScore = score;
+                runnerUpDistance = distance;
             }
         }
     }
@@ -401,6 +428,37 @@ ToolRunResult runCaliper(const cv::Mat& gray, const Fixture& fixture,
 
     result.measured = std::abs(edges[first].position - edges[second].position);
     result.ok = withinTolerance(config, result.measured);
+
+    // LA ELECCIÓN REÑIDA NO SE DA POR BUENA.
+    //
+    // La herramienta no puede saber si el operador quería medir la silueta o el
+    // taladro: las dos son cotas legítimas y sólo él lo sabe. Pero SÍ puede
+    // saber que su propia elección fue una moneda al aire, y eso hay que
+    // decirlo en vez de devolver un número con aspecto de bueno.
+    //
+    // Dos condiciones a la vez, porque cada una sola daría falsas alarmas:
+    //  · que los dos pares punteen casi igual (la elección es del ruido), y
+    //  · que midan cosas MUY distintas (si los dos dan casi lo mismo, da igual
+    //    cuál gane y avisar sería ruido).
+    if (runnerUpScore > 0.0 && result.measured > 0.0) {
+        const double scoreGap = (bestScore - runnerUpScore) / std::max(bestScore, 1e-9);
+        const double distanceGap =
+            std::abs(result.measured - runnerUpDistance) / result.measured;
+        if (scoreGap < kCaliperAmbiguousScoreGap &&
+            distanceGap > kCaliperAmbiguousDistanceGap) {
+            result.ok = false;
+            char buffer[320];
+            std::snprintf(buffer, sizeof(buffer),
+                          "AMBIGUO: la línea cruza dos rasgos que marcan casi igual y "
+                          "miden cosas distintas (%.1f px y %.1f px). Cuál gana lo "
+                          "decide el ruido, así que este número saltaría entre los dos "
+                          "de un fotograma a otro. Acorta la línea para que cruce sólo "
+                          "el rasgo que quieres medir.",
+                          result.measured, runnerUpDistance);
+            result.detail = buffer;
+            return result;
+        }
+    }
     // mm por homografía entre los dos bordes medidos (si hay marcador ArUco).
     result.detail = "d=" + fmtLenPts(edges[first].point, edges[second].point, fmt);
     result.overlayPoints.push_back(edges[first].point);

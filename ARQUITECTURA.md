@@ -3512,6 +3512,62 @@ mayores; no puede ser lo que **enciende** la medición.
 declaraba nada —o sea, corría en automático— y exigía que de tres barras se midiera
 una. Ahora declara el uno que su nombre dice.
 
+### La misma cota dando 22,61 y 227,81 px, las dos marcadas OK
+
+El calibre elige entre pares de bordes de polaridad opuesta maximizando
+`min(|fuerza_a|, |fuerza_b|)`. Ese criterio **no mira dónde están los bordes**, sólo
+cuánto marcan. Cuando la línea cruza dos rasgos —la silueta de la pieza y un taladro
+dentro— hay dos pares válidos, y si puntean parecido **cuál gana lo decide el ruido**.
+
+Medido sobre una tuerca real, desplazando la imagen fracciones de píxel (lo que hace
+cualquier cámara por vibración o deriva térmica):
+
+| corrimiento | medida | ¿ok? |
+|---|---|---|
+| 0,00 px | 22,61 | SÍ |
+| 0,25 px | **227,81** | SÍ |
+| 0,50 px | 22,65 | SÍ |
+| 0,75 px | **227,78** | SÍ |
+
+No es deriva: es un **biestable que salta un factor diez con cuarto de píxel**, y las
+cuatro lecturas salían con `ok = true`. En producción esa cota alternaría entre dos
+valores en fotogramas consecutivos, y una pieza buena daría NG cada dos ciclos sin
+nada que lo explicara.
+
+**Lo que NO se puede hacer** es elegir mejor. La silueta y el taladro son las dos
+cotas legítimas y sólo el operador sabe cuál quiso trazar; preferir siempre la más
+ancha rompería a quien mide una ranura interior. **Lo que SÍ se puede** es saber que
+la propia elección fue una moneda al aire y dejar de fingir que se decidió.
+
+Se guarda el **segundo mejor par** y se marca ambiguo cuando se cumplen las DOS
+condiciones: que punteen casi igual (menos del 15 % de diferencia) **y** que midan
+cosas muy distintas (más del 25 %). Cada una sola daría falsas alarmas — dos pares
+parejos que midan lo mismo dan igual, y dos rasgos distintos con un ganador claro no
+tienen problema. El aviso nombra **las dos candidatas** y dice qué hacer: acortar la
+línea para que cruce sólo el rasgo que se quiere.
+
+Comprobado que **no salta con lo que ya funcionaba**: una barra sola sigue midiendo
+140,00 px y sigue dando OK. Un aviso que salta con las buenas se apaga en una semana.
+
+**Y una corrección de la prueba, no del código.** La primera versión exigía que sobre
+una barra con un hueco midiera 220 (la silueta) o 50 (el hueco). Salió 85 — y no era
+un fallo: con cuatro bordes hay **más de dos** pares válidos, y 85 es el borde
+izquierdo de la barra con el izquierdo del hueco, subida y bajada, par legítimo. La
+premisa de «hay dos rasgos» era demasiado simple, y ahí está justo el punto: lo único
+exigible es que no finja haber decidido.
+
+#### Lo que queda sin tocar, y por qué
+
+`runRegion` **rebinariza con su propio Otsu dentro del recuadro** (verificado leyendo
+`tool_executor.cpp`). Como Otsu sobre un recorte pequeño ve un histograma distinto al
+del encuadre entero, la silueta que mide no es la del pipeline: medido, entre −10,6 %
+y **−37,5 %** de área según la imagen. La misma aplicación da dos áreas para la misma
+pieza.
+
+Es defendible como diseño —la Región mide *lo que hay dentro del recuadro*, que
+permite medir un rasgo interior— y cambiarlo movería las medidas de todo el mundo.
+Queda anotado como decisión del usuario, no como algo a arreglar por cuenta propia.
+
 ### El fallo que no falla: medir corto y no decir nada
 
 Es el peor que puede tener una aplicación de medida. No lanza, no avisa, y devuelve
