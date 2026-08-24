@@ -78,6 +78,7 @@ public:
         bool hasFixedZone = false;
         bool hasFreeZone = false;
         int expectedPieces = 1;
+        bool showMosaic = false;
     };
 
     ConfigureDialog(Inputs inputs, QWidget* parent = nullptr);

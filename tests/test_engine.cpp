@@ -567,8 +567,16 @@ TEST_F(EngineTest, MeasuresEveryPieceWithTheSameTemplate) {
 }
 
 TEST_F(EngineTest, WithOnePieceExpectedNothingChanges) {
-    // El caso de siempre no puede haberse movido: una sola pieza, una sola
-    // medida, sin indices ni nombres decorados.
+    // DECLARAR UNA PIEZA SIGUE APAGANDO LA ENUMERACIÓN, y eso es a propósito:
+    // la pantalla lo promete con esas palabras —«con una pieza el programa deja
+    // de enumerar»— para que una sombra o un reflejo no cuenten como segunda
+    // pieza. Con tres barras delante se mide solo la mayor y el recuento no se
+    // juzga, que es justo lo que ha pedido el operador al declarar uno.
+    //
+    // Esta prueba decía «sin declararlo, una sola pieza» y no declaraba nada, o
+    // sea que corría en modo AUTOMÁTICO y exigía que solo se midiera una barra
+    // de las tres. Estaba fijando el fallo del que se quejó el usuario: en
+    // automático solo se medía una. Ahora declara el uno que su nombre dice.
     auto& pieces = *pieces_;
     auto& tools = *tools_;
     auto& history = *history_;
@@ -584,6 +592,11 @@ TEST_F(EngineTest, WithOnePieceExpectedNothingChanges) {
     caliper.toleranceMax = 220.0;
     ASSERT_TRUE(tools.save(pieceId.value(), caliper, "principal").isOk());
 
+    auto measurement = pieces.loadMeasurement(pieceId.value());
+    ASSERT_TRUE(measurement.isOk());
+    measurement.value().expectedPieces = 1;  // manual, una: no enumerar
+    ASSERT_TRUE(pieces.saveMeasurement(pieceId.value(), measurement.value()).isOk());
+
     // Motor propio sin autoOrient: las barras son simetricas y su eje
     // principal podria voltear entre ejecuciones, que no es lo que se prueba.
     engine::InspectionEngine engine(nullptr, pieces, tools, history);
@@ -592,7 +605,8 @@ TEST_F(EngineTest, WithOnePieceExpectedNothingChanges) {
     auto outcome = engine.inspect(scene, pieceId.value());
     ASSERT_TRUE(outcome.isOk());
 
-    ASSERT_EQ(outcome.value().toolResults.size(), 1U) << "sin declararlo, una sola pieza";
+    ASSERT_EQ(outcome.value().toolResults.size(), 1U)
+        << "declarando una, se mide una: enumerar ahí sería contar sombras";
     EXPECT_EQ(outcome.value().toolResults.front().pieceIndex, 0);
     EXPECT_EQ(outcome.value().verdict.tools.front().name, "ancho")
         << "sin varias piezas, el nombre no se decora";
@@ -1024,4 +1038,109 @@ TEST_F(EngineTest, TheReportNumbersPiecesInReadingOrderLikeTheScreen) {
     }
     EXPECT_NE(failingName.find("pieza 1"), std::string::npos)
         << "el veredicto manda a mirar otra pieza: «" << failingName << "»";
+}
+
+// «AUTOMÁTICA: CUENTA LAS QUE HAYA» TIENE QUE MEDIRLAS TODAS.
+//
+// La página de Piezas ofrece dos modos y el automático dice, con esas palabras,
+// que cuenta las que haya. Lo que hacía era no mirar: el motor solo buscaba las
+// demás piezas cuando había un número declarado mayor que uno, así que en
+// automático se medía UNA —la mayor— y las otras cinco de la bandeja no
+// existían para el informe.
+//
+// Es una queja literal del usuario: «solo mide una en automático y no todas».
+// Y es de las peores que puede haber, porque el resultado es verde: la bandeja
+// sale OK porque la única pieza que se ha mirado está bien.
+//
+// Declarar el número sigue sirviendo para lo suyo —juzgar el recuento y quedarse
+// con las N mayores—, pero no puede ser lo que ENCIENDE la medición.
+TEST_F(EngineTest, AutomaticCountMeasuresEveryPieceNotJustTheBiggest) {
+    auto& pieces = *pieces_;
+    auto& tools = *tools_;
+    auto& history = *history_;
+    auto pieceId = pieces.createPiece("bandeja automatica");
+    ASSERT_TRUE(pieceId.isOk());
+
+    // MODO AUTOMÁTICO: cero declarado, que es lo que guarda la página cuando el
+    // operador elige «cuenta las que haya».
+    auto measurement = pieces.loadMeasurement(pieceId.value());
+    ASSERT_TRUE(measurement.isOk());
+    measurement.value().expectedPieces = 0;
+    ASSERT_TRUE(pieces.saveMeasurement(pieceId.value(), measurement.value()).isOk());
+
+    inspection::ToolConfig caliper;
+    caliper.type = inspection::ToolType::Caliper;
+    caliper.name = "ancho";
+    caliper.geometryJson = inspection::toJson(inspection::ToolGeometry(
+        inspection::CaliperGeometry{{-160.0F, 0.0F}, {160.0F, 0.0F}, 20.0F}));
+    caliper.toleranceMin = 180.0;
+    caliper.toleranceMax = 220.0;
+    ASSERT_TRUE(tools.save(pieceId.value(), caliper, "principal").isOk());
+
+    engine::InspectionEngine engine(nullptr, pieces, tools, history);
+    cv::Mat scene;
+    // La estrecha es la de la izquierda y NO es la mayor: si solo se midiera la
+    // mayor, la bandeja saldría OK con una barra fuera de tolerancia dentro.
+    cv::cvtColor(trayOfBars(0, 120), scene, cv::COLOR_GRAY2BGR);
+    auto outcome = engine.inspect(scene, pieceId.value());
+    ASSERT_TRUE(outcome.isOk()) << outcome.error().message;
+
+    std::printf("  [automatico] piezas vistas: %d, medidas: %d\n", outcome.value().piecesFound,
+                static_cast<int>(outcome.value().toolResults.size()));
+
+    EXPECT_EQ(outcome.value().piecesFound, 3)
+        << "en automático no se llega ni a contar las piezas";
+    EXPECT_EQ(outcome.value().toolResults.size(), 3U)
+        << "en automático solo se mide una pieza: las demás no salen en el informe";
+
+    // Y lo que de verdad importa: la barra mala hunde la bandeja. Si solo se
+    // midiera la mayor, esto saldría OK y el defecto pasaría a producción.
+    EXPECT_FALSE(outcome.value().verdict.ok)
+        << "la bandeja sale OK con una barra fuera de tolerancia dentro";
+}
+
+// Y EN AUTOMÁTICO CON UNA SOLA PIEZA NO CAMBIA NADA.
+//
+// Es el caso más común de todos —inspeccionar de una en una— y acaba de
+// cambiarle el camino por debajo: ahora se enumera también en automático. Si eso
+// le decorara el nombre a la única medida («ancho (pieza 1)») o le encendiera un
+// juicio de recuento que nadie ha pedido, el arreglo habría costado más de lo
+// que arregla.
+TEST_F(EngineTest, AutomaticWithASinglePieceLooksExactlyAsBefore) {
+    auto& pieces = *pieces_;
+    auto& tools = *tools_;
+    auto& history = *history_;
+    auto pieceId = pieces.createPiece("suelta automatica");
+    ASSERT_TRUE(pieceId.isOk());
+
+    auto measurement = pieces.loadMeasurement(pieceId.value());
+    ASSERT_TRUE(measurement.isOk());
+    measurement.value().expectedPieces = 0;  // automático
+    ASSERT_TRUE(pieces.saveMeasurement(pieceId.value(), measurement.value()).isOk());
+
+    inspection::ToolConfig caliper;
+    caliper.type = inspection::ToolType::Caliper;
+    caliper.name = "ancho";
+    caliper.geometryJson = inspection::toJson(inspection::ToolGeometry(
+        inspection::CaliperGeometry{{-160.0F, 0.0F}, {160.0F, 0.0F}, 20.0F}));
+    caliper.toleranceMin = 180.0;
+    caliper.toleranceMax = 220.0;
+    ASSERT_TRUE(tools.save(pieceId.value(), caliper, "principal").isOk());
+
+    // Una sola barra en el encuadre.
+    cv::Mat gray(720, 1280, CV_8UC1, cv::Scalar(20));
+    cv::rectangle(gray, cv::Rect(480, 250, 200, 200), cv::Scalar(220), cv::FILLED);
+    cv::Mat scene;
+    cv::cvtColor(gray, scene, cv::COLOR_GRAY2BGR);
+
+    engine::InspectionEngine engine(nullptr, pieces, tools, history);
+    auto outcome = engine.inspect(scene, pieceId.value());
+    ASSERT_TRUE(outcome.isOk()) << outcome.error().message;
+
+    ASSERT_EQ(outcome.value().toolResults.size(), 1U);
+    EXPECT_EQ(outcome.value().verdict.tools.front().name, "ancho")
+        << "con una sola pieza el nombre no se decora: «(pieza 1)» sobra";
+    EXPECT_FALSE(outcome.value().verdict.count.evaluated)
+        << "en automático no se juzga el recuento: no hay número que cumplir";
+    EXPECT_TRUE(outcome.value().verdict.ok);
 }

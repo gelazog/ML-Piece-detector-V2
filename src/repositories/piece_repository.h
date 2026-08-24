@@ -39,6 +39,13 @@ struct PieceMeasurement {
     // De fábrica, automático. El porqué —y por qué antes era 1— está en la
     // migración v9 de `database/schema.cpp`.
     int expectedPieces = 0;
+    // Si esta pieza se mira en MOSAICO: todas las piezas del encuadre
+    // recortadas y numeradas, una al lado de otra.
+    //
+    // Va con la pieza por lo mismo que `expectedPieces`: «bandeja de cien» es
+    // una propiedad del trabajo. Quien pasa de una bandeja a una pieza suelta
+    // en el mismo turno no tiene por que acordarse de abrir y cerrar un panel.
+    bool showMosaic = false;
 };
 
 struct StoredReference {

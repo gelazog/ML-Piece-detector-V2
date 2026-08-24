@@ -16,6 +16,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -127,5 +128,51 @@ TEST(NutProbe, WhatTheDetectionActuallyDoesWithNuts) {
     reportAt(ownImages(), "Producto_Tuerca_Liv_02.jpg", 1);
     reportAt(ownImages(), "producto-tuercas-prueba.jpg", 100);
     std::printf("\n  [tuercas] imágenes anotadas en: %s\n", outputDir().string().c_str());
+    SUCCEED();
+}
+
+// ¿CUÁNTO CUESTA MIRAR TODAS LAS PIEZAS EN VEZ DE UNA?
+//
+// El motor solo buscaba las demás piezas cuando había un número declarado, y la
+// razón escrita era el coste: «buscar todas las piezas del frame cuesta, y quien
+// inspecciona de una en una no tiene por qué pagarlo». El efecto secundario era
+// que el modo automático no medía nada más que la mayor.
+//
+// Antes de quitar esa condición conviene saber de cuánto se habla, sobre las
+// imágenes reales del usuario y no sobre una suposición.
+TEST(NutProbe, WhatItCostsToLookAtEveryPiece) {
+    if (ownImages().empty()) {
+        GTEST_SKIP() << "las imágenes del usuario no están en esta máquina";
+    }
+    for (const char* file : {"Producto_Tuerca_Liv_02.jpg", "producto-tuercas-prueba.jpg"}) {
+        const cv::Mat image =
+            cv::imread((ownImages() / file).string(), cv::IMREAD_GRAYSCALE);
+        if (image.empty()) {
+            continue;
+        }
+        pci::vision::PipelineConfig config;
+
+        const auto time = [&](auto&& call) {
+            call();  // calentamiento
+            const auto started = std::chrono::steady_clock::now();
+            constexpr int kPasses = 5;
+            for (int i = 0; i < kPasses; ++i) {
+                call();
+            }
+            return std::chrono::duration<double, std::milli>(
+                       std::chrono::steady_clock::now() - started)
+                       .count() /
+                   kPasses;
+        };
+
+        const double one = time([&] { (void)pci::vision::analyzeFrame(image, config); });
+        const double every = time([&] { (void)pci::vision::analyzeFrames(image, config); });
+        auto all = pci::vision::analyzeFrames(image, config);
+        const int found = all.isOk() ? static_cast<int>(all.value().size()) : -1;
+
+        std::printf("  [coste] %-32s %3d piezas | una: %6.2f ms | todas: %6.2f ms "
+                    "| extra: %+6.2f ms (x%.2f)\n",
+                    file, found, one, every, every - one, one > 0.0 ? every / one : 0.0);
+    }
     SUCCEED();
 }

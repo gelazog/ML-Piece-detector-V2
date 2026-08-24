@@ -468,6 +468,9 @@ private:
     // Vuelca en el mosaico las piezas del último análisis. La primera vez que
     // hay varias, abre el panel; después no vuelve a tocar su visibilidad.
     void showPiecesInMosaic(const AnalysisOverlay& overlay);
+    // Abre o cierra el panel de mosaico y da por hecho que la decisión es del
+    // operador: a partir de aquí no se le vuelve a ofrecer solo.
+    void showMosaicPanel(bool on);
     QLabel* edgeChip_ = nullptr;           // modo de medición activo (M3)
     QComboBox* templateCombo_ = nullptr;   // plantillas de la pieza
     QPushButton* newTemplateButton_ = nullptr;
@@ -494,6 +497,8 @@ private:
     // El panel se ofrece solo la PRIMERA vez que hay varias piezas. Volver a
     // abrirlo en cada fotograma le quitaría al operador la decisión de cerrarlo.
     bool mosaicOffered_ = false;
+    // Lo que pidió la pieza seleccionada. Se guarda con ella, no con la máquina.
+    bool showMosaic_ = false;
     QPushButton* managePiecesButton_ = nullptr;
 
     // Guía del primer arranque (I3). No es un asistente: es una línea que

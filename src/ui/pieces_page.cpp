@@ -1,7 +1,11 @@
 #include "ui/pieces_page.h"
 
+#include "vision/contour_analysis.h"
+
 #include <algorithm>
 
+#include <QCheckBox>
+#include <QSignalBlocker>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -39,7 +43,12 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
     auto* manualRow = new QHBoxLayout();
     manualRow->addWidget(manual_);
     expected_ = new QSpinBox(this);
-    expected_->setRange(1, 64);
+    // HASTA DONDE LLEGA EL DETECTOR, ni una menos.
+    //
+    // Estaba en 64 mientras el detector acepta 256, así que una bandeja de cien
+    // tuercas —que es la que usa el usuario para probar— no se podía ni
+    // declarar: el campo se paraba en 64 sin decir por qué.
+    expected_->setRange(1, vision::kMaxPieces);
     expected_->setSuffix(tr(" piezas"));
     expected_->setValue(expectedPieces > 0 ? expectedPieces : 1);
     manualRow->addWidget(expected_);
@@ -58,6 +67,26 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
            "en este momento. Colócalas como deben ir y pulsa aquí."));
     root->addWidget(useDetected_);
     connect(useDetected_, &QPushButton::clicked, this, &PiecesPage::useDetectedRequested);
+
+    // VER TODAS LAS PIEZAS A LA VEZ.
+    //
+    // Petición directa: poder pedir el mosaico desde aquí. Va en esta página y
+    // no en el menú de Ver porque es una propiedad del TRABAJO —«esta pieza es
+    // una bandeja»— y se guarda con la pieza, igual que el número. Quien pasa
+    // de una bandeja a una pieza suelta en el mismo turno no tiene por qué
+    // acordarse de abrir y cerrar un panel cada vez.
+    mosaic_ = new QCheckBox(tr("Ver todas las piezas en mosaico"), this);
+    mosaic_->setToolTip(
+        tr("Abre un panel con cada pieza del encuadre recortada y numerada,\n"
+           "todas al mismo tamaño. Con una bandeja llena es la única forma\n"
+           "de ver si a alguna le falta algo: en el vídeo cada pieza ocupa\n"
+           "unos pocos píxeles.\n\n"
+           "Pulsar una la ENFOCA: pasa a ser la que miden las herramientas,\n"
+           "la que compara el panel de registrada/actual y la que se\n"
+           "remarca en el vídeo.\n\n"
+           "Con una sola pieza en el encuadre no enseña nada: el vídeo ya\n"
+           "la da entera y más grande."));
+    root->addWidget(mosaic_);
 
     status_ = new QLabel(this);
     status_->setWordWrap(true);
@@ -79,6 +108,8 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
     const auto announce = [this] { emit this->expectedPiecesChangedLive(this->expectedPieces()); };
     connect(expected_, &QSpinBox::valueChanged, this, announce);
     connect(manual_, &QRadioButton::toggled, this, announce);
+    connect(mosaic_, &QCheckBox::toggled, this,
+            [this](bool on) { emit this->showMosaicChangedLive(on); });
 }
 
 PiecesPage::CountMode PiecesPage::countMode() const {
@@ -108,6 +139,19 @@ void PiecesPage::setExpectedPieces(int expected) {
         }
     }
     refreshStatus();
+}
+
+bool PiecesPage::showMosaic() const {
+    return mosaic_ != nullptr && mosaic_->isChecked();
+}
+
+void PiecesPage::setShowMosaic(bool on) {
+    if (mosaic_ != nullptr) {
+        // Sin disparar el aviso en vivo: cargar lo guardado no es que el
+        // operador haya cambiado nada.
+        const QSignalBlocker quiet(mosaic_);
+        mosaic_->setChecked(on);
+    }
 }
 
 void PiecesPage::setDetectedCount(int found) {

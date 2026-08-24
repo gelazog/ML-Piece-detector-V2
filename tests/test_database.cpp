@@ -1334,3 +1334,55 @@ TEST_F(DatabaseTest, TheMainVariantCannotBeDeletedByRemovingAFinish) {
     EXPECT_TRUE(pieces.loadLatestReference(pieceId.value()).isOk())
         << "quitar un acabado dejó a la pieza sin referencia";
 }
+
+// EL MOSAICO SE GUARDA CON LA PIEZA (v12).
+//
+// «Bandeja de cien tuercas» es una propiedad del trabajo, no del puesto: el
+// mismo operador pasa de una bandeja a una pieza suelta en el mismo turno, y
+// tener que acordarse de abrir y cerrar el panel cada vez es exactamente el tipo
+// de cosa que se deja de hacer al segundo día. Por eso va en la fila de la
+// pieza, junto al número esperado, y no en los ajustes de la máquina.
+TEST_F(DatabaseTest, TheMosaicChoiceTravelsWithThePiece) {
+    std::int64_t trayId = -1;
+    std::int64_t singleId = -1;
+    {
+        auto& db = openAndMigrate();
+        repositories::PieceRepository pieces(db);
+
+        auto tray = pieces.createPiece("bandeja");
+        ASSERT_TRUE(tray.isOk());
+        trayId = tray.value();
+        auto single = pieces.createPiece("suelta");
+        ASSERT_TRUE(single.isOk());
+        singleId = single.value();
+
+        // De fábrica, apagado: una pieza nueva no se encuentra un panel abierto
+        // que nadie ha pedido.
+        auto fresh = pieces.loadMeasurement(trayId);
+        ASSERT_TRUE(fresh.isOk());
+        EXPECT_FALSE(fresh.value().showMosaic) << "una pieza nueva no pide mosaico";
+
+        auto m = fresh.value();
+        m.showMosaic = true;
+        m.expectedPieces = 100;  // y el campo llega a cien, que era el tope real
+        ASSERT_TRUE(pieces.saveMeasurement(trayId, m).isOk());
+    }
+    // Se cierra y se vuelve a abrir: guardar en memoria no es guardar.
+    {
+        db_.reset();
+        auto& db = openAndMigrate();
+        repositories::PieceRepository pieces(db);
+
+        auto tray = pieces.loadMeasurement(trayId);
+        ASSERT_TRUE(tray.isOk());
+        EXPECT_TRUE(tray.value().showMosaic) << "la bandeja perdió su mosaico al reabrir";
+        EXPECT_EQ(tray.value().expectedPieces, 100);
+
+        // Y la otra pieza NO se lo lleva puesto: es lo que hace que valga la
+        // pena guardarlo con la pieza y no con la máquina.
+        auto single = pieces.loadMeasurement(singleId);
+        ASSERT_TRUE(single.isOk());
+        EXPECT_FALSE(single.value().showMosaic)
+            << "el mosaico de la bandeja se ha contagiado a la pieza suelta";
+    }
+}

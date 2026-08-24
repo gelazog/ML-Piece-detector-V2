@@ -161,7 +161,25 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
     };
     std::vector<ExtraPiece> extraFixtures;
     std::size_t mainReadingIndex = 0;
-    if (expectedPieces > 1) {
+    // CUÁNDO SE MIRAN TODAS.
+    //
+    // Antes la condición era «hay un número declarado mayor que uno», y el
+    // motivo escrito era el coste. El efecto era que el modo AUTOMÁTICO —que en
+    // la pantalla dice, con esas palabras, «cuenta las que haya»— no miraba: se
+    // medía la mayor y las demás no existían para el informe. Peor aún, la
+    // bandeja salía OK porque la única pieza mirada estaba bien.
+    //
+    // El coste, medido sobre las imágenes reales: +0,70 ms con dos piezas y
+    // +50 ms con cien. Es por INSPECCIÓN, no por fotograma, y la alternativa a
+    // esos 50 ms era no medir noventa y nueve piezas.
+    //
+    // El único caso que sigue sin enumerar es el declarado a UNA, y ahí es una
+    // decisión del operador que la pantalla promete: «con una pieza el programa
+    // deja de enumerar», para que una sombra o un reflejo no cuenten como
+    // segunda pieza. Declarar el número sirve para juzgar el recuento y para
+    // quedarse con las N mayores; no puede ser lo que ENCIENDE la medición.
+    const bool lookAtEveryPiece = expectedPieces != 1;
+    if (lookAtEveryPiece) {
         if (auto all = vision::analyzeFrames(frameBgr, options_.pipeline); all.isOk()) {
             outcome.piecesFound = static_cast<int>(all.value().size());
             // Las DEMÁS, que es la mayor la que ya se analizó aparte.

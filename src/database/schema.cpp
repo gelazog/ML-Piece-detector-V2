@@ -220,6 +220,21 @@ const char* const kMigrationV11 = R"sql(
 ALTER TABLE Embeddings ADD COLUMN variant TEXT NOT NULL DEFAULT 'principal';
 )sql";
 
+// v12: si esta pieza se mira en MOSAICO.
+//
+// Va con la pieza y no con la maquina por la misma razon que el numero
+// esperado: «bandeja de cien tuercas» es una propiedad del trabajo, no del
+// puesto. El mismo operador pasa de una bandeja a una pieza suelta en el mismo
+// turno, y tener que acordarse de abrir y cerrar el panel cada vez es
+// exactamente el tipo de cosa que se deja de hacer al segundo dia.
+//
+// Por defecto 0 —apagado—: con una pieza suelta el panel no tiene nada que
+// ensenar, y las bases que ya existen no se encuentran un panel nuevo abierto
+// sin haberlo pedido.
+const char* const kMigrationV12 = R"sql(
+ALTER TABLE Pieces ADD COLUMN show_mosaic INTEGER NOT NULL DEFAULT 0;
+)sql";
+
 const char* migrationFor(int targetVersion) {
     switch (targetVersion) {
         case 1: return kSchemaV1;
@@ -233,6 +248,7 @@ const char* migrationFor(int targetVersion) {
         case 9: return kMigrationV9;
         case 10: return kMigrationV10;
         case 11: return kMigrationV11;
+        case 12: return kMigrationV12;
     }
     return nullptr;
 }

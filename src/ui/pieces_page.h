@@ -2,6 +2,7 @@
 
 #include <QWidget>
 
+class QCheckBox;
 class QLabel;
 class QPushButton;
 class QRadioButton;
@@ -45,6 +46,11 @@ public:
     // un dato nuevo que pueda desincronizarse del que ya había.
     [[nodiscard]] int expectedPieces() const;
 
+    // Si esta pieza se mira en MOSAICO: todas las del encuadre recortadas y
+    // numeradas, una al lado de otra. Va con la pieza, como el número.
+    [[nodiscard]] bool showMosaic() const;
+    void setShowMosaic(bool on);
+
     // Cuántas se están viendo ahora mismo, para el botón «usar lo que veo» y
     // para que el operador compruebe de un vistazo si el número que puso es el
     // correcto antes de que salte un NG en producción.
@@ -73,6 +79,10 @@ signals:
     // que el operador pase de camino al que quiere. Eso sigue pasando al
     // aceptar.
     void expectedPiecesChangedLive(int expected);
+    // El mosaico se enciende o se apaga en el momento, sin esperar a Aceptar:
+    // es una opción de VER, y una opción de ver que no se ve hasta que cierras
+    // la ventana obliga a abrirla dos veces para saber si era la que querías.
+    void showMosaicChangedLive(bool on);
 
 private:
     void refreshStatus();
@@ -81,6 +91,7 @@ private:
     QRadioButton* manual_ = nullptr;
     QSpinBox* expected_ = nullptr;
     QPushButton* useDetected_ = nullptr;
+    QCheckBox* mosaic_ = nullptr;
     QLabel* status_ = nullptr;
     int detected_ = -1;  // -1 = todavía no se ha analizado nada
 };

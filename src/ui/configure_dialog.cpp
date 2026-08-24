@@ -89,6 +89,7 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
 
     // --- Piezas ---
     pieces_ = new PiecesPage(inputs.expectedPieces, this);
+    pieces_->setShowMosaic(inputs.showMosaic);
     tabs_->addTab(pieces_, tr("Piezas"));
 
     // --- Rendimiento ---

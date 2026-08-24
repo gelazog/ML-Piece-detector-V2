@@ -195,7 +195,7 @@ core::Result<void> PieceRepository::saveMeasurement(std::int64_t pieceId,
         "UPDATE Pieces SET measurement_mode = ?, board_origin = ?, board_fixed_x = ?, "
         "board_fixed_y = ?, board_follow_angle = ?, board_offset_x = ?, "
         "board_offset_y = ?, board_tol_radius = ?, board_tol_angle = ?, "
-        "expected_pieces = ? WHERE id = ?;");
+        "expected_pieces = ?, show_mosaic = ? WHERE id = ?;");
     if (!stmt.isOk()) {
         return core::Result<void>::err(stmt.error().message);
     }
@@ -215,7 +215,8 @@ core::Result<void> PieceRepository::saveMeasurement(std::int64_t pieceId,
     if (auto b = s.bindDouble(8, measurement.maxOffsetPx); !b.isOk()) return b;
     if (auto b = s.bindDouble(9, measurement.maxAngleDeg); !b.isOk()) return b;
     if (auto b = s.bindInt(10, measurement.expectedPieces); !b.isOk()) return b;
-    if (auto b = s.bindInt(11, pieceId); !b.isOk()) return b;
+    if (auto b = s.bindInt(11, measurement.showMosaic ? 1 : 0); !b.isOk()) return b;
+    if (auto b = s.bindInt(12, pieceId); !b.isOk()) return b;
     auto step = s.step();
     if (!step.isOk()) {
         return core::Result<void>::err(step.error().message);
@@ -228,7 +229,7 @@ core::Result<PieceMeasurement> PieceRepository::loadMeasurement(std::int64_t pie
     auto stmt = db_.prepare(
         "SELECT measurement_mode, board_origin, board_fixed_x, board_fixed_y, "
         "board_follow_angle, board_offset_x, board_offset_y, board_tol_radius, "
-        "board_tol_angle, expected_pieces FROM Pieces WHERE id = ?;");
+        "board_tol_angle, expected_pieces, show_mosaic FROM Pieces WHERE id = ?;");
     if (!stmt.isOk()) {
         return ResultT::err(stmt.error().message);
     }
@@ -253,6 +254,7 @@ core::Result<PieceMeasurement> PieceRepository::loadMeasurement(std::int64_t pie
     measurement.maxOffsetPx = stmt.value().columnDouble(7);
     measurement.maxAngleDeg = stmt.value().columnDouble(8);
     measurement.expectedPieces = stmt.value().columnInt(9);
+    measurement.showMosaic = stmt.value().columnInt(10) != 0;
     return ResultT::ok(measurement);
 }
 

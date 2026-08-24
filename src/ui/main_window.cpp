@@ -2130,6 +2130,8 @@ void MainWindow::applyPiecesPage(PiecesPage* page) {
         return;
     }
     measurement.value().expectedPieces = expectedPieces_;
+    showMosaic_ = page->showMosaic();
+    measurement.value().showMosaic = page->showMosaic();
     if (auto saved = repos_.pieces->saveMeasurement(pieceId, measurement.value());
         !saved.isOk()) {
         core::logWarning("No se pudieron guardar las piezas esperadas: " +
@@ -4688,6 +4690,17 @@ void MainWindow::showPiecesInMosaic(const AnalysisOverlay& overlay) {
     mosaic_->setPieces(analysedFrame_, overlay.pieceContours, overlay.measuredPiece);
 }
 
+void MainWindow::showMosaicPanel(bool on) {
+    if (mosaicDock_ == nullptr) {
+        return;
+    }
+    // Pedirlo a mano cuenta como haberlo decidido: ya no se le vuelve a ofrecer
+    // solo la próxima vez que aparezcan varias piezas. Ofrecerle un panel a
+    // quien acaba de apagarlo es no haberle escuchado.
+    mosaicOffered_ = true;
+    mosaicDock_->setVisible(on);
+}
+
 void MainWindow::updatePieceNavigator() {
     if (pieceNav_ == nullptr) {
         return;
@@ -4855,6 +4868,10 @@ void MainWindow::loadMeasurementForSelectedPiece() {
         // Las piezas esperadas viajan con la pieza (C5): al cambiar de trabajo
         // se recupera su recuento, y el de la anterior no se arrastra.
         expectedPieces_ = loaded.value().expectedPieces;
+        // Y si esta pieza se mira en mosaico. Va con el trabajo: quien pasa de
+        // una bandeja a una pieza suelta no tiene por qué acordarse del panel.
+        showMosaic_ = loaded.value().showMosaic;
+        showMosaicPanel(showMosaic_);
         // Y AL PIPELINE, que es quien decide con cuantas manchas se trabaja.
         // Sin esta linea, cambiar de pieza recuperaba su recuento en la ventana
         // y dejaba a la deteccion con el de la pieza anterior.
@@ -5727,6 +5744,7 @@ void MainWindow::onConfigureClicked() {
     inputs.kSigma = kSigma_;
     inputs.zoneMode = zoneMode_;
     inputs.expectedPieces = expectedPieces_;
+    inputs.showMosaic = showMosaic_;
     inputs.hasFixedZone = pipelineConfig_.roi.area() > 0;
     inputs.hasFreeZone = pipelineConfig_.roiPolygon.size() >= 3;
 
@@ -5777,6 +5795,11 @@ void MainWindow::onConfigureClicked() {
         // la base por cada número intermedio.
         connect(pieces, &PiecesPage::expectedPiecesChangedLive, this,
                 &MainWindow::declareExpectedPieces);
+        // El mosaico se enciende o se apaga en el momento. Es una opción de VER,
+        // y una opción de ver que no se ve hasta cerrar la ventana obliga a
+        // abrirla dos veces para saber si era la que querías.
+        connect(pieces, &PiecesPage::showMosaicChangedLive, this,
+                &MainWindow::showMosaicPanel);
         connect(pieces, &PiecesPage::useDetectedRequested, this, [this, pieces] {
             pieces->setDetectedCount(lastPieceCount_);
             pieces->setExpectedPieces(lastPieceCount_);
