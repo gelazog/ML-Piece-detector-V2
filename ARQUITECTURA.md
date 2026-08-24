@@ -3512,6 +3512,62 @@ mayores; no puede ser lo que **enciende** la medición.
 declaraba nada —o sea, corría en automático— y exigía que de tres barras se midiera
 una. Ahora declara el uno que su nombre dice.
 
+### El fallo que no falla: medir corto y no decir nada
+
+Es el peor que puede tener una aplicación de medida. No lanza, no avisa, y devuelve
+un número creíble. Medido sobre las fotos reales del usuario: el umbral automático
+se come la cabeza cromada de un tornillo y le quita el **36 %** del área. El aviso de
+contorno sucio **no salta** —está en 3,0 y esa pieza mide 2,14— y no puede saltar:
+un contorno recortado es perfectamente limpio. **No hay nada sucio; hay pieza que
+falta.**
+
+**La señal**: aflojar el umbral unos niveles HACIA el fondo y mirar cuánta pieza
+aparece. Con una pieza bien separada, entre ella y la mesa hay un desierto de grises
+y aflojar no encuentra nada. Si aparece mucha, es que había masa de pieza pegada al
+corte — o sea, que el corte caía **dentro** de la pieza y no en su borde.
+
+Lo que la hace utilizable en producción: **no necesita la verdad**. No se compara con
+el área buena, que nadie conoce; se compara la imagen consigo misma.
+
+| imagen | vuelco | veredicto |
+|---|---|---|
+| engranaje-1 | +5,7 % | correcto |
+| engranajes-1 | +5,5 % | correcto (su problema es que se tocan) |
+| tornillo-1 | +2,5 % | correcto |
+| tuerca suelta | +3,9 % | correcto |
+| bandeja de 100 | +4,6 % | correcto |
+| **tornillo-2** | **+15,4 %** | **CORTA** — le faltaba el 32 % del área |
+| **tornillos-1** | **+23,8 %** | **CORTA** — le faltaba el 36 % del área |
+
+Todo lo correcto por debajo del 6 %, todo lo cortado por encima del 15 %. El umbral
+se pone en el **10 %**, en medio del hueco y no pegado a ninguno de los dos lados.
+
+**Se probó una versión barata** —solo umbralizar y contar píxeles, sin pasar por el
+pipeline— que cuesta menos de 1 ms. **No separa**: 11,9 % en una imagen correcta
+contra 13,3 % en una cortada. El filtrado por área y la morfología del pipeline son
+lo que quita el ruido que confunde la señal, así que hay que pagarlos: dos análisis
+completos, 60 ms con cien piezas. Por eso va **a petición** y no por fotograma.
+
+#### Y una escena que no se pudo construir
+
+La mitad «que el aviso SÍ salte» se comprueba sobre las fotos reales y **no** con una
+escena dibujada. Se intentó tres veces:
+
+1. Cabeza plana puesta a ojo → vuelco de **−100 %**. No reproducía un recorte:
+   reproducía una escena rota. Y la aserción de entonces —que el resumen no estuviera
+   vacío— la daba por buena.
+2. Cabeza plana con el nivel buscado **iterando contra el propio Otsu** → 0,0 %. Con
+   un histograma de dos picos y nada en medio, Otsu cae SOBRE uno de los picos y no
+   existe ningún nivel que quede «a doce del corte».
+3. Cabeza con **degradado** de brillo, que es lo que tiene una superficie curva y
+   pulida → **+5,3 %**. Dirección correcta, pero no llega al 10 %.
+
+Para que llegara habría que agrandar la cabeza hasta que el área recuperada pesara lo
+bastante — y eso ya es **ajustar la escena hasta que la prueba pase**, que es fabricar
+la respuesta. Una prueba así no demuestra que el aviso funcione: demuestra que se le
+encontró una entrada a medida. Las fotos reales no tienen ese problema: el recorte
+está medido de forma independiente —32 % y 36 %— y el aviso acierta contra esa verdad.
+
 ### El afinado subpíxel se ignoraba en cuanto había dos piezas
 
 El afinado vivía en `analyzeFrame`, el camino de UNA pieza. `analyzeFrames` —el de

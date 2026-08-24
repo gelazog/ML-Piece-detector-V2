@@ -1,4 +1,6 @@
 #include "vision/edge_segmentation.h"
+#include <cstdio>
+#include "vision/pipeline.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -207,6 +209,87 @@ SceneReading readScene(const cv::Mat& image) {
 
 bool edgeSegmentationLooksBetter(const cv::Mat& image) {
     return readScene(image).piecesStraddleTheBackground;
+}
+
+
+ClippingCheck checkThresholdClipping(const cv::Mat& image) {
+    ClippingCheck check;
+    if (image.empty()) {
+        check.summary = "No hay imagen que mirar.";
+        return check;
+    }
+    check.loosenedBy = kLoosenThresholdBy;
+
+    cv::Mat gray;
+    if (image.channels() == 3) {
+        cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+    } else {
+        gray = image;
+    }
+
+    // El umbral que elige Otsu es el que usa el modo automático, que es el que
+    // hay que juzgar. Con umbral manual el operador ya ha decidido y esto sigue
+    // sirviendo igual: le dice si SU elección corta.
+    cv::Mat blurred;
+    cv::GaussianBlur(gray, blurred, cv::Size(5, 5), 0.0);
+    cv::Mat scratch;
+    const int otsu = static_cast<int>(
+        cv::threshold(blurred, scratch, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU));
+
+    // Hacia dónde se afloja depende de qué lado es la pieza. El marco exterior
+    // es fondo, así que si el fondo está por encima del corte, la pieza es la
+    // parte oscura y aflojar es SUBIR el corte.
+    const auto reading = readScene(gray);
+    const bool pieceIsDark = reading.backgroundLevel > otsu;
+    const int loose = pieceIsDark ? std::min(254, otsu + kLoosenThresholdBy)
+                                  : std::max(1, otsu - kLoosenThresholdBy);
+
+    const auto totalArea = [&image](int threshold) {
+        PipelineConfig config;
+        config.segmentation.manualThreshold = threshold;
+        auto all = analyzeFrames(image, config);
+        if (!all.isOk()) {
+            return 0.0;
+        }
+        double total = 0.0;
+        for (const auto& piece : all.value()) {
+            total += piece.contour.area;
+        }
+        return total;
+    };
+
+    const double tight = totalArea(otsu);
+    const double relaxed = totalArea(loose);
+    if (tight <= 0.0) {
+        check.summary = "Con este umbral no se detecta ninguna pieza, así que no hay "
+                        "nada de lo que decir si está cortado.";
+        return check;
+    }
+    check.swing = (relaxed - tight) / tight;
+    check.thresholdCutsThePiece = check.swing > kThresholdCutsTheSwing;
+
+    char buffer[420];
+    if (check.thresholdCutsThePiece) {
+        std::snprintf(buffer, sizeof(buffer),
+                      "EL UMBRAL ESTÁ CORTANDO LA PIEZA. Aflojándolo %d niveles aparece "
+                      "un %.0f %% más de área, y eso significa que el corte cae DENTRO "
+                      "de la pieza y no en su borde: hay partes suyas casi tan claras "
+                      "como la mesa (una cabeza cromada, un canto pulido) y el umbral "
+                      "las está dejando fuera.\n\n"
+                      "Las medidas salen CORTAS y nada avisa, porque el contorno "
+                      "recortado es perfectamente limpio.\n\n"
+                      "Prueba a separar «por el canto de la pieza», o fija el umbral a "
+                      "mano cerca de %d.",
+                      check.loosenedBy, 100.0 * check.swing, loose);
+    } else {
+        std::snprintf(buffer, sizeof(buffer),
+                      "El umbral cae en el borde de la pieza: aflojándolo %d niveles "
+                      "solo aparece un %.0f %% más de área. No se está dejando pieza "
+                      "fuera.",
+                      check.loosenedBy, 100.0 * check.swing);
+    }
+    check.summary = buffer;
+    return check;
 }
 
 }  // namespace pci::vision

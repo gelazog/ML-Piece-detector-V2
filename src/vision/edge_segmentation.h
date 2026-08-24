@@ -93,4 +93,63 @@ struct SceneReading {
 // nada.
 [[nodiscard]] bool edgeSegmentationLooksBetter(const cv::Mat& image);
 
+// ¿ESTÁ EL UMBRAL CORTANDO LA PIEZA?
+//
+// El fallo que esto detecta es el peor que puede tener una aplicación de
+// medida: no falla, no avisa, y devuelve un número creíble y corto. Medido
+// sobre las fotos reales del usuario, el umbral automático se come la cabeza
+// cromada de un tornillo y le quita el 36 % de su área — y el aviso de contorno
+// sucio no salta, porque el contorno recortado es perfectamente limpio.
+//
+// LA SEÑAL: aflojar el umbral unos niveles HACIA el fondo y mirar cuánta pieza
+// nueva aparece. Con una pieza bien separada, entre ella y el fondo hay un
+// desierto de grises y aflojar no encuentra nada. Si aparece mucha, es que
+// había masa de pieza pegada al corte — o sea, que el corte estaba dentro de la
+// pieza y no en su borde.
+//
+// Lo que la hace utilizable: NO HACE FALTA SABER LA VERDAD. No se compara con
+// el área buena, que nadie conoce en producción: se compara la imagen consigo
+// misma.
+//
+// Medido sobre las siete imágenes reales disponibles:
+//
+//   engranaje-1        +5,7 %      nivel correcto
+//   engranajes-1       +5,5 %      nivel correcto (su problema es otro)
+//   tornillo-1         +2,5 %      nivel correcto
+//   tuerca suelta      +3,9 %      nivel correcto
+//   bandeja de 100     +4,6 %      nivel correcto
+//   tornillo-2        +15,4 %      CORTA — le faltaba el 32 % del área
+//   tornillos-1       +23,8 %      CORTA — le faltaba el 36 % del área
+//
+// Todo lo correcto por debajo del 6 %, todo lo cortado por encima del 15 %. El
+// umbral se pone en el 10 %, en medio del hueco y no pegado a ninguno de los
+// dos lados.
+//
+// SE PROBÓ una versión barata que solo umbraliza y cuenta píxeles, sin pasar
+// por el pipeline: cuesta menos de 1 ms pero NO SEPARA — daba 11,9 % en una
+// imagen correcta contra 13,3 % en una cortada. El filtrado por área y la
+// morfología del pipeline son lo que quita el ruido que confunde la señal, así
+// que hay que pagarlos.
+struct ClippingCheck {
+    // Cuánta área aparece al aflojar el umbral, en fracción de la que había.
+    double swing = 0.0;
+    // Si eso es bastante como para afirmar que el umbral está dentro de la
+    // pieza y no en su borde.
+    bool thresholdCutsThePiece = false;
+    // Cuántos niveles de gris se aflojó, para poder decirlo en el aviso.
+    int loosenedBy = 0;
+    // En castellano, para enseñárselo al operador.
+    std::string summary;
+};
+
+// El hueco medido va de 5,7 % a 15,4 %; el umbral se pone en medio.
+inline constexpr double kThresholdCutsTheSwing = 0.10;
+// Cuánto se afloja. Doce niveles es lo que se midió, y es la distancia a la que
+// una cabeza cromada aparece sin que aparezcan además las sombras del fondo.
+inline constexpr int kLoosenThresholdBy = 12;
+
+// Cuesta DOS análisis completos de más —60 ms con cien piezas, medido— así que
+// no se llama por fotograma: es una comprobación que se pide.
+[[nodiscard]] ClippingCheck checkThresholdClipping(const cv::Mat& image);
+
 }  // namespace pci::vision

@@ -259,3 +259,31 @@ TEST(SelfExplaining, TheButtonBarExplainsItself) {
         << "hay botones que no dicen qué hacen. Un botón que no se entiende no se "
            "pulsa, y entonces la función existe para nadie";
 }
+
+// EL BOTÓN DE «¿ESTÁ CORTANDO LA PIEZA?» EXISTE Y DICE QUÉ HACE.
+//
+// El aviso más útil de la aplicación no sirve de nada si vive en un botón que
+// nadie encuentra o que no se entiende. Y su explicación tiene que decir la
+// parte que no es evidente: que las medidas salen cortas SIN que nada avise,
+// porque un contorno recortado es perfectamente limpio.
+TEST(SelfExplaining, TheClippingCheckIsReachableAndExplainsItself) {
+    pci::ui::ConfigureDialog::Inputs inputs;
+    pci::ui::ConfigureDialog dialog(inputs, nullptr);
+    dialog.resize(900, 700);
+
+    QAbstractButton* check = nullptr;
+    for (auto* candidate : dialog.findChildren<QAbstractButton*>()) {
+        if (candidate->text().contains(QStringLiteral("cortando"))) {
+            check = candidate;
+        }
+    }
+    ASSERT_NE(check, nullptr)
+        << "no hay forma de pedir la comprobación de corte desde Configurar";
+    const QString help = check->toolTip();
+    std::printf("  [ayuda] botón de corte: «%s»\n", check->text().toStdString().c_str());
+    EXPECT_FALSE(help.trimmed().isEmpty()) << "el botón no dice qué hace";
+    // Lo que NO es evidente y hay que decir: que hoy no avisa nadie.
+    EXPECT_TRUE(help.contains(QStringLiteral("CORTAS")) ||
+                help.contains(QStringLiteral("cortas")))
+        << "la ayuda no dice que el efecto es medir corto: " << help.toStdString();
+}

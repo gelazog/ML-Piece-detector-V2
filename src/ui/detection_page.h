@@ -87,6 +87,8 @@ private:
     QLabel* thresholdValue_ = nullptr;
     QLabel* sceneHint_ = nullptr;
     QPushButton* useEdgesButton_ = nullptr;
+    QPushButton* clipCheckButton_ = nullptr;
+    QLabel* clipResult_ = nullptr;
     QComboBox* method_ = nullptr;
     QComboBox* polarity_ = nullptr;
 
@@ -99,6 +101,21 @@ public:
     // ningun umbral por nivel puede servir (`vision/edge_segmentation.h`), y ese
     // es el momento de decirlo, no despues.
     void setSceneReading(const vision::SceneReading& reading);
+
+    // EL RESULTADO DE «¿ESTÁ CORTANDO LA PIEZA?».
+    //
+    // Se enseña aquí y no en un aviso aparte porque la salida está justo al
+    // lado: el selector de método y el umbral manual. Un diagnóstico lejos del
+    // control que hay que tocar obliga a buscarlo.
+    void setClippingCheck(const vision::ClippingCheck& check);
+
+signals:
+    // El operador pide la comprobación. La ventana la hace, porque cuesta dos
+    // análisis completos —60 ms con cien piezas— y esta página no tiene la
+    // imagen.
+    void clippingCheckRequested();
+
+public:
     QSpinBox* blur_ = nullptr;
     QSpinBox* morph_ = nullptr;
     QDoubleSpinBox* minArea_ = nullptr;

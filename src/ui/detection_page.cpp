@@ -101,6 +101,36 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     useEdgesButton_->setVisible(false);
     form->addRow(useEdgesButton_);
 
+    // ¿ESTÁ EL UMBRAL CORTANDO LA PIEZA?
+    //
+    // Es el fallo que no falla: el programa mide corto, el contorno sale
+    // limpio, y no hay nada que avisar de que falta pieza. Medido sobre las
+    // fotos reales, el umbral automático se come la cabeza cromada de un
+    // tornillo y le quita el 36 % del área sin una sola señal.
+    //
+    // Va a petición y no continuo porque cuesta dos análisis completos: 60 ms
+    // con cien piezas. Hacerlo por fotograma para responder casi siempre «no
+    // pasa nada» sería pagar mucho por poco.
+    clipCheckButton_ = new QPushButton(tr("¿Está el umbral cortando la pieza?"), this);
+    clipCheckButton_->setToolTip(
+        tr("Afloja el umbral unos niveles y mira cuánta pieza aparece.\n\n"
+           "Si aparece mucha, es que el corte cae DENTRO de la pieza y no en su\n"
+           "borde: hay partes suyas casi tan claras como la mesa —una cabeza\n"
+           "cromada, un canto pulido— y se están quedando fuera.\n\n"
+           "Eso hace que las medidas salgan CORTAS sin que nada avise, porque un\n"
+           "contorno recortado es perfectamente limpio: no hay nada sucio, hay\n"
+           "pieza que falta.\n\n"
+           "No hace falta saber cuánto mide la pieza de verdad: se compara la\n"
+           "imagen consigo misma."));
+    connect(clipCheckButton_, &QPushButton::clicked, this,
+            &DetectionPage::clippingCheckRequested);
+    form->addRow(clipCheckButton_);
+
+    clipResult_ = new QLabel(this);
+    clipResult_->setWordWrap(true);
+    clipResult_->setVisible(false);
+    form->addRow(clipResult_);
+
     method_ = new QComboBox(this);
     method_->addItem(tr("Por nivel de gris (lo habitual)"));
     method_->addItem(tr("Por el canto de la pieza"));
@@ -368,6 +398,21 @@ double DetectionPage::maxAreaFraction() const {
 // Solo se enseña cuando hay algo que hacer: si la escena pide el canto y el
 // método puesto es el de nivel. Un aviso que sale siempre se aprende a ignorar,
 // y uno que sale cuando ya está bien puesto es ruido.
+void DetectionPage::setClippingCheck(const vision::ClippingCheck& check) {
+    if (clipResult_ == nullptr) {
+        return;
+    }
+    clipResult_->setVisible(true);
+    clipResult_->setText(QString::fromStdString(check.summary));
+    // Rojo cuando corta, apagado cuando no. Un resultado tranquilizador con el
+    // mismo aspecto que uno alarmante enseña a no leer ninguno de los dos.
+    clipResult_->setStyleSheet(
+        check.thresholdCutsThePiece
+            ? QStringLiteral("color:#3a1010; background:#ffd9d9; border:1px solid #c04040;"
+                             " border-radius:4px; padding:6px; font-weight:bold;")
+            : QStringLiteral("color:#8a8a8a; padding:6px;"));
+}
+
 void DetectionPage::setSceneReading(const vision::SceneReading& reading) {
     if (sceneHint_ == nullptr || method_ == nullptr) {
         return;

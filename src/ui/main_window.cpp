@@ -6009,6 +6009,23 @@ void MainWindow::onConfigureClicked() {
             pieces->setExpectedPieces(lastPieceCount_);
         });
     }
+    if (auto* detection = dialog->detectionPage(); detection != nullptr) {
+        // LA COMPROBACIÓN DE CORTE LA HACE LA VENTANA, no la página.
+        //
+        // La página no tiene la imagen —ni debería tenerla: es un formulario— y
+        // además esto cuesta dos análisis completos, 60 ms con cien piezas. Va
+        // a petición del operador y no en cada fotograma.
+        connect(detection, &DetectionPage::clippingCheckRequested, this, [this, detection] {
+            const QImage frame = frameOrFile();
+            if (frame.isNull()) {
+                statusBar()->showMessage(
+                    tr("No hay imagen que mirar: arranca la cámara o abre un fichero."));
+                return;
+            }
+            detection->setClippingCheck(
+                vision::checkThresholdClipping(camera::qImageToMat(frame)));
+        });
+    }
     connect(dialog, &ConfigureDialog::scaleWizardRequested, this,
             &MainWindow::onCalibrateClicked);
     connect(dialog, &ConfigureDialog::shortcutsRequested, this,
