@@ -3512,6 +3512,30 @@ mayores; no puede ser lo que **enciende** la medición.
 declaraba nada —o sea, corría en automático— y exigía que de tres barras se midiera
 una. Ahora declara el uno que su nombre dice.
 
+### Un residuo de cero no dice «no aplica»: dice «ajuste exacto»
+
+La cabecera de `ShapeClass::deviation` promete que es «el número con el que se
+decidió», y añade una frase que vale como regla: **«una clasificación sin su residuo
+es una opinión»**. La rama de polígonos redondeados lo ponía a `0.0` a mano.
+
+No es cosmético: es la lectura **contraria** a la verdadera. Quien lee «polígono
+redondeado(5), desviación 0,00 px» entiende que el contorno encaja perfectamente en
+ese modelo, cuando lo que pasa es que nadie midió si encajaba. Y esa etiqueta es de
+las más discutibles del clasificador —salía en engranajes y tornillos, que no son
+pentágonos de nada— así que es justo donde más falta hace el residuo para NO fiarse.
+
+El número sí estaba disponible: cada primitiva del contorno trae su `rmsResidual`. Se
+publica el **peor**, igual que hacen las otras dos ramas — no la media, que
+escondería un tramo malo entre veinte buenos. Sobre las piezas reales pasa de 0,00 a
+1,74 / 1,22 / 1,10 / 1,06 / 1,01 px.
+
+**Y el mismo fallo un nivel más abajo**: el texto se rotulaba con `round0`, que
+redondea a entero, así que un residuo de 0,093 px se escribía «se separa 0 px» — la
+misma impresión engañosa que se acababa de quitar del número. Da igual medir bien si
+luego se rotula a cero. Los tres sitios que rotulan un RESIDUO pasan a dos decimales
+por debajo de 10 px; los que rotulan diámetros y porcentajes se quedan en entero,
+donde el detalle no aporta.
+
 ### La misma cota dando 22,61 y 227,81 px, las dos marcadas OK
 
 El calibre elige entre pares de bordes de polaridad opuesta maximizando

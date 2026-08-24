@@ -13,10 +13,30 @@
 
 namespace pci::vision {
 
+#include <cstdio>
+
 namespace {
 
 std::string round0(double value) {
     return std::to_string(static_cast<int>(std::lround(value)));
+}
+
+// UN RESIDUO SUBPÍXEL NO SE ESCRIBE COMO CERO.
+//
+// `round0` redondea a entero, y con residuos por debajo del píxel eso escribe
+// «se separa 0 px» — que es exactamente la lectura engañosa que se acababa de
+// quitar del propio número. Da igual medir bien si luego se rotula a cero.
+//
+// Por debajo de 10 px se dan dos decimales, que es donde vive un residuo de
+// ajuste; por encima el detalle no aporta y estorba.
+std::string roundFine(double value) {
+    char buffer[32];
+    if (value < 10.0) {
+        std::snprintf(buffer, sizeof(buffer), "%.2f", value);
+    } else {
+        std::snprintf(buffer, sizeof(buffer), "%.0f", value);
+    }
+    return buffer;
 }
 
 // Rellena los tramos largos con puntos intermedios.
@@ -363,8 +383,12 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
     int arcs = 0;
     double arcLength = 0.0;
     double totalLength = 0.0;
+    // El PEOR residuo de las primitivas, que es el que se va a publicar como
+    // desviación si esto resulta ser un polígono redondeado.
+    double worstResidual = 0.0;
     for (const auto& primitive : decomposeContour(dense, decomposeOptionsFor(dense))) {
         totalLength += primitive.length;
+        worstResidual = std::max(worstResidual, primitive.rmsResidual);
         if (primitive.kind == PrimitiveKind::Line) {
             ++straight;
         } else {
@@ -376,10 +400,28 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
     if (straight >= 3 && straight <= scaled.maxSides && arcs >= 1 && curvedFraction >= 0.10) {
         shape.kind = ShapeKind::Rounded;
         shape.sides = straight;
-        shape.deviation = 0.0;
+        // EL RESIDUO DE VERDAD, no un cero puesto a mano.
+        //
+        // Aquí había `shape.deviation = 0.0`, y eso incumplía lo que promete la
+        // propia cabecera de este campo: «es el número con el que se decidió», y
+        // «una clasificación sin su residuo es una opinión». Un cero no dice
+        // «no aplica»: dice «ajuste exacto», que es la lectura contraria a la
+        // verdadera y la que invita a fiarse.
+        //
+        // Se veía en las sondas sobre piezas reales: engranajes y tornillos
+        // salían como «polígono redondeado(5) desv 0,00 px», o sea con la
+        // etiqueta más discutible del clasificador y el residuo más tranquilo
+        // que existe.
+        //
+        // El residuo sí está disponible: cada primitiva del contorno trae el
+        // suyo. Se toma el PEOR, que es lo que hacen las otras dos ramas —el
+        // punto que más se separa del modelo— y no la media, que escondería
+        // un tramo malo entre veinte buenos.
+        shape.deviation = worstResidual;
         shape.reason = "contorno de " + std::to_string(straight) + " tramos rectos unidos por " +
                        std::to_string(arcs) + " redondeos (" +
-                       round0(curvedFraction * 100.0) + " % del contorno va en curva)";
+                       round0(curvedFraction * 100.0) + " % del contorno va en curva; el " +
+                       "tramo peor se separa " + roundFine(worstResidual) + " px de su modelo)";
         return shape;
     }
 
@@ -454,7 +496,7 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
         shape.deviation = polygon.deviation;
         shape.reason = "contorno de " + std::to_string(shape.sides) +
                        " lados rectos (el punto peor se separa " +
-                       round0(polygon.deviation) + " px de ellos)";
+                       roundFine(polygon.deviation) + " px de ellos)";
         return shape;
     }
 
@@ -480,7 +522,7 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
         shape.reason =
             circleFits
                 ? "contorno circular de Ø " + round0(shape.outerDiameter) +
-                      " px (el punto peor se separa " + round0(circleDeviation) + " px)"
+                      " px (el punto peor se separa " + roundFine(circleDeviation) + " px)"
                 : "contorno de " + std::to_string(polygon.unlimitedSides) +
                       " tramos rectos: demasiados para medirlos uno a uno, y se separan solo " +
                       round0(circleDeviation) + " px de una circunferencia de Ø " +

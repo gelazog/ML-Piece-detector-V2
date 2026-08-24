@@ -833,3 +833,64 @@ TEST(ShapeProposals, ARoundPieceStillGetsNoSides) {
     EXPECT_EQ(countNamed(ringProposals, "Lado "), 0)
         << "a una arandela se le propusieron lados";
 }
+
+// UN RESIDUO DE CERO NO SIGNIFICA «NO APLICA»: SIGNIFICA «AJUSTE EXACTO».
+//
+// La cabecera de `ShapeClass::deviation` promete que es «el número con el que
+// se decidió», y añade que «una clasificación sin su residuo es una opinión».
+// La rama de polígonos redondeados lo ponía a `0.0` a mano.
+//
+// Eso no es un detalle cosmético: es la lectura CONTRARIA a la verdadera. Quien
+// ve «polígono redondeado(5), desviación 0,00 px» entiende que el contorno
+// encaja perfectamente en ese modelo, cuando lo que pasa es que nadie midió si
+// encajaba. Y esa etiqueta es de las más discutibles del clasificador —salía en
+// engranajes y tornillos, que no son pentágonos de nada— así que es justo donde
+// más falta hace el residuo para no fiarse.
+//
+// El número sí estaba disponible: cada primitiva del contorno trae su
+// `rmsResidual`. Se publica el PEOR, igual que hacen las otras dos ramas.
+TEST(ShapeClassBasics, ARoundedPolygonPublishesItsRealResidual) {
+    // Un rectángulo con las esquinas redondeadas: cuatro tramos rectos unidos
+    // por cuatro arcos, que es exactamente lo que la rama describe.
+    cv::Mat scene(400, 500, CV_8UC1, cv::Scalar(0));
+    const int r = 40;
+    const cv::Rect body(120, 100, 260, 200);
+    cv::rectangle(scene, cv::Rect(body.x + r, body.y, body.width - 2 * r, body.height),
+                  cv::Scalar(255), cv::FILLED, cv::LINE_8);
+    cv::rectangle(scene, cv::Rect(body.x, body.y + r, body.width, body.height - 2 * r),
+                  cv::Scalar(255), cv::FILLED, cv::LINE_8);
+    for (const cv::Point& c : {cv::Point(body.x + r, body.y + r),
+                               cv::Point(body.br().x - r, body.y + r),
+                               cv::Point(body.x + r, body.br().y - r),
+                               cv::Point(body.br().x - r, body.br().y - r)}) {
+        cv::circle(scene, c, r, cv::Scalar(255), cv::FILLED, cv::LINE_8);
+    }
+
+    std::vector<std::vector<cv::Point>> found;
+    cv::findContours(scene, found, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+    ASSERT_FALSE(found.empty());
+    const auto shape = pci::vision::classifyShape(found.front());
+
+    std::printf("  [forma] %s(%d) desv %.3f px | %s\n",
+                pci::vision::shapeKindName(shape.kind), shape.sides, shape.deviation,
+                shape.reason.c_str());
+
+    if (shape.kind != pci::vision::ShapeKind::Rounded) {
+        GTEST_SKIP() << "esta figura ya no se clasifica como redondeada; el residuo se "
+                        "comprueba donde sí se calcula";
+    }
+    // LO QUE IMPORTA: que el residuo esté MEDIDO y no puesto a cero. Un contorno
+    // rasterizado nunca encaja exactamente en rectas y arcos ideales, así que un
+    // cero exacto sólo puede venir de no haberlo calculado.
+    EXPECT_GT(shape.deviation, 0.0)
+        << "el residuo sigue siendo un cero puesto a mano: quien lo lea entenderá "
+           "«ajuste exacto» donde no se midió nada";
+    // Y acotado: si saliera enorme, la etiqueta de «redondeado» no se sostendría
+    // y el residuo estaría diciendo justo eso.
+    EXPECT_LT(shape.deviation, 8.0)
+        << "el residuo es tan grande que la propia clasificación no se sostiene: "
+        << shape.reason;
+    // El texto que lee el operador tiene que llevar el número dentro.
+    EXPECT_NE(shape.reason.find("px"), std::string::npos)
+        << "el motivo no dice cuánto se separa: " << shape.reason;
+}
