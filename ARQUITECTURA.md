@@ -3511,6 +3511,15 @@ cuadrícula, todas al mismo tamaño y con su número. Tres decisiones lo sostien
   un estado aparte del panel. Si fueran dos cosas distintas habría dos «piezas
   actuales» y ninguna de las dos sería de fiar.
 
+**Cuesta 12,3 ms reconstruirlo** con la bandeja real de cien tuercas del usuario:
+cien recortes, cien escalados y cien pasadas de `QPainter`. Da un techo de 81
+repintados por segundo, más de lo que produce el análisis, así que no marca el
+ritmo de la interfaz. Estaba medido de antemano y no de oído, porque es justo con
+cien piezas —cuando el panel hace falta— cuando peor vendría que se atragantara.
+Aun así, **con el panel cerrado no se pinta**: gastar ese tercio de fotograma en
+algo que nadie ve no se justifica, y al reabrirlo se vuelve a analizar para que no
+reaparezca con lo de antes.
+
 Con **una sola pieza no enseña nada**: el vídeo ya la da entera y más grande. Un
 panel que ocupa sitio para repetir lo que ya se ve enseña a cerrarlo — y entonces
 tampoco estará el día que haya cien. Por lo mismo se ofrece **solo la primera vez**

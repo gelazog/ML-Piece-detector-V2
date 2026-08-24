@@ -21,7 +21,16 @@
 #include <QApplication>
 #include <QPolygonF>
 #include <QSignalSpy>
+#include <QElapsedTimer>
 #include <QToolButton>
+
+#include <opencv2/imgcodecs.hpp>
+
+#include <cstdio>
+#include <filesystem>
+
+#include "camera/frame_utils.h"
+#include "vision/pipeline.h"
 
 #include <vector>
 
@@ -150,4 +159,66 @@ TEST(PieceMosaic, RebuildingReplacesTheTilesInsteadOfPilingThemUp) {
         // panel, `tileCount()` diría 3 mientras la pantalla enseña 15.
         EXPECT_EQ(tilesOf(mosaic).size(), 3U) << "pasada " << pass;
     }
+}
+
+// ¿CUÁNTO CUESTA REPINTAR CIEN BALDOSAS?
+//
+// El mosaico se reconstruye con cada análisis, o sea varias veces por segundo,
+// y con una bandeja llena eso son cien recortes, cien escalados y cien pasadas
+// de QPainter. Es exactamente el sitio donde un panel "que solo pinta" puede
+// dejar la aplicación a tirones — y con una bandeja de cien es cuando el panel
+// hace falta, así que sería el peor momento posible para que se atragantara.
+//
+// Esto no adivina: mide sobre la bandeja real de cien tuercas del usuario, y se
+// salta en silencio si esa imagen no está.
+TEST(PieceMosaic, RepaintingAFullTrayIsCheapEnoughForLiveVideo) {
+    const std::filesystem::path dir("C:/Users/furro/Pictures/IMG-MC");
+    std::error_code ec;
+    if (!std::filesystem::exists(dir, ec)) {
+        GTEST_SKIP() << "las imágenes del usuario no están en esta máquina";
+    }
+    const cv::Mat image =
+        cv::imread((dir / "producto-tuercas-prueba.jpg").string(), cv::IMREAD_GRAYSCALE);
+    if (image.empty()) {
+        GTEST_SKIP() << "no se pudo leer la bandeja de tuercas";
+    }
+
+    pci::vision::PipelineConfig config;
+    auto all = pci::vision::analyzeFrames(image, config);
+    ASSERT_TRUE(all.isOk()) << all.error().message;
+
+    std::vector<QPolygonF> outlines;
+    outlines.reserve(all.value().size());
+    for (const auto& piece : all.value()) {
+        QPolygonF outline;
+        for (const auto& point : piece.contour.points) {
+            outline << QPointF(point.x, point.y);
+        }
+        outlines.push_back(std::move(outline));
+    }
+    const QImage frame = pci::camera::matToQImage(image);
+
+    pci::ui::PieceMosaic mosaic;
+    mosaic.resize(500, 700);
+    mosaic.setPieces(frame, outlines, 1);  // calentamiento: la primera paga extras
+
+    QElapsedTimer timer;
+    timer.start();
+    constexpr int kPasses = 20;
+    for (int pass = 0; pass < kPasses; ++pass) {
+        mosaic.setPieces(frame, outlines, 1 + pass % 5);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    }
+    const double ms = static_cast<double>(timer.elapsed()) / kPasses;
+
+    std::printf("  [mosaico] %d piezas -> %d baldosas, %.1f ms por reconstrucción "
+                "(techo %.0f fps)\n",
+                static_cast<int>(outlines.size()), mosaic.tileCount(), ms,
+                ms > 0.0 ? 1000.0 / ms : 0.0);
+
+    // 40 ms es el presupuesto: por debajo de eso el panel puede repintarse a 25
+    // por segundo, que es más de lo que da el análisis. Por encima, el mosaico
+    // pasaría a marcar el ritmo de la interfaz — y un panel de ayuda que frena
+    // el vídeo deja de ser ayuda.
+    EXPECT_LT(ms, 40.0) << "repintar el mosaico cuesta más que analizar el frame";
 }
