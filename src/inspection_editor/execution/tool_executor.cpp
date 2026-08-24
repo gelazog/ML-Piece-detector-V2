@@ -20,6 +20,49 @@
 
 namespace pci::inspection {
 
+// Cuántos milímetros mide una pulgada. Exacto por definición desde 1959.
+constexpr double kMmPerInch = 25.4;
+
+// El corte de «Automática»: por debajo de 10 cm se lee mejor en milímetros.
+constexpr double kAutoCmThresholdMm = 100.0;
+constexpr double kAutoCmThresholdMm2 = 10000.0;
+
+UnitPick pickLength(double mm, LengthUnit unit) {
+    switch (unit) {
+        case LengthUnit::Inches:
+            // Tres decimales: una pulgada son 25,4 mm, así que con dos la
+            // resolución sería de un cuarto de milímetro — demasiado gruesa
+            // para una pieza mecanizada.
+            return {mm / kMmPerInch, "in", 3};
+        case LengthUnit::Centimeters:
+            return {mm / 10.0, "cm", 2};
+        case LengthUnit::Auto:
+            return mm >= kAutoCmThresholdMm ? UnitPick{mm / 10.0, "cm", 2}
+                                            : UnitPick{mm, "mm", 2};
+        case LengthUnit::Millimeters:
+        case LengthUnit::Pixels:
+            break;
+    }
+    return {mm, "mm", 2};
+}
+
+UnitPick pickArea(double mm2, LengthUnit unit) {
+    switch (unit) {
+        case LengthUnit::Inches:
+            return {mm2 / (kMmPerInch * kMmPerInch), "in²", 4};
+        case LengthUnit::Centimeters:
+            return {mm2 / 100.0, "cm²", 2};
+        case LengthUnit::Auto:
+            return mm2 >= kAutoCmThresholdMm2 ? UnitPick{mm2 / 100.0, "cm²", 2}
+                                              : UnitPick{mm2, "mm²", 1};
+        case LengthUnit::Millimeters:
+        case LengthUnit::Pixels:
+            break;
+    }
+    return {mm2, "mm²", 1};
+}
+
+
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
@@ -57,27 +100,18 @@ std::string fmtLen(double px, const Fmt& f) {
         std::snprintf(buffer, sizeof(buffer), "%.1fpx", px);
         return buffer;
     }
-    const double mm = px * f.mmPerPixel;
-    const bool useCm = f.unit == LengthUnit::Centimeters ||
-                       (f.unit == LengthUnit::Auto && mm >= 100.0);
-    if (useCm) {
-        std::snprintf(buffer, sizeof(buffer), "%.2fcm (%.1fpx)", mm / 10.0, px);
-    } else {
-        std::snprintf(buffer, sizeof(buffer), "%.2fmm (%.1fpx)", mm, px);
-    }
+    const UnitPick pick = pickLength(px * f.mmPerPixel, f.unit);
+    std::snprintf(buffer, sizeof(buffer), "%.*f%s (%.1fpx)", pick.decimals, pick.value,
+                  pick.suffix, px);
     return buffer;
 }
 
 // Formatea una medida ya conocida en mm junto a su equivalente en px.
 std::string formatMmPx(double mm, double px, const Fmt& f) {
     char buffer[64];
-    const bool useCm = f.unit == LengthUnit::Centimeters ||
-                       (f.unit == LengthUnit::Auto && mm >= 100.0);
-    if (useCm) {
-        std::snprintf(buffer, sizeof(buffer), "%.2fcm (%.1fpx)", mm / 10.0, px);
-    } else {
-        std::snprintf(buffer, sizeof(buffer), "%.2fmm (%.1fpx)", mm, px);
-    }
+    const UnitPick pick = pickLength(mm, f.unit);
+    std::snprintf(buffer, sizeof(buffer), "%.*f%s (%.1fpx)", pick.decimals, pick.value,
+                  pick.suffix, px);
     return buffer;
 }
 
@@ -117,14 +151,9 @@ std::string fmtArea(double px2, const Fmt& f) {
         std::snprintf(buffer, sizeof(buffer), "%.0fpx²", px2);
         return buffer;
     }
-    const double mm2 = px2 * f.mmPerPixel * f.mmPerPixel;
-    const bool useCm = f.unit == LengthUnit::Centimeters ||
-                       (f.unit == LengthUnit::Auto && mm2 >= 10000.0);
-    if (useCm) {
-        std::snprintf(buffer, sizeof(buffer), "%.2fcm² (%.0fpx²)", mm2 / 100.0, px2);
-    } else {
-        std::snprintf(buffer, sizeof(buffer), "%.1fmm² (%.0fpx²)", mm2, px2);
-    }
+    const UnitPick pick = pickArea(px2 * f.mmPerPixel * f.mmPerPixel, f.unit);
+    std::snprintf(buffer, sizeof(buffer), "%.*f%s (%.0fpx²)", pick.decimals, pick.value,
+                  pick.suffix, px2);
     return buffer;
 }
 

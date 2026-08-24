@@ -607,10 +607,10 @@ void EditorCanvas::leaveEvent(QEvent* event) {
 QString EditorCanvas::boardValueText(double px, bool signPrefix) const {
     QString text;
     if (mmPerPixel_ > 0.0 && unit_ != LengthUnit::Pixels) {
-        const double mm = px * mmPerPixel_;
-        text = (unit_ == LengthUnit::Centimeters)
-                   ? QStringLiteral("%1 cm").arg(mm / 10.0, 0, 'f', 2)
-                   : QStringLiteral("%1 mm").arg(mm, 0, 'f', 1);
+        const inspection::UnitPick pick = inspection::pickLength(px * mmPerPixel_, unit_);
+        text = QStringLiteral("%1 %2")
+                   .arg(pick.value, 0, 'f', pick.decimals)
+                   .arg(QString::fromUtf8(pick.suffix));
     } else {
         text = QStringLiteral("%1 px").arg(px, 0, 'f', 0);
     }
@@ -634,10 +634,11 @@ QStringList EditorCanvas::contourSummaryLines() const {
     // El área se convierte con el CUADRADO de la escala; hacerlo con
     // boardValueText (que es lineal) daría un número plausible y falso.
     if (mmPerPixel_ > 0.0 && unit_ != LengthUnit::Pixels) {
-        const double mm2 = report.area * mmPerPixel_ * mmPerPixel_;
-        lines << (unit_ == LengthUnit::Centimeters
-                      ? tr("Área: %1 cm²").arg(mm2 / 100.0, 0, 'f', 2)
-                      : tr("Área: %1 mm²").arg(mm2, 0, 'f', 1));
+        const inspection::UnitPick pick =
+            inspection::pickArea(report.area * mmPerPixel_ * mmPerPixel_, unit_);
+        lines << tr("Área: %1 %2")
+                     .arg(pick.value, 0, 'f', pick.decimals)
+                     .arg(QString::fromUtf8(pick.suffix));
     } else {
         lines << tr("Área: %1 px²").arg(report.area, 0, 'f', 0);
     }
@@ -2077,10 +2078,10 @@ QString EditorCanvas::measureText(const ToolRunResult& result) const {
     }
     if (mmPerPixel_ > 0.0 && unit_ != LengthUnit::Pixels) {
         const double mm = result.measured * mmPerPixel_;
-        const bool useCm =
-            unit_ == LengthUnit::Centimeters || (unit_ == LengthUnit::Auto && mm >= 100.0);
-        return useCm ? QStringLiteral("%1 cm").arg(mm / 10.0, 0, 'f', 2)
-                     : QStringLiteral("%1 mm").arg(mm, 0, 'f', 2);
+        const inspection::UnitPick pick = inspection::pickLength(mm, unit_);
+        return QStringLiteral("%1 %2")
+            .arg(pick.value, 0, 'f', pick.decimals)
+            .arg(QString::fromUtf8(pick.suffix));
     }
     return QStringLiteral("%1 px").arg(result.measured, 0, 'f', 1);
 }
@@ -2540,10 +2541,12 @@ void EditorCanvas::paintRuler(QPainter& painter) const {
     const bool boardMode = boardVisible_;
     const vision::BoardFrame frame = boardMode ? boardFrame() : vision::BoardFrame{};
     const double unitsPerPx = mmPerPixel_ > 0.0 ? mmPerPixel_ : 1.0;
-    const QString suffix = (mmPerPixel_ > 0.0 && unit_ != LengthUnit::Pixels)
-                               ? (unit_ == LengthUnit::Centimeters ? QStringLiteral("cm")
-                                                                   : QStringLiteral("mm"))
-                               : QStringLiteral("px");
+    // El sufijo sale de la MISMA decisión que los números, no de un `if` aparte:
+    // una regla rotulada en cm con las cotas en mm es peor que no rotularla.
+    const QString suffix =
+        (mmPerPixel_ > 0.0 && unit_ != LengthUnit::Pixels)
+            ? QString::fromUtf8(inspection::pickLength(1.0, unit_).suffix)
+            : QStringLiteral("px");
     const double unitScale =
         (suffix == QStringLiteral("cm")) ? unitsPerPx / 10.0 : unitsPerPx;
 

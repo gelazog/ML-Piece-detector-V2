@@ -31,18 +31,16 @@ Converted convert(const ToolRunResult& result, double mmPerPixel, LengthUnit uni
                 return {result.measured, "px²"};
             }
             const double mm2 = result.measured * mmPerPixel * mmPerPixel;
-            const bool useCm =
-                unit == LengthUnit::Centimeters || (unit == LengthUnit::Auto && mm2 >= 10000.0);
-            return useCm ? Converted{mm2 / 100.0, "cm²"} : Converted{mm2, "mm²"};
+            const UnitPick pick = pickArea(mm2, unit);
+            return Converted{pick.value, pick.suffix};
         }
         case MeasuredKind::Length: {
             if (mmPerPixel <= 0.0 || unit == LengthUnit::Pixels) {
                 return {result.measured, "px"};
             }
             const double mm = result.measured * mmPerPixel;
-            const bool useCm =
-                unit == LengthUnit::Centimeters || (unit == LengthUnit::Auto && mm >= 100.0);
-            return useCm ? Converted{mm / 10.0, "cm"} : Converted{mm, "mm"};
+            const UnitPick pick = pickLength(mm, unit);
+            return Converted{pick.value, pick.suffix};
         }
     }
     return {result.measured, "px"};

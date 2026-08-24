@@ -44,8 +44,8 @@ const KnownUnit kKnownUnits[] = {
 
 CalibrationDialog::CalibrationDialog(const QImage& snapshot,
                                      domain::ScaleCalibration current, ScaleEntry last,
-                                     QWidget* parent)
-    : QDialog(parent), snapshot_(snapshot), result_(current) {
+                                     inspection::LengthUnit unit, QWidget* parent)
+    : QDialog(parent), snapshot_(snapshot), result_(current), unit_(unit) {
     setWindowTitle(tr("Calibrar la escala: cuántos milímetros mide un píxel"));
     resize(1000, 640);
 
@@ -63,8 +63,16 @@ CalibrationDialog::CalibrationDialog(const QImage& snapshot,
     stateLabel->setWordWrap(true);
     stateLabel->setStyleSheet(
         QStringLiteral("font-weight:bold; padding:6px; background:#22333a; color:#cfe;"));
+    // EN LA UNIDAD QUE TIENE ELEGIDA, no siempre en milímetros.
+    //
+    // Sale de una queja directa: «si está relacionado la opción de ver las
+    // medidas en cm, y entras y lo ves en mm». Lo estaba y no lo estaba: la
+    // escala se guarda en mm/px por dentro —eso no cambia— pero enseñársela en
+    // milímetros a quien ha pedido centímetros le obliga a convertir de cabeza
+    // justo en la pantalla donde una conversión mal hecha estropea TODAS las
+    // cotas de la pieza.
     stateLabel->setText(current.valid()
-                            ? tr("Escala actual: %1 mm/px").arg(current.mmPerPixel, 0, 'f', 4)
+                            ? tr("Escala actual: %1").arg(perPixelText(current.mmPerPixel))
                             : tr("Sin calibrar — las medidas están en píxeles."));
     sideLayout->addWidget(stateLabel);
 
@@ -213,17 +221,36 @@ void CalibrationDialog::onUseCameraDistance() {
     showResult();
 }
 
+// La escala, rotulada en la unidad que el operador tiene elegida.
+//
+// Por dentro sigue siendo mm/px, que es lo que guarda la calibración y lo que
+// usa todo lo demás; esto es solo cómo se lee. Se dan más decimales cuanto más
+// pequeña es la unidad, porque el número también se hace más pequeño: en cm/px
+// una escala típica es 0,0123 y con cuatro decimales se quedaría sin cifras
+// significativas.
+QString CalibrationDialog::perPixelText(double mmPerPixel) const {
+    const inspection::UnitPick pick = inspection::pickLength(mmPerPixel, unit_);
+    return QStringLiteral("%1 %2/px")
+        .arg(pick.value, 0, 'f', pick.decimals + 4)
+        .arg(QString::fromUtf8(pick.suffix));
+}
+
 void CalibrationDialog::showResult() {
     applyButton_->setEnabled(result_.valid());
     if (!result_.valid()) {
         resultLabel_->setText(tr("Sin calibrar: las medidas seguirán en píxeles."));
         return;
     }
-    resultLabel_->setText(tr("Escala: %1 mm/px\nDistancia de cámara: ~%2 mm\n"
-                             "Ejemplo: 100 px = %3 mm")
-                              .arg(result_.mmPerPixel, 0, 'f', 4)
-                              .arg(result_.cameraDistanceMm, 0, 'f', 0)
-                              .arg(result_.toMm(100.0), 0, 'f', 2));
+    const inspection::UnitPick distance =
+        inspection::pickLength(result_.cameraDistanceMm, unit_);
+    const inspection::UnitPick example = inspection::pickLength(result_.toMm(100.0), unit_);
+    resultLabel_->setText(tr("Escala: %1\nDistancia de cámara: ~%2 %3\n"
+                             "Ejemplo: 100 px = %4 %5")
+                              .arg(perPixelText(result_.mmPerPixel))
+                              .arg(distance.value, 0, 'f', distance.decimals)
+                              .arg(QString::fromUtf8(distance.suffix))
+                              .arg(example.value, 0, 'f', example.decimals)
+                              .arg(QString::fromUtf8(example.suffix)));
 }
 
 void CalibrationDialog::onApply() {

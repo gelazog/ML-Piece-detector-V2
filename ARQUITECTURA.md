@@ -3512,6 +3512,55 @@ mayores; no puede ser lo que **enciende** la medición.
 declaraba nada —o sea, corría en automático— y exigía que de tres barras se midiera
 una. Ahora declara el uno que su nombre dice.
 
+### La misma decisión de unidad, tomada nueve veces
+
+Para añadir pulgadas había que tocar nueve sitios, y los nueve tenían copiada la
+misma línea:
+
+```cpp
+useCm = unit == LengthUnit::Centimeters || (unit == LengthUnit::Auto && mm >= 100.0);
+```
+
+**Y ya habían derivado**: unas copias escribían un decimal y otras dos, así que la
+misma medida salía «12,3 mm» en el lienzo y «12,34 mm» en el informe. Nadie decide
+eso mal a propósito; se decide nueve veces y basta con que una se quede atrás. Es
+exactamente la incoherencia de la que se queja el operador, y era la razón para
+centralizar antes de añadir nada: nueve sitios son nueve oportunidades de olvidar
+uno, y un sitio olvidado en una aplicación de medida no da un error — da un número
+con aspecto correcto y la unidad equivocada.
+
+Ahora hay **una** función —`pickLength` / `pickArea` en `tool_executor`— que
+devuelve el valor convertido, su sufijo y con cuántos decimales tiene sentido
+escribirlo. Los decimales son parte de la decisión y no un detalle del sitio que
+imprime: una pulgada son 25,4 mm, así que con dos decimales el último dígito
+valdría un cuarto de milímetro — resolución escondida, que el operador no tiene
+forma de detectar.
+
+Centralizar destapó de paso **dónde estaba la copia atrasada**: el lienzo era el
+único sitio que ignoraba el modo Automático para áreas, así que la misma pieza
+salía «17506 mm²» en el vídeo y «175,06 cm²» en el informe. Había una prueba que
+exigía «mm²» a secas: estaba **fijando la inconsistencia**. Se reescribió para
+comprobar lo que importa —que el número sea correcto en la unidad que se enseñe,
+con la escala al cuadrado y no lineal— y que pedir milímetros dé milímetros.
+
+`Inches` va **al final** del `enum`: el valor se guarda como entero en los ajustes,
+así que meterlo en medio le cambiaría la unidad a quien ya tenía una elegida. Por lo
+mismo, el menú ahora busca su acción **por valor y no por posición en la lista**:
+eran lo mismo mientras las dos listas coincidieran, y basta insertar una entrada
+para que dejen de hacerlo.
+
+### Elegir centímetros y que calibrar te hable en milímetros
+
+Queja literal: «si está relacionado la opción de ver las medidas en cm, y entras y
+lo ves en mm». Lo estaba y no lo estaba. La escala se guarda en **mm/px** por
+dentro —eso no cambia y no debe cambiar, es el dato— pero enseñársela en
+milímetros a quien ha pedido centímetros le obliga a convertir de cabeza **justo en
+la pantalla donde una conversión mal hecha estropea todas las cotas de la pieza**.
+
+El diálogo recibe ahora la unidad elegida y rotula con ella: escala en cm/px,
+distancia de cámara en cm, el ejemplo en cm. Y la longitud de referencia se puede
+dar en mm, cm, m o pulgadas, con su selector al lado del campo.
+
 ### Apagar una ayuda del pincel y que volviera encendida
 
 Las tres ayudas del pincel se guardan al pulsarlas y se recuperan al arrancar.

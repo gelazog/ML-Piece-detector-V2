@@ -1461,10 +1461,16 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
 
     // Unidad de medida elegida por el operador (persistida).
     if (repos_.settings != nullptr) {
-        const int unit = std::clamp(repos_.settings->getInt("length_unit", 0).value(), 0, 3);
-        const auto actions = unitGroup_->actions();
-        if (unit < actions.size()) {
-            actions[unit]->setChecked(true);
+        // Se busca la acción POR SU VALOR, no por su posición en la lista. Eran
+        // lo mismo mientras las dos listas coincidieran, y basta con insertar
+        // una unidad en medio para que dejen de coincidir: quien tuviera
+        // «píxeles» guardado se encontraría midiendo en otra cosa.
+        const int unit = repos_.settings->getInt("length_unit", 0).value();
+        for (auto* action : unitGroup_->actions()) {
+            if (action->data().toInt() == unit) {
+                action->setChecked(true);
+                break;
+            }
         }
     }
     video_->setLengthUnit(currentUnit());
@@ -1614,6 +1620,10 @@ void MainWindow::explainMenus() {
          tr("Todas las medidas en centímetros. Necesita la escala calibrada.")},
         {tr("Píxeles"),
          tr("Todas las medidas en píxeles de la imagen. Es lo que hay sin calibrar, y\nsirve para trabajar cuando no importa el tamaño real.")},
+        {tr("Pulgadas"),
+         tr("Todas las medidas en pulgadas. Necesita la escala calibrada.\n\n"
+            "Se escriben con tres decimales: una pulgada son 25,4 mm, así que con\n"
+            "dos la resolución sería de un cuarto de milímetro.")},
         {tr("Registrar con asistente…"),
          tr("Da de alta una pieza nueva paso a paso: capturas varias buenas y el\nprograma aprende cómo tiene que ser.\n\nCon eso puede avisar de piezas raras aunque no midas nada.")},
         {tr("Registrar otro acabado de esta pieza…"),
@@ -1754,9 +1764,12 @@ void MainWindow::buildMenuBar() {
 
     auto* unitMenu = measureMenu->addMenu(tr("Unidad de medida"));
     unitGroup_ = new QActionGroup(this);
+    // El número es el valor del enum `LengthUnit`, no la posición en la lista.
+    // Se guarda tal cual en los ajustes, así que tiene que seguir significando
+    // lo mismo aunque la lista se reordene.
     const std::pair<QString, int> units[] = {
         {tr("Automática (mm/cm)"), 0}, {tr("Milímetros"), 1},
-        {tr("Centímetros"), 2}, {tr("Píxeles"), 3}};
+        {tr("Centímetros"), 2}, {tr("Píxeles"), 3}, {tr("Pulgadas"), 4}};
     for (const auto& [label, value] : units) {
         auto* action = unitMenu->addAction(label);
         action->setCheckable(true);
@@ -2833,7 +2846,7 @@ void MainWindow::onCalibrateClicked() {
         }
         last.unitIndex = repos_.settings->getInt("scale_known_unit", 0).value();
     }
-    CalibrationDialog dialog(snapshot, calibration_, last, this);
+    CalibrationDialog dialog(snapshot, calibration_, last, currentUnit(), this);
     keepDialogSize(dialog, repos_.settings, "calibration", 1000, 640);
     if (dialog.exec() != QDialog::Accepted) {
         return;

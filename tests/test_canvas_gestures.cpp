@@ -555,18 +555,39 @@ TEST(ContourOverlay, TheSummarySaysWhatWasMeasuredAndInWhichUnit) {
         << px.join(QChar('\n')).toStdString();
     EXPECT_TRUE(px.at(2).contains(QStringLiteral("1"))) << px.at(2).toStdString();
 
-    // Con calibración pasa a mm, y el ÁREA con el cuadrado de la escala: a 0,5
-    // mm/px el área en mm² es la cuarta parte del número en px².
+    // Con calibración pasa a unidades reales, y el ÁREA con el CUADRADO de la
+    // escala: a 0,5 mm/px el área en mm² es la cuarta parte del número en px².
+    //
+    // Este test exigía «mm²» a secas, y con eso estaba fijando una
+    // inconsistencia: el lienzo era el ÚNICO sitio que ignoraba el modo
+    // Automático para áreas, así que la misma pieza salía «17506 mm²» en el
+    // vídeo y «175,06 cm²» en el informe. Ahora los dos usan la misma decisión.
+    //
+    // Lo que hay que comprobar no es el rótulo concreto, es que **el número sea
+    // correcto en la unidad que se esté enseñando** — un área con la escala
+    // aplicada linealmente en vez de al cuadrado da un número creíble y falso.
     canvas.setMmPerPixel(0.5);
     const QStringList mm = canvas.contourSummaryLines();
     ASSERT_EQ(mm.size(), 5);
     const QString areaPx = px.at(1);
     const QString areaMm = mm.at(1);
-    EXPECT_TRUE(areaMm.contains(QStringLiteral("mm²"))) << areaMm.toStdString();
     const double valuePx = areaPx.split(QChar(' ')).at(1).toDouble();
     const double valueMm = areaMm.split(QChar(' ')).at(1).toDouble();
-    std::printf("  área: %.0f px² -> %.1f mm²\n", valuePx, valueMm);
-    EXPECT_NEAR(valueMm, valuePx * 0.25, valuePx * 0.25 * 0.01);
+    const double expectedMm2 = valuePx * 0.25;
+    const bool inCm2 = areaMm.contains(QStringLiteral("cm²"));
+    ASSERT_TRUE(inCm2 || areaMm.contains(QStringLiteral("mm²"))) << areaMm.toStdString();
+    const double shownAsMm2 = inCm2 ? valueMm * 100.0 : valueMm;
+    std::printf("  área: %.0f px² -> %s\n", valuePx, areaMm.toStdString().c_str());
+    EXPECT_NEAR(shownAsMm2, expectedMm2, expectedMm2 * 0.01);
+
+    // Y pidiendo milímetros expresamente, milímetros: «Automática» elige, pero
+    // cuando el operador ha elegido no hay nada que decidir.
+    canvas.setLengthUnit(pci::inspection::LengthUnit::Millimeters);
+    const QStringList forced = canvas.contourSummaryLines();
+    ASSERT_EQ(forced.size(), 5);
+    EXPECT_TRUE(forced.at(1).contains(QStringLiteral("mm²")))
+        << "se pidieron milímetros y el lienzo enseña otra cosa: "
+        << forced.at(1).toStdString();
 }
 
 TEST(ContourOverlay, AnInvalidReportDoesNotTurnTheLayerOn) {

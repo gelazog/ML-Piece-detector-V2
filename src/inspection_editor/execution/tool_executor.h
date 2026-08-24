@@ -17,7 +17,33 @@
 namespace pci::inspection {
 
 // Unidad elegida por el operador para mostrar las medidas.
-enum class LengthUnit { Auto, Millimeters, Centimeters, Pixels };
+//
+// `Inches` va AL FINAL a propósito: el valor se guarda como entero en los
+// ajustes, así que meterlo en medio le cambiaría la unidad a quien ya tenía una
+// elegida — de «píxeles» a «pulgadas» sin tocar nada.
+enum class LengthUnit { Auto, Millimeters, Centimeters, Pixels, Inches };
+
+// UNA SOLA DECISIÓN DE UNIDAD, EN UN SOLO SITIO.
+//
+// Antes esto se resolvía en nueve sitios con la misma línea copiada
+// —`useCm = unit == Centimeters || (Auto && mm >= 100)`— y ya habían derivado:
+// unas copias escribían un decimal y otras dos, así que la misma medida salía
+// «12,3 mm» en el lienzo y «12,34 mm» en el informe. Nadie lo decide mal a
+// propósito; se decide nueve veces y basta con que una se quede atrás.
+//
+// Devuelve el número ya convertido, su sufijo y con cuántos decimales tiene
+// sentido escribirlo, que es distinto por unidad: una pulgada son 25,4 mm, así
+// que con dos decimales la resolución sería de un cuarto de milímetro.
+struct UnitPick {
+    double value = 0.0;
+    const char* suffix = "mm";
+    int decimals = 2;
+};
+
+// Para longitudes, a partir de milímetros.
+[[nodiscard]] UnitPick pickLength(double mm, LengthUnit unit);
+// Para áreas, a partir de milímetros cuadrados. La escala entra al cuadrado.
+[[nodiscard]] UnitPick pickArea(double mm2, LengthUnit unit);
 
 // Qué CLASE de magnitud es `measured`. Lo decide quien mide, que es el único
 // que puede saberlo: la Región mide seis cosas distintas con el mismo tipo de

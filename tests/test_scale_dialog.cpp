@@ -17,6 +17,7 @@
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QImage>
+#include <QLabel>
 
 #include "ui/calibration_dialog.h"
 
@@ -46,7 +47,8 @@ TEST(ScaleDialog, TheReferenceCanBeGivenInSomethingOtherThanMillimetres) {
 }
 
 TEST(ScaleDialog, TheDialogOffersEveryUnitAndNotOnlyMillimetres) {
-    pci::ui::CalibrationDialog dialog(plainScene(), {}, {}, nullptr);
+    pci::ui::CalibrationDialog dialog(plainScene(), {}, {},
+                                      pci::inspection::LengthUnit::Auto, nullptr);
     QComboBox* units = nullptr;
     for (auto* candidate : dialog.findChildren<QComboBox*>()) {
         if (candidate->count() == pci::ui::CalibrationDialog::unitCount()) {
@@ -65,7 +67,8 @@ TEST(ScaleDialog, TheLengthTypedLastTimeComesBackAndSoDoesItsUnit) {
     previous.knownLength = 6.0;
     previous.unitIndex = 3;
 
-    pci::ui::CalibrationDialog dialog(plainScene(), {}, previous, nullptr);
+    pci::ui::CalibrationDialog dialog(plainScene(), {}, previous,
+                                      pci::inspection::LengthUnit::Auto, nullptr);
     const auto back = dialog.lastEntry();
     EXPECT_DOUBLE_EQ(back.knownLength, 6.0)
         << "la longitud vuelve a 100: hay que reescribirla en cada calibración";
@@ -89,7 +92,8 @@ TEST(ScaleDialog, AnEmptyPreviousEntryStillOpensWithSomethingUsable) {
     // enseñando un valor que nunca puede estar bien.
     pci::ui::ScaleEntry nothing;
     nothing.knownLength = 0.0;
-    pci::ui::CalibrationDialog dialog(plainScene(), {}, nothing, nullptr);
+    pci::ui::CalibrationDialog dialog(plainScene(), {}, nothing,
+                                      pci::inspection::LengthUnit::Auto, nullptr);
     EXPECT_GT(dialog.lastEntry().knownLength, 0.0);
 }
 
@@ -114,7 +118,49 @@ TEST(ScaleDialog, TheUnitActuallyReachesTheNumberThatIsCalculated) {
         pci::ui::ScaleEntry entry;
         entry.knownLength = one.typed;
         entry.unitIndex = one.unitIndex;
-        pci::ui::CalibrationDialog dialog(plainScene(), {}, entry, nullptr);
+        pci::ui::CalibrationDialog dialog(plainScene(), {}, entry,
+                                          pci::inspection::LengthUnit::Auto, nullptr);
         EXPECT_NEAR(dialog.knownLengthMm(), one.expectedMm, 1e-9) << one.what;
     }
+}
+
+// ELIGES CENTÍMETROS Y LA VENTANA DE CALIBRAR TE HABLA EN MILÍMETROS.
+//
+// Queja literal: «si está relacionado la opción de ver las medidas en cm, y
+// entras y lo ves en mm». Lo estaba y no lo estaba: la escala se guarda en mm/px
+// por dentro —eso no cambia y no debe cambiar— pero enseñársela en milímetros a
+// quien ha pedido centímetros le obliga a convertir de cabeza justo en la
+// pantalla donde una conversión mal hecha estropea TODAS las cotas de la pieza.
+TEST(ScaleDialog, TheDialogSpeaksInTheUnitTheOperatorChose) {
+    pci::domain::ScaleCalibration calibrated;
+    calibrated.mmPerPixel = 0.5;
+    calibrated.cameraDistanceMm = 300.0;
+    calibrated.horizontalFovDeg = 60.0;
+    ASSERT_TRUE(calibrated.valid());
+
+    const auto textOf = [&](pci::inspection::LengthUnit unit) {
+        pci::ui::CalibrationDialog dialog(plainScene(), calibrated, {}, unit, nullptr);
+        QString all;
+        for (auto* label : dialog.findChildren<QLabel*>()) {
+            all += label->text() + QStringLiteral(" | ");
+        }
+        return all;
+    };
+
+    // En milímetros: 0,5 mm/px, cámara a 300 mm, 100 px = 50 mm.
+    const QString mm = textOf(pci::inspection::LengthUnit::Millimeters);
+    EXPECT_TRUE(mm.contains(QStringLiteral("mm/px"))) << mm.toStdString();
+
+    // En centímetros: la MISMA escala, dicha en cm. 0,05 cm/px, cámara a 30 cm,
+    // 100 px = 5 cm.
+    const QString cm = textOf(pci::inspection::LengthUnit::Centimeters);
+    EXPECT_TRUE(cm.contains(QStringLiteral("cm/px")))
+        << "elegiste centímetros y la ventana de calibrar sigue hablando en "
+           "milímetros: " << cm.toStdString();
+    EXPECT_TRUE(cm.contains(QStringLiteral("30")))
+        << "la distancia de cámara no se ha pasado a centímetros: " << cm.toStdString();
+
+    // Y en pulgadas.
+    const QString in = textOf(pci::inspection::LengthUnit::Inches);
+    EXPECT_TRUE(in.contains(QStringLiteral("in/px"))) << in.toStdString();
 }

@@ -8,6 +8,7 @@
 #include <optional>
 
 #include "domain/calibration.h"
+#include "inspection_editor/execution/tool_executor.h"
 
 class QComboBox;
 class QDoubleSpinBox;
@@ -47,8 +48,14 @@ public:
     //
     // No va dentro de `ScaleCalibration` porque no es parte de la calibración:
     // es la comodidad de quien la hace. Vive en los ajustes de la máquina.
+    // `unit` es la unidad que el operador tiene elegida en Medida ▸ Unidad de
+    // medida. El diálogo enseña sus resultados EN ESA, y no siempre en
+    // milímetros como hacía antes: elegir centímetros y que la ventana de
+    // calibrar te hable en milímetros es la incoherencia que se vino a quitar.
     CalibrationDialog(const QImage& snapshot, domain::ScaleCalibration current,
-                      ScaleEntry last = {}, QWidget* parent = nullptr);
+                      ScaleEntry last = {},
+                      inspection::LengthUnit unit = inspection::LengthUnit::Auto,
+                      QWidget* parent = nullptr);
 
     [[nodiscard]] const domain::ScaleCalibration& calibration() const { return result_; }
     // Para que la ventana lo guarde y la próxima vez el campo venga puesto.
@@ -76,6 +83,8 @@ private slots:
 private:
     void updateFromKnownLength();
     void showResult();
+    // La escala rotulada en la unidad elegida. Por dentro sigue siendo mm/px.
+    [[nodiscard]] QString perPixelText(double mmPerPixel) const;
 
     inspection::EditorCanvas* canvas_ = nullptr;
     QLabel* measuredLabel_ = nullptr;
@@ -91,6 +100,7 @@ private:
     std::optional<cv::Point2f> pointB_;
     double measuredPx_ = 0.0;
     domain::ScaleCalibration result_;
+    inspection::LengthUnit unit_ = inspection::LengthUnit::Auto;
 };
 
 }  // namespace pci::ui

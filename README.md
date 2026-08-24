@@ -78,8 +78,11 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    eje se dibujan sobre el video en tiempo real; **al ocultarlo, las
    herramientas se congelan en su sitio** (la pieza se inspecciona fija, sin
    que nada tiemble) y el análisis se pausa si no hay nada que medir. La
-   unidad de medida se elige en **Medida ▸ Unidad de medida**. La cámara elegida queda
-   guardada.
+   unidad de medida se elige en **Medida ▸ Unidad de medida**: automática
+   (mm o cm según el tamaño), milímetros, centímetros, **pulgadas** o píxeles.
+   Las pulgadas se escriben con **tres decimales** —una pulgada son 25,4 mm, así
+   que con dos el último dígito valdría un cuarto de milímetro—. La cámara
+   elegida queda guardada.
 
    La **primera vez** que arrancas, sobre el vídeo aparece una línea con el
    siguiente paso que toca —calibrar y luego registrar una pieza—. Se quita con
@@ -1075,6 +1078,13 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    es lo único que hay que teclear cada vez, y era lo único que volvía al
    valor de fábrica mientras la distancia de cámara y el FOV sí se recuperaban.
    Si el puesto tiene una regla fija, se escribe una sola vez.
+
+   Y la ventana de calibrar **habla en la unidad que tengas elegida**: si
+   trabajas en centímetros, te enseña la escala en cm/px y la distancia de
+   cámara en cm. Por dentro la escala sigue siendo mm/px —eso no cambia— pero
+   enseñarla en milímetros a quien ha pedido centímetros le obliga a convertir
+   de cabeza justo en la pantalla donde una conversión mal hecha estropea
+   **todas** las cotas de la pieza.
    La calibración se **sella con la cámara y la resolución** en que se hizo: si
    cambias de cámara o de resolución, la barra de estado avisa **«⚠ Calibración
    obsoleta»** en lugar de mostrar milímetros silenciosamente equivocados —
