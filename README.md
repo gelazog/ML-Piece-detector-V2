@@ -234,6 +234,19 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    entre "no hay pieza" y "hay pieza" — bájalo si no se detectan, súbelo si se
    cuela ruido.
 
+   **Modo automático o manual** (pestaña *Piezas* de *Configurar*). En
+   **automático** el programa cuenta las que haya y **las mide todas**; el
+   número no se juzga. En **manual** declaras cuántas tiene que haber, y si
+   aparecen más o menos es NG. Declarar **una** apaga la enumeración a
+   propósito, para que una sombra o un reflejo no cuenten como segunda pieza.
+   El campo llega hasta **256**, que es el tope del detector.
+
+   Y en esa misma página está **Ver todas las piezas en mosaico**, que abre el
+   panel de la cuadrícula. Se guarda **con la pieza**: «bandeja de cien
+   tuercas» es una propiedad del trabajo, y quien pasa de una bandeja a una
+   pieza suelta en el mismo turno no tiene por qué acordarse de abrir y
+   cerrar un panel cada vez.
+
    **Piezas esperadas** (pestaña *Piezas* de *Configurar*): cuántas piezas
    debería haber en la imagen. Hasta ahora la aplicación se quedaba con la
    **mayor** y borraba el resto en silencio, así que una bandeja con cinco

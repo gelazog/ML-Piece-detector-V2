@@ -3488,6 +3488,61 @@ que hay ahora, y por abajo a algo legible. Solo el tamaño, no la posición: un
 diálogo se centra sobre su ventana padre, y recordar dónde estaba lo sacaría de
 la pantalla en cuanto alguien mueva la aplicación.
 
+### «Solo mide una en automático», y la bandeja salía verde
+
+La página de Piezas ofrece dos modos y el automático dice, con esas palabras,
+«cuenta las que haya». Lo que hacía era **no mirar**: el motor solo buscaba las
+demás piezas cuando había un número declarado mayor que uno, así que en automático
+se medía la mayor y las otras cinco de la bandeja no existían para el informe.
+
+Lo grave no es que falten: es que **el resultado sale verde**. Con tres barras y
+una fuera de tolerancia, la bandeja daba OK porque la única pieza mirada estaba
+bien. El defecto pasa a producción con un sello de conformidad encima.
+
+El motivo escrito para no mirar era el coste. Medido sobre las imágenes reales del
+usuario: **+0,70 ms con dos piezas y +50 ms con cien**, y es por INSPECCIÓN, no por
+fotograma. La alternativa a esos 50 ms era no medir noventa y nueve piezas.
+
+Ahora el único caso que no enumera es el declarado a **una**, y ahí es una decisión
+del operador que la pantalla promete — para que una sombra no cuente como segunda
+pieza. Declarar el número sirve para juzgar el recuento y para quedarse con las N
+mayores; no puede ser lo que **enciende** la medición.
+
+**Una prueba fijaba el fallo.** Se llamaba «con una pieza esperada nada cambia», no
+declaraba nada —o sea, corría en automático— y exigía que de tres barras se midiera
+una. Ahora declara el uno que su nombre dice.
+
+### Lo que el programa no decía de sí mismo
+
+Queja: «los menús están toscos, no son intuitivos ni coherentes; debería decirle al
+usuario qué hace cada cosa». Eso se mide en vez de opinarlo, y salió esto:
+
+- **25 de las 40 entradas de menú** no explicaban nada. 62 %.
+- Y algo que no se nota leyendo el código: **Qt no enseña las ayudas de los menús**
+  salvo que se pida con `setToolTipsVisible`, y nadie lo había pedido. Las quince
+  que SÍ estaban escritas tampoco se veían. En el código están, bien redactadas, y
+  parece que el trabajo está hecho; el operador ve lo mismo que si no hubiera nada.
+- Los botones de los diálogos salían **«OK», «Close» y «Apply»** en una aplicación
+  entera en español: `QDialogButtonBox` usa la traducción de Qt y el paquete de
+  MSYS2 viene sin `share/qt6/translations`. Un comentario del código daba por hecho
+  que saldrían «con el texto de su idioma». Se ponen a mano en un solo sitio: esto
+  se despliega copiando, y un `.qm` que falte en la PC de la línea fallaría en
+  silencio volviendo al inglés.
+- Y la aplicación **mandaba a menús que no existen**: «Cámara ▸ Calibrar…» cuando
+  ese menú se llama Fuente y la calibración vive en Medida. Peor que en el manual,
+  porque estos textos salen justo cuando el operador está atascado.
+
+Las explicaciones de menú van **juntas en un sitio** (`explainMenus`) y no
+repartidas por los veinticinco puntos de construcción: así se leen de una vez y se
+ve si dos se pisan o si una dice lo contrario que otra, que es de dónde sale la
+sensación de incoherencia.
+
+**El recuento de Configurar mintió primero.** Decía «18 controles, 0 sin explicar»
+porque se saltaba los que no tienen nombre accesible — y los campos numéricos casi
+nunca lo tienen, su rótulo lo pone el formulario al lado. O sea que se saltaba
+justo los controles donde equivocarse cuesta más caro. Contando de verdad son 27, y
+aparecieron la **polaridad** y el **número de piezas esperadas** sin una palabra.
+
 ### Cien piezas no se revisan con una flecha
 
 Con varias piezas en el encuadre, el selector `◀ ▶` de la barra inferior recorre
