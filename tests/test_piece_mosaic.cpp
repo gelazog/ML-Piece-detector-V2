@@ -187,6 +187,27 @@ TEST(PieceMosaic, RepaintingAFullTrayIsCheapEnoughForLiveVideo) {
     auto all = pci::vision::analyzeFrames(image, config);
     ASSERT_TRUE(all.isOk()) << all.error().message;
 
+    // EL PATRÓN DE COMPARACIÓN SE MIDE AQUÍ MISMO, no se fija en un número.
+    //
+    // La primera versión exigía «menos de 40 ms». Sola daba 12,3 y pasaba; con la
+    // máquina ocupada corriendo la suite entera se iba por encima y fallaba sin
+    // que nada estuviera roto. Una guarda que grita cuando no debe se acaba
+    // ignorando, y entonces no protege de nada.
+    //
+    // Lo que hay que garantizar no es un número de milisegundos: es que
+    // **repintar el panel cueste menos que el análisis que lo alimenta**. Si eso
+    // se cumple, el mosaico no puede ser lo que marca el ritmo del vídeo — y
+    // sigue siendo cierto en una máquina lenta, en una rápida y bajo carga,
+    // porque las dos mitades se miden en las mismas condiciones.
+    QElapsedTimer analysisTimer;
+    analysisTimer.start();
+    constexpr int kAnalysisPasses = 3;
+    for (int pass = 0; pass < kAnalysisPasses; ++pass) {
+        (void)pci::vision::analyzeFrames(image, config);
+    }
+    const double analysisMs =
+        static_cast<double>(analysisTimer.elapsed()) / kAnalysisPasses;
+
     std::vector<QPolygonF> outlines;
     outlines.reserve(all.value().size());
     for (const auto& piece : all.value()) {
@@ -211,14 +232,16 @@ TEST(PieceMosaic, RepaintingAFullTrayIsCheapEnoughForLiveVideo) {
     }
     const double ms = static_cast<double>(timer.elapsed()) / kPasses;
 
-    std::printf("  [mosaico] %d piezas -> %d baldosas, %.1f ms por reconstrucción "
-                "(techo %.0f fps)\n",
-                static_cast<int>(outlines.size()), mosaic.tileCount(), ms,
-                ms > 0.0 ? 1000.0 / ms : 0.0);
+    std::printf("  [mosaico] %d piezas -> %d baldosas | repintar %.1f ms | "
+                "analizar %.1f ms | el panel cuesta el %.0f %% del análisis\n",
+                static_cast<int>(outlines.size()), mosaic.tileCount(), ms, analysisMs,
+                analysisMs > 0.0 ? 100.0 * ms / analysisMs : 0.0);
 
-    // 40 ms es el presupuesto: por debajo de eso el panel puede repintarse a 25
-    // por segundo, que es más de lo que da el análisis. Por encima, el mosaico
-    // pasaría a marcar el ritmo de la interfaz — y un panel de ayuda que frena
-    // el vídeo deja de ser ayuda.
-    EXPECT_LT(ms, 40.0) << "repintar el mosaico cuesta más que analizar el frame";
+    ASSERT_GT(analysisMs, 0.0) << "el análisis midió cero: el reloj no sirve aquí";
+    // Un panel de ayuda que frena el vídeo deja de ser ayuda. Mientras repintarlo
+    // cueste menos que analizar el fotograma que lo alimenta, no puede ser él
+    // quien marque el ritmo de la interfaz.
+    EXPECT_LT(ms, analysisMs)
+        << "repintar el mosaico cuesta más que analizar el frame: el panel pasa a "
+           "marcar el ritmo de la interfaz";
 }

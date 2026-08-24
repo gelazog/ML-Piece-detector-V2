@@ -466,6 +466,15 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     cameraCombo_->setSizeAdjustPolicy(QComboBox::AdjustToContentsOnFirstShow);
     cameraLayout->addWidget(cameraCombo_);
     startStopButton_ = new QPushButton(tr("Iniciar"), central);
+    // El botón MÁS pulsado de la ventana y no decía nada. Su rótulo además
+    // cambia solo —«Iniciar», «Detener», «Abrir…»— según la fuente elegida, así
+    // que leerlo no basta para saber qué va a pasar.
+    startStopButton_->setToolTip(
+        tr("Arranca o detiene la fuente elegida en la lista de al lado.\n\n"
+           "Con una cámara: empieza o para el vídeo en directo.\n"
+           "Con «Abrir imagen…» o «Abrir vídeo…»: pide el fichero.\n\n"
+           "Mientras está parado se puede seguir dibujando herramientas sobre\n"
+           "el último fotograma."));
     cameraLayout->addWidget(startStopButton_);
     // El botón dice lo que va a hacer. Con «Abrir imagen…» elegido, «Iniciar»
     // no describe la acción —lo siguiente que pasa es que se abre un diálogo de
@@ -712,6 +721,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     navLayout->setSpacing(2);
     piecePrevButton_ = new QToolButton(pieceNav_);
     piecePrevButton_->setText(QStringLiteral("\u2039"));
+    // Una ayuda de partida: la de verdad la escribe `updatePieceNavigator`
+    // cuando ya sabe cuántas piezas hay, y hasta entonces estas flechas eran
+    // dos símbolos sin una palabra.
+    piecePrevButton_->setToolTip(tr("Pieza anterior del encuadre, en orden de lectura."));
     piecePrevButton_->setAutoRaise(true);
     piecePrevButton_->setFocusPolicy(Qt::NoFocus);
     navLayout->addWidget(piecePrevButton_);
@@ -721,6 +734,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     navLayout->addWidget(pieceNavLabel_);
     pieceNextButton_ = new QToolButton(pieceNav_);
     pieceNextButton_->setText(QStringLiteral("\u203a"));
+    pieceNextButton_->setToolTip(tr("Pieza siguiente del encuadre, en orden de lectura."));
     pieceNextButton_->setAutoRaise(true);
     pieceNextButton_->setFocusPolicy(Qt::NoFocus);
     navLayout->addWidget(pieceNextButton_);
@@ -951,21 +965,41 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
                    &inspection::EditorCanvas::setBrushStraight);
     rememberAssist("brush_snap", brushSnapAction_, &inspection::EditorCanvas::setBrushSnap);
 
+    // RECUPERAR NO PUEDE DEPENDER DE UNA SEÑAL QUE SOLO SALTA AL CAMBIAR.
+    //
+    // Antes esto era `action->setChecked(guardado)` y punto, confiando en que
+    // `toggled` llevara el valor al lienzo. Una QAction empieza SIN MARCAR, así
+    // que con un «apagado» guardado, `setChecked(false)` no emitía nada y el
+    // lienzo se quedaba con su valor de fábrica.
+    //
+    // «Pulso estable» viene de fábrica ENCENDIDO, o sea que el operador lo
+    // apagaba, reiniciaba, y el menú se lo enseñaba apagado mientras el pincel
+    // lo seguía aplicando. No es que se olvide el ajuste: es que la pantalla
+    // afirma una cosa y el programa hace otra, y no hay forma de descubrirlo
+    // salvo notando que el trazo no obedece.
+    //
+    // Ahora el valor se empuja al lienzo SIEMPRE, haya cambiado la casilla o no.
+    const auto restoreAssist = [this](const char* key, QAction* action,
+                                      void (inspection::EditorCanvas::*apply)(bool),
+                                      bool factory) {
+        const auto saved = repos_.settings->getInt(key, factory ? 1 : 0);
+        const bool wanted = saved.isOk() ? saved.value() != 0 : factory;
+        action->setChecked(wanted);
+        (video_->*apply)(wanted);
+    };
+
     // Lo guardado, o lo que trae el lienzo de fabrica. Los valores por defecto
     // viven en UN solo sitio —el lienzo— para que restablecer los ajustes
     // devuelva exactamente lo que hace una instalacion nueva.
     if (repos_.settings != nullptr) {
         const auto saved = repos_.settings->getInt("brush_radius", video_->brushRadius());
         applyBrushRadius(saved.isOk() ? saved.value() : video_->brushRadius(), true);
-        const auto steady = repos_.settings->getInt("brush_steady", video_->brushSteady());
-        brushSteadyAction_->setChecked(steady.isOk() ? steady.value() != 0
-                                                      : video_->brushSteady());
-        const auto straight =
-            repos_.settings->getInt("brush_straight", video_->brushStraight());
-        brushStraightAction_->setChecked(straight.isOk() ? straight.value() != 0
-                                                          : video_->brushStraight());
-        const auto snap = repos_.settings->getInt("brush_snap", video_->brushSnap());
-        brushSnapAction_->setChecked(snap.isOk() ? snap.value() != 0 : video_->brushSnap());
+        restoreAssist("brush_steady", brushSteadyAction_,
+                      &inspection::EditorCanvas::setBrushSteady, video_->brushSteady());
+        restoreAssist("brush_straight", brushStraightAction_,
+                      &inspection::EditorCanvas::setBrushStraight, video_->brushStraight());
+        restoreAssist("brush_snap", brushSnapAction_,
+                      &inspection::EditorCanvas::setBrushSnap, video_->brushSnap());
     } else {
         applyBrushRadius(video_->brushRadius(), true);
         brushSteadyAction_->setChecked(video_->brushSteady());
@@ -1784,9 +1818,21 @@ void MainWindow::buildMenuBar() {
     // Era la ÚNICA capa del menú Ver que no se recordaba: el tablero, la regla
     // y el resto sí. Quien lo apagaba para inspeccionar con la pieza congelada
     // se lo encontraba encendido en cada arranque.
-    showContourAction_->setChecked(
-        repos_.settings == nullptr ||
-        repos_.settings->getInt("show_contour", 1).value() != 0);
+    //
+    // Y el menú lo recordaba, pero el LIENZO no se enteraba, por dos motivos
+    // encadenados: `setChecked(false)` sobre una acción que ya está en `false`
+    // no emite `toggled`, y además el `connect` que lleva el valor al lienzo se
+    // hacía DESPUÉS, así que aunque emitiera no había nadie escuchando. Como el
+    // lienzo trae el contorno visible de fábrica, el menú decía «oculto» y el
+    // contorno se seguía pintando encima del vídeo.
+    //
+    // Se arregla igual que las ayudas del pincel: el valor se empuja al lienzo
+    // SIEMPRE. Recuperar un ajuste no puede depender de una señal que solo
+    // salta cuando algo cambia.
+    const bool contourVisible = repos_.settings == nullptr ||
+                                repos_.settings->getInt("show_contour", 1).value() != 0;
+    showContourAction_->setChecked(contourVisible);
+    video_->setLiveContourVisible(contourVisible);
     showContourAction_->setToolTip(
         tr("Al ocultarlo, las herramientas se congelan en su sitio (la pieza se "
            "inspecciona fija, sin que nada se mueva)."));

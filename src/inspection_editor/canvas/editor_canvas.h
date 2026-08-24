@@ -199,6 +199,9 @@ public:
     void setLivePiece(bool found, const QPolygonF& contour, const QPointF& centroid,
                       double angleDeg, const QString& statusText);
     void setLiveContourVisible(bool visible);
+    // Hace falta para poder comprobar que lo guardado LLEGA aquí y no se queda
+    // en la casilla del menú: son dos estados distintos y ahí cabía un fallo.
+    [[nodiscard]] bool liveContourVisible() const { return showLiveContour_; }
 
     // EL CONTORNO DE TODAS LAS PIEZAS DEL ENCUADRE, en orden de lectura, y cuál
     // de ellas es la que se está midiendo (numerada desde 1; 0 = ninguna).

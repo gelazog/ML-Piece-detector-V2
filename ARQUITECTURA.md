@@ -3512,6 +3512,43 @@ mayores; no puede ser lo que **enciende** la medición.
 declaraba nada —o sea, corría en automático— y exigía que de tres barras se midiera
 una. Ahora declara el uno que su nombre dice.
 
+### Apagar una ayuda del pincel y que volviera encendida
+
+Las tres ayudas del pincel se guardan al pulsarlas y se recuperan al arrancar.
+Leído, el código parece correcto — y no lo era.
+
+El «recuperar» era `action->setChecked(guardado)`, confiando en que `toggled`
+llevara el valor al lienzo. Una `QAction` empieza **sin marcar**, así que con un
+«apagado» guardado, `setChecked(false)` sobre algo que ya está en `false` **no
+emite nada** y el lienzo se quedaba con su valor de fábrica.
+
+«Pulso estable» viene de fábrica **encendido**. El operador lo apagaba,
+reiniciaba, y el menú se lo enseñaba apagado mientras el pincel lo seguía
+aplicando. No es que se olvide el ajuste: es que **la pantalla afirma una cosa y
+el programa hace otra**, y no hay forma de descubrirlo salvo notando que el trazo
+no obedece. Es la queja de «no se guarda la configuración anterior» escondida
+detrás de un código que parece guardarla.
+
+La regla que queda: **recuperar un ajuste no puede depender de una señal que solo
+salta al cambiar**. El valor se empuja al destino siempre, haya cambiado el
+control o no.
+
+**Y había un segundo caso, peor.** «Mostrar contorno» lleva un comentario diciendo
+que era la única capa del menú Ver que no se recordaba y que ya se arregló. El menú
+sí lo recuerda; el lienzo no se enteraba, por dos motivos encadenados: el
+`setChecked(false)` mudo, **y** que el `connect` que lleva el valor al lienzo se
+hacía DESPUÉS del `setChecked`, así que aunque emitiera no había nadie escuchando.
+Como el lienzo trae el contorno visible de fábrica, el menú decía «oculto» y el
+contorno se seguía pintando encima del vídeo.
+
+Los demás conmutadores que empujan estado al lienzo —realce de vista, corrección
+de lente, tablero, regla— ya lo hacían bien: empujan el valor justo después de
+marcar la casilla. Eran estos dos.
+
+Se buscó comparando **qué claves de ajustes se escriben y cuáles se leen**. Ese
+cruce da falsos positivos —las claves que se pasan por variable no salen— pero
+obliga a mirar cada una, y fue mirando esta cuando apareció.
+
 ### Lo que el programa no decía de sí mismo
 
 Queja: «los menús están toscos, no son intuitivos ni coherentes; debería decirle al
@@ -3567,13 +3604,22 @@ cuadrícula, todas al mismo tamaño y con su número. Tres decisiones lo sostien
   actuales» y ninguna de las dos sería de fiar.
 
 **Cuesta 12,3 ms reconstruirlo** con la bandeja real de cien tuercas del usuario:
-cien recortes, cien escalados y cien pasadas de `QPainter`. Da un techo de 81
-repintados por segundo, más de lo que produce el análisis, así que no marca el
-ritmo de la interfaz. Estaba medido de antemano y no de oído, porque es justo con
-cien piezas —cuando el panel hace falta— cuando peor vendría que se atragantara.
-Aun así, **con el panel cerrado no se pinta**: gastar ese tercio de fotograma en
-algo que nadie ve no se justifica, y al reabrirlo se vuelve a analizar para que no
-reaparezca con lo de antes.
+cien recortes, cien escalados y cien pasadas de `QPainter`. **Con el panel cerrado
+no se pinta**: gastar eso en algo que nadie ve no se justifica, y al reabrirlo se
+vuelve a analizar para que no reaparezca con lo de antes.
+
+**La prueba de rendimiento falló primero por ser absoluta.** Exigía «menos de
+40 ms»: sola daba 12,3 y pasaba, y con la máquina corriendo la suite entera en
+paralelo se iba por encima y fallaba sin que nada estuviera roto. Una guarda que
+grita cuando no debe se acaba ignorando, y entonces no protege de nada — la misma
+lección que con el guard del manual, que dio cinco rutas «rotas» que estaban bien.
+
+Ahora **el patrón se mide en el mismo proceso**: repintar el panel tiene que costar
+menos que el análisis que lo alimenta. Sale al **31 %**, y esa afirmación sigue
+siendo válida en una máquina lenta, en una rápida y bajo carga, porque las dos
+mitades se miden en las mismas condiciones. Y dice algo más útil que un umbral:
+mientras se cumpla, el mosaico no puede ser lo que marca el ritmo del vídeo.
+
 
 Con **una sola pieza no enseña nada**: el vídeo ya la da entera y más grande. Un
 panel que ocupa sitio para repetir lo que ya se ve enseña a cerrarlo — y entonces

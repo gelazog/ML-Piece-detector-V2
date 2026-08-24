@@ -208,3 +208,54 @@ TEST(SelfExplaining, TheConfigureWindowExplainsItsControls) {
         << "hay controles de Configurar que no dicen qué hacen. Aquí equivocarse "
            "no da un error: da inspecciones mal juzgadas, que es peor";
 }
+
+// LA BARRA DE BOTONES: LO PRIMERO QUE SE VE Y LO ÚLTIMO QUE SE EXPLICA.
+//
+// Los menús ya dicen qué hacen, pero el operador no vive en los menús: vive en
+// la fila de botones de arriba, que es donde están las cosas que se pulsan
+// cincuenta veces al turno. Un icono que no se reconoce y no dice nada es un
+// botón que no se toca — y entonces la función existe para nadie.
+TEST(SelfExplaining, TheButtonBarExplainsItself) {
+    pci::ui::MainWindow window;
+    window.resize(1400, 900);
+
+    int total = 0;
+    int mute = 0;
+    QStringList worst;
+    for (auto* button : window.findChildren<QAbstractButton*>()) {
+        // Los de dentro de los paneles acoplables se cuentan igual: también se
+        // pulsan. Lo que no se cuenta es lo que no se ve ni tiene rótulo.
+        if (button->text().trimmed().isEmpty() && button->icon().isNull()) {
+            continue;
+        }
+        // Los botones internos de Qt no son nuestros: los de flotar y cerrar de
+        // cada panel, y el desplegable de la barra de menús cuando no cabe. Qt
+        // los rotula y los explica en el idioma del sistema; añadirles ayuda
+        // desde aquí sería escribir sobre lo que ya hace el marco de ventanas.
+        if (button->objectName().startsWith(QStringLiteral("qt_"))) {
+            continue;
+        }
+        ++total;
+        const QString name = button->text().trimmed();
+        const bool ok = name.isEmpty() ? !button->toolTip().trimmed().isEmpty()
+                                       : saysSomething(name, button->toolTip());
+        if (!ok) {
+            ++mute;
+            if (worst.size() < 60) {
+                worst << (name.isEmpty()
+                              ? QStringLiteral("(solo icono) ") + button->objectName()
+                              : name);
+            }
+        }
+    }
+
+    std::printf("  [ayuda] barra y paneles: %d botones, %d sin explicar\n", total, mute);
+    for (const auto& one : worst) {
+        std::printf("  [ayuda]    mudo: %s\n", one.toStdString().c_str());
+    }
+    ASSERT_GT(total, 10) << "no se recogió casi ningún botón: la comprobación no "
+                            "estaría comprobando nada";
+    EXPECT_EQ(mute, 0)
+        << "hay botones que no dicen qué hacen. Un botón que no se entiende no se "
+           "pulsa, y entonces la función existe para nadie";
+}

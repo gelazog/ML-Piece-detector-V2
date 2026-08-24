@@ -83,6 +83,7 @@ add_executable(pci_gui_tests
   test_piece_mosaic.cpp
   test_scale_dialog.cpp
   test_selfexplaining.cpp
+  test_brush_persistence.cpp
   test_mosaic_numbering.cpp
   test_configure_dialog.cpp
   test_frame_sources.cpp
