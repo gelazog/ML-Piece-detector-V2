@@ -4,6 +4,8 @@
 #include <QDoubleSpinBox>
 #include <QHBoxLayout>
 #include <QDialogButtonBox>
+
+#include "ui/dialog_buttons.h"
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QLabel>
@@ -162,6 +164,7 @@ MeasurementModeDialog::MeasurementModeDialog(const repositories::PieceMeasuremen
 
     auto* buttons =
         new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    nameButtonsInSpanish(buttons);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     root->addWidget(buttons);

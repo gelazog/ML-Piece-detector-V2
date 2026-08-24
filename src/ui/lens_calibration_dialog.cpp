@@ -1,6 +1,8 @@
 #include "ui/lens_calibration_dialog.h"
 
 #include <QDialogButtonBox>
+
+#include "ui/dialog_buttons.h"
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QGridLayout>
@@ -116,6 +118,7 @@ LensCalibrationDialog::LensCalibrationDialog(QWidget* parent) : QDialog(parent) 
     root->addLayout(columns);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, this);
+    nameButtonsInSpanish(buttons);
     calibrate_ = buttons->addButton(tr("Calibrar"), QDialogButtonBox::AcceptRole);
     calibrate_->setEnabled(false);
     root->addWidget(buttons);

@@ -1,7 +1,6 @@
 #include "ui/piece_report_dialog.h"
 
 #include <QClipboard>
-#include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QGuiApplication>
 #include <QHBoxLayout>

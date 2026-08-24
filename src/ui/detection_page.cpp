@@ -60,6 +60,13 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     auto* form = new QFormLayout();
 
     autoThreshold_ = new QCheckBox(tr("Automático (Otsu)"), this);
+    autoThreshold_->setToolTip(
+        tr("El programa elige solo el nivel de gris que separa la pieza del\n"
+           "fondo, mirando el histograma de cada imagen (método de Otsu).\n\n"
+           "Es lo que quieres casi siempre: se adapta si cambia la luz.\n\n"
+           "Desactívalo solo si la pieza y el fondo se parecen tanto que la\n"
+           "elección automática baila entre fotogramas — entonces fija tú el\n"
+           "umbral con la barra de abajo."));
     autoThreshold_->setChecked(current.manualThreshold < 0);
     form->addRow(tr("Umbral:"), autoThreshold_);
 
@@ -83,6 +90,14 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     sceneHint_->setVisible(false);
     form->addRow(sceneHint_);
     useEdgesButton_ = new QPushButton(tr("Cambiar a «por el canto»"), this);
+    useEdgesButton_->setToolTip(
+        tr("Pasa a separar la pieza por su CANTO en vez de por el nivel de gris.\n\n"
+           "Aparece solo cuando el programa ha mirado la imagen y ha visto que\n"
+           "no hay un gris que sirva de corte: pasa cuando la pieza tiene\n"
+           "brillos más claros que el fondo y sombras más oscuras a la vez,\n"
+           "como una tuerca metálica sobre una mesa clara.\n\n"
+           "En escenas fáciles NO es mejor: por eso es un botón que aparece\n"
+           "cuando hace falta y no el método por defecto."));
     useEdgesButton_->setVisible(false);
     form->addRow(useEdgesButton_);
 
@@ -113,6 +128,16 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     polarity_->addItem(tr("Pieza oscura sobre fondo claro"));
     polarity_->addItem(tr("Pieza clara sobre fondo oscuro"));
     polarity_->setCurrentIndex(static_cast<int>(current.polarity));
+    polarity_->setToolTip(
+        tr("Cuál de los dos lados del corte de gris es la PIEZA.\n\n"
+           "«Automática» decide mirando el borde del encuadre: lo que toca el\n"
+           "marco se toma por fondo. Acierta casi siempre y es lo que quieres\n"
+           "salvo que la pieza llegue cortada por el borde.\n\n"
+           "Fíjala a mano cuando el resultado sale invertido —se mide el hueco\n"
+           "en vez de la pieza— o cuando la pieza toca el canto del encuadre y\n"
+           "la decisión automática la confunde con el fondo.\n\n"
+           "Solo se aplica separando «por nivel de gris»: por el canto no hay\n"
+           "corte que orientar."));
     form->addRow(tr("Polaridad:"), polarity_);
 
     blur_ = new QSpinBox(this);

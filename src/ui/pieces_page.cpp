@@ -50,6 +50,15 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
     // declarar: el campo se paraba en 64 sin decir por qué.
     expected_->setRange(1, vision::kMaxPieces);
     expected_->setSuffix(tr(" piezas"));
+    expected_->setToolTip(
+        tr("Cuántas piezas tiene que haber en el encuadre. Si aparecen más o\n"
+           "menos, la inspección da NG diciendo cuántas esperaba y cuántas ve,\n"
+           "sin necesidad de tener ninguna herramienta dibujada.\n\n"
+           "Además el programa se queda con las N MAYORES: una sombra o un\n"
+           "reflejo de más deja de contar como pieza.\n\n"
+           "Llega hasta 256, que es el tope del detector.\n\n"
+           "El número se guarda con la pieza seleccionada, no con la máquina:\n"
+           "«seis tornillos en bandeja» es una propiedad del trabajo."));
     expected_->setValue(expectedPieces > 0 ? expectedPieces : 1);
     manualRow->addWidget(expected_);
     manualRow->addStretch(1);

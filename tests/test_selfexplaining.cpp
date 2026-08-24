@@ -19,6 +19,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
+#include <QDialog>
 #include <QDoubleSpinBox>
 #include <QMenu>
 #include <QMenuBar>
@@ -26,6 +27,7 @@
 
 #include <cstdio>
 
+#include "ui/configure_dialog.h"
 #include "ui/main_window.h"
 
 namespace {
@@ -129,4 +131,80 @@ TEST(SelfExplaining, TheMenusActuallyShowTheirHelp) {
     EXPECT_TRUE(silent.isEmpty())
         << "hay menús que guardan sus explicaciones sin enseñarlas: escribirlas y "
            "esconderlas cuesta lo mismo que escribirlas y no ayuda a nadie";
+}
+
+// LA VENTANA DE CONFIGURAR, QUE ES DONDE MÁS DUELE.
+//
+// El usuario la nombró aparte: «el menú de configuración tiene bastantes fallos
+// en sus características y configuraciones». Es la ventana donde hay más
+// controles por centímetro y donde equivocarse cuesta más caro —un umbral mal
+// puesto no da un error, da inspecciones mal juzgadas—, así que es donde menos
+// se puede permitir un control que no dice qué hace.
+//
+// Se cuentan casillas, botones, listas y campos numéricos. Un control sin ayuda
+// se lista con su nombre para poder ir a arreglarlo.
+TEST(SelfExplaining, TheConfigureWindowExplainsItsControls) {
+    // Se construye la ventana directamente, SIN `exec()`. Abrirla por su acción
+    // de menú la pondría modal, y una modal sin pantalla bloquea para siempre:
+    // ya costó una vez cinco minutos de banco colgado hasta matar el proceso.
+    // Construir un QDialog no bloquea; solo `exec()` lo hace.
+    pci::ui::ConfigureDialog::Inputs inputs;
+    pci::ui::ConfigureDialog built(inputs, nullptr);
+    built.resize(900, 700);
+    QDialog* dialog = &built;
+
+    int total = 0;
+    int mute = 0;
+    QStringList worst;
+    // SE CUENTAN TODOS, TENGAN NOMBRE O NO.
+    //
+    // La primera versión se saltaba los controles sin nombre —y los campos
+    // numéricos casi nunca tienen `accessibleName`, su rótulo lo pone el
+    // formulario al lado—. O sea que se saltaba justo los controles donde
+    // equivocarse cuesta más caro: un umbral, un área mínima, una tolerancia.
+    // Decía «18 controles, 0 sin explicar» sin haber mirado ninguno de ellos.
+    const auto check = [&](const QWidget* widget, const QString& name) {
+        ++total;
+        const bool named = !name.trimmed().isEmpty();
+        const bool ok = named ? saysSomething(name, widget->toolTip())
+                              : !widget->toolTip().trimmed().isEmpty();
+        if (!ok) {
+            ++mute;
+            if (worst.size() < 60) {
+                const QWidget* page = widget->parentWidget();
+                worst << (named ? name
+                                : QStringLiteral("(sin rótulo) ") +
+                                      QString::fromLatin1(widget->metaObject()->className()) +
+                                      QStringLiteral(" en ") +
+                                      (page != nullptr
+                                           ? QString::fromLatin1(page->metaObject()->className())
+                                           : QStringLiteral("?")));
+            }
+        }
+    };
+    for (auto* button : dialog->findChildren<QAbstractButton*>()) {
+        // Los rotulados vacíos son separadores y adornos, no controles.
+        if (!button->text().trimmed().isEmpty()) {
+            check(button, button->text());
+        }
+    }
+    for (auto* box : dialog->findChildren<QSpinBox*>()) {
+        check(box, box->accessibleName());
+    }
+    for (auto* box : dialog->findChildren<QDoubleSpinBox*>()) {
+        check(box, box->accessibleName());
+    }
+    for (auto* combo : dialog->findChildren<QComboBox*>()) {
+        check(combo, combo->accessibleName());
+    }
+
+    std::printf("  [ayuda] Configurar: %d controles, %d sin explicar\n", total, mute);
+    for (const auto& one : worst) {
+        std::printf("  [ayuda]    muda: %s\n", one.toStdString().c_str());
+    }
+    ASSERT_GT(total, 20) << "no se recogió casi ningún control: la comprobación no "
+                            "estaría comprobando nada";
+    EXPECT_EQ(mute, 0)
+        << "hay controles de Configurar que no dicen qué hacen. Aquí equivocarse "
+           "no da un error: da inspecciones mal juzgadas, que es peor";
 }

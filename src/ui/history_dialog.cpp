@@ -2,6 +2,8 @@
 
 #include <QComboBox>
 #include <QDialogButtonBox>
+
+#include "ui/dialog_buttons.h"
 #include <QFile>
 #include <QFileDialog>
 #include <QHBoxLayout>
@@ -69,6 +71,7 @@ HistoryDialog::HistoryDialog(repositories::InspectionRepository* inspections,
     root->addWidget(chart_);
 
     auto* buttons = new QDialogButtonBox(this);
+    nameButtonsInSpanish(buttons);
     auto* exportBtn = buttons->addButton(tr("Exportar CSV…"), QDialogButtonBox::ActionRole);
     buttons->addButton(tr("Cerrar"), QDialogButtonBox::RejectRole);
     root->addWidget(buttons);

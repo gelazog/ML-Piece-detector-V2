@@ -1,6 +1,8 @@
 #include "ui/configure_dialog.h"
 
 #include <QDialogButtonBox>
+
+#include "ui/dialog_buttons.h"
 #include <QLabel>
 #include <QPushButton>
 #include <QTabWidget>
@@ -21,13 +23,20 @@ namespace {
 // Pestaña de las dos cosas que no son un formulario: un texto que explica qué
 // se ajusta ahí y el botón que abre el asistente de siempre.
 QWidget* wizardTab(const QString& explanation, const QString& buttonText,
-                   QPushButton** outButton, QWidget* parent) {
+                   QPushButton** outButton, QWidget* parent,
+                   const QString& buttonHelp = {}) {
     auto* page = new QWidget(parent);
     auto* layout = new QVBoxLayout(page);
     auto* label = new QLabel(explanation, page);
     label->setWordWrap(true);
     layout->addWidget(label);
     auto* button = new QPushButton(buttonText, page);
+    // La página ya explica de qué va la pestaña; el botón dice qué pasa al
+    // pulsarlo, que no es lo mismo. Quien duda está con el cursor encima del
+    // botón, no leyendo el párrafo de arriba otra vez.
+    if (!buttonHelp.isEmpty()) {
+        button->setToolTip(buttonHelp);
+    }
     layout->addWidget(button);
     layout->addStretch(1);
     *outButton = button;
@@ -105,7 +114,10 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
                      "de la pieza, o indicando la distancia de la cámara y su campo "
                      "de visión.\n\nComo hay que hacer clic sobre la imagen, se "
                      "ajusta en un asistente y no en un formulario."),
-                  tr("Calibrar la escala…"), &scaleButton, this),
+                  tr("Calibrar la escala…"), &scaleButton, this,
+                  tr("Abre el asistente de escala: marcas dos puntos de una\n"
+                     "distancia conocida sobre la imagen y escribes cuánto mide.\n\n"
+                     "Sin esto todas las medidas salen en píxeles.")),
         tr("Escala"));
     connect(scaleButton, &QPushButton::clicked, this,
             &ConfigureDialog::scaleWizardRequested);
@@ -120,7 +132,9 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
         wizardTab(tr("Cada comando de la aplicación tiene una tecla y se puede "
                      "cambiar. La lista completa, con sus valores por defecto, se "
                      "edita en su propia tabla."),
-                  tr("Editar los atajos…"), &shortcutsButton, this),
+                  tr("Editar los atajos…"), &shortcutsButton, this,
+                  tr("Abre la tabla de teclas para cambiar cualquier atajo.\n\n"
+                     "Los cambios se guardan con la máquina, no con la pieza.")),
         tr("Atajos"));
     connect(shortcutsButton, &QPushButton::clicked, this,
             &ConfigureDialog::shortcutsRequested);
@@ -129,6 +143,7 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
                                              QDialogButtonBox::RestoreDefaults |
                                              QDialogButtonBox::Close,
                                          this);
+    nameButtonsInSpanish(buttons);
     // `RestoreDefaults` y no un botón propio: es el papel que Qt ya tiene para
     // esto, así que sale colocado donde el operador lo espera en su sistema y
     // con el texto de su idioma.
