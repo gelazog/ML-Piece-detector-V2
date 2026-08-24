@@ -209,6 +209,8 @@ private:
     // cosa (sus tolerancias se sugirieron respecto al origen anterior).
     void warnIfPositionToolsAffected(vision::BoardOrigin previousOrigin);
     void buildMenuBar();
+    // Pone en cada entrada de menú qué hace, y hace que Qt las enseñe.
+    void explainMenus();
     void buildShortcuts();
     void commitUndoState();
     void restoreTools(std::vector<inspection::EditedTool> tools);

@@ -1537,6 +1537,87 @@ void MainWindow::onUnitChanged() {
 
 // Barra de menú: agrupa las acciones de baja frecuencia que antes saturaban
 // las filas de botones. Las combos y botones de uso constante siguen visibles.
+// QUÉ HACE CADA ENTRADA, dicho donde el operador la lee.
+//
+// Sale de una queja directa: «no son intuitivos ni coherentes; debería decirle
+// al usuario qué hace cada cosa». Medido: 25 de las 40 entradas de menú no
+// explicaban nada.
+//
+// Y algo peor — Qt NO ENSEÑA las ayudas de los menús salvo que se pida con
+// `setToolTipsVisible`, y nadie lo había pedido. Así que las quince que SÍ
+// estaban escritas tampoco se veían. Escribir explicaciones que el programa
+// esconde es peor que no escribirlas: cuesta lo mismo y no ayuda a nadie.
+//
+// Las explicaciones van juntas y no repartidas por los sitios de construcción
+// a propósito: así se leen todas de una vez y se ve si dos entradas se pisan o
+// si una dice lo contrario que otra, que es de donde sale la sensación de
+// incoherencia.
+void MainWindow::explainMenus() {
+    const std::pair<QString, QString> ayudas[] = {
+        {tr("Exportar configuración…"),
+         tr("Guarda en un fichero la puesta a punto de esta PC: cámara, detección,\nescala, tablero y preferencias.\n\nSirve para clonar un puesto que ya funciona en otra máquina de la línea\nsin repetir los ajustes a mano. NO se lleva las piezas ni su historial.")},
+        {tr("Importar configuración…"),
+         tr("Carga la puesta a punto guardada de otra PC. Sustituye los ajustes\nactuales; las piezas registradas y su historial se quedan como están.\n\nRevisa la escala después: si esta cámara está a otra altura, hay que\nvolver a calibrarla.")},
+        {tr("Restablecer configuración de fábrica…"),
+         tr("Devuelve todos los ajustes a como venían de fábrica. Pide confirmación.\n\nNo borra piezas, herramientas ni historial: solo los ajustes.")},
+        {tr("Buscar cámaras de nuevo"),
+         tr("Vuelve a preguntar al sistema qué cámaras hay conectadas.\n\nÚsalo si has enchufado una cámara con el programa ya abierto.")},
+        {tr("Calibrar escala (mm)…"),
+         tr("Le enseñas al programa cuánto mide un píxel, marcando con dos clics una\ndistancia que conoces (una regla, una moneda) y escribiendo cuánto mide.\n\nSin esto todas las medidas salen en píxeles. Hay que rehacerla si cambia\nla altura de la cámara o la resolución.")},
+        {tr("Calibrar la lente…"),
+         tr("Corrige la deformación del objetivo con fotos de un tablero de ajedrez.\n\nHace falta cuando la misma pieza mide distinto en el centro que en una\nesquina: sin corregir, la diferencia llega al 18 %.")},
+        {tr("Unidad de medida"),
+         tr("En qué unidad se enseñan las medidas: milímetros, centímetros, píxeles o\nautomática (mm o cm según el tamaño).\n\nPara ver milímetros hace falta haber calibrado la escala antes.")},
+        {tr("Medir pieza"),
+         tr("Mide la pieza que hay ahora delante con las herramientas dibujadas y\nenseña el resultado, sin guardarlo en el historial.\n\nEs la prueba de antes de inspeccionar: sirve para ver si las\nherramientas están donde tienen que estar.")},
+        {tr("Modo de medición de la pieza…"),
+         tr("Elige si esta pieza se juzga por sus medidas reales o por su posición\nrespecto al cero del tablero.\n\nVa con la pieza, no con la máquina.")},
+        {tr("Automática (mm/cm)"),
+         tr("Enseña milímetros en las medidas pequeñas y centímetros en las grandes,\npara no leer «1250,0 mm».")},
+        {tr("Milímetros"),
+         tr("Todas las medidas en milímetros. Necesita la escala calibrada.")},
+        {tr("Centímetros"),
+         tr("Todas las medidas en centímetros. Necesita la escala calibrada.")},
+        {tr("Píxeles"),
+         tr("Todas las medidas en píxeles de la imagen. Es lo que hay sin calibrar, y\nsirve para trabajar cuando no importa el tamaño real.")},
+        {tr("Registrar con asistente…"),
+         tr("Da de alta una pieza nueva paso a paso: capturas varias buenas y el\nprograma aprende cómo tiene que ser.\n\nCon eso puede avisar de piezas raras aunque no midas nada.")},
+        {tr("Registrar otro acabado de esta pieza…"),
+         tr("Añade un acabado admisible A LA MISMA pieza: otro proveedor, otro lote,\notro brillo.\n\nNo la registres otra vez con el asistente: eso crea una pieza distinta.\nY mezclar dos acabados en la misma referencia no da falsos NG, deja\nCIEGA la referencia — un defecto que se detectaba deja de detectarse.")},
+        {tr("Gestionar piezas…"),
+         tr("Renombrar, duplicar o borrar piezas registradas, y ver cuántas\nherramientas e inspecciones tiene cada una.")},
+        {tr("Gestionar plantillas…"),
+         tr("Las plantillas son juegos de herramientas de la misma pieza: una por\ncara, o una rápida y otra completa.\n\nAquí se crean, se renombran y se borran.")},
+        {tr("Guardar plantilla"),
+         tr("Guarda las herramientas que hay dibujadas ahora como plantilla de esta\npieza, para recuperarlas tal cual.")},
+        {tr("Inspeccionar"),
+         tr("Mide la pieza, da el veredicto OK/NG y lo GUARDA en el historial con su\nfoto.\n\nEs lo que diferencia una inspección de una prueba: queda registrada.")},
+        {tr("Editor de plantilla…"),
+         tr("Abre la pieza registrada a tamaño completo para dibujar sus herramientas\ncon calma, sin la cámara en marcha.")},
+        {tr("Ver historial…"),
+         tr("Todas las inspecciones guardadas de esta pieza, con su foto, su veredicto\ny por qué.\n\nDesde ahí se saca el informe del turno.")},
+        {tr("Panel de herramientas"),
+         tr("Enseña u oculta el panel lateral con las herramientas dibujadas y sus\ntolerancias.")},
+        {tr("Panel de comparación"),
+         tr("Enseña u oculta el panel que pone lado a lado la pieza registrada y la\nque hay ahora delante.")},
+        {tr("Origen del tablero"),
+         tr("Dónde está el punto cero desde el que se miden las posiciones: el centro\nde la pieza, un punto fijo de la imagen o el rasgo que marques.\n\nSolo afecta a las herramientas de Posición.")},
+        {tr("Atajos de teclado…"),
+         tr("La lista de teclas: zoom, paso a paso, cambiar de pieza, medir.")},
+    };
+    for (auto* menu : menuBar()->findChildren<QMenu*>()) {
+        // Sin esto no se ve NINGUNA, ni las que ya estaban escritas.
+        menu->setToolTipsVisible(true);
+        for (auto* action : menu->actions()) {
+            for (const auto& [nombre, ayuda] : ayudas) {
+                if (action->text() == nombre) {
+                    action->setToolTip(ayuda);
+                }
+            }
+        }
+    }
+}
+
 void MainWindow::buildMenuBar() {
     // Archivo: clonar la puesta a punto a otra PC de la línea (O4).
     auto* fileMenu = menuBar()->addMenu(tr("&Archivo"));
@@ -1882,6 +1963,9 @@ void MainWindow::buildMenuBar() {
 
     auto* helpMenu = menuBar()->addMenu(tr("A&yuda"));
     helpMenu->addAction(tr("Atajos de teclado…"), this, &MainWindow::onShowShortcuts);
+    // Lo último: las explicaciones se ponen cuando ya existen todas las
+    // entradas, y así vale con un solo sitio en vez de veinticinco.
+    explainMenus();
 }
 
 void MainWindow::persistPipelineConfig() {
