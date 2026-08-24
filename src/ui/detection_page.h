@@ -59,6 +59,15 @@ public:
     // ni el de fábrica. Es la misma regla que gobierna `SettingsRepository::forget`.
     void restoreDefaults();
 
+    // VOLVER A CARGAR LO DE OTRA PIEZA, con la ventana ya abierta.
+    //
+    // La ventana de Configurar es única y el selector de piezas vive fuera de
+    // ella, así que se puede cambiar de trabajo con la ventana delante. Lo que
+    // hubiera dentro sería entonces de la pieza ANTERIOR — y aceptar le
+    // asignaría a la nueva el perfil y los ajustes de la otra.
+    void reloadFor(vision::SegmentationOptions options, std::int64_t profileId,
+                   double minAreaFraction, double maxAreaFraction, bool subpixelEdges);
+
 private slots:
     void onAutoThresholdToggled(bool automatic);
     void onThresholdMoved(int value);

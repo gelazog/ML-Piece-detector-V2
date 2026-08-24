@@ -260,6 +260,27 @@ void DetectionPage::restoreDefaults() {
     }
 }
 
+void DetectionPage::reloadFor(vision::SegmentationOptions options,
+                              std::int64_t profileId, double minAreaFraction,
+                              double maxAreaFraction, bool subpixelEdges) {
+    applyOptions(options);
+    minArea_->setValue(minAreaFraction * 100.0);
+    maxArea_->setValue(maxAreaFraction * 100.0);
+    if (subpixel_ != nullptr) {
+        subpixel_->setChecked(subpixelEdges);
+    }
+    if (profileCombo_ == nullptr) {
+        return;
+    }
+    // El perfil, SIN disparar su propia carga: `onProfileChosen` volvería a
+    // aplicar los ajustes del perfil encima de los que acaban de ponerse, y con
+    // una pieza que tiene perfil pero con los controles tocados a mano eso
+    // perdería lo tocado.
+    const QSignalBlocker quiet(profileCombo_);
+    const int index = profileCombo_->findData(QVariant::fromValue(profileId));
+    profileCombo_->setCurrentIndex(index >= 0 ? index : 0);
+}
+
 void DetectionPage::onProfileChosen(int index) {
     if (profiles_ == nullptr || index < 0) {
         return;

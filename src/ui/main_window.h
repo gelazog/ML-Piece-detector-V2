@@ -200,7 +200,11 @@ private:
     // de medición, para que no se desincronicen.
     void applyMeasurement(const repositories::PieceMeasurement& measurement);
     void loadMeasurementForSelectedPiece();
-    void loadDetectionProfileForSelectedPiece();  // perfil de detección (O3)
+    void loadDetectionProfileForSelectedPiece();
+    // Pone al día la página de Detección si Configurar está abierto. Se llama
+    // DESPUÉS de cargar el perfil, nunca antes: si no, la llenaría con lo de la
+    // pieza anterior.
+    void refreshDetectionPageForSelectedPiece();  // perfil de detección (O3)
     void updateModeChip();
     void updatePiecesChip();
     void updateEdgeCorrectionChip();  // etiqueta del modo activo (M3)

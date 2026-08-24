@@ -3512,6 +3512,35 @@ mayores; no puede ser lo que **enciende** la medición.
 declaraba nada —o sea, corría en automático— y exigía que de tres barras se midiera
 una. Ahora declara el uno que su nombre dice.
 
+### Cambiar de pieza con Configurar abierto
+
+La ventana de Configurar es **única**: volver a pulsarla trae al frente la que ya
+está abierta. Bien pensado — pero el selector de piezas vive **fuera** de ella, en
+la barra de arriba, y se puede cambiar de trabajo con la ventana delante.
+
+Lo que había dentro era entonces de la pieza **anterior**. Y «piezas esperadas»,
+«ver en mosaico» y el **perfil de detección** se guardan con la pieza, así que
+aceptar escribía los ajustes de la bandeja encima de la pieza suelta recién
+seleccionada. Sin avisar, y sin forma de notarlo hasta que esa pieza empieza a dar
+NG de recuento o su detección deja de funcionar con un umbral que nadie le puso.
+
+No es que se pierda un ajuste: **es que se le copia a un trabajo que no es el
+suyo**, que es peor — los valores son legítimos, solo que de otra escena, así que no
+hay nada que parezca roto.
+
+El orden importó: la página de Detección se pone al día **después** de cargar el
+perfil de la pieza nueva, y no junto a la de Piezas. `loadMeasurementForSelectedPiece`
+corre antes y deja `pipelineConfig_` y `currentProfileId_` todavía con lo viejo:
+refrescar desde allí habría rellenado la página con exactamente lo que se venía a
+quitar.
+
+**Una expectativa mía que no era una promesa del programa.** La primera versión de
+la prueba exigía que al pasar a una pieza sin perfil cambiara también el umbral.
+No: sin perfil «todo sigue como antes» es el diseño documentado —un perfil es un
+*override*— y la página estaba enseñando la verdad. Queda escrito para no
+«arreglar» dos veces algo que no está roto. Lo que sí hay que proteger, y lo que
+protege ahora, es que **el perfil no se contagie**.
+
 ### Abrir Configurar y aceptar sin tocar nada
 
 Hay una familia de fallos que encaja con «el menú de configuración tiene bastantes

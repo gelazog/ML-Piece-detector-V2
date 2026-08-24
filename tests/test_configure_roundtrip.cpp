@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QComboBox>
 #include <QApplication>
 #include <QDir>
 #include <QTemporaryDir>
@@ -30,6 +31,8 @@
 #include "database/db.h"
 #include "database/schema.h"
 #include "repositories/settings_repository.h"
+#include "repositories/detection_profile_repository.h"
+#include "repositories/piece_repository.h"
 #include "ui/configure_dialog.h"
 #include "ui/detection_page.h"
 #include "ui/main_window.h"
@@ -196,4 +199,201 @@ TEST(ConfigureRoundTrip, AcceptingWithoutTouchingAnythingChangesNothingOnDisk) {
             << "aceptar sin tocar nada cambió «" << key << "»: era «" << value
             << "» y quedó «" << found->second << "»";
     }
+}
+
+// CAMBIAR DE PIEZA CON CONFIGURAR ABIERTO.
+//
+// La ventana de Configurar es única: volver a pulsarla trae al frente la que ya
+// está abierta. Bien pensado — pero la selección de pieza vive FUERA de ella, en
+// la barra de arriba, y se puede cambiar con la ventana abierta.
+//
+// Lo que hay dentro es entonces de la pieza ANTERIOR. Y «piezas esperadas» y
+// «ver en mosaico» se guardan CON LA PIEZA, así que aceptar escribe los ajustes
+// de la bandeja encima de la pieza suelta que acabas de seleccionar. Sin avisar,
+// y sin forma de notarlo hasta que esa pieza empieza a dar NG de recuento.
+//
+// Es la peor variante del fallo de arriba: no es que se pierda un ajuste, es
+// que se le copia a un trabajo que no es el suyo.
+TEST(ConfigureRoundTrip, ChangingPieceWithConfigureOpenDoesNotCopySettingsAcross) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const std::string dbPath =
+        QDir(dir.path()).filePath(QStringLiteral("piezas.db")).toStdString();
+    auto opened = pci::database::Db::open(dbPath);
+    ASSERT_TRUE(opened.isOk()) << opened.error().message;
+    auto db = std::move(opened.value());
+    ASSERT_TRUE(pci::database::migrate(*db).isOk());
+    pci::repositories::SettingsRepository settings(*db);
+    pci::repositories::PieceRepository pieces(*db);
+
+    // Una bandeja de doce con mosaico, y una pieza suelta en automático.
+    auto tray = pieces.createPiece("bandeja");
+    ASSERT_TRUE(tray.isOk());
+    auto single = pieces.createPiece("suelta");
+    ASSERT_TRUE(single.isOk());
+    {
+        auto m = pieces.loadMeasurement(tray.value());
+        ASSERT_TRUE(m.isOk());
+        m.value().expectedPieces = 12;
+        m.value().showMosaic = true;
+        ASSERT_TRUE(pieces.saveMeasurement(tray.value(), m.value()).isOk());
+    }
+
+    pci::ui::AppRepositories repos;
+    repos.settings = &settings;
+    repos.pieces = &pieces;
+
+    {
+        pci::ui::MainWindow window(repos);
+        window.resize(1200, 800);
+
+        auto* combo = window.findChild<QComboBox*>(QStringLiteral("pieceCombo"));
+        if (combo == nullptr) {
+            // Sin objectName no se puede identificar; se busca el que lleva los
+            // nombres de las piezas.
+            for (auto* candidate : window.findChildren<QComboBox*>()) {
+                if (candidate->findText(QStringLiteral("bandeja")) >= 0) {
+                    combo = candidate;
+                }
+            }
+        }
+        ASSERT_NE(combo, nullptr) << "no se encontró el selector de piezas";
+
+        // Se selecciona la bandeja y se abre Configurar: la página enseña 12.
+        const int trayIndex = combo->findText(QStringLiteral("bandeja"));
+        ASSERT_GE(trayIndex, 0);
+        combo->setCurrentIndex(trayIndex);
+
+        QAction* configure = nullptr;
+        for (auto* action : window.findChildren<QAction*>()) {
+            if (action->text().startsWith(QStringLiteral("Configurar"))) {
+                configure = action;
+            }
+        }
+        ASSERT_NE(configure, nullptr);
+        configure->trigger();
+        auto* dialog = window.findChild<pci::ui::ConfigureDialog*>();
+        ASSERT_NE(dialog, nullptr);
+        ASSERT_NE(dialog->piecesPage(), nullptr);
+        ASSERT_EQ(dialog->piecesPage()->expectedPieces(), 12)
+            << "la página no enseña lo de la bandeja";
+
+        // Ahora se cambia a la pieza suelta SIN cerrar la ventana, y se acepta.
+        const int singleIndex = combo->findText(QStringLiteral("suelta"));
+        ASSERT_GE(singleIndex, 0);
+        combo->setCurrentIndex(singleIndex);
+        emit dialog->applied();
+    }
+
+    // La pieza suelta tiene que seguir en automático y sin mosaico. Si se le han
+    // copiado los 12 de la bandeja, empezará a dar NG de recuento sin que nadie
+    // haya declarado nada para ella.
+    auto after = pieces.loadMeasurement(single.value());
+    ASSERT_TRUE(after.isOk());
+    EXPECT_EQ(after.value().expectedPieces, 0)
+        << "la pieza suelta se ha quedado con las piezas esperadas de la bandeja";
+    EXPECT_FALSE(after.value().showMosaic)
+        << "la pieza suelta se ha quedado con el mosaico de la bandeja";
+
+    // Y la bandeja no puede haber perdido lo suyo por el camino.
+    auto trayAfter = pieces.loadMeasurement(tray.value());
+    ASSERT_TRUE(trayAfter.isOk());
+    EXPECT_EQ(trayAfter.value().expectedPieces, 12);
+    EXPECT_TRUE(trayAfter.value().showMosaic);
+}
+
+// Y LO MISMO CON LA DETECCIÓN, que es peor.
+//
+// El perfil de detección también se guarda con la pieza. Cambiar de trabajo con
+// Configurar abierto y aceptar le asignaba a la pieza nueva el perfil de la
+// anterior — y con él, su umbral, su polaridad y sus áreas.
+//
+// El síntoma es indistinguible de «la detección de esta pieza dejó de
+// funcionar»: los ajustes son legítimos, solo que de otra escena.
+TEST(ConfigureRoundTrip, ChangingPieceRefreshesTheDetectionPageToo) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const std::string dbPath =
+        QDir(dir.path()).filePath(QStringLiteral("perfiles.db")).toStdString();
+    auto opened = pci::database::Db::open(dbPath);
+    ASSERT_TRUE(opened.isOk()) << opened.error().message;
+    auto db = std::move(opened.value());
+    ASSERT_TRUE(pci::database::migrate(*db).isOk());
+    pci::repositories::SettingsRepository settings(*db);
+    pci::repositories::PieceRepository pieces(*db);
+    pci::repositories::DetectionProfileRepository profiles(*db);
+
+    auto bright = pieces.createPiece("con perfil");
+    ASSERT_TRUE(bright.isOk());
+    auto plain = pieces.createPiece("sin perfil");
+    ASSERT_TRUE(plain.isOk());
+
+    // Un perfil bien distinto de fábrica, asignado solo a la primera pieza.
+    pci::vision::SegmentationOptions special;
+    special.manualThreshold = 199;
+    special.polarity = pci::vision::SegmentationPolarity::LightPiece;
+    special.blurKernel = 9;
+    auto profileId = profiles.save("luz brillante", special);
+    ASSERT_TRUE(profileId.isOk());
+    ASSERT_TRUE(profiles.assignToPiece(bright.value(), profileId.value()).isOk());
+
+    pci::ui::AppRepositories repos;
+    repos.settings = &settings;
+    repos.pieces = &pieces;
+    repos.detectionProfiles = &profiles;
+
+    pci::ui::MainWindow window(repos);
+    window.resize(1200, 800);
+
+    QComboBox* combo = nullptr;
+    for (auto* candidate : window.findChildren<QComboBox*>()) {
+        if (candidate->findText(QStringLiteral("con perfil")) >= 0) {
+            combo = candidate;
+        }
+    }
+    ASSERT_NE(combo, nullptr) << "no se encontró el selector de piezas";
+
+    const int withIndex = combo->findText(QStringLiteral("con perfil"));
+    const int withoutIndex = combo->findText(QStringLiteral("sin perfil"));
+    ASSERT_GE(withIndex, 0);
+    ASSERT_GE(withoutIndex, 0);
+
+    combo->setCurrentIndex(withIndex);
+
+    QAction* configure = nullptr;
+    for (auto* action : window.findChildren<QAction*>()) {
+        if (action->text().startsWith(QStringLiteral("Configurar"))) {
+            configure = action;
+        }
+    }
+    ASSERT_NE(configure, nullptr);
+    configure->trigger();
+    auto* dialog = window.findChild<pci::ui::ConfigureDialog*>();
+    ASSERT_NE(dialog, nullptr);
+    auto* page = dialog->detectionPage();
+    ASSERT_NE(page, nullptr);
+    ASSERT_EQ(page->options().manualThreshold, 199)
+        << "la página no enseña el perfil de la pieza seleccionada";
+    ASSERT_EQ(page->selectedProfileId(), profileId.value());
+
+    // Se cambia a la pieza SIN perfil, con la ventana abierta.
+    combo->setCurrentIndex(withoutIndex);
+
+    // LO QUE HAY QUE PROTEGER es que el PERFIL no se contagie. El umbral sí se
+    // queda, y eso es el diseño documentado: un perfil es un override, y sin
+    // perfil «todo sigue como antes» — se sigue trabajando con los ajustes
+    // sueltos que haya en marcha.
+    //
+    // (La primera versión de esta prueba exigía que el umbral cambiara. Era una
+    // expectativa mía, no una promesa del programa: la página estaba enseñando
+    // la verdad. Vale la pena dejarlo escrito para no «arreglar» dos veces algo
+    // que no está roto.)
+    EXPECT_EQ(page->selectedProfileId(), 0)
+        << "la página sigue con el perfil de la otra pieza seleccionado: aceptar "
+           "se lo asignaría a esta";
+
+    // Y la página enseña lo que de verdad está aplicado, no lo que había al
+    // abrirla: si se quedara con una foto vieja, aceptar escribiría esa foto.
+    EXPECT_EQ(page->options().manualThreshold, 199)
+        << "la página no refleja los ajustes que están de verdad en marcha";
 }

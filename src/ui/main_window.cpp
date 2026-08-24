@@ -2341,22 +2341,46 @@ void MainWindow::applyDetectionPage(DetectionPage* page) {
 
 // Perfil de detección de la pieza seleccionada (O3): si tiene uno, sus ajustes
 // mandan sobre los globales; si no, todo sigue como antes.
+// LA PÁGINA DE DETECCIÓN, SI CONFIGURAR ESTÁ ABIERTO.
+//
+// Va aquí y no en `loadMeasurementForSelectedPiece` por el ORDEN: aquella corre
+// antes y deja `pipelineConfig_` y `currentProfileId_` todavía con lo de la
+// pieza anterior. Poner al día la página desde allí la llenaría con lo viejo,
+// que es exactamente el fallo que se vino a quitar.
+void MainWindow::refreshDetectionPageForSelectedPiece() {
+    if (configureDialog_ == nullptr) {
+        return;
+    }
+    if (auto* page = configureDialog_->detectionPage(); page != nullptr) {
+        page->reloadFor(pipelineConfig_.segmentation, currentProfileId_,
+                        pipelineConfig_.minAreaFraction, pipelineConfig_.maxAreaFraction,
+                        pipelineConfig_.subpixelEdges);
+    }
+}
+
 void MainWindow::loadDetectionProfileForSelectedPiece() {
     currentProfileId_ = 0;
     const std::int64_t pieceId = selectedPieceId();
     if (pieceId < 0 || repos_.detectionProfiles == nullptr) {
+        refreshDetectionPageForSelectedPiece();
         return;
     }
     auto assigned = repos_.detectionProfiles->profileForPiece(pieceId);
     if (!assigned.isOk() || assigned.value() <= 0) {
+        // Sin perfil asignado también hay que poner al día la página: se
+        // trabaja con los ajustes sueltos, y los de la pieza nueva no tienen
+        // por qué ser los que se quedó enseñando de la anterior.
+        refreshDetectionPageForSelectedPiece();
         return;
     }
     auto profile = repos_.detectionProfiles->load(assigned.value());
     if (!profile.isOk()) {
+        refreshDetectionPageForSelectedPiece();
         return;  // perfil borrado a mano: se sigue con los ajustes globales
     }
     currentProfileId_ = profile.value().id;
     pipelineConfig_.segmentation = profile.value().options;
+    refreshDetectionPageForSelectedPiece();
     statusBar()->showMessage(tr("Detección: perfil '%1' de esta pieza.")
                                  .arg(QString::fromStdString(profile.value().name)));
     reanalyseCurrentFrame();
@@ -5041,6 +5065,23 @@ void MainWindow::loadMeasurementForSelectedPiece() {
         pipelineConfig_.expectedPieces = expectedPieces_;
         lastPieceCount_ = -1;
         lastPiecesSeen_ = -1;
+        // Y LA VENTANA DE CONFIGURAR, SI ESTÁ ABIERTA, TAMBIÉN.
+        //
+        // Es única y vive fuera del selector de piezas, así que se puede cambiar
+        // de trabajo con ella abierta. Lo que había dentro era entonces de la
+        // pieza ANTERIOR — y «piezas esperadas» y «ver en mosaico» se guardan
+        // con la pieza, así que aceptar escribía los ajustes de la bandeja
+        // encima de la pieza suelta recién seleccionada. Sin avisar, y sin
+        // forma de notarlo hasta que esa pieza empieza a dar NG de recuento.
+        //
+        // No es que se pierda un ajuste: es que se le copia a un trabajo que no
+        // es el suyo, que es peor.
+        if (configureDialog_ != nullptr) {
+            if (auto* page = configureDialog_->piecesPage(); page != nullptr) {
+                page->setExpectedPieces(expectedPieces_);
+                page->setShowMosaic(showMosaic_);
+            }
+        }
         // Y la eleccion de pieza no se arrastra de un trabajo a otro: «la
         // tercera» de la bandeja anterior no significa nada en esta.
         focusedPiece_ = 0;
