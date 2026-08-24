@@ -5135,3 +5135,79 @@ TEST(PieceCountMode, ChangingTheNumberIsAnnouncedImmediately) {
     ASSERT_FALSE(announced.empty());
     EXPECT_EQ(announced.back(), 0);
 }
+
+// LAS COTAS SE PINTAN SOBRE LA PIEZA QUE SE ESTÁ MIDIENDO.
+//
+// El lienzo dibuja las marcas de todas las piezas pero los NÚMEROS de una sola:
+// con seis piezas y cinco herramientas serían treinta etiquetas encima del
+// vídeo, y eso no se lee. La elegida se decidía con `focusedPiece_`, que valía
+// 0 y no lo movía nadie — o sea, siempre la primera en orden de lectura.
+//
+// Mientras las medidas en vivo no llevaban número de pieza daba igual: todas
+// valían 0 y todas se pintaban. En cuanto el operador puede enfocar la tercera
+// —con las flechas o pulsando su baldosa en el mosaico— eso deja de ser
+// inofensivo: la pieza se remarca en verde y las cifras se quedan encima de
+// otra. Es peor que no enseñar cotas, porque parecen las de la pieza señalada.
+TEST_F(CanvasGestureTest, TheNumbersFollowTheFocusedPieceAndNotAlwaysTheFirst) {
+    const auto labelPixels = [this](int focused) {
+        // Tres medidas, una por pieza, cada una en un sitio distinto del
+        // lienzo. Sólo la de la pieza enfocada debe salir escrita.
+        std::vector<ToolRunResult> results;
+        for (int i = 0; i < 3; ++i) {
+            ToolRunResult r;
+            r.toolId = i + 1;
+            r.name = "ancho";
+            r.type = ToolType::Ruler;
+            r.ok = true;
+            r.measured = 100.0 + i;
+            r.pieceIndex = i;
+            r.overlayPoints = {{300.0F + 400.0F * static_cast<float>(i), 500.0F}};
+            results.push_back(r);
+        }
+        canvas.setResults(results);
+        canvas.setFocusedPiece(focused);
+
+        QImage rendered(kWidgetWidth, kWidgetHeight, QImage::Format_ARGB32);
+        rendered.fill(Qt::black);
+        canvas.render(&rendered);
+
+        // NO CUÁNTA TINTA, SINO DÓNDE.
+        //
+        // Contar píxeles de etiqueta no distingue nada: con el filtro roto sale
+        // la de la pieza 1 y con el filtro bien sale la de la 3, y las dos
+        // manchan lo mismo. Se devuelve la x MEDIA de la tinta, que es la única
+        // forma de saber sobre qué pieza han caído los números.
+        //
+        // Aprendido a base de escribir primero la versión que contaba: pasaba
+        // igual de verde con el filtro mutado a «siempre la pieza 0», que es
+        // exactamente el fallo que venía a cazar.
+        long long sumX = 0;
+        int coloured = 0;
+        for (int y = 0; y < rendered.height(); ++y) {
+            for (int x = 0; x < rendered.width(); ++x) {
+                const QColor c = rendered.pixelColor(x, y);
+                if (c.green() > 150 && c.red() < 120 && c.blue() < 120) {
+                    sumX += x;
+                    ++coloured;
+                }
+            }
+        }
+        return std::pair<int, double>{
+            coloured, coloured > 0 ? static_cast<double>(sumX) / coloured : -1.0};
+    };
+
+    const auto [firstInk, firstX] = labelPixels(0);
+    const auto [thirdInk, thirdX] = labelPixels(2);
+    std::printf("  [cotas] enfocando la 1: %d px centrados en x=%.0f;  "
+                "enfocando la 3: %d px centrados en x=%.0f\n",
+                firstInk, firstX, thirdInk, thirdX);
+
+    ASSERT_GT(firstInk, 0) << "no se pinta ninguna etiqueta ni con la primera pieza";
+    ASSERT_GT(thirdInk, 0) << "enfocar la tercera pieza deja el vídeo sin cotas";
+    // Las tres anclas están a 300, 700 y 1100 en la imagen: izquierda, centro y
+    // derecha. Enfocar la tercera tiene que llevar los números claramente más a
+    // la derecha; si el filtro se quedara en la pieza 0, las dos medidas
+    // caerían en el mismo sitio.
+    EXPECT_GT(thirdX, firstX + 100.0)
+        << "los números no se han movido al enfocar otra pieza: siguen sobre la primera";
+}

@@ -375,6 +375,18 @@ AnalysisOverlay buildOverlay(const QImage& frame,
             overlay.toolResults = inspection::runTools(
                 image, analysis.value().fixture, tools, mmPerPixel, unit, imageToMm, &board,
                 overlay.liveMmPerPixel > 0.0 ? overlay.liveScaleQuality : -1.0);
+            // CADA MEDIDA SABE DE QUÉ PIEZA ES, también en vivo.
+            //
+            // El motor ya numera así —posición en orden de lectura— y el vivo se
+            // quedaba con el 0 de «sin poner». Mientras el lienzo filtraba las
+            // etiquetas por «pieza 0» daba lo mismo; en cuanto el operador puede
+            // enfocar la 3, dos convenciones para el mismo campo son dos formas
+            // de que las cotas se pinten sobre la pieza equivocada.
+            if (overlay.measuredPiece >= 1) {
+                for (auto& result : overlay.toolResults) {
+                    result.pieceIndex = overlay.measuredPiece - 1;
+                }
+            }
             if (measureStages) {
                 // Se suma al total para que el reparto sea el del frame entero:
                 // `analyzeFrame` ya terminó cuando esto empieza, así que su
@@ -3918,6 +3930,10 @@ void MainWindow::onAnalysisFinished() {
         }
         // Medidas en vivo de las herramientas dibujadas (px o mm calibrados).
         video_->setResults(overlay.toolResults);
+        // Y el lienzo enseña las cotas de ESA pieza. Sin esto sólo salían las de
+        // la primera en orden de lectura, así que enfocar la tercera dejaba la
+        // pieza remarcada y las cifras encima de otra.
+        video_->setFocusedPiece(overlay.measuredPiece >= 1 ? overlay.measuredPiece - 1 : 0);
         updateBoardReadout();  // desviación y giro respecto al tablero (T3)
         // El contorno corregido ya esta en pantalla: el trazo ha hecho su
         // trabajo y se retira. La correccion sigue en vigor, y el aviso de al

@@ -3531,6 +3531,29 @@ mientras las demás bajan a un tono apagado. El engrosamiento solo aparece cuand
 la elección es del operador: si la pieza le ha tocado por ser la mayor,
 destacarla afirmaría una decisión que nadie tomó.
 
+#### Las cotas se quedaban sobre la primera pieza
+
+`EditorCanvas::setFocusedPiece` existía desde C6 y **no lo llamaba nadie**. Decide
+de qué pieza se escriben los números —las marcas se dibujan de todas, pero
+treinta etiquetas sobre seis piezas no se leen— y como valía 0 y nadie lo movía,
+eran siempre las de la primera en orden de lectura.
+
+Mientras las medidas en vivo no llevaban número de pieza esto era inofensivo:
+todas valían 0 y todas se escribían. Deja de serlo en cuanto el operador puede
+enfocar la tercera — la pieza se remarca en verde y **las cifras se quedan encima
+de otra**, que es peor que no enseñar cotas: parecen las de la pieza señalada.
+
+Ahora el camino en vivo pone `pieceIndex` con la misma convención que el motor
+—posición en orden de lectura— y la ventana mueve el enfoque del lienzo con la
+pieza medida. Dos convenciones para el mismo campo son dos formas de pintar sobre
+la pieza equivocada.
+
+**La primera versión de la prueba no valía.** Contaba píxeles de etiqueta y
+exigía que hubiera algunos con la pieza 1 enfocada y algunos con la 3. Mutando el
+filtro a «siempre la pieza 0» salían 276 píxeles en los dos casos y la prueba
+pasaba: la etiqueta que se pintaba era la misma, sólo que la comprobación no
+miraba **dónde**. Con la x media de la tinta —228 contra 501— la mutación falla.
+
 #### El informe contaba las piezas de otra forma que la pantalla
 
 Al mirar si el mosaico y el motor se ponían de acuerdo apareció que **el informe
