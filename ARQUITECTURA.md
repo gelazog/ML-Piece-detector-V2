@@ -3556,8 +3556,14 @@ y además se le escapaban tres lecturas que sí saltaban.
 
 Lo que hace ahora: repetir la medida con la línea corrida un tercio y dos tercios de
 píxel a lo largo de su propia dirección, y mirar si la respuesta salta más del 10 %.
-Eso marca exactamente las lecturas que cambiarían de un fotograma a otro. Cuesta dos
-barridos de banda más — la parte barata de la herramienta.
+Eso marca exactamente las lecturas que cambiarían de un fotograma a otro.
+
+**El coste, medido** y no supuesto —que es la tercera afirmación de esta tanda que
+hubo que ir a comprobar—: diez calibres CON el sondeo cuestan 1,33 ms frente a los
+5,38 ms del análisis que los alimenta (**24,8 %**) en una imagen pequeña, y 0,41 ms
+frente a 65,47 ms (**0,6 %**) en la bandeja de cien piezas. Las herramientas siguen
+siendo una fracción pequeña del análisis, así que el sondeo no marca el ritmo de
+nada.
 
 Y el aviso mejoró de paso: en vez de nombrar dos candidatas deducidas, dice **el
 rango real entre el que oscila** («da entre 22,6 y 227,8 px»), que está medido.
