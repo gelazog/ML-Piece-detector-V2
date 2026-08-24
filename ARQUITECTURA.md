@@ -3531,6 +3531,34 @@ mientras las demás bajan a un tono apagado. El engrosamiento solo aparece cuand
 la elección es del operador: si la pieza le ha tocado por ser la mayor,
 destacarla afirmaría una decisión que nadie tomó.
 
+#### El informe contaba las piezas de otra forma que la pantalla
+
+Al mirar si el mosaico y el motor se ponían de acuerdo apareció que **el informe
+y la pantalla no lo estaban**, y llevaba así desde que la lista pasó a orden de
+lectura. El motor analiza aparte **la mayor** y mide las demás después; a esas les
+ponía `pieceIndex = 1, 2, 3…` según iban saliendo del filtro, y a la mayor un 0
+que además se traducía en «no le pongas número».
+
+Con tres barras y la estrecha la primera leyendo, el veredicto decía **«ancho
+(pieza 2) fuera de tolerancia»** de la que en pantalla es la **1**. El operador va
+a la segunda barra, la encuentra perfecta, y a partir de ahí no vuelve a fiarse ni
+del informe ni del panel. Es el mismo fallo silencioso contra el que se acababa de
+poner un guard entre mosaico y motor, un piso más abajo.
+
+Ahora `pieceIndex` **es** la posición en orden de lectura, la mayor incluida, y el
+sufijo «(pieza N)» se pone cuando **hay varias** y no cuando el índice no es cero
+— con la condición vieja, la pieza 1 habría sido la única sin numerar, justo
+cuando hace falta saber cuál es.
+
+La prueba que había comprobaba que los índices fueran `{0,1,2}`: un **conjunto**,
+no un reparto, y eso lo cumple cualquier permutación. La nueva fija qué pieza
+lleva qué número con una escena donde las dos numeraciones dan resultados
+distintos — la estrecha es la primera leyendo y no es la mayor.
+
+**Lo que no se puede arreglar**: las filas de historial escritas antes de esto
+llevan la numeración vieja. El frame ya no está, así que no hay forma de
+recalcularlas, y reescribirlas a ciegas sería inventar. Quedan como están.
+
 #### El guard del manual daba por buena cualquier ruta
 
 Añadir la entrada de menú destapó un agujero en `test_readme_paths.cpp`. La

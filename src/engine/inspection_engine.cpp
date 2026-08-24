@@ -149,7 +149,18 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
     if (auto measurement = pieces_.loadMeasurement(pieceId); measurement.isOk()) {
         expectedPieces = measurement.value().expectedPieces;
     }
-    std::vector<vision::Fixture> extraFixtures;
+    // LAS DEMÁS PIEZAS, CADA UNA CON SU SITIO EN EL ORDEN DE LECTURA.
+    //
+    // Se guarda la posición y no solo el fixture porque el número que acaba en
+    // el informe tiene que ser ESE. Antes se numeraban 1, 2, 3… según iban
+    // saliendo del filtro, que es un orden distinto en cuanto la mayor no es la
+    // primera: el informe decía «pieza 2» de la que en pantalla es la 1.
+    struct ExtraPiece {
+        vision::Fixture fixture;
+        std::size_t readingIndex = 0;
+    };
+    std::vector<ExtraPiece> extraFixtures;
+    std::size_t mainReadingIndex = 0;
     if (expectedPieces > 1) {
         if (auto all = vision::analyzeFrames(frameBgr, options_.pipeline); all.isOk()) {
             outcome.piecesFound = static_cast<int>(all.value().size());
@@ -161,9 +172,10 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
             // veces a la mayor: una pieza sin medir y otra medida dos veces, sin
             // que nada lo dijera.
             const std::size_t biggest = vision::largestPieceIndex(all.value());
+            mainReadingIndex = biggest;
             for (std::size_t i = 0; i < all.value().size(); ++i) {
                 if (i != biggest) {
-                    extraFixtures.push_back(all.value()[i].fixture);
+                    extraFixtures.push_back({all.value()[i].fixture, i});
                 }
             }
         } else {
@@ -171,8 +183,8 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
         }
     }
     outcome.pieceFixtures.push_back(outcome.analysis.fixture);
-    for (const auto& fixture : extraFixtures) {
-        outcome.pieceFixtures.push_back(fixture);
+    for (const auto& extra : extraFixtures) {
+        outcome.pieceFixtures.push_back(extra.fixture);
     }
 
     // 2. Herramientas geométricas sobre la imagen original (sin warp).
@@ -193,19 +205,23 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
     outcome.toolResults =
         inspection::runTools(frameBgr, outcome.analysis.fixture, toolConfigs,
                              options_.mmPerPixel, options_.unit, cv::Mat(), &board);
+    // La principal también lleva su sitio. No es siempre la 0: se analiza
+    // aparte por ser la MAYOR, y la mayor puede estar en cualquier posición.
+    for (auto& result : outcome.toolResults) {
+        result.pieceIndex = static_cast<int>(mainReadingIndex);
+    }
 
     // Las demás piezas se miden con LA MISMA plantilla. Sale casi gratis porque
     // las herramientas viven en coordenadas de pieza: cambiar de pieza es
     // cambiar de fixture y volver a ejecutar, sin tocar ni una herramienta.
-    for (std::size_t i = 0; i < extraFixtures.size(); ++i) {
+    for (const auto& extra : extraFixtures) {
         const vision::BoardFrame pieceBoard = vision::resolveBoardFrame(
-            options_.board, extraFixtures[i], true,
-            cv::Size(frameBgr.cols, frameBgr.rows));
+            options_.board, extra.fixture, true, cv::Size(frameBgr.cols, frameBgr.rows));
         auto results =
-            inspection::runTools(frameBgr, extraFixtures[i], toolConfigs,
-                                 options_.mmPerPixel, options_.unit, cv::Mat(), &pieceBoard);
+            inspection::runTools(frameBgr, extra.fixture, toolConfigs, options_.mmPerPixel,
+                                 options_.unit, cv::Mat(), &pieceBoard);
         for (auto& result : results) {
-            result.pieceIndex = static_cast<int>(i) + 1;
+            result.pieceIndex = static_cast<int>(extra.readingIndex);
             outcome.toolResults.push_back(std::move(result));
         }
     }
@@ -216,10 +232,15 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
         // Con varias piezas, el nombre lleva de cuál es. Sin eso, un NG diría
         // "Ø agujero fuera de tolerancia" y habría que adivinar en qué tornillo
         // de la bandeja mirar.
+        //
+        // La condición es «hay varias» y no «el índice no es cero». Ahora el
+        // índice es el sitio en orden de lectura, así que la pieza 1 lo tiene a
+        // cero — y con la vieja condición habría sido la única sin numerar,
+        // justo en el caso en que hace falta saber cuál es.
+        const bool several = !extraFixtures.empty();
         const std::string name =
-            result.pieceIndex > 0
-                ? result.name + " (pieza " + std::to_string(result.pieceIndex + 1) + ")"
-                : result.name;
+            several ? result.name + " (pieza " + std::to_string(result.pieceIndex + 1) + ")"
+                    : result.name;
         toolChecks.push_back({name, result.ok, result.measured, result.detail});
     }
 

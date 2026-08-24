@@ -956,3 +956,72 @@ TEST_F(EngineTest, TheReportLimitCoversARealShift) {
     EXPECT_GT(repositories::InspectionRepository::kMaxReportRows, 3 * kEightHourShift)
         << "no cubre un día de tres turnos, que es lo que se pide al cerrar la jornada";
 }
+
+// EL NÚMERO DEL INFORME Y EL DE LA PANTALLA TIENEN QUE SER EL MISMO.
+//
+// El manual promete que el motivo del NG dice en cuál mirar —«ancho (pieza 3)
+// fuera de tolerancia»— y que las piezas van numeradas en orden de lectura, el
+// mismo número que enseñan el selector y el mosaico. Son dos promesas que sólo
+// valen juntas: si el informe cuenta de otra forma, el operador va a mirar la
+// tuerca equivocada y encuentra una pieza correcta donde el programa dice que
+// hay un fallo. A partir de ahí no vuelve a fiarse de ninguna de las dos.
+//
+// La prueba anterior comprobaba que los índices fueran {0,1,2} —un conjunto, no
+// un reparto— y eso pasa con cualquier permutación. Esta fija QUÉ pieza lleva
+// QUÉ número: la barra estrecha se pone la PRIMERA en orden de lectura y no es
+// la mayor, así que las dos numeraciones posibles dan resultados distintos.
+TEST_F(EngineTest, TheReportNumbersPiecesInReadingOrderLikeTheScreen) {
+    auto& pieces = *pieces_;
+    auto& tools = *tools_;
+    auto& history = *history_;
+    auto pieceId = pieces.createPiece("bandeja numerada");
+    ASSERT_TRUE(pieceId.isOk());
+    auto measurement = pieces.loadMeasurement(pieceId.value());
+    ASSERT_TRUE(measurement.isOk());
+    measurement.value().expectedPieces = 3;
+    ASSERT_TRUE(pieces.saveMeasurement(pieceId.value(), measurement.value()).isOk());
+
+    inspection::ToolConfig caliper;
+    caliper.type = inspection::ToolType::Caliper;
+    caliper.name = "ancho";
+    caliper.geometryJson = inspection::toJson(inspection::ToolGeometry(
+        inspection::CaliperGeometry{{-160.0F, 0.0F}, {160.0F, 0.0F}, 20.0F}));
+    caliper.toleranceMin = 180.0;
+    caliper.toleranceMax = 220.0;
+    ASSERT_TRUE(tools.save(pieceId.value(), caliper, "principal").isOk());
+
+    engine::InspectionEngine engine(nullptr, pieces, tools, history);
+    cv::Mat scene;
+    // La estrecha es la de la IZQUIERDA: primera leyendo, y la más pequeña de
+    // las tres, así que no es la que el motor analiza aparte por ser la mayor.
+    cv::cvtColor(trayOfBars(0, 120), scene, cv::COLOR_GRAY2BGR);
+    auto outcome = engine.inspect(scene, pieceId.value());
+    ASSERT_TRUE(outcome.isOk()) << outcome.error().message;
+    ASSERT_EQ(outcome.value().toolResults.size(), 3U);
+
+    // Se busca la que falla y se mira qué número lleva. Es la primera leyendo,
+    // así que tiene que ser la pieza 1.
+    int failingIndex = -1;
+    for (const auto& result : outcome.value().toolResults) {
+        std::printf("  [numeracion] pieza %d -> %.1f (%s)\n", result.pieceIndex,
+                    result.measured, result.ok ? "OK" : "NG");
+        if (!result.ok) {
+            EXPECT_EQ(failingIndex, -1) << "falla más de una barra: la escena ya no sirve";
+            failingIndex = result.pieceIndex;
+        }
+    }
+    ASSERT_NE(failingIndex, -1) << "no falla ninguna barra: la escena ya no sirve";
+    EXPECT_EQ(failingIndex, 0)
+        << "la barra estrecha es la PRIMERA leyendo, pero el informe le da otro número";
+
+    // Y el texto del veredicto tiene que decir ese mismo número, que es lo que
+    // el operador lee de verdad.
+    std::string failingName;
+    for (const auto& tool : outcome.value().verdict.tools) {
+        if (!tool.ok) {
+            failingName = tool.name;
+        }
+    }
+    EXPECT_NE(failingName.find("pieza 1"), std::string::npos)
+        << "el veredicto manda a mirar otra pieza: «" << failingName << "»";
+}
