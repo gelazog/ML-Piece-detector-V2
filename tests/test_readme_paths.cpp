@@ -191,3 +191,142 @@ TEST(ReadmePaths, EveryMenuPathInTheManualExistsInTheApplication) {
         << "el manual manda al operador a sitios que no existen. Con una ruta rota, "
            "quien la sigue concluye que el programa está roto.";
 }
+
+namespace {
+
+// El directorio `src/` DEL PROYECTO, esté el test donde esté al ejecutarse.
+//
+// No vale con que exista un `src`: al correr bajo ctest, el directorio de
+// trabajo cae dentro de `build/`, y ahí `../src` es el árbol de ficheros
+// generados —que existe y no tiene ni una ruta de menú dentro—. La primera
+// versión se quedó con ese: sola pasaba y bajo ctest comprobaba cero rutas.
+//
+// La salvó el `EXPECT_GT(checked, 3)`, que está puesto justo para eso: una
+// comprobación que no comprueba nada tiene que fallar, no aprobar en silencio.
+// Aquí se ancla en un fichero que solo está en el árbol de verdad.
+std::filesystem::path sourceRoot() {
+    for (const auto* candidate : {"src", "../src", "../../src", "../../../src"}) {
+        std::error_code ec;
+        const std::filesystem::path dir(candidate);
+        if (std::filesystem::exists(dir / "ui" / "main_window.cpp", ec)) {
+            return dir;
+        }
+    }
+    return {};
+}
+
+}  // namespace
+
+// LA APLICACIÓN TAMPOCO PUEDE MANDAR A MENÚS QUE NO EXISTEN.
+//
+// El manual ya tenía su comprobación. Los mensajes que escribe la propia
+// aplicación —barra de estado, guía de puesta a punto, ayudas— no la tenían, y
+// se habían quedado atrás: decían «Cámara ▸ Calibrar…» cuando el menú Cámara
+// pasó a llamarse Fuente y la calibración se mudó a Medida, y «Cámara ▸
+// Configurar ▸ Cámara e imagen» cuando eso es una pestaña, no un submenú.
+//
+// Es peor que en el manual. El manual se lee antes; estos textos salen JUSTO
+// cuando el operador está atascado, y mandarle a un menú inexistente en ese
+// momento es lo que acaba de convencerle de que el programa está roto.
+//
+// Se comprueba lo que va ANTES de cada «▸»: nombres de menú y de submenú. Lo
+// que va después del último se deja fuera a propósito, porque muchas veces no
+// es una acción sino una pestaña o el resto de la frase.
+TEST(SourceMenuPaths, TheMessagesTheApplicationWritesPointAtRealMenus) {
+    const auto root = sourceRoot();
+    if (root.empty()) {
+        GTEST_SKIP() << "no se encontró el directorio src/";
+    }
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    const QSet<QString> names = everythingReachable(window);
+    ASSERT_GT(names.size(), 20);
+
+    static const QRegularExpression pattern(
+        QStringLiteral("([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][^\"\\n]{0,40}?)\\s*\\x{25b8}"));
+
+    int checked = 0;
+    QStringList broken;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(root)) {
+        if (!entry.is_regular_file()) {
+            continue;
+        }
+        const auto ext = entry.path().extension().string();
+        if (ext != ".cpp" && ext != ".h") {
+            continue;
+        }
+        std::ifstream file(entry.path(), std::ios::binary);
+        std::ostringstream all;
+        all << file.rdbuf();
+        const QString text = QString::fromUtf8(all.str().c_str());
+
+        for (const auto& line : text.split(QLatin1Char('\n'))) {
+            // Sólo lo que el operador puede leer: los comentarios hablan de los
+            // menús constantemente y no son texto de pantalla.
+            const QString trimmed = line.trimmed();
+            if (trimmed.startsWith(QStringLiteral("//")) ||
+                trimmed.startsWith(QStringLiteral("*"))) {
+                continue;
+            }
+            auto matches = pattern.globalMatch(line);
+            while (matches.hasNext()) {
+                QString part = matches.next().captured(1).trimmed();
+                part.remove(QStringLiteral("…"));
+                part = part.trimmed();
+                if (part.isEmpty()) {
+                    continue;
+                }
+                // EL NOMBRE DEL MENÚ ES LA COLA DE LA FRASE, no la frase.
+                //
+                // Lo que hay delante de un «▸» suele venir pegado al resto del
+                // texto: «primero calibra la escala (Medida», «Usa el punto que
+                // marques con Ver». La primera versión comparó la frase entera y
+                // dio cinco rutas «rotas» que estaban perfectamente bien — una
+                // comprobación que grita con lo correcto se acaba desactivando.
+                //
+                // Se prueban las colas de una, dos y tres palabras porque hay
+                // menús de más de una («Corregir borde»). Si ninguna es un menú
+                // real, la ruta está rota de verdad.
+                const QStringList words = part.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+                if (words.isEmpty()) {
+                    continue;
+                }
+                ++checked;
+                bool found = false;
+                QString shown;
+                for (int take = 1; take <= 3 && take <= words.size(); ++take) {
+                    QString tail = QStringList(words.mid(words.size() - take))
+                                       .join(QLatin1Char(' '));
+                    // El paréntesis de apertura viaja pegado al nombre cuando la
+                    // ruta va entre paréntesis: «escala (Medida ▸ …».
+                    while (!tail.isEmpty() && (tail.at(0) == QLatin1Char('(') ||
+                                               tail.at(0) == QChar(0x00AB))) {
+                        tail = tail.mid(1);
+                    }
+                    if (take == 1) {
+                        shown = tail;
+                    }
+                    if (exists(names, tail)) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    broken << QString::fromStdString(entry.path().filename().string()) +
+                                  QStringLiteral(": «") + shown + QStringLiteral("»");
+                }
+            }
+        }
+    }
+
+    std::printf("  [mensajes] %d nombres de menú comprobados en el código, %d rotos\n",
+                checked, static_cast<int>(broken.size()));
+    for (const auto& one : broken) {
+        std::printf("  [mensajes]    %s\n", one.toStdString().c_str());
+    }
+    EXPECT_GT(checked, 3) << "no se encontró ninguna ruta en el código: o cambió la "
+                             "forma de escribirlas, o la expresión dejó de valer";
+    EXPECT_TRUE(broken.isEmpty())
+        << "la aplicación manda al operador a menús que no existen, y justo cuando "
+           "está atascado";
+}

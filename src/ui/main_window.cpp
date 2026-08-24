@@ -1530,7 +1530,8 @@ void MainWindow::onUnitChanged() {
     if (unit != inspection::LengthUnit::Auto && unit != inspection::LengthUnit::Pixels &&
         !calibration_.valid()) {
         statusBar()->showMessage(
-            tr("Para ver medidas en mm/cm primero calibra la escala (Cámara ▸ Calibrar…)."));
+            tr("Para ver medidas en mm/cm primero calibra la escala "
+               "(Medida ▸ Calibrar escala (mm)…)."));
     }
 }
 

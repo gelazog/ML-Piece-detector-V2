@@ -31,7 +31,7 @@ QString setupHint(SetupStep step, bool canFocus) {
             return {};
         case SetupStep::Focus:
             return QObject::tr(
-                "Primero, el enfoque: Cámara ▸ Configurar ▸ Cámara e imagen tiene una "
+                "Primero, el enfoque: Fuente ▸ Configurar…, pestaña Cámara e imagen, "
                 "barra que sube cuanto más nítida está la pieza.");
         case SetupStep::Calibrate:
             // Sobre un fichero, «enfoca la pieza» manda a hacer lo imposible: la
