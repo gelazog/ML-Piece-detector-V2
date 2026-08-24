@@ -80,6 +80,7 @@ add_executable(pci_gui_tests
   test_readme_paths.cpp
   test_variant_wizard.cpp
   test_result_dialog.cpp
+  test_piece_mosaic.cpp
   test_configure_dialog.cpp
   test_frame_sources.cpp
   test_session_state.cpp

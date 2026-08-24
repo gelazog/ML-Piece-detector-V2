@@ -210,7 +210,12 @@ public:
     // puede comprobar contra la mesa.
     //
     // Lista vacía = no se contaron; se dibuja solo la medida, como siempre.
-    void setLivePieceOutlines(const std::vector<QPolygonF>& outlines, int measured);
+    // `chosen` distingue «esta es la que te ha tocado por ser la mayor» de «esta
+    // la has elegido tú». No es lo mismo para quien mira: si la ha elegido, esta
+    // trabajando con ella y quiere verla destacada del resto; si le ha tocado,
+    // destacarla seria afirmar una decision que nadie tomo.
+    void setLivePieceOutlines(const std::vector<QPolygonF>& outlines, int measured,
+                              bool chosen = false);
     // El contorno detectado que se está pintando. Existe para poder comprobar
     // desde fuera que una corrección del borde LLEGA a mover la línea verde:
     // sin esto, «se corrige» solo se podía verificar mirando la pantalla.
@@ -438,6 +443,7 @@ private:
     QPolygonF liveContour_;
     std::vector<QPolygonF> livePieceOutlines_;
     int liveMeasuredPiece_ = 0;
+    bool livePieceChosen_ = false;
     QPointF liveCentroid_;
     QString liveStatus_;
 

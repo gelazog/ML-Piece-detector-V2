@@ -172,9 +172,10 @@ void EditorCanvas::forgetEdgeCorrection() {
 }
 
 void EditorCanvas::setLivePieceOutlines(const std::vector<QPolygonF>& outlines,
-                                        int measured) {
+                                        int measured, bool chosen) {
     livePieceOutlines_ = outlines;
     liveMeasuredPiece_ = measured;
+    livePieceChosen_ = chosen;
     update();
 }
 
@@ -2704,12 +2705,19 @@ void EditorCanvas::paintLiveOverlay(QPainter& painter) const {
                     continue;
                 }
                 if (!measured) {
-                    QPen otherHalo(QColor(0, 0, 0, 150));
+                    // Con una pieza ELEGIDA, las demas bajan a un tono apagado:
+                    // siguen ahi —hacen falta para saber donde esta uno y para
+                    // poder saltar a otra— pero dejan de competir con la que se
+                    // esta trabajando. Sin eleccion se quedan como estaban: no
+                    // hay ninguna a la que dar preferencia.
+                    const int haloAlpha = livePieceChosen_ ? 90 : 150;
+                    const int tone = livePieceChosen_ ? 120 : 170;
+                    QPen otherHalo(QColor(0, 0, 0, haloAlpha));
                     otherHalo.setWidthF(3.0);
                     otherHalo.setCosmetic(true);
                     painter.setPen(otherHalo);
                     painter.drawPolygon(outline);
-                    QPen other(QColor(90, 170, 110));
+                    QPen other(QColor(70, tone, 90, livePieceChosen_ ? 150 : 255));
                     other.setWidthF(1.2);
                     other.setCosmetic(true);
                     painter.setPen(other);
@@ -2749,6 +2757,19 @@ void EditorCanvas::paintLiveOverlay(QPainter& painter) const {
             painter.scale(target.width() / image_.width(), target.height() / image_.height());
         }
 
+        // LA PIEZA ELEGIDA SE REMARCA, y bastante.
+        //
+        // Sale de una peticion directa: «si se enfoca en una, que remarque mas
+        // ese contorno para poder trabajar con ello». Con seis piezas en el
+        // encuadre y todas con su linea verde, la que se esta midiendo no se
+        // distingue — y es la unica cuyo contorno importa mientras se ajusta una
+        // cota.
+        //
+        // El grosor extra solo se pone cuando la eleccion es del operador. Si la
+        // pieza le ha tocado por ser la mayor, destacarla afirmaria una decision
+        // que nadie tomo.
+        const double emphasis = livePieceChosen_ ? 1.8 : 1.0;
+
         // DOS PLUMAS, oscura debajo y verde encima.
         //
         // El verde solo se ve sobre lo que es mas oscuro que el. Sobre una pieza
@@ -2758,13 +2779,13 @@ void EditorCanvas::paintLiveOverlay(QPainter& painter) const {
         // mas ancho por debajo, el contorno se ve encima de cualquier cosa. Es el
         // mismo truco que el borde de los subtitulos, y por el mismo motivo.
         QPen haloPen(QColor(0, 0, 0, 180));
-        haloPen.setWidthF(4.0);
+        haloPen.setWidthF(4.0 * emphasis);
         haloPen.setCosmetic(true);
         painter.setPen(haloPen);
         painter.drawPolygon(liveContour_);
 
         QPen contourPen(QColor(0, 220, 0));
-        contourPen.setWidthF(2.0);
+        contourPen.setWidthF(2.0 * emphasis);
         contourPen.setCosmetic(true);
         painter.setPen(contourPen);
         painter.drawPolygon(liveContour_);

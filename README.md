@@ -255,6 +255,23 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    pero **los números de una sola**: treinta etiquetas encima de seis piezas no
    se leen.
 
+   Y para **revisarlas una por una** hay dos caminos, según cuántas haya. Con
+   dos o tres, las flechas `◀ ▶` de la barra inferior van saltando de pieza en
+   pieza en **orden de lectura** —arriba-izquierda a abajo-derecha—, que es el
+   mismo orden que usan los números del informe. Con una bandeja llena eso deja
+   de servir: nadie pulsa la flecha cien veces. Ahí entra **Ver ▸ Piezas del
+   encuadre (mosaico)**, que recorta cada pieza y las pone en cuadrícula, todas
+   al mismo tamaño y con su número, para verlas de un vistazo y **pulsar la que
+   desentona**. Se ofrece solo la primera vez que aparecen varias piezas; si lo
+   cierras no se te vuelve a abrir, y lo recuperas desde ese menú.
+
+   Elijas por donde elijas, la pieza elegida es la misma cosa: **la que miden
+   las herramientas** y la que el vídeo **remarca más gruesa** mientras las
+   demás bajan a un tono apagado. Ese engrosamiento solo aparece cuando la
+   elección es tuya — si la pieza le ha tocado por ser la mayor, destacarla
+   afirmaría una decisión que nadie tomó.
+
+
    **Orientación**: por defecto la pieza se muestra **vertical** (tal como la
    ve la cámara) — más estable y sin la inclinación arbitraria que daba el eje
    principal. Si tus piezas llegan giradas y quieres que las herramientas las
@@ -981,8 +998,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    vacío para dibujar un **marco de selección** — las herramientas dentro
    quedan seleccionadas y se mueven o borran (Supr) en grupo.
 
-   **Escala por marcador ArUco en vivo** (**Medida ▸ Escala por marcador ArUco (en vivo)
-   ArUco**): imprime el marcador `sample_images/aruco_4x4_id0.png`, mide su
+   **Escala por marcador ArUco en vivo** (**Medida ▸ Escala por marcador ArUco (en vivo)**): imprime el marcador `sample_images/aruco_4x4_id0.png`, mide su
    lado real con una regla y escríbelo al activar la opción. Colócalo junto a
    la pieza (en el mismo plano): la escala px→mm se recalcula **en cada frame
    con la homografía del marcador** y se ajusta sola si acercas o alejas la

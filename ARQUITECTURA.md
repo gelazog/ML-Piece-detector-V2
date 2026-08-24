@@ -3488,6 +3488,57 @@ que hay ahora, y por abajo a algo legible. Solo el tamaño, no la posición: un
 diálogo se centra sobre su ventana padre, y recordar dónde estaba lo sacaría de
 la pantalla en cuanto alguien mueva la aplicación.
 
+### Cien piezas no se revisan con una flecha
+
+Con varias piezas en el encuadre, el selector `◀ ▶` de la barra inferior recorre
+las piezas en orden de lectura y sirve perfectamente para dos o tres. Con una
+bandeja llena deja de servir, y no por lento: **nadie pulsa una flecha cien
+veces**. Y mirarlas en el vídeo tampoco es una opción — cada tuerca ocupa unos
+ochenta píxeles en pantalla y no hay forma de ver si a una le falta un canto.
+
+`PieceMosaic` (`src/ui/piece_mosaic.{h,cpp}`) recorta cada pieza y las pone en
+cuadrícula, todas al mismo tamaño y con su número. Tres decisiones lo sostienen:
+
+- **Come de lo mismo que el vídeo.** Los contornos ya los calculó el análisis;
+  volver a segmentar para pintar un panel sería pagar dos veces por la misma
+  respuesta y, peor, arriesgarse a que las dos no coincidieran: el operador
+  elegiría la pieza 3 del mosaico y se le mediría otra.
+- **El recorte sale de `analysedFrame_`, no de `lastFrame_`.** El análisis va por
+  detrás del vídeo: cuando termina, el último frame de la cámara ya es otro. Los
+  contornos son del frame que se analizó, así que el recorte tiene que serlo
+  también o saldría descuadrado. Por eso `maybeStartAnalysis` guarda una copia.
+- **Pulsar una baldosa es ELEGIRLA**, el mismo enfoque que mueven las flechas, no
+  un estado aparte del panel. Si fueran dos cosas distintas habría dos «piezas
+  actuales» y ninguna de las dos sería de fiar.
+
+Con **una sola pieza no enseña nada**: el vídeo ya la da entera y más grande. Un
+panel que ocupa sitio para repetir lo que ya se ve enseña a cerrarlo — y entonces
+tampoco estará el día que haya cien. Por lo mismo se ofrece **solo la primera vez**
+que aparecen varias: después manda el operador, y se recupera desde
+*Ver ▸ Piezas del encuadre (mosaico)*.
+
+La pieza elegida, además, **se remarca en el vídeo** (halo y contorno a 1,8×)
+mientras las demás bajan a un tono apagado. El engrosamiento solo aparece cuando
+la elección es del operador: si la pieza le ha tocado por ser la mayor,
+destacarla afirmaría una decisión que nadie tomó.
+
+#### El guard del manual daba por buena cualquier ruta
+
+Añadir la entrada de menú destapó un agujero en `test_readme_paths.cpp`. La
+comprobación aceptaba una ruta si **cualquiera** de los dos nombres era prefijo
+del otro. Con acciones cortas en el menú —«Piezas», «Ver»— eso da por buena
+toda ruta que empiece por esa palabra. Se vio mutando: se cambió el nombre de la
+entrada recién añadida a algo completamente distinto y el guard siguió en verde,
+diciendo «21 rutas comprobadas, 0 rotas».
+
+Dejando solo el sentido «el nombre real EMPIEZA por lo que dice el manual» —y
+quitando los puntos suspensivos de los **dos** lados, no solo del manual— la
+mutación falla como debe. De paso salieron dos cosas de verdad rotas que llevaban
+tiempo escondidas: una ruta ArUco partida con un «ArUco» suelto colgando y la
+línea que la contenía. Es la **segunda** vez que este guard se destapa por
+añadirle una ruta nueva y mirar el recuento; la primera fue el salto de línea que
+se comía 7 de 20.
+
 ### El tablero global era una promesa a medias
 
 La regla estaba escrita: el ajuste global del tablero es **solo la plantilla para

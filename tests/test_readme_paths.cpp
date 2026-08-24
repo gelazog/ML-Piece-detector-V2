@@ -101,9 +101,31 @@ bool exists(const QSet<QString>& names, const QString& wanted) {
     if (target.isEmpty()) {
         return true;
     }
-    for (const auto& name : names) {
-        if (name.startsWith(target, Qt::CaseInsensitive) ||
-            target.startsWith(name, Qt::CaseInsensitive)) {
+    // LOS PUNTOS SUSPENSIVOS SE QUITAN DE LOS DOS LADOS.
+    //
+    // El menú dice «Configurar…» y el manual a veces «Configurar…» y a veces
+    // «Configurar». Si solo se limpiaba el manual, diez rutas correctas salían
+    // como rotas y había que aflojar la comparación para que pasaran — que es
+    // justo como se llegó a la versión que no comprobaba nada.
+    for (const auto& raw : names) {
+        QString name = raw;
+        name.remove(QStringLiteral("…"));
+        name = name.trimmed();
+        // LA COMPARACIÓN VA EN UN SOLO SENTIDO, y esto no es un detalle.
+        //
+        // Antes valía también `target.startsWith(name)`: que el nombre de una
+        // acción fuera prefijo de la ruta del manual. Con nombres cortos como
+        // «Piezas» o «Ver» en el menú, ESO DA POR BUENA CUALQUIER RUTA que
+        // empiece por esa palabra. Se destapó mutando: se cambió el nombre de
+        // una entrada recién añadida a algo completamente distinto y la
+        // comprobación siguió en verde — 21 rutas «comprobadas» y ninguna
+        // comprobada de verdad. Con ese cambio se destaparon además una ruta
+        // rota de verdad en el manual y una línea suelta que llevaba ahí tiempo.
+        //
+        // El sentido que queda —el nombre real EMPIEZA por lo que dice el
+        // manual— es el que hace falta para las abreviaturas legítimas:
+        // «Tablero de referencia» por «Tablero de referencia (centro = 0)».
+        if (name.startsWith(target, Qt::CaseInsensitive)) {
             return true;
         }
     }

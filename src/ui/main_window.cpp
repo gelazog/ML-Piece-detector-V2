@@ -59,6 +59,7 @@
 #include "ui/history_dialog.h"
 #include "ui/lens_calibration_dialog.h"
 #include "ui/piece_manager_dialog.h"
+#include "ui/piece_mosaic.h"
 #include "ui/setup_guide.h"
 #include "ui/measurement_mode_dialog.h"
 #include "ui/preferences_page.h"
@@ -1056,6 +1057,24 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     compareDock_->setWidget(compareWidget);
     addDockWidget(Qt::RightDockWidgetArea, compareDock_);
 
+    mosaic_ = new PieceMosaic(this);
+    mosaicDock_ = new QDockWidget(tr("Piezas del encuadre"), this);
+    mosaicDock_->setObjectName(QStringLiteral("mosaicDock"));
+    mosaicDock_->setWidget(mosaic_);
+    addDockWidget(Qt::RightDockWidgetArea, mosaicDock_);
+    // Arranca cerrado: con una sola pieza no tiene nada que enseñar, y un panel
+    // vacío ocupando sitio desde el primer arranque enseña a cerrarlo y a no
+    // volver a abrirlo.
+    mosaicDock_->setVisible(false);
+    connect(mosaic_, &PieceMosaic::pieceChosen, this, [this](int number) {
+        // Pulsar una baldosa es ELEGIRLA: pasa a ser la que miden las
+        // herramientas y la que el vídeo remarca. Es el mismo enfoque que mueven
+        // las flechas del selector, no un estado aparte del panel.
+        focusedPiece_ = number;
+        updatePieceNavigator();
+        reanalyseCurrentFrame();
+    });
+
     // Controles de vista (Z3): mínimo / − / porcentaje / + / máximo, siempre a
     // mano en la barra inferior para quien no use atajos ni rueda.
     auto* zoomBar = new QWidget(this);
@@ -1691,6 +1710,18 @@ void MainWindow::buildMenuBar() {
     if (compareDock_ != nullptr) {
         auto* toggle = compareDock_->toggleViewAction();
         toggle->setText(tr("Panel de comparación"));
+        viewMenu->addAction(toggle);
+    }
+
+    // El mosaico se ofrece solo la primera vez que hay varias piezas. Si el
+    // operador lo cierra, no se le vuelve a abrir — por eso hace falta esta
+    // entrada: sin ella, cerrarlo una vez sería cerrarlo para siempre.
+    if (mosaicDock_ != nullptr) {
+        auto* toggle = mosaicDock_->toggleViewAction();
+        toggle->setText(tr("Piezas del encuadre (mosaico)"));
+        toggle->setToolTip(
+            tr("Enseña cada pieza recortada y numerada, todas al mismo tamaño. "
+               "Pulsa una para medir esa."));
         viewMenu->addAction(toggle);
     }
 
@@ -3847,7 +3878,9 @@ void MainWindow::onAnalysisFinished() {
                        static_cast<float>(overlay.boundsCenter.y())});
             video_->setLivePiece(true, overlay.contour, overlay.centroid,
                                  overlay.angleDeg, status);
-            video_->setLivePieceOutlines(overlay.pieceContours, overlay.measuredPiece);
+            video_->setLivePieceOutlines(overlay.pieceContours, overlay.measuredPiece,
+                                         focusedPiece_ > 0);
+            showPiecesInMosaic(overlay);
             currentThumbLabel_->setPixmap(QPixmap::fromImage(overlay.normalized)
                                               .scaled(currentThumbLabel_->size(),
                                                       Qt::KeepAspectRatio,
@@ -3932,6 +3965,7 @@ void MainWindow::maybeStartAnalysis() {
         return;
     }
     const QImage frame = pendingAnalysisFrame_;
+    analysedFrame_ = frame;
     pendingAnalysisFrame_ = QImage();
     const auto anchor = currentAnchor_;
 
@@ -4594,6 +4628,32 @@ void MainWindow::updatePiecesChip() {
 // El número va en ORDEN DE LECTURA —filas de arriba abajo, izquierda a derecha—
 // que es el mismo con el que salen de la detección, y por eso «la tercera»
 // significa lo mismo en la pantalla, en el informe y en la mesa.
+// EL MOSAICO COME DE LO MISMO QUE EL VÍDEO.
+//
+// Los contornos ya los calculó el análisis; volver a segmentar para pintar un
+// panel sería pagar dos veces por la misma respuesta, y con el riesgo de que
+// las dos no coincidieran — que es peor que no tener panel: el operador
+// elegiría la pieza 3 del mosaico y se le mediría otra.
+//
+// El recorte sale de `analysedFrame_` y no de `lastFrame_` por lo mismo: el
+// análisis va por detrás del vídeo y los contornos son de aquel frame.
+void MainWindow::showPiecesInMosaic(const AnalysisOverlay& overlay) {
+    if (mosaic_ == nullptr || mosaicDock_ == nullptr) {
+        return;
+    }
+    // Con una sola pieza el panel no añade nada: el vídeo ya la enseña entera y
+    // más grande. Se deja lo último que hubo en vez de vaciarlo, porque vaciar
+    // en cada fotograma sin varias piezas haría parpadear el panel abierto.
+    if (overlay.pieceContours.size() <= 1) {
+        return;
+    }
+    mosaic_->setPieces(analysedFrame_, overlay.pieceContours, overlay.measuredPiece);
+    if (!mosaicOffered_) {
+        mosaicOffered_ = true;
+        mosaicDock_->setVisible(true);
+    }
+}
+
 void MainWindow::updatePieceNavigator() {
     if (pieceNav_ == nullptr) {
         return;

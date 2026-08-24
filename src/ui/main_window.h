@@ -54,6 +54,7 @@ class CameraImagePage;
 class ConfigureDialog;
 class DetectionPage;
 class PerformancePage;
+class PieceMosaic;
 class PiecesPage;
 class PreferencesPage;
 
@@ -464,6 +465,9 @@ private:
     int lastPiecesSeen_ = -1;
     void updatePieceNavigator();
     void stepFocusedPiece(int delta);
+    // Vuelca en el mosaico las piezas del último análisis. La primera vez que
+    // hay varias, abre el panel; después no vuelve a tocar su visibilidad.
+    void showPiecesInMosaic(const AnalysisOverlay& overlay);
     QLabel* edgeChip_ = nullptr;           // modo de medición activo (M3)
     QComboBox* templateCombo_ = nullptr;   // plantillas de la pieza
     QPushButton* newTemplateButton_ = nullptr;
@@ -479,6 +483,17 @@ private:
     QPushButton* calibrateFromToolButton_ = nullptr;  // fijar escala con la medida
     QPushButton* saveTemplateButton_ = nullptr;       // guardar herramientas en vivo (P1)
     QDockWidget* compareDock_ = nullptr;              // panel comparación reubicable (S3)
+    // TODAS LAS PIEZAS DEL ENCUADRE, UNA AL LADO DE OTRA.
+    //
+    // Con una bandeja de cien, el vídeo las enseña a todas al tamaño que tengan
+    // —ochenta píxeles cada una— y pasar de una en una con las flechas para
+    // revisarlas es un trabajo que nadie hace. Aquí salen recortadas, todas al
+    // mismo tamaño y con su número, y pulsar una la enfoca.
+    QDockWidget* mosaicDock_ = nullptr;
+    PieceMosaic* mosaic_ = nullptr;
+    // El panel se ofrece solo la PRIMERA vez que hay varias piezas. Volver a
+    // abrirlo en cada fotograma le quitaría al operador la decisión de cerrarlo.
+    bool mosaicOffered_ = false;
     QPushButton* managePiecesButton_ = nullptr;
 
     // Guía del primer arranque (I3). No es un asistente: es una línea que
@@ -556,6 +571,12 @@ private:
     QFutureWatcher<core::Result<engine::InspectionEngine::Outcome>> inspectionWatcher_;
     QFutureWatcher<core::Result<engine::RegistrationSession::SampleFeedback>> captureWatcher_;
     QImage pendingAnalysisFrame_;
+    // EL FRAME QUE SE ANALIZO, no el ultimo que llego de la camara.
+    //
+    // El analisis va por detras del video: cuando termina, `lastFrame_` puede
+    // ser ya otro. Los contornos que devuelve son de ESTE, asi que los recortes
+    // del mosaico tienen que salir de aqui o saldrian descuadrados.
+    QImage analysedFrame_;
     std::vector<camera::CameraInfo> cameras_;
     std::vector<inspection::EditedTool> liveTools_;
     std::vector<inspection::EditedTool> stableTools_;  // estado previo a la mutación en curso
