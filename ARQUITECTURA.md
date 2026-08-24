@@ -3512,6 +3512,26 @@ mayores; no puede ser lo que **enciende** la medición.
 declaraba nada —o sea, corría en automático— y exigía que de tres barras se midiera
 una. Ahora declara el uno que su nombre dice.
 
+### El afinado subpíxel se ignoraba en cuanto había dos piezas
+
+El afinado vivía en `analyzeFrame`, el camino de UNA pieza. `analyzeFrames` —el de
+varias— pasa por `analyzePiece`, que no lo hacía, así que el ajuste se ignoraba **en
+silencio** con más de una pieza en el encuadre.
+
+Lo grave no es el hueco: es que ese ajuste **abre un diálogo** avisando de que «las
+medidas de la pieza cambian a partir de ahora» y pidiendo revisar las tolerancias. El
+operador revisaba sus tolerancias contra un cambio que en su bandeja no se había
+producido — y no tenía forma de notarlo, porque el aviso sí salía.
+
+Y desde que el modo automático mide TODAS las piezas, ese camino pasó de ser la
+excepción a ser el normal: el arreglo del recuento automático volvió **alcanzable**
+un hueco que llevaba tiempo ahí sin molestar.
+
+**Coste medido** sobre la bandeja real de cien tuercas: 58,09 ms sin afinar contra
+84,21 ms afinando — **+45 %**. Se paga porque el operador lo ha pedido expresamente y
+el diálogo le ha dicho lo que cambia; la alternativa anterior era cobrarle cero y no
+darle nada.
+
 ### Escenas dibujadas a partir de sus cotas
 
 Las fotos reales dicen cómo se **comporta** el programa; solo una imagen construida

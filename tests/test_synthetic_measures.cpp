@@ -273,3 +273,46 @@ TEST(SyntheticMeasures, WithAScaleTheScrewLengthsComeBackInMillimetres) {
             << "el tornillo " << (i + 1) << " no vuelve en milímetros";
     }
 }
+
+// EL AFINADO SUBPÍXEL NO PUEDE IGNORARSE CUANDO HAY VARIAS PIEZAS.
+//
+// El afinado vivía solo en `analyzeFrame`, el camino de UNA pieza.
+// `analyzeFrames` —el de varias— pasa por `analyzePiece`, que no lo hacía, así
+// que el ajuste se ignoraba en silencio en cuanto había más de una pieza.
+//
+// Lo grave no es que faltara: es que ese ajuste abre un diálogo avisando de que
+// «las medidas de la pieza cambian a partir de ahora» y pidiendo revisar las
+// tolerancias. El operador revisa sus tolerancias contra un cambio que en su
+// bandeja no se ha producido.
+//
+// Y desde que el modo automático mide TODAS las piezas, ese camino es el
+// normal, así que el hueco pasó de raro a habitual.
+TEST(SyntheticMeasures, SubpixelRefinementReachesEveryPieceAndNotJustTheFirst) {
+    const ScrewsScene scene = screws();
+
+    vision::PipelineConfig plain;
+    vision::PipelineConfig refined;
+    refined.subpixelEdges = true;
+
+    const auto without = piecesOf(scene.gray, plain);
+    const auto with = piecesOf(scene.gray, refined);
+    ASSERT_EQ(without.size(), 3U);
+    ASSERT_EQ(with.size(), 3U);
+
+    for (std::size_t i = 0; i < with.size(); ++i) {
+        std::printf("  [subpixel] pieza %zu: sin afinar %zu puntos, área %.1f | "
+                    "afinada %zu puntos, área %.1f\n",
+                    i + 1, without[i].contour.points.size(), without[i].contour.area,
+                    with[i].contour.subpixel.size(), with[i].contour.area);
+        // TODAS las piezas, no solo la primera: el fallo era exactamente que el
+        // camino multipieza no afinaba ninguna.
+        EXPECT_FALSE(with[i].contour.subpixel.empty())
+            << "la pieza " << (i + 1)
+            << " no lleva contorno afinado: el ajuste se ignora con varias piezas";
+    }
+    // Y sin pedirlo, no se afina nada: encenderlo tiene que ser una decisión.
+    for (const auto& piece : without) {
+        EXPECT_TRUE(piece.contour.subpixel.empty())
+            << "se afina sin haberlo pedido";
+    }
+}

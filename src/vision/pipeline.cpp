@@ -92,6 +92,37 @@ core::Result<PieceAnalysis> analyzePiece(const cv::Mat& working, PieceContour co
     analysis.normalized = std::move(normalized.value());
     analysis.mask = cv::Mat::zeros(working.size(), CV_8UC1);
     pieceMask.copyTo(analysis.mask(box));
+
+    // AFINADO SUBPÍXEL, TAMBIÉN POR AQUÍ.
+    //
+    // Estaba solo en `analyzeFrame`, el camino de UNA pieza. `analyzeFrames`
+    // —el de varias— pasa por aquí, así que el ajuste se ignoraba en silencio
+    // en cuanto había más de una pieza en el encuadre.
+    //
+    // Lo grave no es que faltara: es que ese ajuste abre un diálogo avisando de
+    // que «las medidas de la pieza cambian a partir de ahora» y pidiendo revisar
+    // las tolerancias. El operador revisa sus tolerancias contra un cambio que
+    // en su bandeja no se ha producido.
+    //
+    // Y desde que el modo automático mide TODAS las piezas, este camino es el
+    // normal y no la excepción, así que el hueco pasó de raro a habitual.
+    //
+    // Los puntos ya están en coordenadas de `working`, que es el marco de la
+    // imagen que se pasa: se afina contra ella directamente, igual que arriba.
+    if (config.subpixelEdges && analysis.contour.points.size() >= 3) {
+        cv::Mat grayFull;
+        if (working.channels() == 3) {
+            cv::cvtColor(working, grayFull, cv::COLOR_BGR2GRAY);
+        } else {
+            grayFull = working;
+        }
+        const auto refined = refineContourSubpixel(grayFull, analysis.contour.points);
+        if (refined.refined > 0) {
+            analysis.contour.area = subpixelArea(refined.points);
+            analysis.contour.perimeter = subpixelPerimeter(refined.points);
+            analysis.contour.subpixel = refined.points;
+        }
+    }
     return core::Result<PieceAnalysis>::ok(std::move(analysis));
 }
 
