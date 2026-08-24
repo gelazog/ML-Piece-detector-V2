@@ -49,6 +49,7 @@ TEST(ConfigureRoundTrip, TheDetectionPageGivesBackEverythingItWasGiven) {
     given.polarity = pci::vision::SegmentationPolarity::DarkPiece;
     given.blurKernel = 7;
     given.morphKernel = 3;
+    given.splitTouchingPieces = true;
 
     const double minArea = 0.021;
     const double maxArea = 0.77;
@@ -65,6 +66,8 @@ TEST(ConfigureRoundTrip, TheDetectionPageGivesBackEverythingItWasGiven) {
         << "la polaridad no vuelve: aceptar la devuelve a automática";
     EXPECT_EQ(back.blurKernel, given.blurKernel) << "el suavizado no vuelve";
     EXPECT_EQ(back.morphKernel, given.morphKernel) << "la morfología no vuelve";
+    EXPECT_EQ(back.splitTouchingPieces, given.splitTouchingPieces)
+        << "la separación de piezas que se tocan no vuelve: aceptar la apaga sola";
 
     // Las áreas se enseñan en porcentaje con un decimal, así que un 0,021 puede
     // volver como 0,021 exacto o redondeado a la resolución del campo; lo que

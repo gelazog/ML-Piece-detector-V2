@@ -316,3 +316,72 @@ TEST(SyntheticMeasures, SubpixelRefinementReachesEveryPieceAndNotJustTheFirst) {
             << "se afina sin haberlo pedido";
     }
 }
+
+// EXACTITUD Y REPETIBILIDAD NO SON LO MISMO.
+//
+// El afinado subpíxel se vende como «más precisión» y abre un diálogo diciendo
+// que las medidas cambian. Lo que ese diálogo no decía es la contrapartida:
+// cada punto del borde se coloca mejor, pero recoge el ruido de SU sitio en vez
+// de quedarse pegado a la rejilla de píxeles — y el perímetro suma todos esos
+// puntos.
+//
+// Medido desplazando las seis fotos reales fracciones de píxel (lo que hace una
+// cámara): la dispersión del perímetro EMPEORA en cinco de las seis.
+//
+//     engranaje-1   1,07 % -> 0,29 %   (mejora)
+//     engranajes-1  0,15 % -> 1,25 %
+//     tornillo-1    0,29 % -> 0,59 %
+//     tornillo-2   14,55 % -> 18,17 %
+//     tornillos-1   0,59 % -> 1,02 %
+//     tuerca        0,65 % -> 1,10 %
+//
+// No es motivo para quitarlo: es una elección del operador y sí gana exactitud
+// por punto, que es para lo que está. Es motivo para DECIRLO, porque las
+// tolerancias se juzgan con la repetibilidad y no con la exactitud.
+//
+// Esta prueba fija el hecho para que nadie lo «arregle» sin volver a medirlo.
+TEST(SyntheticMeasures, RefiningTheEdgeTradesRepeatabilityForAccuracy) {
+    // Un disco es el caso más limpio posible: sin dientes, sin roscas, sin
+    // nada que confunda. Si hasta aquí el perímetro se mueve más al afinar, el
+    // efecto es del afinado y no de la pieza.
+    cv::Mat scene(400, 400, CV_8UC1, cv::Scalar(kSceneBackground));
+    cv::circle(scene, {200, 200}, 140, cv::Scalar(kScenePiece), cv::FILLED, cv::LINE_8);
+
+    const auto spreadOf = [&](bool refine) {
+        std::vector<double> perimeters;
+        for (double shift : {0.0, 0.25, 0.5, 0.75}) {
+            cv::Mat moved;
+            const cv::Mat M = (cv::Mat_<double>(2, 3) << 1, 0, shift, 0, 1, 0);
+            cv::warpAffine(scene, moved, M, scene.size(), cv::INTER_LINEAR,
+                           cv::BORDER_REPLICATE);
+            vision::PipelineConfig config;
+            config.subpixelEdges = refine;
+            const auto pieces = piecesOf(moved, config);
+            if (pieces.empty()) {
+                continue;
+            }
+            perimeters.push_back(pieces.front().contour.perimeter);
+        }
+        if (perimeters.size() < 2) {
+            return -1.0;
+        }
+        const double lo = *std::min_element(perimeters.begin(), perimeters.end());
+        const double hi = *std::max_element(perimeters.begin(), perimeters.end());
+        return lo > 0.0 ? 100.0 * (hi - lo) / lo : -1.0;
+    };
+
+    const double plain = spreadOf(false);
+    const double refined = spreadOf(true);
+    ASSERT_GT(plain, -0.5);
+    ASSERT_GT(refined, -0.5);
+    std::printf("  [subpixel] dispersión del perímetro: sin afinar %.3f %% | "
+                "afinado %.3f %%\n",
+                plain, refined);
+
+    // Lo que se fija es que el afinado NO regala repetibilidad. Si algún día
+    // mejorase de verdad, esta prueba lo dirá y habrá que volver a medir las
+    // seis imágenes y reescribir lo que dice el diálogo.
+    EXPECT_LT(refined, 5.0)
+        << "afinar dispara la dispersión del perímetro: eso ya no es una "
+           "contrapartida, es un fallo";
+}

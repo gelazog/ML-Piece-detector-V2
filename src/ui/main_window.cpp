@@ -1357,6 +1357,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             std::clamp(repos_.settings->getInt("det_polarity", 0).value(), 0, 2));
         seg.blurKernel = repos_.settings->getInt("det_blur", 5).value();
         seg.morphKernel = repos_.settings->getInt("det_morph", 5).value();
+        // La separación de piezas que se tocan también se recuerda: es una
+        // propiedad de CÓMO están colocadas las piezas en el puesto, no algo
+        // que se decida cada vez.
+        seg.splitTouchingPieces = repos_.settings->getInt("det_split_touching", 0).value() != 0;
         pipelineConfig_.roi = cv::Rect(repos_.settings->getInt("det_roi_x", 0).value(),
                                        repos_.settings->getInt("det_roi_y", 0).value(),
                                        repos_.settings->getInt("det_roi_w", 0).value(),
@@ -2036,6 +2040,7 @@ void MainWindow::persistPipelineConfig() {
     repos_.settings->setInt("det_polarity", static_cast<int>(seg.polarity));
     repos_.settings->setInt("det_blur", seg.blurKernel);
     repos_.settings->setInt("det_morph", seg.morphKernel);
+    repos_.settings->setInt("det_split_touching", seg.splitTouchingPieces ? 1 : 0);
     repos_.settings->setInt("det_roi_x", pipelineConfig_.roi.x);
     repos_.settings->setInt("det_roi_y", pipelineConfig_.roi.y);
     repos_.settings->setInt("det_roi_w", pipelineConfig_.roi.width);
@@ -2314,7 +2319,16 @@ void MainWindow::applyDetectionPage(DetectionPage* page) {
                      "un poco a partir de ahora, porque el borde ya no está en el mismo "
                      "sitio.\n\n"
                      "Si tienes tolerancias ajustadas, REVÍSALAS: una pieza buena podría "
-                     "salir NG por este cambio y no por un defecto.")
+                     "salir NG por este cambio y no por un defecto.\n\n"
+                     "Y hay una contrapartida que conviene saber: gana EXACTITUD y pierde "
+                     "un poco de REPETIBILIDAD. Cada punto del borde se coloca mejor, pero "
+                     "recoge el ruido de su propio sitio en vez de quedarse pegado a la "
+                     "rejilla de píxeles, y el perímetro suma todos esos puntos.\n\n"
+                     "Medido sobre seis piezas reales, moviendo la imagen fracciones de "
+                     "píxel: el perímetro se mueve algo más en cinco de las seis (por "
+                     "ejemplo de 0,59 %% a 1,02 %%). Las tolerancias se juzgan con la "
+                     "repetibilidad, así que si tu cota es de perímetro, mira si te "
+                     "compensa.")
                 : tr("El borde vuelve a ser el que marca el umbral.\n\n"
                      "Las medidas cambian un poco respecto a las de ahora mismo. Si "
                      "ajustaste tolerancias con el afinado encendido, revísalas."));

@@ -19,6 +19,7 @@ add_executable(pci_tests
   test_domain.cpp
   test_units.cpp
   test_synthetic_measures.cpp
+  test_split_touching.cpp
   test_threshold_clipping.cpp
   test_caliper_ambiguity.cpp
   test_difference_map.cpp
@@ -88,6 +89,7 @@ add_executable(pci_gui_tests
   test_scale_dialog.cpp
   test_selfexplaining.cpp
   test_brush_persistence.cpp
+  test_two_pieces_ui.cpp
   test_mosaic_numbering.cpp
   test_configure_dialog.cpp
   test_configure_roundtrip.cpp

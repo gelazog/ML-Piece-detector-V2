@@ -217,6 +217,11 @@ public:
     // la has elegido tú». No es lo mismo para quien mira: si la ha elegido, esta
     // trabajando con ella y quiere verla destacada del resto; si le ha tocado,
     // destacarla seria afirmar una decision que nadie tomo.
+    // Cuántas piezas está dibujando ahora mismo. Para poder comprobar desde
+    // fuera que lo que se ve en pantalla son las que hay.
+    [[nodiscard]] int livePieceCount() const {
+        return static_cast<int>(livePieceOutlines_.size());
+    }
     void setLivePieceOutlines(const std::vector<QPolygonF>& outlines, int measured,
                               bool chosen = false);
     // El contorno detectado que se está pintando. Existe para poder comprobar

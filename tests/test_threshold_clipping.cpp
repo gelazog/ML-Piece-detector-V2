@@ -112,13 +112,13 @@ TEST(ThresholdClipping, TheMeasuredImagesFallOnTheSideTheyWereMeasuredOn) {
     // De la medición: todo lo correcto por debajo del 6 %, todo lo cortado por
     // encima del 15 %. El umbral está en el 10 %, en medio del hueco.
     const Expected cases[] = {
-        {"engranaje-1.webp", false, "nivel correcto (+5,7 %)"},
+        {"engranaje-1.png", false, "nivel correcto (+5,7 %)"},
         {"engranajes-1.jpg", false, "nivel correcto; su problema es que se tocan"},
-        {"tornillo-1.webp", false, "nivel correcto (+2,5 %)"},
+        {"tornillo-1.png", false, "nivel correcto (+2,5 %)"},
         {"Producto_Tuerca_Liv_02.jpg", false, "nivel correcto (+3,9 %)"},
         {"producto-tuercas-prueba.jpg", false, "nivel correcto (+4,6 %)"},
-        {"tornillo-2.webp", true, "corta la rosca: le falta el 32 % del área"},
-        {"tornillos-1.webp", true, "corta las cabezas: le falta el 36 % del área"},
+        {"tornillo-2.png", true, "corta la rosca: le falta el 32 % del área"},
+        {"tornillos-1.png", true, "corta las cabezas: le falta el 36 % del área"},
     };
 
     int checked = 0;

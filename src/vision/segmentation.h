@@ -34,6 +34,31 @@ enum class SegmentationMethod {
 // Controles de detección para lidiar con luces y sombras difíciles.
 struct SegmentationOptions {
     SegmentationMethod method = SegmentationMethod::Level;
+    // SEPARAR LAS PIEZAS QUE SE TOCAN.
+    //
+    // `RETR_EXTERNAL` devuelve una sola mancha cuando dos piezas se rozan, y
+    // entonces no hay nada que recorrer ni que enseñar por separado: el
+    // operador ve dos piezas y el programa cuenta una.
+    //
+    // Con esto encendido, cada mancha se mira por dentro: se calcula su
+    // transformada de distancia y se cuentan los «corazones» —las zonas más
+    // alejadas del fondo—. Dos piezas pegadas tienen dos; una pieza sola tiene
+    // uno. El umbral es relativo al radio de ESA mancha, así que funciona igual
+    // con una tuerca pequeña que con un engranaje grande.
+    //
+    // NACE APAGADO, y no por prudencia genérica: está medido que no gana
+    // siempre. Sobre las imágenes reales de prueba:
+    //
+    //     dos engranajes engranados   1 -> 2 piezas   ARREGLA
+    //     tres tornillos en fila      3 -> 3          igual
+    //     bandeja de cien tuercas   100 -> 100        igual
+    //     un tornillo largo solo      1 -> 2          ROMPE (parte cabeza y vástago)
+    //
+    // Un tornillo largo tiene la cabeza y el vástago lo bastante distintos como
+    // para parecer dos corazones. Por eso es una opción y no el comportamiento
+    // por defecto: enciéndela cuando tengas piezas que se tocan, y déjala
+    // apagada si tus piezas son alargadas con cabeza.
+    bool splitTouchingPieces = false;
     int manualThreshold = -1;  // -1 = umbral automático (Otsu); 0-255 manual
     SegmentationPolarity polarity = SegmentationPolarity::Auto;
     int blurKernel = 5;   // suavizado previo (impar; <3 = sin suavizado)

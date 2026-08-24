@@ -27,6 +27,96 @@ PieceContour describe(const std::vector<cv::Point>& points, double area) {
 
 }  // namespace
 
+cv::Mat splitTouchingPieces(const cv::Mat& mask, double coreRatio) {
+    if (mask.empty()) {
+        return mask;
+    }
+    std::vector<std::vector<cv::Point>> blobs;
+    cv::findContours(mask, blobs, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    if (blobs.empty()) {
+        return mask;
+    }
+
+    cv::Mat result = mask.clone();
+    for (const auto& blob : blobs) {
+        const cv::Rect box = cv::boundingRect(blob) & cv::Rect(0, 0, mask.cols, mask.rows);
+        if (box.width < 6 || box.height < 6) {
+            continue;
+        }
+        // La mancha sola, en su propia caja: la distancia se mide DENTRO de
+        // ella y no contra las vecinas.
+        cv::Mat local = cv::Mat::zeros(box.size(), CV_8UC1);
+        std::vector<std::vector<cv::Point>> one{blob};
+        for (auto& point : one.front()) {
+            point -= box.tl();
+        }
+        cv::drawContours(local, one, 0, cv::Scalar(255), cv::FILLED);
+
+        cv::Mat distance;
+        cv::distanceTransform(local, distance, cv::DIST_L2, 5);
+        double peak = 0.0;
+        cv::minMaxLoc(distance, nullptr, &peak);
+        if (peak <= 2.0) {
+            continue;  // demasiado fina para tener corazón
+        }
+        cv::Mat cores;
+        cv::threshold(distance, cores, coreRatio * peak, 255.0, cv::THRESH_BINARY);
+        cores.convertTo(cores, CV_8U);
+
+        std::vector<std::vector<cv::Point>> found;
+        cv::findContours(cores, found, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+        // Un corazón de verdad tiene cuerpo. Sin este filtro, un pico de ruido
+        // en la punta de un diente contaría como pieza.
+        const double blobArea = static_cast<double>(cv::countNonZero(local));
+        std::vector<std::vector<cv::Point>> real;
+        for (const auto& core : found) {
+            if (cv::contourArea(core) >= kTouchingCoreMinFraction * blobArea) {
+                real.push_back(core);
+            }
+        }
+        if (real.size() < 2) {
+            continue;  // una sola pieza: no se toca
+        }
+
+        // Watershed SOBRE LA DISTANCIA, no sobre la máscara.
+        //
+        // La primera versión lo corría sobre la máscara binaria, y ahí no hay
+        // gradiente que seguir: dentro de la pieza todo vale lo mismo. Medido,
+        // dibujaba una línea —quitaba 1 713 píxeles— pero no llegaba a cortar,
+        // y los dos engranajes seguían saliendo como un solo contorno.
+        //
+        // Con la distancia invertida sí hay relieve: el cuello donde las dos
+        // piezas se tocan es una CRESTA, porque ahí la distancia al fondo cae.
+        // El watershed está hecho justo para partir por las crestas.
+        cv::Mat relief;
+        cv::normalize(distance, relief, 0.0, 255.0, cv::NORM_MINMAX);
+        relief.convertTo(relief, CV_8U);
+        cv::bitwise_not(relief, relief);  // el cuello, arriba
+        cv::Mat colour;
+        cv::cvtColor(relief, colour, cv::COLOR_GRAY2BGR);
+
+        cv::Mat markers = cv::Mat::zeros(box.size(), CV_32S);
+        for (std::size_t i = 0; i < real.size(); ++i) {
+            cv::drawContours(markers, real, static_cast<int>(i),
+                             cv::Scalar(static_cast<double>(i) + 2.0), cv::FILLED);
+        }
+        // El fondo, marcado como 1: sin una semilla de fondo el watershed no
+        // sabe dónde termina la pieza y reparte todo el recorte entre las dos.
+        markers.setTo(cv::Scalar(1), local == 0);
+        cv::watershed(colour, markers);
+
+        // Las fronteras (-1) se abren en la máscara. Se ENGORDAN a tres píxeles
+        // porque una línea de uno deja las dos mitades tocando en diagonal, y
+        // `findContours` con conectividad de 8 las vuelve a unir — que es
+        // exactamente lo que pasó con la primera versión.
+        cv::Mat border = (markers == -1);
+        cv::dilate(border, border, cv::Mat(), cv::Point(-1, -1), 1);
+        cv::Mat piece = result(box);
+        piece.setTo(cv::Scalar(0), border);
+    }
+    return result;
+}
+
 std::vector<PieceContour> findPieceContours(const cv::Mat& mask, double minAreaFraction,
                                             double maxAreaFraction, int maxCount,
                                             int* discarded) {

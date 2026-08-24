@@ -3512,6 +3512,65 @@ mayores; no puede ser lo que **enciende** la medición.
 declaraba nada —o sea, corría en automático— y exigía que de tres barras se midiera
 una. Ahora declara el uno que su nombre dice.
 
+### «Si las piezas están muy pegadas, las detecta como una sola»
+
+Queja literal, y exacta: `RETR_EXTERNAL` devuelve una sola mancha cuando dos piezas
+se rozan. Los dos engranajes engranados del usuario salían como **una** pieza — y con
+una pieza no hay nada que recorrer con las flechas ni que enseñar en el mosaico, así
+que el operador se queda sin forma de mirarlas por separado. Las dos quejas que llegó
+a reportar —«no sale para estarlas checando» y «las detecta como una»— eran **el mismo
+problema**: comprobado que con dos piezas SEPARADAS el selector y el mosaico sí salen.
+
+La técnica: mirar cada mancha **por dentro**. Se calcula su transformada de distancia
+y se buscan los «corazones», las zonas más alejadas del fondo. Dos piezas pegadas
+tienen dos corazones separados por un cuello estrecho; una pieza sola tiene uno.
+
+**Dos cosas costaron una vuelta cada una:**
+
+1. **Un umbral global sobre la imagen entera no vale.** El valor que separa los
+   engranajes (0,5 del radio máximo de la IMAGEN) deja la bandeja de cien tuercas en
+   104 piezas, y el que arregla los tornillos (0,7) la deja en **cero**. El umbral
+   tiene que ser relativo al radio de **cada mancha**, y entonces vale igual para una
+   tuerca pequeña que para un engranaje grande.
+2. **El watershed sobre la máscara binaria no corta.** Dentro de la pieza todo vale lo
+   mismo, así que no hay relieve que seguir: dibujaba una línea —quitaba 1 713
+   píxeles, medido— y los dos engranajes seguían saliendo como un solo contorno. Sobre
+   la distancia **invertida** sí, porque ahí el cuello es una **cresta**. Y la frontera
+   se engorda a tres píxeles: con uno, las dos mitades quedan tocando en diagonal y
+   `findContours` con conectividad de 8 las vuelve a unir.
+
+**Nace apagada, y está medido por qué.** Sobre las imágenes reales:
+
+| imagen | reales | sin separar | separando |
+|---|---|---|---|
+| dos engranajes engranados | 2 | **1** | **2** ✓ |
+| tres tornillos en fila | 3 | 3 | 3 |
+| bandeja de cien tuercas | 100 | 100 | 100 |
+| un engranaje solo | 1 | 1 | 1 |
+| **un tornillo largo solo** | 1 | 1 | **2** ✗ |
+
+Un tornillo largo tiene la cabeza y el vástago lo bastante distintos como para
+parecer dos corazones. Por eso es una **opción** y no el comportamiento de fábrica —
+la misma decisión que con «por el canto» y por la misma razón: gana en unas escenas y
+pierde en otras, así que la elige quien conoce sus piezas. Cuesta entre 3 y 16 ms.
+
+**Hasta dónde llega, medido.** La pregunta útil no es «si se tocan» sino «cuánto se
+solapan». Con discos de 260 px de diámetro:
+
+| solape | 0 px | 20 px | 35 px | 50 px | 80 px |
+|---|---|---|---|---|---|
+| piezas | 2 ✓ | 2 ✓ | 2 ✓ | 1 | 1 |
+
+Se rinde a partir del 19 % del diámetro, y **rendirse ahí es lo correcto**: con medio
+disco dentro del otro el cuello es tan ancho como las propias piezas y ninguna
+técnica basada en la forma puede saber dónde acaba una. Lo que importa es que se
+rinda devolviendo **una** pieza y no inventando tres.
+
+El barrido del umbral también se midió: **0,55** es el único valor que aguanta los 35
+píxeles de solape, y no cuesta nada en los demás casos. Por debajo los corazones
+crecen y se funden antes; por encima se quedan tan pequeños que los engranajes vuelven
+a contar como uno.
+
 ### Un residuo de cero no dice «no aplica»: dice «ajuste exacto»
 
 La cabecera de `ShapeClass::deviation` promete que es «el número con el que se

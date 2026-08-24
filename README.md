@@ -231,6 +231,24 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    sostener— con la garantía de que el borde no se mueve más de un píxel y pico:
    medido, 0,93 px sobre un círculo de 300 px de diámetro.
 
+   **Separar las piezas que se tocan** (pestaña *Detección*). Cuando dos piezas
+   se rozan, el contorno exterior las devuelve como **una** — y con una pieza no
+   hay nada que recorrer con las flechas ni que enseñar en el mosaico. Con esto,
+   cada mancha se mira por dentro: se busca el «corazón» de cada pieza (la zona
+   más alejada del fondo) y se corta por el cuello que las une.
+
+   **Nace apagada, y está medido por qué.** Sobre imágenes reales: dos engranajes
+   engranados pasan de **1 a 2** piezas (lo arregla), tres tornillos en fila
+   siguen en 3, una bandeja de cien tuercas sigue en 100 — pero **un tornillo
+   largo solo pasa de 1 a 2**, porque su cabeza y su vástago se parecen bastante
+   a dos piezas. Enciéndela si tus piezas se tocan; déjala apagada si son
+   alargadas con cabeza. Cuesta entre 3 y 16 ms por análisis.
+
+   Y tiene un alcance medido: con piezas de 260 px separa hasta un **13 % de
+   solape** entre ellas. Más allá se rinde devolviendo **una** pieza — que es lo
+   correcto: con media pieza dentro de otra, el cuello es tan ancho como las
+   propias piezas y no hay forma de saber dónde acaba una.
+
    En la pestaña *Detección* están además el **área mínima y máxima de pieza**
    (en % de la imagen): deciden qué se acepta como pieza y antes estaban fijas
    en el código. Con piezas pequeñas, el 0,5 % por defecto es justo la frontera

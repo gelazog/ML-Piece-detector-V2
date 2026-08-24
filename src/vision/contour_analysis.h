@@ -66,6 +66,49 @@ core::Result<PieceContour> findLargestContour(const cv::Mat& mask,
 // decirlo.
 inline constexpr int kMaxPieces = 256;
 
+// Cuánto hay que adentrarse en una mancha para dar con su corazón, en fracción
+// de su radio máximo.
+//
+// Barrido medido, con dos discos de 260 px de diámetro solapándose y con las
+// imágenes reales (piezas correctas marcadas):
+//
+//              r=0,45  r=0,50  r=0,55  r=0,60  r=0,65
+//   solape 20      1      2✓      2✓       1       1
+//   solape 35      1       1      2✓       1       1
+//   solape 50      1       1       1       1       1
+//   engranajes     2✓     2✓      2✓      2✓       1
+//   bandeja 100  100✓   100✓    100✓    100✓    100✓
+//   tornillos 3    3✓     3✓      3✓      3✓      3✓
+//
+// 0,55 es el único que aguanta 35 píxeles de solape, y no cuesta nada en los
+// demás casos. Por debajo los corazones crecen y se funden antes; por encima se
+// quedan tan pequeños que los dos engranajes vuelven a contar como uno.
+inline constexpr double kTouchingCoreRatio = 0.55;
+// Cuánto tiene que pesar un corazón para contar como pieza, en fracción del
+// área de su mancha. Sin esto, un pico de ruido en la punta de un diente de
+// engranaje contaría como una pieza más.
+inline constexpr double kTouchingCoreMinFraction = 0.02;
+
+// SEPARAR LAS PIEZAS QUE SE TOCAN, en una máscara ya segmentada.
+//
+// `RETR_EXTERNAL` devuelve una sola mancha cuando dos piezas se rozan. El
+// operador ve dos piezas y el programa cuenta una — y entonces no hay nada que
+// recorrer con las flechas ni que enseñar en el mosaico.
+//
+// Cada mancha se mira POR DENTRO: se calcula su transformada de distancia y se
+// cuentan los «corazones», las zonas más alejadas del fondo. Dos piezas pegadas
+// tienen dos corazones separados por un cuello estrecho; una pieza sola tiene
+// uno. El umbral va relativo al radio de ESA mancha, así que vale igual para
+// una tuerca pequeña que para un engranaje grande — que es justo lo que un
+// umbral global sobre la imagen entera no consigue: medido, el valor que separa
+// los engranajes destroza la bandeja de cien tuercas (de 100 piezas a 0).
+//
+// Devuelve la máscara con las piezas separadas por una línea de fondo de un
+// píxel. Si no encuentra nada que separar devuelve la máscara tal cual.
+[[nodiscard]] cv::Mat splitTouchingPieces(const cv::Mat& mask,
+                                          double coreRatio = kTouchingCoreRatio);
+
+
 [[nodiscard]] std::vector<PieceContour> findPieceContours(const cv::Mat& mask,
                                                           double minAreaFraction = 0.005,
                                                           double maxAreaFraction = 0.9,

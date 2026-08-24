@@ -131,10 +131,37 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     clipResult_->setVisible(false);
     form->addRow(clipResult_);
 
+    // SEPARAR LAS PIEZAS QUE SE TOCAN.
+    //
+    // Sale de una queja directa: «si las piezas están muy pegadas, las detecta
+    // como una sola». Es literal — dos engranajes engranados salían como UNA
+    // pieza, y entonces no hay nada que recorrer con las flechas ni que enseñar
+    // en el mosaico.
+    //
+    // Nace apagado y está medido por qué: no gana siempre.
+    splitTouching_ = new QCheckBox(tr("Separar las piezas que se tocan"), this);
+    splitTouching_->setToolTip(
+        tr("Cuando dos piezas se rozan, el contorno exterior las devuelve como\n"
+           "UNA. Con esto, cada mancha se mira por dentro: se busca el «corazón»\n"
+           "de cada pieza —la zona más alejada del fondo— y se corta por el\n"
+           "cuello que las une.\n\n"
+           "Medido sobre imágenes reales, con esto encendido:\n"
+           "  · dos engranajes engranados:   1 → 2 piezas   LO ARREGLA\n"
+           "  · tres tornillos en fila:      3 → 3          igual\n"
+           "  · bandeja de cien tuercas:   100 → 100        igual\n"
+           "  · un tornillo largo solo:      1 → 2          LO ROMPE\n\n"
+           "Un tornillo largo tiene la cabeza y el vástago lo bastante distintos\n"
+           "como para parecer dos piezas. Por eso es una opción y no viene de\n"
+           "fábrica: enciéndela si tus piezas se tocan, déjala apagada si son\n"
+           "alargadas con cabeza.\n\n"
+           "Cuesta entre 3 y 16 ms por análisis."));
+    form->addRow(splitTouching_);
+
     method_ = new QComboBox(this);
     method_->addItem(tr("Por nivel de gris (lo habitual)"));
     method_->addItem(tr("Por el canto de la pieza"));
     method_->setCurrentIndex(static_cast<int>(current.method));
+    splitTouching_->setChecked(current.splitTouchingPieces);
     connect(useEdgesButton_, &QPushButton::clicked, this, [this] {
         method_->setCurrentIndex(static_cast<int>(vision::SegmentationMethod::Edges));
     });
@@ -444,6 +471,7 @@ vision::SegmentationOptions DetectionPage::options() const {
     result.polarity = static_cast<vision::SegmentationPolarity>(polarity_->currentIndex());
     result.blurKernel = blur_->value();
     result.morphKernel = morph_->value();
+    result.splitTouchingPieces = splitTouching_ != nullptr && splitTouching_->isChecked();
     return result;
 }
 

@@ -148,11 +148,11 @@ TEST(NutProbe, WhatTheDetectionDoesWithGearsAndScrews) {
     }
     // El segundo número es cuántas piezas se ven a simple vista, para poder
     // comparar de un vistazo con lo que encuentra el programa.
-    reportAt(ownImages(), "engranaje-1.webp", 1);
+    reportAt(ownImages(), "engranaje-1.png", 1);
     reportAt(ownImages(), "engranajes-1.jpg", 2);
-    reportAt(ownImages(), "tornillo-1.webp", 1);
-    reportAt(ownImages(), "tornillo-2.webp", 1);
-    reportAt(ownImages(), "tornillos-1.webp", 3);
+    reportAt(ownImages(), "tornillo-1.png", 1);
+    reportAt(ownImages(), "tornillo-2.png", 1);
+    reportAt(ownImages(), "tornillos-1.png", 3);
     std::printf("\n  [piezas] imágenes anotadas en: %s\n", outputDir().string().c_str());
     SUCCEED();
 }

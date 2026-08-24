@@ -198,7 +198,10 @@ core::Result<std::vector<PieceAnalysis>> analyzeFrames(const cv::Mat& image,
     keepOnlyInsidePolygon(mask.value(), config, roi, useRoi);
 
     auto contours =
-        findPieceContours(mask.value(), config.minAreaFraction, config.maxAreaFraction);
+        findPieceContours(config.segmentation.splitTouchingPieces
+                              ? splitTouchingPieces(mask.value())
+                              : mask.value(),
+                          config.minAreaFraction, config.maxAreaFraction);
     if (contours.empty()) {
         return core::Result<std::vector<PieceAnalysis>>::err(
             "No se encontró ninguna pieza en la imagen");
