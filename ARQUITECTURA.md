@@ -3981,14 +3981,77 @@ razonable —un taladro es redondo y un valle de rosca es una tira—: con circu
 ≥ 0,75 los tornillos siguen dando 13, 15 y 11 agujeros inexistentes mientras el
 engranaje se queda en 1. Ni el área ni la forma los separan.
 
-La raíz de las dos es la misma: la Región **deriva todo por su cuenta** en vez de usar
-lo que el pipeline ya calculó — y `pieceMaskWithHoles`, que sí existe y sí recupera
-los agujeros de verdad, no entra en juego.
+##### Lo que se creía que era, y no era
 
-Es defendible como diseño —la Región mide *lo que hay dentro del recuadro*, que
-permite medir un rasgo interior— y cambiarlo movería las medidas de todo el mundo.
-Queda anotado como decisión del usuario, con los números delante, no como algo a
-arreglar por cuenta propia.
+Esta nota decía que la raíz de las dos discrepancias era la misma —que la Región
+deriva todo por su cuenta en vez de usar `pieceMaskWithHoles`, «que sí recupera
+los agujeros de verdad»—. **Al medirlo, no.** `pieceMaskWithHoles` recupera
+agujeros: recupera ciento diecisiete.
+
+Cuatro medidas, hechas al buscar la mejor opción:
+
+**1. No es la Región: son diez herramientas.** `runEdgeFlaw`, `runFillet`,
+`runChamfer`, `runExtremes`, `runProfile`, `runBoltPattern`, `runClearance`,
+`runPolygon`, `runSymmetry` y `runRegion` rebinarizan cada una su recorte con su
+propio Otsu. Cualquier cambio de ese patrón es sistémico, no un parche.
+
+**2. El desacuerdo de área va en las DOS direcciones**, y es mayor de lo que esta
+nota decía:
+
+| imagen | contorno | región | desacuerdo | agujeros que cuenta |
+|---|---|---|---|---|
+| tuerca (1 agujero) | 18 095 | 22 252 | **+23,0 %** | 23 |
+| arandelas | 366 922 | 343 757 | −6,3 % | 215 |
+| perno cromado | 79 590 | 63 037 | **−20,8 %** | 67 |
+| piñón (1 agujero) | 573 495 | 871 386 | **+51,9 %** | 77 |
+
+**3. «Otsu inventa cuando la ventana es uniforme» — hipótesis falsa.** Parecía la
+explicación natural: Otsu siempre devuelve un corte, tenga la ventana dos
+poblaciones o una. Su separabilidad (varianza entre clases / varianza total)
+debería desplomarse en el segundo caso. **No se desploma**: 0,617–0,866 en
+recortes con pieza y fondo, 0,690–0,742 en recortes tomados enteros dentro de la
+pieza. Se solapan, y el interior de la tuerca puntúa *más alto* que su propio
+recorte honrado. El metal mecanizado tiene contraste real por dentro, así que ahí
+no hay señal que aprovechar.
+
+**4. Y la que importa: LA SEGMENTACIÓN DEL PROGRAMA TAMPOCO CUENTA BIEN.** Medido
+por el camino exacto del botón *Medir pieza* —`analyzeFrame` →
+`pieceMaskWithHoles` → `measureWholePiece`—, el informe que lee el operador dice:
+
+| imagen | agujeros de verdad | lo que dice el informe |
+|---|---|---|
+| tuerca | 1 | **5** |
+| moneda de 5 yenes | 1 | **117** |
+| piñón | 1 | **19** |
+
+##### La mejor opción, con la evidencia delante
+
+**Son dos problemas, no uno, y conviene no mezclarlos.**
+
+**(a) El recuento de agujeros se arregla EN SU ORIGEN, no en la Región.** El
+número equivocado ya está en la pantalla del operador —una moneda con 117
+agujeros— y sale de `describeContour`, que no filtra nada. Arreglarlo ahí arregla
+el informe y de paso deja a las diez herramientas algo correcto que mirar.
+Arreglarlo solo dentro de la Región dejaría el informe mintiendo.
+
+Y **no vale un filtro por tamaño a secas**: con un mínimo del 1 % de la figura
+salen 2, 4 y **0** agujeros donde hay uno — al piñón se le borra el del eje. Ni
+el área ni la forma (circularidad ≥ 0,75, ya probado) los separan. Hace falta un
+criterio de verdad, y las dos ideas evidentes están descartadas con números.
+
+Ventaja práctica: **nadie pierde nada**. No hay tolerancia declarada sobre «117
+agujeros» que hoy funcione, así que corregirlo no rompe ninguna medida buena.
+
+**(b) El desacuerdo de área es otra cosa, y esa sí es decisión del usuario.**
+Viene de binarizar local en vez de global. Es defendible como diseño —una Región
+mide *lo que hay dentro del recuadro*, y eso permite medir un rasgo interior que
+la silueta global no ve— y cambiarlo movería medidas ya guardadas hasta un 52 %,
+con sus tolerancias. **Y mandar las herramientas a la silueta del programa no
+arreglaría los agujeros** (medida 4), así que ni siquiera es un dos por uno.
+
+Orden recomendado: **(a) primero**, que es una mentira visible y sin coste; **(b)
+después y solo si el usuario lo pide**, que cambia números que alguien pudo haber
+declarado.
 
 
 ### El fallo que no falla: medir corto y no decir nada
