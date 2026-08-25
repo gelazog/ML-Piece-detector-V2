@@ -160,3 +160,77 @@ TEST(ReportTabs, WithoutToolsTheTabExplainsItselfInsteadOfBeingEmpty) {
     }
     EXPECT_TRUE(explains) << "la pestaña vacía no dice por qué está vacía";
 }
+
+// «SE DUPLICARON LAS HERRAMIENTAS».
+//
+// Queja de uso, y era exacta. El botón «Vigilar las marcadas» se llevaba TODAS
+// las propuestas sin mirar nada — y los nombres que genera el proponedor son
+// deterministas: «Ø», «Largo total», «Lado 1», «Espesor 2»… Así que pulsarlo
+// dos veces sobre la misma pieza añadía una segunda copia de cada cota.
+//
+// Encima el botón decía «vigilar las MARCADAS» cuando no había nada que marcar:
+// prometía una elección que no existía.
+TEST(ReportTabs, WatchingDoesNotAddACotaYouAlreadyHave) {
+    inspection::PieceReport report = plainReport();
+    // Dos propuestas, una de ellas con el mismo nombre que una herramienta que
+    // el operador ya tiene dibujada.
+    inspection::AutoProposal already;
+    already.config.name = "Largo total";
+    already.config.type = inspection::ToolType::Ruler;
+    inspection::AutoProposal fresh;
+    fresh.config.name = "Ø";
+    fresh.config.type = inspection::ToolType::Circle;
+    report.watchable = {already, fresh};
+
+    auto existing = toolThat("Largo total", true, true);
+    ui::PieceReportDialog dialog(report, QStringLiteral("una imagen"), nullptr, nullptr,
+                                 {existing});
+
+    QAbstractButton* watch = nullptr;
+    for (auto* candidate : dialog.findChildren<QAbstractButton*>()) {
+        if (candidate->text().contains(QStringLiteral("Vigilar"))) {
+            watch = candidate;
+        }
+    }
+    ASSERT_NE(watch, nullptr) << "no está el botón de vigilar";
+    watch->click();
+
+    const auto added = dialog.toWatch();
+    std::printf("  [medir] propuestas 2, ya tenía 1 -> se añaden %zu\n", added.size());
+    ASSERT_EQ(added.size(), 1U)
+        << "vuelve a añadir una cota que el operador ya tiene: eso es lo que duplicaba "
+           "las herramientas al pulsar dos veces";
+    EXPECT_EQ(added.front().config.name, "Ø")
+        << "añade la que ya estaba en vez de la que faltaba";
+}
+
+TEST(ReportTabs, WhenEverythingIsAlreadyThereItSaysSoInsteadOfClosing) {
+    // Cerrar sin añadir nada y sin decir por qué se lee como que sí se añadió.
+    inspection::PieceReport report = plainReport();
+    inspection::AutoProposal already;
+    already.config.name = "Largo total";
+    report.watchable = {already};
+
+    ui::PieceReportDialog dialog(report, QStringLiteral("una imagen"), nullptr, nullptr,
+                                 {toolThat("Largo total", true, true)});
+    QAbstractButton* watch = nullptr;
+    for (auto* candidate : dialog.findChildren<QAbstractButton*>()) {
+        if (candidate->text().contains(QStringLiteral("Vigilar"))) {
+            watch = candidate;
+        }
+    }
+    ASSERT_NE(watch, nullptr);
+    watch->click();
+
+    EXPECT_TRUE(dialog.toWatch().empty());
+    // Y sigue abierto, con el motivo a la vista.
+    QString said;
+    for (auto* label : dialog.findChildren<QLabel*>()) {
+        if (label->text().contains(QStringLiteral("ya tienes"))) {
+            said = label->text();
+        }
+    }
+    std::printf("  [medir] todo repetido: «%s»\n", said.toStdString().c_str());
+    EXPECT_FALSE(said.isEmpty())
+        << "no añade nada y no dice por qué: se lee como que sí lo hizo";
+}

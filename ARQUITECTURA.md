@@ -2706,6 +2706,18 @@ Tres decisiones:
   un botón para convertir las cotas en herramientas vigiladas. Unirlas llenaría
   la plantilla de herramientas a cada consulta.
 
+#### El botón que duplicaba las cotas
+
+Queja de uso: *«se duplicaron las herramientas»*. Era exacta. **«Vigilar estas
+cotas» se llevaba TODAS las propuestas sin mirar si ya estaban**, y los nombres
+que genera el proponedor son deterministas —«Ø», «Largo total», «Lado 1»,
+«Espesor 2»—: pulsarlo dos veces sobre la misma pieza dejaba una segunda copia
+de cada cota, con otro id y el mismo nombre.
+
+Ahora se salta las que ya tienes dibujadas y lo dice: *«Se añaden 3; otras 5 ya
+las tenías»*. Y si no quedara ninguna por añadir **no cierra**: cerrar sin haber
+añadido nada y sin decir por qué se lee como que sí se añadió.
+
 Y la unidad de longitud **se resuelve una vez para el informe entero**. En
 automático cada medida elige mm o cm según su tamaño, y para una etiqueta suelta
 sobre la pieza está bien porque se lee sola; en una tabla no, porque una tabla

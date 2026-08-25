@@ -347,8 +347,49 @@ void PieceReportDialog::onExportClicked() {
     status_->setText(tr("Medidas exportadas a %1.").arg(path));
 }
 
+// VIGILAR LO QUE FALTA, NO TODO OTRA VEZ.
+//
+// Queja de uso: «se duplicaron las herramientas». Era exacta. Este botón se
+// llevaba TODAS las propuestas sin mirar si ya estaban, y los nombres que
+// genera el proponedor son deterministas —«Ø», «Largo total», «Lado 1»,
+// «Espesor 2»—: pulsarlo dos veces sobre la misma pieza dejaba una segunda
+// copia de cada cota, con otro id y el mismo nombre.
+//
+// Se compara POR NOMBRE y no por id porque el id de una propuesta todavía no
+// existe: nace en -1 y se lo pone la plantilla al guardar. El nombre es lo
+// único que las dos cosas comparten mientras se decide.
 void PieceReportDialog::onWatchClicked() {
-    toWatch_ = report_.watchable;
+    toWatch_.clear();
+    int already = 0;
+    for (const auto& proposal : report_.watchable) {
+        bool have = false;
+        for (const auto& tool : drawn_) {
+            if (tool.config.name == proposal.config.name) {
+                have = true;
+                break;
+            }
+        }
+        if (have) {
+            ++already;
+            continue;
+        }
+        toWatch_.push_back(proposal);
+    }
+    if (toWatch_.empty()) {
+        // Y NO CIERRA. Cerrarse sin haber añadido nada y sin decir por qué se
+        // lee como que sí se añadió, que es justo la confusión que dejaba el
+        // duplicado: el operador volvía a pulsar porque no veía el efecto.
+        status_->setStyleSheet(QStringLiteral("color:#e08a00;"));
+        status_->setText(tr("No se ha añadido ninguna: ya tienes las %1 cotas que se "
+                            "proponen. Mira la pestaña «Mis herramientas».")
+                             .arg(already));
+        return;
+    }
+    if (already > 0) {
+        status_->setText(tr("Se añaden %1; otras %2 ya las tenías.")
+                             .arg(toWatch_.size())
+                             .arg(already));
+    }
     accept();
 }
 
