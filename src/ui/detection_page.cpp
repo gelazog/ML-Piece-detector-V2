@@ -446,7 +446,18 @@ void DetectionPage::setSceneReading(const vision::SceneReading& reading) {
     }
     const bool usingLevel =
         method_->currentIndex() == static_cast<int>(vision::SegmentationMethod::Level);
-    const bool worthSaying = reading.piecesStraddleTheBackground && usingLevel;
+    // LA PUERTA ESTABA CERRADA CON LLAVE.
+    //
+    // Esto miraba `piecesStraddleTheBackground`, que con el fondo claro no puede
+    // ser cierto NUNCA: «más claro que el fondo» se cuenta por encima de
+    // `fondo + 12`, y con la mesa en 255 ese techo cae en 267. En las ocho
+    // imágenes reales del usuario el fondo va de 244 a 255, así que este aviso
+    // —y el botón que ofrece el otro método— no aparecían jamás en el montaje
+    // industrial normal: pieza sobre mesa blanca.
+    //
+    // Ahora mira el veredicto entero, que incluye el segundo motivo por el que
+    // un corte único falla: que el corte pase por dentro de la pieza.
+    const bool worthSaying = reading.aSingleCutCannotDoIt && usingLevel;
     sceneHint_->setVisible(worthSaying);
     useEdgesButton_->setVisible(worthSaying);
     if (!worthSaying) {
@@ -455,12 +466,26 @@ void DetectionPage::setSceneReading(const vision::SceneReading& reading) {
     // Con las CIFRAS dentro. «Prueba el otro método» es una corazonada; «el 27 %
     // de la imagen es más oscuro que la mesa y el 2 % más claro» es un motivo, y
     // el operador puede comprobarlo mirando su propia pieza.
-    sceneHint_->setText(
-        tr("En esta imagen, el %1 % es más claro que la mesa y el %2 % más oscuro. "
-           "Ningún umbral por nivel puede separar las dos cosas a la vez: el corte que "
-           "recoge unas partes deja fuera a otras.")
-            .arg(100.0 * reading.brighterThanBackground, 0, 'f', 1)
-            .arg(100.0 * reading.darkerThanBackground, 0, 'f', 1));
+    //
+    // Y las cifras que se enseñan son las del motivo que disparó el aviso. Sacar
+    // los porcentajes de claro y oscuro cuando lo que falla es el recorte daría
+    // un motivo que no es el suyo — y encima uno de los dos números sería el
+    // 0,0 % que no se pudo medir.
+    if (reading.piecesStraddleTheBackground) {
+        sceneHint_->setText(
+            tr("En esta imagen, el %1 % es más claro que la mesa y el %2 % más oscuro. "
+               "Ningún umbral por nivel puede separar las dos cosas a la vez: el corte "
+               "que recoge unas partes deja fuera a otras.")
+                .arg(100.0 * reading.brighterThanBackground, 0, 'f', 1)
+                .arg(100.0 * reading.darkerThanBackground, 0, 'f', 1));
+    } else {
+        sceneHint_->setText(
+            tr("El corte de gris está pasando por dentro de la pieza: aflojarlo un poco "
+               "cambia la silueta un %1 %. Eso es material que se queda fuera, y por eso "
+               "una pieza brillante sale partida en trozos o medida corta. Segmentar por "
+               "el borde no depende del nivel de gris.")
+                .arg(100.0 * reading.thresholdSwing, 0, 'f', 1));
+    }
     sceneHint_->setStyleSheet(QStringLiteral("color:#ffc861;"));
 }
 

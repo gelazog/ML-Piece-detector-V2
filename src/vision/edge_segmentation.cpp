@@ -178,6 +178,11 @@ SceneReading readScene(const cv::Mat& image) {
     // «Apreciable» = más de lo que se mueve el propio fondo, con un suelo para
     // que un fondo perfectamente liso no cuente cada grano como pieza.
     const double band = std::max(4.0 * std::max(spread, 1.0), 12.0);
+    // EL TECHO PUEDE CAER FUERA DEL RANGO. Con el fondo cerca de 255 no existe
+    // ningún píxel que pueda pasarlo, así que la cuenta de «más claro» no da
+    // cero: no da nada. Decirlo es lo que permite no apoyarse en ella.
+    constexpr double kTopOfTheRange = 255.0;
+    reading.brightSideIsUnmeasurable = level + band > kTopOfTheRange;
     cv::Mat brighter = blurred > (level + band);
     cv::Mat darker = blurred < (level - band);
     const double total = static_cast<double>(gray.total());
@@ -192,11 +197,32 @@ SceneReading readScene(const cv::Mat& image) {
         reading.brighterThanBackground > kMeaningfulSide &&
         reading.darkerThanBackground > kMeaningfulSide;
 
+    // EL SEGUNDO MOTIVO POR EL QUE UN CORTE ÚNICO FALLA, y el único que se podía
+    // medir en las ocho imágenes reales: que el corte pase por dentro de la
+    // pieza. `checkThresholdClipping` ya lo medía y nadie lo consultaba al
+    // elegir método, así que el consejo se daba con la mitad de los datos.
+    const ClippingCheck clipping = checkThresholdClipping(gray);
+    reading.thresholdSwing = clipping.swing;
+    reading.thresholdCutsThePiece = clipping.thresholdCutsThePiece;
+
+    // OJO AL LISTÓN: para RECOMENDAR otro método hace falta más recorte que para
+    // avisar de él. Ver `kSwingWorthChangingMethod`.
+    reading.aSingleCutCannotDoIt = reading.piecesStraddleTheBackground ||
+                                   reading.thresholdSwing > kSwingWorthChangingMethod;
+
     if (reading.piecesStraddleTheBackground) {
         reading.summary =
             "Hay partes más claras y más oscuras que la mesa a la vez. Un umbral único "
             "no puede separarlas: el corte que recoge unas deja fuera a otras. Aquí "
             "conviene segmentar por el borde.";
+    } else if (reading.thresholdCutsThePiece) {
+        // LA FRASE LA ESCRIBE EL PROPIO COMPROBADOR, con sus cifras. Redactar
+        // aquí una segunda versión de lo mismo dejaría dos textos que se pueden
+        // desincronizar, y el operador vería uno u otro según por dónde entre.
+        reading.summary = clipping.summary +
+                          " El borde no depende del nivel de gris, así que aquí conviene "
+                          "más: una pieza brillante sale entera en vez de partida en "
+                          "trozos o medida corta.";
     } else if (reading.brighterThanBackground + reading.darkerThanBackground < 0.005) {
         reading.summary = "Apenas hay nada que se aparte del fondo.";
     } else {
@@ -204,11 +230,20 @@ SceneReading readScene(const cv::Mat& image) {
             "Las piezas caen todas del mismo lado del fondo, que es donde el umbral por "
             "nivel funciona bien.";
     }
+
+    // Y SI EL LADO CLARO NO SE PUDO MIRAR, se dice — pero sin cambiar el
+    // veredicto: el recorte sí se midió, y es lo que decide.
+    if (reading.brightSideIsUnmeasurable) {
+        reading.summary +=
+            " (El fondo está a " + std::to_string(static_cast<int>(level)) +
+            ", tan claro que no se puede saber si algo de la pieza es aún más claro: "
+            "ese lado no se ha mirado.)";
+    }
     return reading;
 }
 
 bool edgeSegmentationLooksBetter(const cv::Mat& image) {
-    return readScene(image).piecesStraddleTheBackground;
+    return readScene(image).aSingleCutCannotDoIt;
 }
 
 
@@ -239,8 +274,13 @@ ClippingCheck checkThresholdClipping(const cv::Mat& image) {
     // Hacia dónde se afloja depende de qué lado es la pieza. El marco exterior
     // es fondo, así que si el fondo está por encima del corte, la pieza es la
     // parte oscura y aflojar es SUBIR el corte.
-    const auto reading = readScene(gray);
-    const bool pieceIsDark = reading.backgroundLevel > otsu;
+    // EL NIVEL DEL FONDO, SIN PEDIR LA LECTURA ENTERA. Antes esto llamaba a
+    // `readScene` para leer un solo campo; desde que `readScene` consulta el
+    // recorte para aconsejar método, esa llamada sería recursión infinita. Y
+    // aparte era trabajo de más: de toda la lectura aquí solo hace falta saber
+    // de qué lado del corte cae la mesa.
+    const double backgroundLevel = medianAndSpread(borderSample(blurred)).first;
+    const bool pieceIsDark = backgroundLevel > otsu;
     const int loose = pieceIsDark ? std::min(254, otsu + kLoosenThresholdBy)
                                   : std::max(1, otsu - kLoosenThresholdBy);
 

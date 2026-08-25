@@ -22,6 +22,7 @@ add_executable(pci_tests
   test_split_touching.cpp
   test_threshold_clipping.cpp
   test_caliper_ambiguity.cpp
+  test_edges_on_reflections.cpp
   test_sibling_measures.cpp
   test_difference_map.cpp
   test_diverse_images.cpp
@@ -92,6 +93,7 @@ add_executable(pci_gui_tests
   test_brush_persistence.cpp
   test_two_pieces_ui.cpp
   test_report_tabs.cpp
+  test_edge_advice_reaches_ui.cpp
   test_mosaic_numbering.cpp
   test_configure_dialog.cpp
   test_configure_roundtrip.cpp

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QFutureWatcher>
 #include <QMainWindow>
 #include <QTimer>
@@ -563,6 +564,10 @@ private:
 
     AppRepositories repos_;
     QImage lastFrame_;
+    // Cuándo se leyó la escena por última vez. Leerla cuesta dos segmentaciones
+    // (13,1 ms medidos), y lo que describe es la iluminación: una vez por
+    // segundo dice lo mismo que treinta y no deja la vista a tirones.
+    QElapsedTimer sceneReadingClock_;
     QImage inspectedFrame_;
     camera::CameraController controller_;
     // La fuente de archivo, viva solo cuando la fuente elegida es una imagen o

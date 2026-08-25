@@ -79,9 +79,51 @@ struct SceneReading {
     // oscura, contando solo lo que se aparta de él de forma apreciable.
     double brighterThanBackground = 0.0;
     double darkerThanBackground = 0.0;
-    // Si las piezas caen a los dos lados del fondo. Es la condición que rompe a
-    // Otsu, y la que hace falta para que segmentar por el borde compense.
+    // Si las piezas caen a los dos lados del fondo. Es UNA de las condiciones
+    // que rompen a Otsu; ver `aSingleCutCannotDoIt` para el veredicto.
     bool piecesStraddleTheBackground = false;
+
+    // EL LADO CLARO NO SIEMPRE SE PUEDE MIRAR.
+    //
+    // «Más claro que el fondo» se cuenta por encima de `fondo + banda`, y la
+    // banda vale 12 como mínimo. Con el fondo en 255 —una mesa blanca, un
+    // retroiluminado, cualquier montaje industrial normal— ese techo cae en 267
+    // y NINGÚN píxel de 8 bits puede pasarlo. La cuenta salía 0,00 % siempre.
+    //
+    // Y 0,00 % no significaba «no hay nada más claro»: significaba «no se puede
+    // saber». Como `piecesStraddleTheBackground` exige que los dos lados pesen,
+    // quedaba en falso por construcción, y con él la única puerta que ofrecía
+    // el método por borde. Medido sobre las ocho imágenes reales del usuario:
+    // fondo entre 244 y 255 en las ocho, techo fuera de rango en las ocho.
+    //
+    // Ahora se dice en vez de callarse. Un cero que quiere decir «ciego» y un
+    // cero que quiere decir «nada» no pueden compartir casilla.
+    bool brightSideIsUnmeasurable = false;
+
+    // CUÁNTO MUEVE LA MÁSCARA AFLOJAR EL CORTE, y si eso es tanto como para
+    // decir que el corte pasa por dentro de la pieza. Sale de
+    // `checkThresholdClipping`, que ya existía y nadie consultaba al elegir
+    // método.
+    double thresholdSwing = 0.0;
+    bool thresholdCutsThePiece = false;
+
+    // EL VEREDICTO: un corte de gris no puede con esta escena.
+    //
+    // Dos motivos distintos, los dos medidos, y basta con uno:
+    //
+    //   - las piezas CABALGAN el fondo (partes más claras y más oscuras a la
+    //     vez): ningún corte único las coge enteras;
+    //   - el corte RECORTA la pieza (aflojarlo cambia mucho la máscara): el
+    //     corte está pasando por gris que es material, no fondo.
+    //
+    // Sobre las ocho imágenes reales, el veredicto sale cierto en dos —un
+    // tornillo cincado y tres tornillos cincados, con vaivén del 17,3 % y del
+    // 36,8 %— y falso en las otras seis, que se quedan en 5,5 % o menos. Y en
+    // esas dos el borde acierta donde el nivel no: 3 tornillos contra 5 trozos,
+    // y 1 tornillo contra 2. Son dos casos positivos: la separación es limpia
+    // pero la muestra es corta, y conviene saberlo.
+    bool aSingleCutCannotDoIt = false;
+
     // En castellano, para poder enseñárselo al operador.
     std::string summary;
 };
@@ -91,6 +133,9 @@ struct SceneReading {
 // Si conviene segmentar por el borde en ESTA imagen. Es `readScene` resumido a
 // un sí o un no, para poder ofrecerlo sin que el operador tenga que interpretar
 // nada.
+//
+// CUESTA una segmentación de más: mira `SceneReading::aSingleCutCannotDoIt` si
+// ya tienes la lectura hecha, en vez de pedir las dos cosas.
 [[nodiscard]] bool edgeSegmentationLooksBetter(const cv::Mat& image);
 
 // ¿ESTÁ EL UMBRAL CORTANDO LA PIEZA?
@@ -144,6 +189,35 @@ struct ClippingCheck {
 
 // El hueco medido va de 5,7 % a 15,4 %; el umbral se pone en medio.
 inline constexpr double kThresholdCutsTheSwing = 0.10;
+
+// CUÁNTO RECORTE HACE FALTA PARA RECOMENDAR OTRO MÉTODO.
+//
+// No es el mismo listón que el de avisar, y no por capricho: son dos preguntas
+// distintas. «¿El corte está mordiendo la pieza?» es una advertencia — barata de
+// atender, y equivocarse por exceso solo cuesta que el operador mire. «¿Conviene
+// cambiar de método?» empuja a una decisión que cambia TODAS las medidas de esa
+// pieza, y ofrecer el método equivocado es peor que no ofrecer ninguno, porque
+// el operador se fía.
+//
+// Medido sobre las diez imágenes disponibles:
+//
+//     tres tornillos cincados      36,8 %   el canto acierta (3 contra 5 trozos)
+//     un tornillo galvanizado      17,3 %   el canto acierta (1 contra 2)
+//     ---------------------------------- 15 % -------------------------------
+//     bola sobre blanco con regla  10,8 %   el nivel va bien; la regla de acero
+//                                           es lo que recorta, no la pieza
+//     bola sobre blanco, 10 mm      8,0 %   el nivel va bien
+//     bandeja de cien tuercas       4,6 %   el nivel acierta, el canto funde 10
+//     las otras cinco             ≤ 5,5 %   el nivel acierta
+//
+// El listón cae en mitad del hueco entre 10,8 % y 17,3 %. CON UN SOLO CASO A
+// CADA LADO del hueco: la separación es limpia en lo que hay, pero no es mucho,
+// y si aparecen más imágenes esto es lo primero que hay que volver a mirar.
+//
+// El caso de la bola enseña además el límite de la señal: mide el ENCUADRE
+// entero, así que un objeto brillante que no es la pieza —ahí una regla de
+// acero— cuenta igual. Por eso conviene que el listón esté alto.
+inline constexpr double kSwingWorthChangingMethod = 0.15;
 // Cuánto se afloja. Doce niveles es lo que se midió, y es la distancia a la que
 // una cabeza cromada aparece sin que aparezcan además las sombras del fondo.
 inline constexpr int kLoosenThresholdBy = 12;

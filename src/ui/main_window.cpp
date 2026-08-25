@@ -4302,15 +4302,29 @@ void MainWindow::onAnalysisFinished() {
             page->setSharpness(overlay.sharpness, overlay.sharpnessOnPiece);
         }
         // Y lo que la escena dice de sí misma, para la pestaña Detección. Va
-        // aquí y no en `onFrame` por lo mismo que la nitidez: leer la escena
-        // cuesta un desenfoque y dos comparaciones, y hacerlo por fotograma para
-        // un panel que casi nunca está abierto es trabajo tirado.
+        // aquí y no en `onFrame` por lo mismo que la nitidez: hacerlo por
+        // fotograma para un panel que casi nunca está abierto es trabajo tirado.
         //
         // Quien está en esa pestaña está ahí porque la detección no le funciona,
         // así que es el momento de decirle si su escena es de las que ningún
         // umbral por nivel puede resolver.
+        //
+        // Y ADEMÁS SE FRENA EN EL TIEMPO. Leer la escena costaba «un desenfoque y
+        // dos comparaciones» cuando solo miraba niveles; desde que también mide
+        // si el corte recorta la pieza, segmenta la imagen dos veces y cuesta
+        // 13,1 ms medidos —el 39 % del presupuesto de un fotograma a 30 Hz—.
+        // Eso deja la vista a tirones justo mientras el operador mueve la luz
+        // para ver el efecto.
+        //
+        // Una vez por segundo basta: lo que se está leyendo es la ILUMINACIÓN,
+        // que cambia en segundos, no en fotogramas. Refrescarlo treinta veces por
+        // segundo no daría ni un dato más.
+        constexpr int kSceneReadingEveryMs = 1000;
         if (auto* detection = configureDialog_->detectionPage();
-            detection != nullptr && !lastFrame_.isNull()) {
+            detection != nullptr && !lastFrame_.isNull() &&
+            (!sceneReadingClock_.isValid() ||
+             sceneReadingClock_.elapsed() >= kSceneReadingEveryMs)) {
+            sceneReadingClock_.restart();
             detection->setSceneReading(vision::readScene(camera::qImageToMat(lastFrame_)));
         }
     }

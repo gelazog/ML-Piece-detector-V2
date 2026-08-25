@@ -3711,6 +3711,86 @@ tienen dos corazones separados por un cuello estrecho; una pieza sola tiene uno.
 | un engranaje solo | 1 | 1 | 1 |
 | **un tornillo largo solo** | 1 | 1 | **2** ✗ |
 
+#### El consejo de «por el canto» que nunca podía darse
+
+Petición de uso: *«si puedes mejorar la detección de bordes, debido a reflejos,
+fondo, etc.»*. Lo que apareció al medir no fue que faltara maquinaria: estaba
+toda —el método por canto, el consejero `edgeSegmentationLooksBetter`, el aviso
+en el panel de detección y hasta un botón para cambiarse—. **Lo que fallaba era
+la puerta.**
+
+El aviso se enseñaba solo si las piezas *cabalgaban* el fondo: partes más claras
+Y más oscuras que la mesa, cada lado por encima del 1 % del encuadre. Pero «más
+claro que el fondo» se cuenta por encima de `fondo + banda`, con la banda a 12
+como mínimo. **Con la mesa en 255, ese techo cae en 267, que ningún píxel de 8
+bits alcanza.** La cuenta de claros salía `0,00 %` siempre, la condición era
+falsa por construcción, y el botón no aparecía jamás sobre fondo blanco — que es
+el montaje industrial normal.
+
+Medido sobre las ocho imágenes reales: **fondo entre 244 y 255 en las ocho, techo
+fuera de rango en las ocho.** Y `edgeSegmentationLooksBetter` no se llamaba desde
+ningún sitio fuera de su propio fichero.
+
+**Un cero que quiere decir «ciego» y un cero que quiere decir «nada» no pueden
+compartir casilla.** Ahora `SceneReading::brightSideIsUnmeasurable` lo dice, y el
+resumen se lo cuenta al operador en vez de callárselo.
+
+**El segundo motivo por el que un corte único falla.** Cabalgar no es la única
+forma: el corte también puede pasar **por dentro** de la pieza. Eso ya lo medía
+`checkThresholdClipping` —afloja el umbral 12 niveles y mira cuánto se mueve la
+silueta— y nadie lo consultaba al elegir método. Sobre las ocho imágenes separa
+limpiamente:
+
+| imagen | verdad | por nivel | por canto | vaivén |
+|---|---|---|---|---|
+| tres tornillos cincados | 3 | **5** ✗ | 3 ✓ | 36,8 % |
+| un tornillo galvanizado | 1 | **2** ✗ | 1 ✓ | 17,3 % |
+| bandeja de cien tuercas | 100 | 100 ✓ | **10** ✗ | 4,6 % |
+| las otras cinco | — | ✓ | — | ≤ 5,5 % |
+
+O sea que **el canto no es mejor: es para otra escena**, y lo que hacía falta era
+distinguirlas.
+
+**Dos listones, no uno.** El primer intento reusó el 10 % con el que se avisa del
+recorte, y se llevó por delante una prueba que existía: la bola oscura sobre
+blanco, donde el nivel va bien y salía recomendado el canto. Al mirarla, el
+motivo: **la foto lleva una regla de acero además de la bola**, y lo que recorta
+es la regla. Vaivén 10,8 %, justo al filo.
+
+No es el mismo listón porque no es la misma pregunta. *«¿El corte está mordiendo
+la pieza?»* es una advertencia: barata de atender, y pasarse por exceso solo
+cuesta que el operador mire. *«¿Conviene cambiar de método?»* empuja a una
+decisión que cambia **todas** las medidas de esa pieza, y ofrecer el método
+equivocado es peor que no ofrecer ninguno, porque el operador se fía.
+
+`kSwingWorthChangingMethod` = **15 %**, en mitad del hueco entre 10,8 % y 17,3 %.
+Con eso, las **diez** imágenes disponibles salen bien. Pero hay **un solo caso a
+cada lado del hueco**: la separación es limpia en lo que hay y la muestra es
+corta, así que si aparecen más fotos esto es lo primero que hay que volver a
+mirar.
+
+El caso de la bola enseña además el límite de la señal: **mide el encuadre
+entero**, así que un objeto brillante que no es la pieza cuenta igual. Por eso
+conviene que el listón esté alto.
+
+**Una hipótesis que se cayó al medirla.** La explicación natural era que los
+reflejos saturan a 255 y se confunden con la mesa. Es falsa: los dos tornillos
+son justo los que **menos** saturan (0,5 % y 1,5 % de su superficie), y la
+bandeja —donde el nivel acierta— es la que más. Lo que rompe el corte no es la
+saturación sino que el umbral cae sobre gris que es material.
+
+**Y el consejo se frena en el tiempo.** `readScene` corría por fotograma con el
+panel abierto cuando costaba «un desenfoque y dos comparaciones». Ahora arrastra
+el comprobador de recorte, que segmenta dos veces: **13,1 ms medidos, el 39 % del
+presupuesto de un fotograma a 30 Hz**, justo mientras el operador mueve la luz
+para ver el efecto. Se lee una vez por segundo, porque lo que describe es la
+ILUMINACIÓN y eso cambia en segundos, no en fotogramas.
+
+Un efecto colateral: `checkThresholdClipping` llamaba a `readScene` para leer un
+solo campo. Al hacer que `readScene` consulte el recorte, eso pasaba a ser
+recursión infinita — se rompió tomando el nivel del fondo directamente, que
+además es el trabajo que de verdad hacía falta.
+
 Un tornillo largo tiene la cabeza y el vástago lo bastante distintos como para
 parecer dos corazones. Por eso es una **opción** y no el comportamiento de fábrica —
 la misma decisión que con «por el canto» y por la misma razón: gana en unas escenas y

@@ -1150,7 +1150,22 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    detección** enfoca el análisis en un solo lugar: arrastra un rectángulo
    sobre el video (amarillo punteado) y el contorno solo se busca ahí —
    sombras y objetos fuera de la zona dejan de estorbar. Ambos ajustes
-   persisten y aplican al video en vivo, al registro y a la inspección. Las
+   persisten y aplican al video en vivo, al registro y a la inspección.
+
+   **Piezas brillantes: reflejos y fondo.** Si tus piezas son metálicas y salen
+   partidas en trozos o medidas cortas, el problema suele ser el corte de gris:
+   pasa por dentro de la pieza y se deja fuera material. La pestaña *Detección*
+   lo mira sola y, cuando pasa, te lo dice **con la cifra** —«aflojar el corte
+   cambia la silueta un 36,8 %»— y te ofrece un botón para **separar por el
+   canto** en vez de por el nivel de gris. El canto no mira el brillo, así que
+   una pieza cincada sale entera.
+
+   No sale siempre a propósito: **el canto no es mejor, es para otra escena**.
+   Sobre una bandeja de cien tuercas el nivel las cuenta bien y el canto funde
+   diez, así que ahí no te lo ofrece. Antes ese aviso no aparecía nunca sobre
+   fondo blanco por un fallo de la comprobación.
+
+   Las
    herramientas de dibujo usan **iconos**, y debajo de la rejilla se lee **la
    explicación completa** de la que señalas: qué mide y cómo se traza, entera y
    sin cortes. Antes se veían tres renglones y el resto solo aparecía al dejar el
