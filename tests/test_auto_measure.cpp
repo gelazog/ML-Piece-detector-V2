@@ -3,6 +3,9 @@
 // medidas correctas: si las propuestas no son las buenas, revisarlas cuesta más
 // que dibujar las herramientas desde cero.
 #include <gtest/gtest.h>
+#include <cstdio>
+#include <map>
+#include <set>
 
 #include <algorithm>
 #include <string>
@@ -53,6 +56,30 @@ const AutoProposal* findNamed(const std::vector<AutoProposal>& proposals,
 }
 
 pci::vision::Fixture identity() { return {}; }
+
+// Una pieza que da COTAS DE VARIAS CLASES a la vez: rectángulo con esquinas
+// redondeadas (arcos), caras enfrentadas (calibres) y dos taladros (círculos).
+// Hace falta así para que filtrar por clase signifique algo: con una sola clase
+// el filtro no se podría distinguir de no filtrar.
+Scene richScene() {
+    constexpr int kRadius = 45;
+    cv::Mat mask = blank();
+    const cv::Rect box(100, 110, 300, 260);
+    cv::rectangle(mask, cv::Rect(box.x + kRadius, box.y, box.width - 2 * kRadius, box.height),
+                  cv::Scalar(255), cv::FILLED);
+    cv::rectangle(mask, cv::Rect(box.x, box.y + kRadius, box.width, box.height - 2 * kRadius),
+                  cv::Scalar(255), cv::FILLED);
+    for (const auto& c :
+         {cv::Point(box.x + kRadius, box.y + kRadius),
+          cv::Point(box.x + box.width - kRadius, box.y + kRadius),
+          cv::Point(box.x + kRadius, box.y + box.height - kRadius),
+          cv::Point(box.x + box.width - kRadius, box.y + box.height - kRadius)}) {
+        cv::circle(mask, c, kRadius, cv::Scalar(255), cv::FILLED);
+    }
+    cv::circle(mask, {190, 240}, 34, cv::Scalar(0), cv::FILLED);
+    cv::circle(mask, {320, 240}, 28, cv::Scalar(0), cv::FILLED);
+    return sceneFrom(mask);
+}
 
 }  // namespace
 
@@ -217,4 +244,139 @@ TEST(AutoMeasure, RefusesWhatItCannotLookAt) {
     EXPECT_TRUE(proposeTools(scene.gray, cv::Mat(), identity()).empty());
     // Máscara vacía: no hay pieza que medir.
     EXPECT_TRUE(proposeTools(scene.gray, blank(), identity()).empty());
+}
+
+// ELEGIR QUÉ CLASES DE COTA PROPONE LA MEDICIÓN AUTOMÁTICA.
+//
+// Petición de uso: «que el usuario elija qué herramientas se van a usar y
+// cuáles no para la medición automática». Tiene sentido — el proponedor ofrece
+// hasta doce cotas de siete clases, y quien solo inspecciona diámetros acaba
+// desmarcando nueve propuestas cada vez. Decirlo una vez por adelantado es
+// menos trabajo y menos ocasiones de dejar marcada una que no se quería.
+//
+// Lo que decide si esto sirve de algo es DÓNDE se aplica el filtro. Va ANTES
+// del recorte por el tope: al revés, los doce huecos se gastarían en cotas que
+// el operador no quiere y luego se filtrarían, y le llegarían tres diámetros de
+// los doce que había.
+TEST(AutoMeasure, TheOperatorCanChooseWhichKindsOfMeasurementAreProposed) {
+    const Scene scene = richScene();
+    const auto& gray = scene.gray;
+    const auto& mask = scene.mask;
+    const pci::vision::Fixture fixture = identity();
+
+    const auto everything = proposeTools(gray, mask, fixture, {});
+    ASSERT_FALSE(everything.empty()) << "la escena de prueba no propone nada";
+
+    // Cuántas clases distintas salen sin filtro. Si fuera una sola, filtrar no
+    // demostraría nada.
+    std::set<ToolType> kinds;
+    for (const auto& proposal : everything) {
+        kinds.insert(proposal.config.type);
+    }
+    std::printf("  [proponer] sin filtro: %zu cotas de %zu clases\n", everything.size(),
+                kinds.size());
+    ASSERT_GE(kinds.size(), 2U) << "la escena solo da una clase: el filtro no se probaría";
+
+    // Se pide UNA sola clase, la primera que salió.
+    const ToolType wanted = *kinds.begin();
+    ProposeOptions onlyOne;
+    onlyOne.allowedTypes = {wanted};
+    const auto filtered = proposeTools(gray, mask, fixture, onlyOne);
+
+    std::printf("  [proponer] pidiendo solo «%s»: %zu cotas\n",
+                pci::inspection::toolTypeName(wanted), filtered.size());
+    ASSERT_FALSE(filtered.empty()) << "pedir una clase concreta no propone nada de ella";
+    for (const auto& proposal : filtered) {
+        EXPECT_EQ(proposal.config.type, wanted)
+            << "se cuela una cota de otra clase: " << proposal.config.name;
+    }
+}
+
+TEST(AutoMeasure, AnEmptyFilterMeansEverythingAndNotNothing) {
+    // `allowedTypes` vacío tiene que significar TODAS. Si significara «ninguna»,
+    // cualquier llamante que no sepa de esta opción dejaría de proponer y nadie
+    // sabría por qué — un modo silencioso en el que la función no hace nada.
+    const Scene scene = richScene();
+    const auto& gray = scene.gray;
+    const auto& mask = scene.mask;
+    const pci::vision::Fixture fixture = identity();
+
+    ProposeOptions empty;
+    ASSERT_TRUE(empty.allowedTypes.empty());
+    const auto withEmpty = proposeTools(gray, mask, fixture, empty);
+    const auto withDefault = proposeTools(gray, mask, fixture, {});
+    EXPECT_EQ(withEmpty.size(), withDefault.size())
+        << "una lista de clases vacía cambia el resultado: se está leyendo como "
+           "«ninguna» en vez de «todas»";
+
+    // Y `allows` lo dice igual para cualquier clase.
+    for (const auto type : pci::inspection::proposableTypes()) {
+        EXPECT_TRUE(empty.allows(type)) << "con la lista vacía rechaza una clase";
+    }
+}
+
+TEST(AutoMeasure, TheCapIsSpentOnWhatWasAskedFor) {
+    // LA RAZÓN DE QUE EL FILTRO VAYA ANTES DEL TOPE, con el caso más claro que
+    // da esta escena.
+    //
+    // Con el tope en 8 y sin filtro salen 6 reglas y 2 círculos, y los arcos
+    // **desaparecen del todo**: cero de los cuatro que hay. Un operador que
+    // quisiera medir los redondeos de las esquinas no vería ni uno, y no
+    // tendría forma de saber que existían.
+    //
+    // Pidiendo arcos, los cuatro. Eso es lo que compra poner el filtro antes
+    // del recorte — si fuera al revés, filtrar sobre una lista que ya perdió
+    // los arcos seguiría dando cero.
+    //
+    // El tope se baja a propósito: con el de fábrica esta escena da 12 cotas
+    // justas, el recorte no muerde, y la prueba pasaría sin demostrar nada.
+    // Así estaba escrita la primera vez.
+    const Scene scene = richScene();
+    const pci::vision::Fixture fixture = identity();
+
+    ProposeOptions tight;
+    tight.maxProposals = 8;
+    int dropped = 0;
+    const auto mixed = proposeTools(scene.gray, scene.mask, fixture, tight, 0.0, &dropped);
+    ASSERT_GT(dropped, 0) << "el tope no está mordiendo: la prueba no diría nada";
+
+    std::map<ToolType, int> mixedCount;
+    for (const auto& proposal : mixed) {
+        ++mixedCount[proposal.config.type];
+    }
+    std::printf("  [proponer] tope 8 sin filtro:");
+    for (const auto& [type, count] : mixedCount) {
+        std::printf(" %s=%d", pci::inspection::toolTypeName(type), count);
+    }
+    std::printf(" (%d fuera)\n", dropped);
+
+    // Cuántos arcos hay de verdad en la pieza, sin tope que estorbe.
+    ProposeOptions roomy;
+    roomy.maxProposals = 100;
+    const auto everything = proposeTools(scene.gray, scene.mask, fixture, roomy);
+    int arcsInThePiece = 0;
+    for (const auto& proposal : everything) {
+        if (proposal.config.type == ToolType::Arc) {
+            ++arcsInThePiece;
+        }
+    }
+    ASSERT_GT(arcsInThePiece, 0) << "la escena ya no tiene esquinas redondeadas";
+
+    // Compitiendo por el tope, los arcos se quedan sin sitio.
+    const int arcsWhenSharing = mixedCount.count(ToolType::Arc) > 0
+                                    ? mixedCount.at(ToolType::Arc)
+                                    : 0;
+    // Y pidiéndolos solos, salen todos.
+    ProposeOptions onlyArcs = tight;
+    onlyArcs.allowedTypes = {ToolType::Arc};
+    const auto alone = proposeTools(scene.gray, scene.mask, fixture, onlyArcs);
+    std::printf("  [proponer] arcos: %d en la pieza | %d compartiendo el tope | "
+                "%zu pidiéndolos solos\n",
+                arcsInThePiece, arcsWhenSharing, alone.size());
+
+    EXPECT_GT(alone.size(), static_cast<std::size_t>(arcsWhenSharing))
+        << "pedir sólo arcos no aprovecha el tope: se está filtrando DESPUÉS de "
+           "recortar, y el operador recibe las migajas de lo que pidió";
+    EXPECT_EQ(alone.size(), static_cast<std::size_t>(arcsInThePiece))
+        << "pidiendo sólo arcos y con sitio de sobra, no salen todos los que hay";
 }

@@ -6,6 +6,8 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QTableWidget>
+#include <QCheckBox>
+#include <QSignalBlocker>
 #include <QVBoxLayout>
 
 #include <utility>
@@ -25,8 +27,11 @@ constexpr int kColumnReason = 4;
 }  // namespace
 
 AutoMeasureDialog::AutoMeasureDialog(std::vector<AutoProposal> proposals, double mmPerPixel,
-                                     QWidget* parent)
-    : QDialog(parent), proposals_(std::move(proposals)), mmPerPixel_(mmPerPixel) {
+                                     QWidget* parent, Reproposer reproposer)
+    : QDialog(parent),
+      proposals_(std::move(proposals)),
+      mmPerPixel_(mmPerPixel),
+      reproposer_(std::move(reproposer)) {
     setWindowTitle(tr("Medición automática"));
     resize(820, 420);
 
@@ -39,13 +44,84 @@ AutoMeasureDialog::AutoMeasureDialog(std::vector<AutoProposal> proposals, double
     intro->setWordWrap(true);
     layout->addWidget(intro);
 
-    table_ = new QTableWidget(static_cast<int>(proposals_.size()), 5, this);
+    table_ = new QTableWidget(0, 5, this);
     table_->setHorizontalHeaderLabels(
         {tr(""), tr("Medida"), tr("Valor"), tr("Tolerancia"), tr("Por qué se propone")});
     table_->verticalHeader()->setVisible(false);
     table_->setSelectionBehavior(QAbstractItemView::SelectRows);
     table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    // QUÉ CLASES DE COTA PROPONER.
+    //
+    // Petición de uso: poder elegir qué herramientas entran en la medición
+    // automática. El proponedor ofrece hasta doce cotas de siete clases, y quien
+    // solo mide diámetros acaba desmarcando nueve cada vez.
+    //
+    // Al cambiar una casilla se VUELVE A PROPONER en vez de esconder filas, y
+    // eso importa: el recorte a doce se aplica después de filtrar. Escondiendo
+    // filas quedarían tres diámetros, porque los otros nueve huecos se los
+    // habrían comido cotas que no se querían.
+    if (reproposer_) {
+        auto* filterRow = new QHBoxLayout();
+        filterRow->addWidget(new QLabel(tr("Proponer:"), this));
+        for (const ToolType type : proposableTypes()) {
+            auto* box = new QCheckBox(QString::fromStdString(toolTypeName(type)), this);
+            box->setChecked(true);
+            box->setToolTip(tr("Si lo desmarcas, la medición automática deja de\n"
+                               "proponer cotas de esta clase — y el tope de\n"
+                               "propuestas se reparte entre las que sí quieres."));
+            filterRow->addWidget(box);
+            typeBoxes_.push_back(box);
+            boxTypes_.push_back(type);
+            connect(box, &QCheckBox::toggled, this, [this](bool) {
+                proposals_ = reproposer_(chosenTypes());
+                fillTable();
+                updateAcceptLabel();
+            });
+        }
+        filterRow->addStretch(1);
+        layout->addLayout(filterRow);
+    }
+
+    fillTable();
+    table_->resizeColumnsToContents();
     table_->horizontalHeader()->setSectionResizeMode(kColumnReason, QHeaderView::Stretch);
+    layout->addWidget(table_, 1);
+
+    auto* selectionRow = new QHBoxLayout();
+    auto* all = new QPushButton(tr("Marcar todas"), this);
+    auto* none = new QPushButton(tr("Desmarcar todas"), this);
+    selectionRow->addWidget(all);
+    selectionRow->addWidget(none);
+    selectionRow->addStretch(1);
+    layout->addLayout(selectionRow);
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    acceptButton_ = buttons->button(QDialogButtonBox::Ok);
+    layout->addWidget(buttons);
+
+    const auto setAll = [this](Qt::CheckState state) {
+        for (int row = 0; row < table_->rowCount(); ++row) {
+            table_->item(row, kColumnCheck)->setCheckState(state);
+        }
+        updateAcceptLabel();
+    };
+    connect(all, &QPushButton::clicked, this, [setAll] { setAll(Qt::Checked); });
+    connect(none, &QPushButton::clicked, this, [setAll] { setAll(Qt::Unchecked); });
+    connect(table_, &QTableWidget::itemChanged, this,
+            [this](QTableWidgetItem*) { updateAcceptLabel(); });
+    connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    updateAcceptLabel();
+}
+
+// Rehace la tabla con las propuestas que haya ahora.
+//
+// Se saca del constructor porque el filtro de clases la reconstruye: al cambiar
+// qué cotas se quieren, se vuelve a proponer y la lista es otra.
+void AutoMeasureDialog::fillTable() {
+    const QSignalBlocker quiet(table_);
+    table_->clearContents();
+    table_->setRowCount(static_cast<int>(proposals_.size()));
 
     for (int row = 0; row < static_cast<int>(proposals_.size()); ++row) {
         const AutoProposal& proposal = proposals_[static_cast<std::size_t>(row)];
@@ -100,33 +176,22 @@ AutoMeasureDialog::AutoMeasureDialog(std::vector<AutoProposal> proposals, double
     }
     table_->resizeColumnsToContents();
     table_->horizontalHeader()->setSectionResizeMode(kColumnReason, QHeaderView::Stretch);
-    layout->addWidget(table_, 1);
+}
 
-    auto* selectionRow = new QHBoxLayout();
-    auto* all = new QPushButton(tr("Marcar todas"), this);
-    auto* none = new QPushButton(tr("Desmarcar todas"), this);
-    selectionRow->addWidget(all);
-    selectionRow->addWidget(none);
-    selectionRow->addStretch(1);
-    layout->addLayout(selectionRow);
-
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    acceptButton_ = buttons->button(QDialogButtonBox::Ok);
-    layout->addWidget(buttons);
-
-    const auto setAll = [this](Qt::CheckState state) {
-        for (int row = 0; row < table_->rowCount(); ++row) {
-            table_->item(row, kColumnCheck)->setCheckState(state);
+std::vector<ToolType> AutoMeasureDialog::chosenTypes() const {
+    std::vector<ToolType> chosen;
+    for (std::size_t i = 0; i < typeBoxes_.size(); ++i) {
+        if (typeBoxes_[i]->isChecked()) {
+            chosen.push_back(boxTypes_[i]);
         }
-        updateAcceptLabel();
-    };
-    connect(all, &QPushButton::clicked, this, [setAll] { setAll(Qt::Checked); });
-    connect(none, &QPushButton::clicked, this, [setAll] { setAll(Qt::Unchecked); });
-    connect(table_, &QTableWidget::itemChanged, this,
-            [this](QTableWidgetItem*) { updateAcceptLabel(); });
-    connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    updateAcceptLabel();
+    }
+    // TODAS MARCADAS SE DEVUELVE COMO VACÍO, que es lo que `ProposeOptions`
+    // entiende por «sin filtro». Si no, marcar todas y no marcar ninguna
+    // acabarían pasando listas distintas para la misma intención.
+    if (chosen.size() == typeBoxes_.size()) {
+        return {};
+    }
+    return chosen;
 }
 
 void AutoMeasureDialog::updateAcceptLabel() {

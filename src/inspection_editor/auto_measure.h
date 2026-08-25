@@ -2,6 +2,7 @@
 
 #include <opencv2/core.hpp>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -48,7 +49,37 @@ struct ProposeOptions {
     double parallelToleranceDeg = 8.0;
     // Un ángulo entre caras solo se propone si está lejos de 0° y de 180°.
     double minCornerAngleDeg = 20.0;
+
+    // QUÉ CLASES DE COTA PUEDE PROPONER.
+    //
+    // Sale de una petición de uso: poder elegir qué herramientas entran en la
+    // medición automática y cuáles no. Tiene sentido — el proponedor ofrece
+    // hasta doce cotas de siete clases distintas, y quien solo inspecciona
+    // diámetros acaba desmarcando nueve propuestas cada vez. Decirlo una vez
+    // por adelantado es menos trabajo y menos ocasiones de dejar marcada una
+    // que no se quería.
+    //
+    // VACÍO SIGNIFICA TODAS, que es lo de siempre: así ningún llamante que no
+    // sepa de esto cambia de comportamiento, y la lista vacía no puede
+    // interpretarse como «ninguna» — que sería un modo en el que la función no
+    // propondría nada y nadie sabría por qué.
+    std::vector<ToolType> allowedTypes;
+
+    // Si esta clase de cota entra.
+    [[nodiscard]] bool allows(ToolType type) const {
+        if (allowedTypes.empty()) {
+            return true;
+        }
+        return std::find(allowedTypes.begin(), allowedTypes.end(), type) !=
+               allowedTypes.end();
+    }
 };
+
+// Las clases que el proponedor sabe ofrecer, en el orden en que conviene
+// enseñarlas. Se publica para que la interfaz no tenga que adivinarlas ni
+// repetir la lista: si un día el proponedor aprende una octava, aparece sola
+// en el diálogo.
+[[nodiscard]] const std::vector<ToolType>& proposableTypes();
 
 // Propone herramientas a partir de la pieza ya detectada.
 //

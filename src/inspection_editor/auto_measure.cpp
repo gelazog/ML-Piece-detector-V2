@@ -127,6 +127,19 @@ bool measureProposal(const cv::Mat& gray, const vision::Fixture& fixture, double
 
 }  // namespace
 
+const std::vector<ToolType>& proposableTypes() {
+    // Las que este proponedor sabe ofrecer, en el orden en que conviene
+    // enseñarlas: primero las cotas de tamaño, que son las que casi todo el
+    // mundo quiere, y al final las de forma.
+    //
+    // Vive aquí, al lado de quién las propone, para que añadir una clase nueva
+    // y olvidarse de la interfaz no sea posible.
+    static const std::vector<ToolType> kTypes = {
+        ToolType::Caliper, ToolType::Ruler,     ToolType::Circle, ToolType::Arc,
+        ToolType::Angle,   ToolType::Roundness, ToolType::Polygon};
+    return kTypes;
+}
+
 std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
                                        const vision::Fixture& fixture,
                                        const ProposeOptions& options, double mmPerPixel,
@@ -497,6 +510,27 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
         if (measureProposal(gray, fixture, mmPerPixel, p) && !alreadyCovered(proposals, p)) {
             proposals.push_back(std::move(p));
         }
+    }
+
+    // --- Filtro de clases --------------------------------------------------
+    //
+    // Se aplica AQUÍ y no en cada sitio donde se propone algo: son diez sitios,
+    // y diez guardas es una para olvidar. En un solo punto tampoco se puede
+    // colar una clase nueva sin pasar por el filtro.
+    //
+    // Y va ANTES del recorte por el tope a propósito. Al revés, el tope de doce
+    // se gastaría en cotas que el operador no quiere y luego se filtrarían: le
+    // llegarían tres diámetros de los doce que había. Así el tope se reparte
+    // entre lo que SÍ pidió.
+    if (!options.allowedTypes.empty()) {
+        std::vector<AutoProposal> kept;
+        kept.reserve(proposals.size());
+        for (auto& proposal : proposals) {
+            if (options.allows(proposal.config.type)) {
+                kept.push_back(std::move(proposal));
+            }
+        }
+        proposals = std::move(kept);
     }
 
     // --- Recorte final -----------------------------------------------------

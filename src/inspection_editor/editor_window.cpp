@@ -653,7 +653,21 @@ void EditorWindow::onAutoMeasureClicked() {
                 .arg(dropped));
     }
 
-    AutoMeasureDialog dialog(proposals, calibration_.mmPerPixel, this);
+    // El diálogo puede VOLVER A PROPONER cuando el operador cambia qué clases
+    // de cota quiere. Se le pasa cómo hacerlo en vez de darle la imagen: así la
+    // ventana sigue siendo la dueña de la imagen y del pipeline, y el diálogo
+    // solo sabe pedir.
+    //
+    // Reproponer y no filtrar la lista: el recorte por el tope se aplica
+    // DESPUÉS del filtro, así que esconder filas dejaría tres diámetros donde
+    // podía haber doce.
+    auto reproposer = [&](const std::vector<ToolType>& allowed) {
+        ProposeOptions options;
+        options.allowedTypes = allowed;
+        return proposeTools(image, mask, fixture_, options, calibration_.mmPerPixel);
+    };
+    AutoMeasureDialog dialog(proposals, calibration_.mmPerPixel, this,
+                             std::move(reproposer));
     if (dialog.exec() != QDialog::Accepted) {
         statusLabel_->setText(tr("Medición automática cancelada."));
         return;

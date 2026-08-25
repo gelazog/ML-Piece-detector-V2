@@ -3512,6 +3512,46 @@ mayores; no puede ser lo que **enciende** la medición.
 declaraba nada —o sea, corría en automático— y exigía que de tres barras se midiera
 una. Ahora declara el uno que su nombre dice.
 
+### Elegir qué clases de cota propone la medición automática
+
+Petición de uso: «que el usuario elija qué herramientas se van a usar y cuáles no
+para la medición automática». Tiene sentido — el proponedor ofrece hasta doce cotas
+de siete clases, y quien solo inspecciona diámetros acaba desmarcando nueve propuestas
+cada vez.
+
+**Lo que decide si esto sirve de algo es DÓNDE se aplica el filtro.** Va **antes** del
+recorte por el tope. Medido sobre una pieza con esquinas redondeadas y el tope en 8:
+
+| | sin filtro | pidiendo arcos |
+|---|---|---|
+| reglas | 6 | — |
+| círculos | 2 | — |
+| **arcos** | **0** de 4 | **4** |
+
+Sin filtro los arcos **desaparecen del todo**: el operador que quisiera medir los
+redondeos no vería ni uno, y no tendría forma de saber que existían. Si el filtro
+fuera después del recorte, pedir arcos seguiría dando cero — se filtraría sobre una
+lista que ya los perdió.
+
+Por eso el diálogo **vuelve a proponer** al cambiar una casilla en vez de esconder
+filas. Se le pasa una función para hacerlo, no la imagen: así la ventana sigue siendo
+la dueña del pipeline y el diálogo solo sabe pedir. Y si no se le pasa, no enseña el
+filtro — un control que no puede cumplir lo que ofrece es peor que no tenerlo.
+
+Dos decisiones pequeñas que se sostienen solas:
+
+- El filtro está en **un solo punto** del proponedor y no en los diez sitios donde se
+  añade una propuesta. Diez guardas es una para olvidar, y así una clase nueva no
+  puede colarse sin pasar por él.
+- **Lista vacía significa TODAS**, no «ninguna». Si significara ninguna, cualquier
+  llamante que no conozca la opción dejaría de proponer en silencio y nadie sabría
+  por qué.
+
+**Y una prueba que no demostraba nada.** La primera versión usaba el tope de fábrica,
+con el que esa escena da 12 cotas justas y el recorte no llega a morder: pasaba sin
+comprobar la propiedad que decía comprobar. Bajando el tope hasta que el efecto es
+visible, la prueba afirma algo.
+
 ### «Dice que se ven 3 y tengo dos; cuando le doy, sigue saliendo 2»
 
 Queja de uso, y era un fallo de verdad: el panel de Piezas daba **dos números
