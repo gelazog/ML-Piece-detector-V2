@@ -7,6 +7,7 @@
 class QCheckBox;
 class QLabel;
 class QTableWidget;
+class QTreeWidget;
 
 namespace pci::repositories {
 class SettingsRepository;
@@ -43,6 +44,38 @@ public:
         // conoce la escala y la unidad elegida es la ventana; el diálogo no
         // tiene por qué aprenderse esa conversión para enseñar una tabla.
         std::string text;
+
+        // TODO LO DEMÁS QUE ESTA MISMA FIGURA PUEDE MEDIR.
+        //
+        // Cinco clases de herramienta eligen una medida al dibujarse: la Región
+        // entre seis (área, perímetro, solidez, circularidad, relación de
+        // aspecto, agujeros), la Ranura entre tres, el Chaflán entre tres, el
+        // Acuerdo y los Extremos entre dos. El operador escoge UNA y las otras
+        // quedan invisibles, aunque salen de la misma figura y no cuestan un
+        // trazo más: para ver el perímetro de la región que ya dibujaste había
+        // que dibujar una segunda región encima.
+        //
+        // Petición de uso: «que hubiera como dos partes en lo de herramientas,
+        // una de la herramienta en general y otra de todas las secciones-medidas
+        // de esa herramienta». Esto es la segunda parte.
+        struct OtherMeasure {
+            std::string label;     // «Perímetro», «Circularidad»…
+            int value = 0;         // el valor del enum, para `setMeasureChoice`
+            std::string text;      // lo que da, ya con su unidad
+            bool isTheOneItMeasures = false;  // la que la herramienta mide hoy
+        };
+        std::vector<OtherMeasure> alsoMeasures;
+    };
+
+    // Una medida hermana que el operador quiere pasar a vigilar: la MISMA figura
+    // de `fromTool`, midiendo `measureValue` en vez de lo suyo.
+    //
+    // Se devuelve la elección y no una herramienta ya hecha porque construirla
+    // pide la geometría y el sitio donde vive, y de eso sabe la ventana.
+    struct MeasureToAdd {
+        int fromTool = -1;  // índice en el `drawn` que se le pasó
+        int measureValue = 0;
+        std::string label;
     };
 
     PieceReportDialog(inspection::PieceReport report, const QString& sourceLabel,
@@ -60,6 +93,9 @@ public:
     // debe tener— acceso al repositorio: enseña y pregunta, y quien manda sobre
     // los datos es la ventana.
     [[nodiscard]] std::vector<inspection::ToolConfig> toolsWithChangedState() const;
+
+    // Las medidas hermanas marcadas para vigilar. Vacío si no marcó ninguna.
+    [[nodiscard]] std::vector<MeasureToAdd> measuresToAdd() const;
 
 private slots:
     void onCopyClicked();
@@ -79,6 +115,13 @@ private:
     QLabel* status_ = nullptr;
     std::vector<DrawnTool> drawn_;
     std::vector<QCheckBox*> toolSwitches_;
+    // Las casillas de las medidas hermanas, con a qué herramienta y a qué valor
+    // pertenece cada una.
+    struct SiblingBox {
+        QCheckBox* box = nullptr;
+        MeasureToAdd what;
+    };
+    std::vector<SiblingBox> siblingBoxes_;
     // El estado con el que llegaron, para saber cuáles cambió el operador.
     std::vector<bool> switchesAtStart_;
 };

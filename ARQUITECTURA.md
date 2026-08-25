@@ -2706,6 +2706,44 @@ Tres decisiones:
   un botón para convertir las cotas en herramientas vigiladas. Unirlas llenaría
   la plantilla de herramientas a cada consulta.
 
+#### La pestaña de herramientas, en dos niveles
+
+Petición de uso: *«que hubiera como dos partes en lo de herramientas, una de la
+herramienta en general y otra de todas las secciones-medidas de esa
+herramienta»*.
+
+El hueco era real y llevaba ahí desde que existen las cinco clases con selector
+de medida. **La Región elige entre seis** —área, perímetro, solidez,
+circularidad, relación de aspecto, número de agujeros—, la Ranura y el Chaflán
+entre tres, el Acuerdo y los Extremos entre dos. Al dibujar la herramienta se
+escoge UNA y las demás quedan invisibles, **aunque salen de la misma figura, el
+mismo trazo y el mismo fixture**: para ver el perímetro de la región que ya
+tenías había que dibujar una segunda región encima de la primera.
+
+Ahora cada herramienta se despliega en todo lo que su figura puede medir:
+
+- **Arriba, la herramienta**: su nombre, lo que mide hoy, su veredicto y el
+  interruptor de «cuenta / no cuenta».
+- **Debajo, sus medidas hermanas**, cada una con su valor ya calculado. La que
+  la herramienta mide hoy sale en negrita y **sin interruptor propio**: el suyo
+  es el de arriba, y dos casillas para el mismo hecho obligarían a que una de
+  las dos mintiera. Las demás llevan una casilla que las convierte en cota nueva
+  sobre la misma figura, sin volver a dibujarla.
+
+**Se ejecutan de verdad, no se enumeran.** Una lista de nombres sin sus valores
+no da con qué decidir cuál merece vigilarse, que es justo para lo que está.
+Cuesta 0,178 ms → 0,514 ms por región, **×2,88 y no ×6**: las seis comparten el
+recorrido de la imagen y el contorno, y `runTools` las despacha en un lote.
+
+**Una medida hermana nace sin tolerancia** (`[0, 1e9]`, la banda por defecto):
+mide y no juzga hasta que alguien le declare la suya. Heredar la del padre sería
+peor que no poner ninguna — un perímetro dentro de la banda de un área es una
+conformidad inventada, y la fila lo dice en vez de callarlo.
+
+Las herramientas de una sola medida —un calibre mide una distancia y nada más—
+**no se despliegan**: un desplegable con un hijo que repite al padre hace dudar
+de si falta algo.
+
 #### El botón que duplicaba las cotas
 
 Queja de uso: *«se duplicaron las herramientas»*. Era exacta. **«Vigilar estas

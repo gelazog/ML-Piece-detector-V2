@@ -13,6 +13,8 @@
 #include <QCheckBox>
 #include <QTabWidget>
 #include <QBrush>
+#include <QTreeWidget>
+#include <QFont>
 #include <QVBoxLayout>
 
 #include <utility>
@@ -206,7 +208,7 @@ QWidget* PieceReportDialog::buildToolsTab() {
             tr("No hay ninguna herramienta dibujada sobre esta pieza.\n\n"
                "Las cotas de la otra pestaña las mide el programa solo. Para vigilar\n"
                "una en cada inspección, dibújala sobre la pieza o usa el botón\n"
-               "«Vigilar las marcadas»."),
+               "«Vigilar estas cotas»."),
             page);
         empty->setWordWrap(true);
         empty->setAlignment(Qt::AlignCenter);
@@ -216,48 +218,40 @@ QWidget* PieceReportDialog::buildToolsTab() {
     }
 
     auto* intro = new QLabel(
-        tr("Estas son tus cotas sobre esta pieza. Desmarca las que no quieras que\n"
-           "cuenten: dejan de medirse y dejan de pesar en el veredicto, sin tener\n"
-           "que borrarlas ni volver a dibujarlas."),
+        tr("Cada herramienta se abre en todo lo que su figura puede medir. Desmarca\n"
+           "arriba la cota que no quieras que cuente; marca abajo cualquier otra\n"
+           "medida de la misma figura para vigilarla también, sin dibujar nada."),
         page);
     intro->setWordWrap(true);
     layout->addWidget(intro);
 
-    auto* table = new QTableWidget(static_cast<int>(drawn_.size()), 4, page);
-    table->setHorizontalHeaderLabels(
-        {tr("Cuenta"), tr("Cota"), tr("Mide"), tr("Veredicto")});
-    table->verticalHeader()->setVisible(false);
-    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
+    auto* tree = new QTreeWidget(page);
+    tree->setColumnCount(4);
+    tree->setHeaderLabels({tr("Cuenta"), tr("Cota"), tr("Mide"), tr("Veredicto")});
+    tree->setRootIsDecorated(true);
+    tree->setUniformRowHeights(false);
+    tree->header()->setSectionResizeMode(3, QHeaderView::Stretch);
 
-    for (int row = 0; row < static_cast<int>(drawn_.size()); ++row) {
-        const DrawnTool& tool = drawn_[static_cast<std::size_t>(row)];
+    const QBrush grey(QColor(150, 150, 150));
+    const QBrush black(QColor(20, 20, 20));
+    const QBrush red(QColor(198, 40, 40));
 
-        // El interruptor va en su propio widget para poder centrarlo: una
-        // casilla pegada al borde izquierdo de la celda se lee como parte del
-        // nombre de la fila de al lado.
-        auto* holder = new QWidget(table);
-        auto* holderLayout = new QHBoxLayout(holder);
-        holderLayout->setContentsMargins(0, 0, 0, 0);
-        holderLayout->setAlignment(Qt::AlignCenter);
-        auto* box = new QCheckBox(holder);
+    for (std::size_t index = 0; index < drawn_.size(); ++index) {
+        const DrawnTool& tool = drawn_[index];
+
+        // NIVEL 1: LA HERRAMIENTA. Lo que mide hoy y si cuenta.
+        auto* parent = new QTreeWidgetItem(tree);
+        parent->setText(1, QString::fromStdString(tool.config.name));
+        parent->setText(2, QString::fromStdString(tool.text));
+
+        auto* box = new QCheckBox(tree);
         box->setChecked(tool.config.enabled);
         box->setToolTip(tr("Si lo desmarcas, esta cota deja de medirse y deja de\n"
                            "pesar en el veredicto. La herramienta NO se borra:\n"
                            "vuelve en cuanto la marques."));
-        holderLayout->addWidget(box);
-        table->setCellWidget(row, 0, holder);
+        tree->setItemWidget(parent, 0, box);
         toolSwitches_.push_back(box);
         switchesAtStart_.push_back(tool.config.enabled);
-
-        table->setItem(row, 1,
-                       new QTableWidgetItem(QString::fromStdString(tool.config.name)));
-
-        // LO QUE MIDE, con su unidad. Sin unidad, un ángulo y una longitud
-        // comparten columna y ninguno de los dos dice de qué es.
-        table->setItem(row, 2,
-                       new QTableWidgetItem(QString::fromStdString(tool.text)));
 
         // EL VEREDICTO, Y DE DÓNDE SALE.
         //
@@ -279,29 +273,81 @@ QWidget* PieceReportDialog::buildToolsTab() {
                           .arg(tool.config.toleranceMin, 0, 'f', 2)
                           .arg(tool.config.toleranceMax, 0, 'f', 2);
         }
-        auto* verdictItem = new QTableWidgetItem(verdict);
+        parent->setText(3, verdict);
         if (tool.config.enabled && !tool.result.ok) {
-            verdictItem->setForeground(QBrush(QColor(198, 40, 40)));
+            parent->setForeground(3, red);
         } else if (!tool.config.enabled) {
-            verdictItem->setForeground(QBrush(QColor(150, 150, 150)));
+            for (int column = 1; column < 4; ++column) {
+                parent->setForeground(column, grey);
+            }
         }
-        table->setItem(row, 3, verdictItem);
+
+        // NIVEL 2: TODAS LAS MEDIDAS DE ESA MISMA FIGURA.
+        //
+        // La que ya mide sale marcada y sin interruptor propio: SU interruptor
+        // es el de arriba. Darle uno segundo pondría dos casillas para el mismo
+        // hecho, y una de las dos tendría que mentir.
+        for (const auto& other : tool.alsoMeasures) {
+            auto* child = new QTreeWidgetItem(parent);
+            child->setText(1, QString::fromStdString(other.label));
+            child->setText(2, QString::fromStdString(other.text));
+
+            if (other.isTheOneItMeasures) {
+                child->setText(3, tr("Es la que mide esta herramienta."));
+                for (int column = 1; column < 4; ++column) {
+                    child->setForeground(column, QBrush(QColor(90, 90, 90)));
+                }
+                QFont bold = child->font(1);
+                bold.setBold(true);
+                child->setFont(1, bold);
+                continue;
+            }
+
+            // LAS OTRAS NO LLEVAN VEREDICTO, y no es un olvido: nadie ha
+            // declarado tolerancia para ellas. Poner «Cumple» sobre una banda
+            // que no existe sería inventarse una conformidad.
+            child->setText(3, tr("Sin tolerancia declarada — márcala para vigilarla."));
+            for (int column = 1; column < 4; ++column) {
+                child->setForeground(column, QBrush(QColor(120, 120, 120)));
+            }
+
+            auto* add = new QCheckBox(tree);
+            add->setToolTip(tr("Añade esta medida como cota nueva sobre la MISMA figura,\n"
+                               "sin volver a dibujarla. Tendrás que declararle su\n"
+                               "tolerancia igual que a cualquier otra."));
+            tree->setItemWidget(child, 0, add);
+            siblingBoxes_.push_back(
+                {add, MeasureToAdd{static_cast<int>(index), other.value, other.label}});
+        }
+
+        // Las herramientas con una sola medida no se abren: un desplegable con
+        // un hijo que repite al padre es ruido.
+        parent->setExpanded(tool.alsoMeasures.size() > 1);
 
         // Y la fila entera se apaga cuando la cota no cuenta: si sigue igual de
         // negra que las demás, el operador la lee como vigente.
-        connect(box, &QCheckBox::toggled, table, [table, row](bool on) {
-            for (int column = 1; column < table->columnCount(); ++column) {
-                if (auto* item = table->item(row, column); item != nullptr) {
-                    item->setForeground(on ? QBrush(QColor(20, 20, 20))
-                                           : QBrush(QColor(150, 150, 150)));
-                }
+        connect(box, &QCheckBox::toggled, tree, [parent, black, grey](bool on) {
+            for (int column = 1; column < 4; ++column) {
+                parent->setForeground(column, on ? black : grey);
             }
         });
     }
-    table->resizeColumnsToContents();
-    table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
-    layout->addWidget(table, 1);
+
+    for (int column = 0; column < 3; ++column) {
+        tree->resizeColumnToContents(column);
+    }
+    layout->addWidget(tree, 1);
     return page;
+}
+
+std::vector<PieceReportDialog::MeasureToAdd> PieceReportDialog::measuresToAdd() const {
+    std::vector<MeasureToAdd> wanted;
+    for (const auto& sibling : siblingBoxes_) {
+        if (sibling.box->isChecked()) {
+            wanted.push_back(sibling.what);
+        }
+    }
+    return wanted;
 }
 
 std::vector<inspection::ToolConfig> PieceReportDialog::toolsWithChangedState() const {
@@ -347,18 +393,16 @@ void PieceReportDialog::onExportClicked() {
     status_->setText(tr("Medidas exportadas a %1.").arg(path));
 }
 
-// VIGILAR LO QUE FALTA, NO TODO OTRA VEZ.
-//
-// Queja de uso: «se duplicaron las herramientas». Era exacta. Este botón se
-// llevaba TODAS las propuestas sin mirar si ya estaban, y los nombres que
-// genera el proponedor son deterministas —«Ø», «Largo total», «Lado 1»,
-// «Espesor 2»—: pulsarlo dos veces sobre la misma pieza dejaba una segunda
-// copia de cada cota, con otro id y el mismo nombre.
-//
-// Se compara POR NOMBRE y no por id porque el id de una propuesta todavía no
-// existe: nace en -1 y se lo pone la plantilla al guardar. El nombre es lo
-// único que las dos cosas comparten mientras se decide.
 void PieceReportDialog::onWatchClicked() {
+    // LO QUE YA TIENES NO SE VUELVE A AÑADIR.
+    //
+    // Esto se llevaba TODAS las propuestas sin mirar nada, y los nombres que
+    // genera el proponedor son deterministas —«Ø», «Largo total», «Lado 1»…—,
+    // así que pulsarlo dos veces sobre la misma pieza duplicaba cada cota.
+    // Reportado por un operador: «se duplicaron las herramientas».
+    //
+    // El botón decía «vigilar las MARCADAS» cuando no había nada que marcar; ahora
+    // al menos lo que ya existe se queda fuera, y se dice cuántas.
     toWatch_.clear();
     int already = 0;
     for (const auto& proposal : report_.watchable) {
@@ -376,9 +420,8 @@ void PieceReportDialog::onWatchClicked() {
         toWatch_.push_back(proposal);
     }
     if (toWatch_.empty()) {
-        // Y NO CIERRA. Cerrarse sin haber añadido nada y sin decir por qué se
-        // lee como que sí se añadió, que es justo la confusión que dejaba el
-        // duplicado: el operador volvía a pulsar porque no veía el efecto.
+        // No se cierra: cerrar sin añadir nada y sin decir por qué se lee como
+        // que se añadieron.
         status_->setStyleSheet(QStringLiteral("color:#e08a00;"));
         status_->setText(tr("No se ha añadido ninguna: ya tienes las %1 cotas que se "
                             "proponen. Mira la pestaña «Mis herramientas».")

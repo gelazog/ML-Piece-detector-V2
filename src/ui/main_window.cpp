@@ -2450,6 +2450,81 @@ void MainWindow::onRegionPicked(const cv::Rect& imageRect) {
         tr("Zona de detección activa: el contorno solo se busca dentro del recuadro."));
 }
 
+namespace {
+
+// TODO LO QUE LA MISMA FIGURA PUEDE MEDIR, no solo lo que el operador eligió.
+//
+// Cinco clases de herramienta llevan un selector de medida —Región, Ranura,
+// Chaflán, Acuerdo y Extremos—, y al dibujarlas se escoge UNA. Las demás salen
+// de la misma figura, con el mismo trazo y el mismo fixture: lo único que
+// cambia es el campo del enum. Que estuvieran escondidas obligaba a dibujar una
+// segunda región encima de la primera para ver su perímetro.
+//
+// Se ejecutan de verdad en vez de dejar la fila en blanco porque una lista de
+// medidas sin sus valores no ayuda a decidir cuál vigilar, que es justo para lo
+// que está.
+//
+// Devuelve vacío para las herramientas de una sola medida —un calibre mide una
+// distancia y nada más—, y entonces la pestaña no las despliega.
+std::vector<PieceReportDialog::DrawnTool::OtherMeasure> everyMeasureOfThatFigure(
+    const inspection::ToolConfig& config, const cv::Mat& image,
+    const vision::Fixture& fixture, const vision::BoardFrame& board,
+    double mmPerPixel, inspection::LengthUnit unit) {
+    const auto parsed = inspection::geometryFromJson(config.type, config.geometryJson);
+    if (!parsed.isOk()) {
+        return {};
+    }
+    const inspection::ToolGeometry& geometry = parsed.value();
+    const auto choices = inspection::measureChoicesOf(geometry);
+    if (choices.options.size() < 2) {
+        return {};
+    }
+
+    // TODAS DE UNA VEZ, incluida la que ya mide: `runTools` recorre la imagen
+    // una sola vez por lote, así que pedirlas juntas cuesta menos que una
+    // llamada por medida — y la que ya mide se vuelve a ejecutar aquí a
+    // propósito, para que las seis filas salgan del mismo instante y no haya
+    // una copiada de otro sitio que pueda no cuadrar.
+    std::vector<inspection::ToolConfig> siblings;
+    siblings.reserve(choices.options.size());
+    for (const auto& option : choices.options) {
+        inspection::ToolGeometry copy = geometry;
+        if (!inspection::setMeasureChoice(copy, option.value)) {
+            continue;
+        }
+        inspection::ToolConfig sibling = config;
+        sibling.enabled = true;
+        sibling.geometryJson = inspection::toJson(copy);
+        // Nombre propio para poder emparejar el resultado: si las seis se
+        // llamaran igual, cualquiera podría pasar por cualquiera.
+        sibling.name = config.name + " · " + option.label;
+        siblings.push_back(std::move(sibling));
+    }
+
+    const auto results = inspection::runTools(image, fixture, siblings, mmPerPixel, unit,
+                                              cv::Mat(), &board);
+
+    std::vector<PieceReportDialog::DrawnTool::OtherMeasure> out;
+    out.reserve(choices.options.size());
+    for (std::size_t i = 0; i < choices.options.size() && i < siblings.size(); ++i) {
+        PieceReportDialog::DrawnTool::OtherMeasure other;
+        other.label = choices.options[i].label;
+        other.value = choices.options[i].value;
+        other.isTheOneItMeasures = choices.options[i].value == choices.current;
+        other.text = "—";
+        for (const auto& result : results) {
+            if (result.name == siblings[i].name) {
+                other.text = inspection::formatMeasure(result, mmPerPixel, unit, true);
+                break;
+            }
+        }
+        out.push_back(std::move(other));
+    }
+    return out;
+}
+
+}  // namespace
+
 void MainWindow::onMeasurePieceClicked() {
     const QImage frame = frameOrFile();
     if (frame.isNull()) {
@@ -2503,6 +2578,10 @@ void MainWindow::onMeasurePieceClicked() {
         configs.push_back(std::move(config));
     }
     std::vector<PieceReportDialog::DrawnTool> drawn;
+    // El mismo orden que `drawn`, que NO es el de `configs`: las filas se
+    // construyen recorriendo resultados. El diálogo devuelve índices sobre lo
+    // que se le dio, así que hay que poder volver desde ahí.
+    std::vector<inspection::ToolConfig> drawnOrder;
     if (!configs.empty()) {
         const vision::BoardFrame board = vision::resolveBoardFrame(
             boardConfig_, analysis.value().fixture, true, image.size());
@@ -2527,6 +2606,10 @@ void MainWindow::onMeasurePieceClicked() {
                 entry.result = result;
                 entry.text = inspection::formatMeasure(result, calibration_.mmPerPixel,
                                                        currentUnit(), true);
+                entry.alsoMeasures =
+                    everyMeasureOfThatFigure(config, image, analysis.value().fixture, board,
+                                             calibration_.mmPerPixel, currentUnit());
+                drawnOrder.push_back(config);
                 drawn.push_back(std::move(entry));
                 break;
             }
@@ -2567,6 +2650,70 @@ void MainWindow::onMeasurePieceClicked() {
                "pesar en el veredicto.")
                 .arg(saved));
         reanalyseCurrentFrame();
+    }
+    // LAS MEDIDAS HERMANAS MARCADAS EN EL SEGUNDO NIVEL.
+    //
+    // Se atienden aunque se cierre sin «vigilar», por lo mismo que los
+    // interruptores: es una decisión que el operador ya tomó dentro de la
+    // pestaña, y descartarla porque salió por otra puerta la perdería en
+    // silencio.
+    if (const auto extra = dialog.measuresToAdd(); !extra.empty()) {
+        int born = 0;
+        for (const auto& want : extra) {
+            if (want.fromTool < 0 ||
+                want.fromTool >= static_cast<int>(drawnOrder.size())) {
+                continue;
+            }
+            const inspection::ToolConfig& from =
+                drawnOrder[static_cast<std::size_t>(want.fromTool)];
+            auto parsed = inspection::geometryFromJson(from.type, from.geometryJson);
+            if (!parsed.isOk()) {
+                continue;
+            }
+            inspection::ToolGeometry geometry = parsed.value();
+            if (!inspection::setMeasureChoice(geometry, want.measureValue)) {
+                continue;
+            }
+            const std::string newName = from.name + " · " + want.label;
+            // NO DOS VECES LA MISMA. El nombre es determinista, así que volver a
+            // marcarla en una segunda consulta crearía una cota gemela con otro
+            // id — que es exactamente lo que hacía «Vigilar estas cotas» antes de
+            // que se arreglara.
+            bool alreadyThere = false;
+            for (const auto& existing : liveTools_) {
+                if (existing.config.name == newName) {
+                    alreadyThere = true;
+                    break;
+                }
+            }
+            if (alreadyThere) {
+                continue;
+            }
+            inspection::EditedTool tool;
+            tool.geometry = geometry;
+            tool.config = from;
+            tool.config.id = -1;  // nace sin guardar: la plantilla le dará el suyo
+            tool.config.name = newName;
+            // SIN TOLERANCIA, que es lo que la pestaña prometía: nace midiendo y
+            // sin juzgar hasta que alguien le declare la banda. Heredar la del
+            // padre sería peor que no poner ninguna — un perímetro dentro de la
+            // banda de un área es una conformidad inventada.
+            tool.config.toleranceMin = 0.0;
+            tool.config.toleranceMax = 1e9;
+            tool.config.enabled = true;
+            liveTools_.push_back(std::move(tool));
+            ++born;
+        }
+        if (born > 0) {
+            commitUndoState();
+            video_->clearResults();
+            video_->setSelectedIndex(static_cast<int>(liveTools_.size()) - 1);
+            statusBar()->showMessage(
+                tr("%n medida(s) añadidas sobre las figuras que ya tenías. Nacen sin "
+                   "tolerancia: decláresela para que puedan no cumplir.",
+                   nullptr, born));
+            reanalyseCurrentFrame();
+        }
     }
     if (answer != QDialog::Accepted) {
         return;

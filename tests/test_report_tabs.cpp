@@ -20,6 +20,7 @@
 #include <QLabel>
 #include <QTabWidget>
 #include <QTableWidget>
+#include <QTreeWidget>
 
 #include <cstdio>
 
@@ -56,6 +57,32 @@ ui::PieceReportDialog::DrawnTool toolThat(const char* name, bool ok, bool enable
     tool.result.measured = ok ? 100.0 : 140.0;
     tool.text = ok ? "100.00 px" : "140.00 px";
     return tool;
+}
+
+// El texto visible que contiene `needle`, lo enseñe una tabla o un árbol.
+QString visibleTextWith(const ui::PieceReportDialog& dialog, const QString& needle) {
+    QString found;
+    for (auto* table : dialog.findChildren<QTableWidget*>()) {
+        for (int row = 0; row < table->rowCount(); ++row) {
+            for (int column = 0; column < table->columnCount(); ++column) {
+                if (auto* item = table->item(row, column);
+                    item != nullptr && item->text().contains(needle, Qt::CaseInsensitive)) {
+                    found = item->text();
+                }
+            }
+        }
+    }
+    for (auto* tree : dialog.findChildren<QTreeWidget*>()) {
+        QTreeWidgetItemIterator it(tree);
+        for (; *it != nullptr; ++it) {
+            for (int column = 0; column < tree->columnCount(); ++column) {
+                if ((*it)->text(column).contains(needle, Qt::CaseInsensitive)) {
+                    found = (*it)->text(column);
+                }
+            }
+        }
+    }
+    return found;
 }
 
 QTabWidget* tabsOf(const ui::PieceReportDialog& dialog) {
@@ -118,19 +145,7 @@ TEST(ReportTabs, AToolThatFailsSaysSoAndSaysBetweenWhatValues) {
     ui::PieceReportDialog dialog(plainReport(), QStringLiteral("una imagen"), nullptr,
                                  nullptr, drawn);
 
-    QString verdict;
-    for (auto* table : dialog.findChildren<QTableWidget*>()) {
-        for (int row = 0; row < table->rowCount(); ++row) {
-            for (int column = 0; column < table->columnCount(); ++column) {
-                if (auto* item = table->item(row, column); item != nullptr) {
-                    if (item->text().contains(QStringLiteral("CUMPLE"),
-                                              Qt::CaseInsensitive)) {
-                        verdict = item->text();
-                    }
-                }
-            }
-        }
-    }
+    const QString verdict = visibleTextWith(dialog, QStringLiteral("CUMPLE"));
     std::printf("  [medir] veredicto: «%s»\n", verdict.toStdString().c_str());
     ASSERT_FALSE(verdict.isEmpty()) << "una cota fuera de tolerancia no dice que no cumple";
     EXPECT_TRUE(verdict.contains(QStringLiteral("NO CUMPLE")));
@@ -233,4 +248,103 @@ TEST(ReportTabs, WhenEverythingIsAlreadyThereItSaysSoInsteadOfClosing) {
     std::printf("  [medir] todo repetido: «%s»\n", said.toStdString().c_str());
     EXPECT_FALSE(said.isEmpty())
         << "no añade nada y no dice por qué: se lee como que sí lo hizo";
+}
+
+// LOS DOS NIVELES: LA HERRAMIENTA Y TODO LO QUE SU FIGURA PUEDE MEDIR.
+//
+// Petición de uso: «que hubiera como dos partes en lo de herramientas, una de
+// la herramienta en general y otra de todas las secciones-medidas de esa
+// herramienta».
+//
+// El hueco: cinco clases eligen UNA medida al dibujarse —la Región entre seis—
+// y las otras cinco quedaban invisibles aunque salen de la misma figura. Para
+// ver el perímetro de la región que ya tenías había que dibujar otra encima.
+namespace {
+
+ui::PieceReportDialog::DrawnTool regionThatAlsoMeasures() {
+    auto tool = toolThat("Zona del taladro", true, true);
+    tool.alsoMeasures = {
+        {"Área", 0, "1200.00 px²", true},
+        {"Perímetro", 1, "140.00 px", false},
+        {"Solidez", 2, "0.97", false},
+        {"Circularidad", 3, "0.77", false},
+    };
+    return tool;
+}
+
+}  // namespace
+
+TEST(ReportTabs, AToolOpensIntoEverythingItsFigureCanMeasure) {
+    ui::PieceReportDialog dialog(plainReport(), QStringLiteral("una imagen"), nullptr,
+                                 nullptr, {regionThatAlsoMeasures()});
+
+    auto trees = dialog.findChildren<QTreeWidget*>();
+    ASSERT_FALSE(trees.isEmpty()) << "la pestaña de herramientas no tiene dos niveles";
+    QTreeWidget* tree = trees.first();
+    ASSERT_EQ(tree->topLevelItemCount(), 1);
+
+    QTreeWidgetItem* tool = tree->topLevelItem(0);
+    EXPECT_EQ(tool->text(1), QStringLiteral("Zona del taladro"));
+    ASSERT_EQ(tool->childCount(), 4)
+        << "la herramienta no se abre en todo lo que su figura mide";
+
+    // CADA MEDIDA CON SU VALOR, no una lista de nombres: sin el número no hay
+    // con qué decidir cuál merece vigilarse, que es para lo que está.
+    for (int i = 0; i < tool->childCount(); ++i) {
+        EXPECT_FALSE(tool->child(i)->text(2).isEmpty())
+            << "la medida «" << tool->child(i)->text(1).toStdString() << "» no dice cuánto";
+    }
+    std::printf("  [medir] «%s» se abre en %d medidas; la 2ª es «%s» = %s\n",
+                tool->text(1).toStdString().c_str(), tool->childCount(),
+                tool->child(1)->text(1).toStdString().c_str(),
+                tool->child(1)->text(2).toStdString().c_str());
+
+    // LA QUE YA MIDE SE DISTINGUE Y NO LLEVA INTERRUPTOR PROPIO: su interruptor
+    // es el de la herramienta. Dos casillas para el mismo hecho obligarían a que
+    // una de las dos mintiera.
+    EXPECT_EQ(tree->itemWidget(tool->child(0), 0), nullptr)
+        << "la medida que la herramienta ya hace tiene un segundo interruptor";
+    EXPECT_NE(tree->itemWidget(tool->child(1), 0), nullptr)
+        << "una medida hermana no se puede marcar para vigilarla";
+    EXPECT_TRUE(tool->child(0)->text(3).contains(QStringLiteral("mide esta herramienta")))
+        << "no se distingue cuál de las cuatro es la que la herramienta mide";
+}
+
+TEST(ReportTabs, MarkingASiblingMeasureAsksForItWithoutTouchingTheTool) {
+    ui::PieceReportDialog dialog(plainReport(), QStringLiteral("una imagen"), nullptr,
+                                 nullptr, {regionThatAlsoMeasures()});
+    auto* tree = dialog.findChildren<QTreeWidget*>().first();
+    QTreeWidgetItem* tool = tree->topLevelItem(0);
+
+    EXPECT_TRUE(dialog.measuresToAdd().empty()) << "pide cotas que nadie marcó";
+
+    // Se marca «Solidez», la tercera de la lista y la segunda con interruptor.
+    auto* box = qobject_cast<QCheckBox*>(tree->itemWidget(tool->child(2), 0));
+    ASSERT_NE(box, nullptr);
+    box->setChecked(true);
+
+    const auto wanted = dialog.measuresToAdd();
+    ASSERT_EQ(wanted.size(), 1U);
+    EXPECT_EQ(wanted.front().label, "Solidez");
+    EXPECT_EQ(wanted.front().measureValue, 2) << "pediría otra medida distinta de la marcada";
+    EXPECT_EQ(wanted.front().fromTool, 0);
+    std::printf("  [medir] marcada «%s» (valor %d) sobre la herramienta %d\n",
+                wanted.front().label.c_str(), wanted.front().measureValue,
+                wanted.front().fromTool);
+
+    // Y NO HA TOCADO LA HERRAMIENTA: añadir una medida hermana no es apagar ni
+    // cambiar la cota que ya existía.
+    EXPECT_TRUE(dialog.toolsWithChangedState().empty())
+        << "marcar una medida nueva cambia de paso el estado de la herramienta";
+}
+
+TEST(ReportTabs, AToolWithASingleMeasureDoesNotPretendToHaveMore) {
+    // Un calibre mide una distancia y nada más. Abrirlo en un solo hijo que
+    // repite al padre es ruido que hace dudar de si falta algo.
+    ui::PieceReportDialog dialog(plainReport(), QStringLiteral("una imagen"), nullptr,
+                                 nullptr, {toolThat("ancho", true, true)});
+    auto* tree = dialog.findChildren<QTreeWidget*>().first();
+    ASSERT_EQ(tree->topLevelItemCount(), 1);
+    EXPECT_EQ(tree->topLevelItem(0)->childCount(), 0);
+    EXPECT_FALSE(tree->topLevelItem(0)->isExpanded());
 }

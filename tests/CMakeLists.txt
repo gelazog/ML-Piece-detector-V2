@@ -22,6 +22,7 @@ add_executable(pci_tests
   test_split_touching.cpp
   test_threshold_clipping.cpp
   test_caliper_ambiguity.cpp
+  test_sibling_measures.cpp
   test_difference_map.cpp
   test_diverse_images.cpp
   test_edge_segmentation.cpp

@@ -418,6 +418,20 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    Medir y vigilar son dos decisiones distintas, y por eso lo segundo no pasa
    solo cada vez que consultas.
 
+   La ventana va en **dos pestañas**: *Medidas de la pieza*, que es lo de
+   arriba y lo mide el programa solo, y **Mis herramientas**, que son las cotas
+   que tú dibujaste — lo que dan ahora, si cumplen y **entre qué valores se
+   admiten** cuando no. Ahí puedes desmarcar una para que deje de contar sin
+   borrarla.
+
+   Y cada herramienta **se abre en todo lo que su figura puede medir**: la misma
+   región que dibujaste para el área te da también su perímetro, su solidez, su
+   circularidad, su relación de aspecto y cuántos agujeros tiene, con el número
+   ya calculado. Marca la que quieras y nace como cota nueva sobre esa misma
+   figura, sin volver a dibujar nada. Nace **sin tolerancia**: decláresela tú,
+   porque heredar la del área diría que un perímetro cumple una banda que no es
+   la suya.
+
    El informe **no se corta**: una lista de propuestas que hay que revisar a mano
    sí se limita a doce, pero un informe cortado contesta a medias. Y nada sale
    marcado «OK», porque una cota recién medida está dentro de su propia
