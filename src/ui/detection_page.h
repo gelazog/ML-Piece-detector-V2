@@ -89,6 +89,7 @@ private:
     QPushButton* useEdgesButton_ = nullptr;
     QPushButton* clipCheckButton_ = nullptr;
     QCheckBox* splitTouching_ = nullptr;
+    QCheckBox* recoverGlare_ = nullptr;
     QLabel* clipResult_ = nullptr;
     QComboBox* method_ = nullptr;
     QComboBox* polarity_ = nullptr;

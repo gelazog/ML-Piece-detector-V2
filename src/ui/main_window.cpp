@@ -1361,6 +1361,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         // propiedad de CÓMO están colocadas las piezas en el puesto, no algo
         // que se decida cada vez.
         seg.splitTouchingPieces = repos_.settings->getInt("det_split_touching", 0).value() != 0;
+        // Se guarda el NÚMERO, no un sí/no: el día que el nivel de aflojado sea
+        // ajustable, lo que ya está guardado sigue queriendo decir lo mismo.
+        seg.recoverHighlightsBy = repos_.settings->getInt("det_recover_glare", 0).value();
         pipelineConfig_.roi = cv::Rect(repos_.settings->getInt("det_roi_x", 0).value(),
                                        repos_.settings->getInt("det_roi_y", 0).value(),
                                        repos_.settings->getInt("det_roi_w", 0).value(),
@@ -2041,6 +2044,7 @@ void MainWindow::persistPipelineConfig() {
     repos_.settings->setInt("det_blur", seg.blurKernel);
     repos_.settings->setInt("det_morph", seg.morphKernel);
     repos_.settings->setInt("det_split_touching", seg.splitTouchingPieces ? 1 : 0);
+    repos_.settings->setInt("det_recover_glare", seg.recoverHighlightsBy);
     repos_.settings->setInt("det_roi_x", pipelineConfig_.roi.x);
     repos_.settings->setInt("det_roi_y", pipelineConfig_.roi.y);
     repos_.settings->setInt("det_roi_w", pipelineConfig_.roi.width);

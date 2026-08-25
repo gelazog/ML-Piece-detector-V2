@@ -157,11 +157,39 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "Cuesta entre 3 y 16 ms por análisis."));
     form->addRow(splitTouching_);
 
+    // RECUPERAR LO QUE EL BRILLO SE LLEVA.
+    //
+    // Queja de uso: «tengo una tuerca, con reflejos, brillo, sombras, y eso
+    // afecta a la medición y la forma en que toma los bordes». Va justo debajo
+    // de la otra corrección de contorno porque las dos responden a lo mismo —la
+    // silueta no es la que se ve— y separarlas obligaría a buscar en dos sitios.
+    recoverGlare_ = new QCheckBox(tr("Recuperar lo que el brillo se lleva"), this);
+    recoverGlare_->setToolTip(
+        tr("El reflejo de una pieza metálica sube hasta el nivel del fondo, el\n"
+           "corte de gris lo deja fuera, y la pieza sale MORDIDA o partida en\n"
+           "trozos. No es un fallo del brillo: es que un corte único supone que\n"
+           "la pieza cae entera de un lado, y sobre metal eso es falso.\n\n"
+           "Con esto se corta dos veces. El corte de siempre da las SEMILLAS —lo\n"
+           "que es pieza con seguridad—; un corte aflojado doce niveles dice\n"
+           "hasta dónde PODRÍA llegar; y se conserva solo lo aflojado que TOQUE\n"
+           "una semilla.\n\n"
+           "Por eso no deja entrar el fondo: la mesa aflojada tampoco toca\n"
+           "ninguna semilla. Sube el brillo de la cara de la pieza, que está\n"
+           "pegado a ella, y no la sombra pegada a la mesa.\n\n"
+           "Medido sobre las fotos reales, con esto encendido:\n"
+           "  · tres tornillos cincados:   5 → 3 piezas   LO ARREGLA\n"
+           "  · un tornillo galvanizado:   2 → 1          LO ARREGLA\n"
+           "  · bandeja de cien tuercas: 100 → 100        igual\n"
+           "  · un engranaje:              1 → 1          igual\n\n"
+           "Nace apagado porque cambia lo que se mide."));
+    form->addRow(recoverGlare_);
+
     method_ = new QComboBox(this);
     method_->addItem(tr("Por nivel de gris (lo habitual)"));
     method_->addItem(tr("Por el canto de la pieza"));
     method_->setCurrentIndex(static_cast<int>(current.method));
     splitTouching_->setChecked(current.splitTouchingPieces);
+    recoverGlare_->setChecked(current.recoverHighlightsBy > 0);
     connect(useEdgesButton_, &QPushButton::clicked, this, [this] {
         method_->setCurrentIndex(static_cast<int>(vision::SegmentationMethod::Edges));
     });
@@ -497,6 +525,10 @@ vision::SegmentationOptions DetectionPage::options() const {
     result.blurKernel = blur_->value();
     result.morphKernel = morph_->value();
     result.splitTouchingPieces = splitTouching_ != nullptr && splitTouching_->isChecked();
+    // Doce niveles: es lo medido como seguro. Con treinta, la bandeja de cien
+    // tuercas se funde en 64 y los tres tornillos en uno.
+    result.recoverHighlightsBy =
+        (recoverGlare_ != nullptr && recoverGlare_->isChecked()) ? 12 : 0;
     return result;
 }
 

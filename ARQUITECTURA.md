@@ -3711,6 +3711,60 @@ tienen dos corazones separados por un cuello estrecho; una pieza sola tiene uno.
 | un engranaje solo | 1 | 1 | 1 |
 | **un tornillo largo solo** | 1 | 1 | **2** ✗ |
 
+#### Recuperar lo que el brillo se lleva
+
+Queja de uso: *«tengo una tuerca, con reflejos, brillo, sombras, y eso afecta a
+la medición y la forma en que toma los bordes»*. Literal, y medido: **tres
+tornillos cincados salían como CINCO manchas y un tornillo galvanizado como
+DOS**.
+
+Un corte de gris supone que la pieza cae **entera** de un lado. Sobre metal es
+falso: el reflejo especular sube un trozo de la propia cara de la pieza hasta el
+nivel del fondo, el corte lo deja fuera, y la silueta sale mordida o partida.
+
+**La solución: cortar dos veces.** El corte de siempre da las SEMILLAS —lo que es
+pieza con seguridad—; un corte aflojado doce niveles dice hasta dónde PODRÍA
+llegar; y se conserva solo lo aflojado que **toque una semilla**. Es la
+histéresis de Canny llevada del gradiente al nivel de gris.
+
+Y ahí está el porqué de que no deje entrar el fondo: **la mesa aflojada tampoco
+toca ninguna semilla**, porque las semillas son pieza. Sube el brillo pegado a la
+cara de la pieza y no la sombra pegada a la mesa.
+
+| imagen | verdad | antes | con esto |
+|---|---|---|---|
+| tres tornillos cincados | 3 | **5** ✗ | **3** ✓ |
+| un tornillo galvanizado | 1 | **2** ✗ | **1** ✓ |
+| bandeja de cien tuercas | 100 | 100 | 100 |
+| un engranaje | 1 | 1 | 1 |
+| dos engranajes engranados | 2 | 1 | 1 (se tocan: otro problema) |
+
+Error total de recuento sobre las siete: **4 → 1**, y lo que queda es la pareja
+de engranajes pegados, que es trabajo de `splitTouchingPieces`.
+
+**Doce niveles y no más**: con treinta, la bandeja de cien tuercas se funde en 64
+y los tres tornillos en uno. La reconstrucción usa `connectedComponents` y no
+dilataciones iteradas porque una pieza larga necesitaría decenas de pasadas para
+que la semilla llegue a la punta.
+
+**Lo que se probó antes y NO funcionó**, para que nadie lo repita:
+
+- **Aplanar la luz dividiendo por un desenfoque grande.** Empeoró en las siete
+  imágenes —un engranaje pasó de 0,8 % de vaivén a 105,2 % y de 1 pieza a 14—.
+  Estas escenas tienen fondo blanco UNIFORME: no hay degradado que quitar, y el
+  desenfoque se traga la propia pieza y la divide consigo misma. Código
+  eliminado, no aparcado.
+- **Recortar los reflejos por percentil alto.** Es un **no-op** aquí y se
+  comprobó dos veces: como la pieza es OSCURA sobre fondo claro, el percentil 98
+  recorta el fondo, no los brillos. Apuntaba al lado equivocado del histograma.
+- **Umbral adaptativo local.** Arregla los tres tornillos (5→3) pero rompe otros
+  dos casos (un tornillo pasa a 6 trozos, otro a 2): responde a la textura de la
+  rosca.
+- **Black-hat morfológico** ayuda en unos y hace añicos un engranaje (1 → 18
+  piezas: separa los dientes). **CLAHE** baja el vaivén de unos y dobla el del
+  perno cromado. **Apertura en gris con kernel grande** parece ganar
+  espectacularmente y es falso: funde las cien tuercas en una.
+
 #### El consejo de «por el canto» que nunca podía darse
 
 Petición de uso: *«si puedes mejorar la detección de bordes, debido a reflejos,

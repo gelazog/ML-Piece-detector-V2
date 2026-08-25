@@ -1152,6 +1152,16 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    sombras y objetos fuera de la zona dejan de estorbar. Ambos ajustes
    persisten y aplican al video en vivo, al registro y a la inspección.
 
+   **Recuperar lo que el brillo se lleva** (pestaña *Detección*). Si tus piezas
+   son metálicas y salen **mordidas o partidas en trozos**, casi siempre es el
+   reflejo: sube hasta el nivel del fondo y el corte de gris lo deja fuera. Con
+   esta casilla el programa corta dos veces —lo seguro primero, y luego crece
+   hacia lo dudoso solo donde toca lo seguro—, así que devuelve el brillo de la
+   pieza sin dejar entrar la mesa. Medido sobre fotos reales: tres tornillos
+   cincados pasan de salir como **5 manchas a salir como 3**, y un tornillo
+   galvanizado de **2 a 1**; la bandeja de cien tuercas se queda en 100. Nace
+   apagada porque cambia lo que se mide.
+
    **Piezas brillantes: reflejos y fondo.** Si tus piezas son metálicas y salen
    partidas en trozos o medidas cortas, el problema suele ser el corte de gris:
    pasa por dentro de la pieza y se deja fuera material. La pestaña *Detección*

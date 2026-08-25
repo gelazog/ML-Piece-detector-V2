@@ -22,6 +22,7 @@ add_executable(pci_tests
   test_split_touching.cpp
   test_threshold_clipping.cpp
   test_caliper_ambiguity.cpp
+  test_glare_recovery.cpp
   test_region_own_otsu.cpp
   test_edges_on_reflections.cpp
   test_sibling_measures.cpp
