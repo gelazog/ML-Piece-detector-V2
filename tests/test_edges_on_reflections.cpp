@@ -28,6 +28,31 @@ using namespace pci;
 
 namespace {
 
+// El corpus vive en `testdata/real`, y la prueba puede correr desde varios
+// sitios segun quien la lance. Misma escalera que en test_edge_segmentation.
+std::filesystem::path whereTheCorpusIs() {
+    for (const auto* candidate : {"testdata/real", "../testdata/real",
+                                  "../../testdata/real", "../../../testdata/real"}) {
+        std::error_code ec;
+        if (std::filesystem::exists(candidate, ec)) {
+            return std::filesystem::path(candidate);
+        }
+    }
+    return {};
+}
+
+int countPieces(const cv::Mat& mask) {
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    int found = 0;
+    for (const auto& contour : contours) {
+        if (cv::contourArea(contour) >= 0.001 * static_cast<double>(mask.total())) {
+            ++found;
+        }
+    }
+    return found;
+}
+
 struct Outcome {
     int pieces = 0;
     double area = 0.0;
@@ -40,7 +65,12 @@ Outcome look(const cv::Mat& mask) {
     cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
     for (const auto& contour : contours) {
         const double area = cv::contourArea(contour);
-        if (area < 200.0) {
+        // MÍNIMO RELATIVO AL ENCUADRE, no absoluto. Con 200 px² fijos, sobre una
+        // foto de 1920x1285 se cuenta el polvo: en una tanda de candidatos eso
+        // hizo que una escena pareciera dar 9 piezas por canto y 3 por nivel
+        // cuando en realidad da 2 y 2. Un recuento que depende del tamaño de la
+        // foto no compara nada.
+        if (area < 0.001 * static_cast<double>(mask.total())) {
             continue;  // ruido, no pieza
         }
         ++out.pieces;
@@ -217,4 +247,124 @@ TEST(EdgesOnReflections, TheAdviceCostsWhatSegmentingTwiceCosts) {
     // Y no más de doce veces: son dos segmentaciones y unas comparaciones.
     EXPECT_LT(theAdvice / oneSegmentation, 12.0)
         << "aconsejar cuesta desproporcionadamente para correr por fotograma";
+}
+
+// PIEZAS METÁLICAS DE VERDAD, BUSCADAS A PROPÓSITO.
+//
+// Petición de uso: «busca en internet imágenes que cumplan con esos problemas
+// para medirlos, como tuercas, tornillos, engranajes, piezas».
+//
+// El corpus tenía bolas cerámicas y una tuerca mate: nada que reflejara de
+// verdad. Se buscaron en Wikimedia Commons y se quedaron TRES, cada una por un
+// motivo distinto. Las otras seis que se descargaron se tiraron y conviene
+// saber por qué: un montaje de tres fotos en un fichero, dos primeros planos que
+// desbordan el encuadre, una instantánea de una mano sujetando un mecanismo y
+// dos arandelas cortadas por los cuatro lados. Ninguna es una escena de
+// inspección, y medir sobre ellas habría dado números que no significan nada.
+//
+// Las que se quedan NO son todas casos que salgan bien. Un corpus que solo
+// guarda lo que funciona deja de avisar de nada.
+TEST(EdgesOnReflections, TheMetalPartsFoundOnPurposeSayWhereTheAdviceStands) {
+    const std::filesystem::path dir = whereTheCorpusIs();
+    if (dir.empty()) {
+        GTEST_SKIP() << "corpus no descargado: python3 testdata/fetch_real_images.py";
+    }
+
+    struct Case {
+        const char* file;
+        int truth;
+        const char* what;
+    };
+    const Case metal[] = {
+        {"perno_cromado_con_arandela.jpg", 1,
+         "conjunto cromado con reflejos: por nivel sale partido en trozos"},
+        {"diez_tornillos_y_tuercas_juntos.jpg", 10,
+         "diez piezas brillantes que se tocan: LÍMITE, no lo resuelve ningún método"},
+        {"pieza_clara_sobre_fondo_texturizado.jpg", 1,
+         "clara sobre fondo texturizado con sombra: el canto no cierra y lo dice"},
+    };
+
+    int seen = 0;
+    for (const auto& one : metal) {
+        const cv::Mat gray = cv::imread((dir / one.file).string(), cv::IMREAD_GRAYSCALE);
+        if (gray.empty()) {
+            continue;
+        }
+        ++seen;
+        vision::SegmentationOptions byLevel;
+        vision::SegmentationOptions byEdge;
+        byEdge.method = vision::SegmentationMethod::Edges;
+        const auto levelMask = vision::segmentPiece(gray, byLevel);
+        const auto edgeMask = vision::segmentPiece(gray, byEdge);
+        const auto scene = vision::readScene(gray);
+
+        const int byLevelCount = levelMask.isOk() ? countPieces(levelMask.value()) : -1;
+        const int byEdgeCount = edgeMask.isOk() ? countPieces(edgeMask.value()) : -1;
+        std::printf("  [metal] %-42s verdad %2d -> nivel %2d, canto %2d  %s (%.1f%%)\n",
+                    one.file, one.truth, byLevelCount, byEdgeCount,
+                    scene.aSingleCutCannotDoIt ? "CANTO" : "nivel",
+                    scene.thresholdSwing * 100.0);
+    }
+    ASSERT_EQ(seen, 3) << "faltan imágenes del corpus metálico";
+}
+
+// EL CONJUNTO CROMADO: el caso que la petición describía, y donde el consejo
+// acierta. Verdad 1 pieza; el umbral por nivel la parte en cuatro.
+TEST(EdgesOnReflections, AChromePartFragmentedByTheLevelCutIsSentToTheEdge) {
+    const std::filesystem::path dir = whereTheCorpusIs();
+    const cv::Mat gray =
+        dir.empty() ? cv::Mat()
+                    : cv::imread((dir / "perno_cromado_con_arandela.jpg").string(),
+                                 cv::IMREAD_GRAYSCALE);
+    if (gray.empty()) {
+        GTEST_SKIP() << "corpus no descargado";
+    }
+    vision::SegmentationOptions byLevel;
+    const auto mask = vision::segmentPiece(gray, byLevel);
+    ASSERT_TRUE(mask.isOk());
+    const int fragments = countPieces(mask.value());
+    const auto scene = vision::readScene(gray);
+    std::printf("  [cromado] el nivel lo parte en %d; se aconseja %s\n", fragments,
+                scene.aSingleCutCannotDoIt ? "CANTO" : "nivel");
+
+    EXPECT_GT(fragments, 1)
+        << "el nivel ya no parte esta pieza: si eso cambió, este caso dejó de "
+           "probar lo que dice probar";
+    EXPECT_TRUE(scene.aSingleCutCannotDoIt)
+        << "una pieza cromada que el nivel parte en trozos y no se ofrece el canto: "
+           "es exactamente la queja de la que salió todo esto";
+}
+
+// EL LÍMITE QUE NO SE ARREGLA, y se guarda para que no se olvide.
+//
+// Diez piezas brillantes que se tocan entre sí. Por nivel salen 2 y por canto 2:
+// lo que falla aquí no es el NIVEL DE GRIS sino que las piezas están pegadas, y
+// eso es otro problema con otra herramienta (`splitTouchingPieces`).
+//
+// Esta prueba existe para que el día que alguien crea haberlo arreglado, lo
+// compruebe contra una foto real y no contra una idea.
+TEST(EdgesOnReflections, TenTouchingShinyPartsAreBeyondBothMethods) {
+    const std::filesystem::path dir = whereTheCorpusIs();
+    const cv::Mat gray =
+        dir.empty() ? cv::Mat()
+                    : cv::imread((dir / "diez_tornillos_y_tuercas_juntos.jpg").string(),
+                                 cv::IMREAD_GRAYSCALE);
+    if (gray.empty()) {
+        GTEST_SKIP() << "corpus no descargado";
+    }
+    vision::SegmentationOptions byLevel;
+    vision::SegmentationOptions byEdge;
+    byEdge.method = vision::SegmentationMethod::Edges;
+    const auto levelMask = vision::segmentPiece(gray, byLevel);
+    const auto edgeMask = vision::segmentPiece(gray, byEdge);
+    ASSERT_TRUE(levelMask.isOk());
+    ASSERT_TRUE(edgeMask.isOk());
+    const int byLevelCount = countPieces(levelMask.value());
+    const int byEdgeCount = countPieces(edgeMask.value());
+    std::printf("  [límite] diez piezas pegadas -> nivel %d, canto %d\n", byLevelCount,
+                byEdgeCount);
+
+    // Se fija el hecho, no la esperanza: hoy ninguno de los dos se acerca a diez.
+    EXPECT_LT(byLevelCount, 6) << "el nivel ha mejorado en esta escena: actualiza la nota";
+    EXPECT_LT(byEdgeCount, 6) << "el canto ha mejorado en esta escena: actualiza la nota";
 }

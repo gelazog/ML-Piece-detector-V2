@@ -3773,6 +3773,49 @@ El caso de la bola enseña además el límite de la señal: **mide el encuadre
 entero**, así que un objeto brillante que no es la pieza cuenta igual. Por eso
 conviene que el listón esté alto.
 
+#### Piezas metálicas buscadas a propósito
+
+Petición de uso: *«busca en internet imágenes que cumplan con esos problemas para
+medirlos, como tuercas, tornillos, engranajes, piezas»*. El corpus tenía bolas
+cerámicas y una tuerca mate: **nada que reflejara de verdad**, que es justo donde
+el umbral por nivel se rompe.
+
+Se descargaron nueve de Wikimedia Commons y **se quedaron tres**. Las seis
+descartadas conviene nombrarlas: un montaje de tres fotos en un fichero, dos
+primeros planos que desbordan el encuadre, una instantánea de una mano sujetando
+un mecanismo y dos arandelas cortadas por los cuatro lados. Ninguna es una escena
+de inspección, y medir sobre ellas daría números que no significan nada.
+
+| imagen | verdad | por nivel | por canto | consejo |
+|---|---|---|---|---|
+| conjunto cromado con arandela | 1 | **4** ✗ | 2 | CANTO ✓ |
+| diez tornillos y tuercas pegados | 10 | **2** ✗ | **2** ✗ | nivel |
+| pieza clara sobre fondo texturizado | 1 | 2 | falla | CANTO |
+
+**El conjunto cromado es el caso que la petición describía**, y ahí el consejo
+acierta: el corte por nivel parte la pieza en cuatro trozos y el canto la deja en
+dos. Es un positivo nuevo, y con él el listón del 15 % pasa a tener dos casos
+claros a favor en vez de uno.
+
+**Las diez piezas pegadas son un LÍMITE, y están en el corpus como límite.** Ni
+el nivel ni el canto se acercan a diez: lo que falla ahí no es el nivel de gris
+sino que las piezas se tocan, y eso es otro problema con otra herramienta
+(`splitTouchingPieces`). Un corpus que solo guarda lo que sale bien deja de
+avisar de nada.
+
+**La pieza clara sobre fondo texturizado prueba otra cosa**: que el canto FALLE
+DICIÉNDOLO. No cierra ningún contorno y lo explica —«no queda ninguna pieza,
+prueba con el umbral por nivel»— en vez de devolver una máscara vacía.
+
+**Un error propio que casi se cuela.** La primera medida de los candidatos daba
+«nivel 3, canto 9» sobre las diez piezas pegadas, y parecía un contraejemplo
+limpio del consejo. Era falso: la sonda descartaba manchas por debajo de **200
+px² fijos**, y sobre una foto de 1920×1285 eso es polvo. Con un mínimo relativo
+al encuadre la misma escena da **2 y 2**. Un recuento cuyo umbral no escala con
+el tamaño de la foto no compara nada — la sonda quedó corregida, y las medidas
+de las ocho imágenes del usuario se rehicieron para comprobar que la decisión del
+15 % no dependía de ese defecto. No dependía.
+
 **Una hipótesis que se cayó al medirla.** La explicación natural era que los
 reflejos saturan a 255 y se confunden con la mesa. Es falsa: los dos tornillos
 son justo los que **menos** saturan (0,5 % y 1,5 % de su superficie), y la

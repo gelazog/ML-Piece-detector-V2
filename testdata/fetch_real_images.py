@@ -30,6 +30,36 @@ OUT = os.path.join(HERE, "real")
 # Cada entrada dice POR QUE esta: un corpus sin ese porque acaba siendo una
 # carpeta de fotos bonitas que no prueban nada.
 CORPUS = [
+    # --- PIEZAS METALICAS CON REFLEJOS -------------------------------------
+    # Anadidas al medir la peticion «mejorar la deteccion de bordes, debido a
+    # reflejos, fondo». El corpus tenia bolas ceramicas y una tuerca mate: nada
+    # que reflejara de verdad, que es justo donde el umbral por nivel se rompe.
+    {
+        "file": "Bolt with washer.jpg",
+        "as": "perno_cromado_con_arandela.jpg",
+        "why": "UN CONJUNTO cromado con reflejos especulares sobre fondo claro. El "
+               "umbral por nivel lo parte en CUATRO trozos; por canto salen dos. Es "
+               "el caso que la peticion describia, y con el la lectura de escena "
+               "acierta al recomendar el canto. Verdad de campo: 1 pieza.",
+    },
+    {
+        "file": "18-03-16-Schrauben-M6x20 RRK3196.jpg",
+        "as": "diez_tornillos_y_tuercas_juntos.jpg",
+        "why": "DIEZ piezas brillantes que se TOCAN entre si, sobre fondo liso, con "
+               "un tornillo cromado y otro anodizado que reflejan fuerte. Ningun "
+               "metodo la resuelve: por nivel salen 2 y por canto 2. Esta en el "
+               "corpus como LIMITE conocido, no como caso que pase — un corpus que "
+               "solo guarda lo que sale bien deja de avisar de nada.",
+    },
+    {
+        "file": "A screw from the tip.JPG",
+        "as": "pieza_clara_sobre_fondo_texturizado.jpg",
+        "why": "Pieza CLARA sobre fondo OSCURO y TEXTURIZADO, con sombra proyectada "
+               "larga. Por nivel salen 53 manchas —la textura se fragmenta— y el "
+               "canto no cierra ninguna. Lo que se comprueba aqui no es que acierte "
+               "sino que FALLE DICIENDOLO: el canto explica que no queda ninguna "
+               "pieza y manda al otro metodo, en vez de devolver una mascara vacia.",
+    },
     {
         "file": "Zirconium dioxide ZrO2 bearing balls.jpg",
         "as": "bolas_tres_sobre_negro.jpg",

@@ -1163,7 +1163,16 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    No sale siempre a propósito: **el canto no es mejor, es para otra escena**.
    Sobre una bandeja de cien tuercas el nivel las cuenta bien y el canto funde
    diez, así que ahí no te lo ofrece. Antes ese aviso no aparecía nunca sobre
-   fondo blanco por un fallo de la comprobación.
+   fondo blanco por un fallo de la comprobación.
+
+   Probado sobre trece fotografías reales, tuyas y de un corpus de piezas
+   metálicas que se descarga con `python3 testdata/fetch_real_images.py`. Dos
+   límites que conviene conocer: si tienes **muchas piezas pegadas** —diez
+   tornillos y tuercas amontonados— no lo resuelve ninguno de los dos métodos, y
+   para eso está *Separar las piezas que se tocan*. Y si el **fondo es
+   texturizado** con sombras largas, el canto puede no cerrar ningún contorno:
+   cuando pasa te lo dice y te manda al otro método, no te deja una imagen vacía
+   sin explicación.
 
    Las
    herramientas de dibujo usan **iconos**, y debajo de la rejilla se lee **la
