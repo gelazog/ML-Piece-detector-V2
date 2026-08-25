@@ -3673,13 +3673,38 @@ Comprobado que **no salta con lo que ya funcionaba**: una barra sola sigue midie
 
 `runRegion` **rebinariza con su propio Otsu dentro del recuadro** (verificado leyendo
 `tool_executor.cpp`). Como Otsu sobre un recorte pequeño ve un histograma distinto al
-del encuadre entero, la silueta que mide no es la del pipeline: medido, entre −10,6 %
-y **−37,5 %** de área según la imagen. La misma aplicación da dos áreas para la misma
-pieza.
+del encuadre entero, la silueta que mide no es la del pipeline. De ahí salen **dos**
+discrepancias medidas, no una:
+
+**El área**: entre −10,6 % y **−37,5 %** según la imagen. La misma aplicación da dos
+áreas para la misma pieza.
+
+**El recuento de agujeros**, que falla en las dos direcciones a la vez:
+
+| imagen | a la vista | ≥12 px² | ≥40 px² | ≥250 px² |
+|---|---|---|---|---|
+| un tornillo solo | **0** | 111 | 103 | **29** |
+| tres tornillos | **0** | 24 | 24 | 4 |
+| un engranaje | **11** | **2** | 2 | 2 |
+
+Cuenta 29 agujeros en un tornillo que **no tiene ninguno** —son los valles de la
+rosca, que se cierran como regiones dentro de la silueta— y encuentra 2 de los 11 que
+sí tiene un engranaje.
+
+**Y no es cuestión de afinar el umbral.** Se probó filtrar por FORMA, que sería lo
+razonable —un taladro es redondo y un valle de rosca es una tira—: con circularidad
+≥ 0,75 los tornillos siguen dando 13, 15 y 11 agujeros inexistentes mientras el
+engranaje se queda en 1. Ni el área ni la forma los separan.
+
+La raíz de las dos es la misma: la Región **deriva todo por su cuenta** en vez de usar
+lo que el pipeline ya calculó — y `pieceMaskWithHoles`, que sí existe y sí recupera
+los agujeros de verdad, no entra en juego.
 
 Es defendible como diseño —la Región mide *lo que hay dentro del recuadro*, que
 permite medir un rasgo interior— y cambiarlo movería las medidas de todo el mundo.
-Queda anotado como decisión del usuario, no como algo a arreglar por cuenta propia.
+Queda anotado como decisión del usuario, con los números delante, no como algo a
+arreglar por cuenta propia.
+
 
 ### El fallo que no falla: medir corto y no decir nada
 

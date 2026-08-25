@@ -23,6 +23,7 @@
 
 #include "vision/contour_analysis.h"
 #include "vision/pipeline.h"
+#include "vision/segmentation.h"
 #include "vision/quality_metrics.h"
 #include "vision/shape_class.h"
 
@@ -199,6 +200,95 @@ TEST(NutProbe, WhatItCostsToLookAtEveryPiece) {
         std::printf("  [coste] %-32s %3d piezas | una: %6.2f ms | todas: %6.2f ms "
                     "| extra: %+6.2f ms (x%.2f)\n",
                     file, found, one, every, every - one, one > 0.0 ? every / one : 0.0);
+    }
+    SUCCEED();
+}
+
+// EL RECUENTO DE AGUJEROS NO SIRVE EN ESTAS PIEZAS, y conviene tenerlo medido.
+//
+// Es una SONDA, no una guarda: informa y no falla. Pero el número que imprime
+// decide si a esa cota se le puede poner una tolerancia, y hoy la respuesta es
+// que no.
+//
+// Medido sobre las imágenes reales, contando los hijos del contorno exterior:
+//
+//                        a la vista   >=12px²  >=40px²  >=250px²
+//   un tornillo solo              0       111      103        29
+//   tres tornillos                0        24       24         4
+//   un engranaje                 11         2        2         2
+//
+// Las dos direcciones fallan a la vez: cuenta 29 agujeros en un tornillo que
+// NO TIENE NINGUNO —son los valles de la rosca, que se cierran como regiones
+// dentro de la silueta— y encuentra 2 de los 11 que sí tiene un engranaje.
+//
+// Y no es cuestión de afinar el umbral. Se probó filtrar por FORMA, que sería
+// lo razonable —un taladro es redondo y un valle de rosca es una tira—: con
+// circularidad ≥ 0,75 los tornillos siguen dando 13, 15 y 11 agujeros
+// inexistentes mientras el engranaje se queda en 1. Ni el área ni la forma los
+// separan.
+//
+// La raíz es la misma que la de la otra discrepancia de la Región: la
+// herramienta REBINARIZA con su propio Otsu dentro del recuadro en vez de usar
+// la silueta que el pipeline ya calculó, y `pieceMaskWithHoles` —que sí existe
+// y sí recupera los agujeros de verdad— no entra en juego. Cambiar eso mueve
+// las medidas de todo el mundo, así que es una decisión de quien mantiene el
+// producto y no algo que arreglar de paso.
+TEST(NutProbe, WhatTheHoleCountActuallyCounts) {
+    if (ownImages().empty()) {
+        GTEST_SKIP() << "las imágenes del usuario no están en esta máquina";
+    }
+    struct Caso {
+        const char* file;
+        int aLaVista;
+    };
+    const Caso casos[] = {
+        {"engranaje-1.png", 11},  {"engranajes-1.jpg", 22},
+        {"tornillo-1.png", 0},    {"tornillo-2.png", 0},
+        {"tornillos-1.png", 0},   {"Producto_Tuerca_Liv_02.jpg", 1},
+    };
+    std::printf("  [agujeros] %-28s %10s %8s %8s %9s\n", "imagen", "a la vista", ">=12px2",
+                ">=40px2", ">=250px2");
+    for (const auto& caso : casos) {
+        const cv::Mat gray =
+            cv::imread((ownImages() / caso.file).string(), cv::IMREAD_GRAYSCALE);
+        if (gray.empty()) {
+            continue;
+        }
+        auto mask = pci::vision::segmentPiece(gray, {});
+        if (!mask.isOk()) {
+            continue;
+        }
+        std::vector<std::vector<cv::Point>> contours;
+        std::vector<cv::Vec4i> hierarchy;
+        cv::findContours(mask.value(), contours, hierarchy, cv::RETR_CCOMP,
+                         cv::CHAIN_APPROX_SIMPLE);
+        int outer = -1;
+        double biggest = 0.0;
+        for (std::size_t i = 0; i < contours.size(); ++i) {
+            if (hierarchy[i][3] >= 0) {
+                continue;
+            }
+            const double area = cv::contourArea(contours[i]);
+            if (area > biggest) {
+                biggest = area;
+                outer = static_cast<int>(i);
+            }
+        }
+        if (outer < 0) {
+            continue;
+        }
+        std::printf("  [agujeros] %-28s %10d", caso.file, caso.aLaVista);
+        for (double floorArea : {12.0, 40.0, 250.0}) {
+            int holes = 0;
+            for (int i = hierarchy[static_cast<std::size_t>(outer)][2]; i >= 0;
+                 i = hierarchy[static_cast<std::size_t>(i)][0]) {
+                if (cv::contourArea(contours[static_cast<std::size_t>(i)]) >= floorArea) {
+                    ++holes;
+                }
+            }
+            std::printf(" %8d", holes);
+        }
+        std::printf("\n");
     }
     SUCCEED();
 }
