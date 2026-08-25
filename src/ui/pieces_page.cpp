@@ -28,12 +28,18 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
     root->addWidget(intro);
 
     // El modo, primero: decide qué significa todo lo que hay debajo.
-    automatic_ = new QRadioButton(tr("Automática: cuenta las que haya"), this);
+    // «CONTADOR AUTOMÁTICO DE PIEZAS», con ese nombre y no «Automática».
+    //
+    // Petición de uso, y con razón: «automática» a secas no dice automática
+    // QUÉ. Puesto al lado del campo del número, el nombre tiene que decir por
+    // sí solo qué hace la casilla — que es contar.
+    automatic_ = new QRadioButton(tr("Contador automático de piezas"), this);
     automatic_->setToolTip(
-        tr("El programa dice cuántas piezas ve y no se queja del número.\n"
+        tr("El programa cuenta las que haya y NO se queja del número: mide\n"
+           "todas, y ninguna cantidad da NG por sí sola.\n\n"
            "Para cuando la cantidad cambia de una bandeja a otra."));
     root->addWidget(automatic_);
-    manual_ = new QRadioButton(tr("Manual: deben ser exactamente"), this);
+    manual_ = new QRadioButton(tr("Deben ser exactamente"), this);
     manual_->setToolTip(
         tr("Tú dices cuántas tiene que haber. Si aparecen más o menos, es NG\n"
            "diciendo cuántas esperaba y cuántas ve.\n\n"
@@ -61,8 +67,6 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
            "«seis tornillos en bandeja» es una propiedad del trabajo."));
     expected_->setValue(expectedPieces > 0 ? expectedPieces : 1);
     manualRow->addWidget(expected_);
-    manualRow->addStretch(1);
-    root->addLayout(manualRow);
 
     // El cero guardado sigue significando «no vigilar»: es el mismo dato de
     // siempre, solo que ahora se enseña como un modo en vez de como un valor
@@ -70,11 +74,21 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
     automatic_->setChecked(expectedPieces <= 0);
     manual_->setChecked(expectedPieces > 0);
 
+    // EL BOTÓN, PEGADO AL NÚMERO QUE CAMBIA.
+    //
+    // Estaba en su propia fila, debajo, y desde ahí no se ve a qué campo
+    // afecta. Va donde actúa.
     useDetected_ = new QPushButton(tr("Usar lo que se ve ahora"), this);
     useDetected_->setToolTip(
-        tr("Pone en el campo el número de piezas que la cámara está detectando\n"
-           "en este momento. Colócalas como deben ir y pulsa aquí."));
-    root->addWidget(useDetected_);
+        tr("Pone en el campo de al lado EL MISMO número que dice el aviso de\n"
+           "abajo: las piezas que la cámara está viendo ahora mismo.\n\n"
+           "Coloca las piezas como deben ir y pulsa aquí.\n\n"
+           "Si el número que ves no es el que hay de verdad —una sombra o un\n"
+           "reflejo contando como pieza— lo que hay que arreglar es la\n"
+           "detección, no este campo."));
+    manualRow->addWidget(useDetected_);
+    manualRow->addStretch(1);
+    root->addLayout(manualRow);
     connect(useDetected_, &QPushButton::clicked, this, &PiecesPage::useDetectedRequested);
 
     // VER TODAS LAS PIEZAS A LA VEZ.

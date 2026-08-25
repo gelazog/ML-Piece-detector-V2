@@ -6019,8 +6019,23 @@ void MainWindow::onConfigureClicked() {
         connect(pieces, &PiecesPage::showMosaicChangedLive, this,
                 &MainWindow::showMosaicPanel);
         connect(pieces, &PiecesPage::useDetectedRequested, this, [this, pieces] {
-            pieces->setDetectedCount(lastPieceCount_);
-            pieces->setExpectedPieces(lastPieceCount_);
+            // EL MISMO NÚMERO QUE DICE EL TEXTO, no otro.
+            //
+            // Aquí se ponía `lastPieceCount_` —las piezas USADAS— mientras el
+            // texto de al lado dice `lastPiecesSeen_` —las manchas VISTAS—. Con
+            // tres manchas y dos declaradas, el panel decía «se ven 3» y el
+            // botón ponía 2: dos números distintos para la misma pregunta, y el
+            // «3» desaparecía al pulsar.
+            //
+            // Y contradecía el propósito que el propio código tenía escrito:
+            // «tiene que poder SUBIR el número cuando de verdad hay más piezas
+            // de las declaradas». Con las usadas nunca podía subirlo, porque
+            // esas ya vienen recortadas a lo declarado.
+            //
+            // Si la tercera mancha es una sombra, lo que hay que arreglar es la
+            // detección, no el número — y para eso está el aviso de al lado.
+            pieces->setDetectedCount(lastPiecesSeen_);
+            pieces->setExpectedPieces(lastPiecesSeen_);
         });
     }
     if (auto* detection = dialog->detectionPage(); detection != nullptr) {

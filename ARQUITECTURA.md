@@ -3512,6 +3512,41 @@ mayores; no puede ser lo que **enciende** la medición.
 declaraba nada —o sea, corría en automático— y exigía que de tres barras se midiera
 una. Ahora declara el uno que su nombre dice.
 
+### «Dice que se ven 3 y tengo dos; cuando le doy, sigue saliendo 2»
+
+Queja de uso, y era un fallo de verdad: el panel de Piezas daba **dos números
+distintos para la misma pregunta**.
+
+- el aviso de abajo usaba las **manchas vistas** (`lastPiecesSeen_`) → «se ven 3»
+- el botón «usar lo que se ve» ponía las **usadas** (`lastPieceCount_`) → 2
+
+Y las usadas ya vienen recortadas a lo declarado, así que el botón **nunca podía
+subir el número** — que es literalmente el propósito que su propio comentario tenía
+escrito: «tiene que poder subir el número cuando de verdad hay más piezas de las
+declaradas». Encima, al pulsar, el aviso se reescribía con el número nuevo y el «3»
+desaparecía.
+
+Si la tercera mancha es una sombra, lo que hay que arreglar es la detección — y para
+eso está el aviso de al lado, que dice cuántas ve.
+
+**La prueba costó dos vueltas, y las dos por lo mismo.**
+
+1. La primera construía la `PiecesPage` suelta y **simulaba** lo que hace la ventana.
+   Mutando el arreglo seguía en verde: no protegía nada. Es la misma trampa que ya
+   apareció en `applyPiecesPage` — un camino de prueba que funciona mientras el real
+   no.
+2. La segunda sí pasaba por la ventana, pero declaraba **una** pieza. Con una
+   declarada el motor **deja de enumerar a propósito**, así que «vistas» y «usadas»
+   valen lo mismo y la mutación seguía siendo invisible.
+
+La que funciona reproduce el caso del operador tal cual: **tres manchas y dos
+declaradas**. Es el único escenario donde los dos números se separan.
+
+**Y un cambio de nombre pedido:** «Automática» pasó a **«Contador automático de
+piezas»**, y el botón «usar lo que se ve ahora» se movió a la misma fila que el campo
+que cambia. «Automática» a secas no dice automática QUÉ — y puesto al lado de un
+campo numérico se lee como «el número es automático», que es otra cosa.
+
 ### «Si las piezas están muy pegadas, las detecta como una sola»
 
 Queja literal, y exacta: `RETR_EXTERNAL` devuelve una sola mancha cuando dos piezas

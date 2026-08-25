@@ -5124,8 +5124,17 @@ TEST(PieceCountMode, ChangingTheNumberIsAnnouncedImmediately) {
     for (auto* box : page.findChildren<QSpinBox*>()) {
         field = box;
     }
+    // El que NO es el contador automático. Se busca así y no por su texto
+    // porque el texto es lo que se cambia cuando alguien mejora el nombre — y
+    // esta prueba se rompió justo por eso: buscaba la palabra «Manual», que
+    // desapareció al renombrar la pareja a «Contador automático de piezas» /
+    // «Deben ser exactamente».
+    //
+    // Lo que esta prueba comprueba es el AVISO EN VIVO, no cómo se llaman los
+    // controles; atarla al rótulo la hacía frágil ante un cambio que no tiene
+    // nada que ver con lo que vigila.
     for (auto* radio : page.findChildren<QRadioButton*>()) {
-        if (radio->text().contains(QStringLiteral("Manual"))) {
+        if (!radio->text().contains(QStringLiteral("automático"), Qt::CaseInsensitive)) {
             manual = radio;
         }
     }
@@ -5146,10 +5155,14 @@ TEST(PieceCountMode, ChangingTheNumberIsAnnouncedImmediately) {
         << "se avisa de un número distinto del que puso el operador";
     std::printf("  [contar] al poner 4 se anuncia %d\n", announced.back());
 
-    // Y volver a automático se anuncia como 0, que es como se guarda.
+    // Y volver al contador automático se anuncia como 0, que es como se guarda.
+    // Se busca por «automático» y no por «Automática»: el rótulo cambió a
+    // «Contador automático de piezas» y esta línea se quedó atrás en silencio —
+    // el `for` no encontraba nada, no pulsaba nada, y la aserción de después
+    // fallaba lejos de la causa.
     announced.clear();
     for (auto* radio : page.findChildren<QRadioButton*>()) {
-        if (radio->text().contains(QStringLiteral("Automática"))) {
+        if (radio->text().contains(QStringLiteral("automátic"), Qt::CaseInsensitive)) {
             radio->setChecked(true);
         }
     }
