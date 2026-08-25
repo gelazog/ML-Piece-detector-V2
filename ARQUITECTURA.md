@@ -3512,6 +3512,43 @@ mayores; no puede ser lo que **enciende** la medición.
 declaraba nada —o sea, corría en automático— y exigía que de tres barras se midiera
 una. Ahora declara el uno que su nombre dice.
 
+### Dos pestañas al medir: lo que mide el programa y lo que mides tú
+
+Petición de uso: «al momento de darle al botón de medir debería de haber dos
+pestañas: una donde se vean todas las medidas automáticamente, y otra donde se pueda
+elegir qué herramientas se utilizan, cuáles no».
+
+**El hueco era real.** Hasta ahora el botón de medir enseñaba hechos del contorno y
+propuestas automáticas, pero **ninguna de las cotas que el operador había dibujado**.
+Para verlas había que inspeccionar — que además guarda en el historial, o sea dos
+decisiones distintas metidas en un botón.
+
+La separación en pestañas tiene sentido más allá de la petición: lo de una las mide el
+programa solo y no se puede tocar; lo de la otra son cotas con tolerancia y veredicto.
+Mezclarlas invitaría a buscarle banda a un perímetro, que es el mismo motivo por el
+que la primera pestaña ya separaba hechos de cotas.
+
+**El interruptor no inventó nada.** `ToolConfig::enabled` ya existía, ya se respeta al
+ejecutar y ya se guarda en la base y en las plantillas — pero **no tenía ningún
+control que lo cambiara**, así que valía `true` siempre. Aquí se le pone el
+interruptor que le faltaba. Y `save` ya hacía UPDATE con la columna dentro, así que
+tampoco hizo falta un método nuevo en el repositorio.
+
+Tres decisiones que se sostienen solas:
+
+- **Las cotas apagadas se miden igual** para poder enseñar qué darían. Es justo lo que
+  hace falta para decidir si volver a encenderlas; una fila en blanco no ayuda a nada.
+- **Los interruptores se guardan aunque se cierre sin «vigilar».** Apagar una cota y
+  vigilar unas propuestas son decisiones independientes: atar la primera a que se
+  pulse el botón de la segunda perdería el cambio sin decir nada.
+- **La pestaña vacía se explica** en vez de quedarse en blanco. Una pestaña vacía deja
+  al operador pensando que algo falló.
+
+**Y el veredicto dice de dónde sale**, que era la tercera parte de la petición: «si no
+cumple, simplemente diga que no cumple en su descripción de medida». En vez de un
+«NG» pelado que obliga a buscar la tolerancia en otra pantalla, la fila dice
+**«NO CUMPLE — mide 140,00 y se admite entre 90,00 y 110,00»**.
+
 ### Elegir qué clases de cota propone la medición automática
 
 Petición de uso: «que el usuario elija qué herramientas se van a usar y cuáles no

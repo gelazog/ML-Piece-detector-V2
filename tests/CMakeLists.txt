@@ -90,6 +90,7 @@ add_executable(pci_gui_tests
   test_selfexplaining.cpp
   test_brush_persistence.cpp
   test_two_pieces_ui.cpp
+  test_report_tabs.cpp
   test_mosaic_numbering.cpp
   test_configure_dialog.cpp
   test_configure_roundtrip.cpp

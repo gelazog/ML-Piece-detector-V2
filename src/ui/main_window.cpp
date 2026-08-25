@@ -2486,8 +2486,89 @@ void MainWindow::onMeasurePieceClicked() {
         return;
     }
 
-    PieceReportDialog dialog(report, currentSourceLabel(), repos_.settings, this);
-    if (dialog.exec() != QDialog::Accepted) {
+    // LAS HERRAMIENTAS DEL OPERADOR, medidas sobre ESTA misma pieza.
+    //
+    // Hasta ahora este botón no las enseñaba: dibujabas cinco cotas, pulsabas
+    // «Medir pieza» y veías hechos del contorno y propuestas automáticas, pero
+    // ninguna de las tuyas. Para verlas había que inspeccionar — que además
+    // guarda en el historial, o sea dos decisiones distintas en un botón.
+    //
+    // Se miden con el MISMO fixture con el que se acaba de medir la pieza, para
+    // que las dos pestañas hablen de la misma imagen y del mismo instante.
+    std::vector<inspection::ToolConfig> configs;
+    configs.reserve(liveTools_.size());
+    for (const auto& tool : liveTools_) {
+        auto config = tool.config;
+        config.geometryJson = inspection::toJson(tool.geometry);
+        configs.push_back(std::move(config));
+    }
+    std::vector<PieceReportDialog::DrawnTool> drawn;
+    if (!configs.empty()) {
+        const vision::BoardFrame board = vision::resolveBoardFrame(
+            boardConfig_, analysis.value().fixture, true, image.size());
+        // TODAS, también las desmarcadas: la pestaña tiene que poder enseñar
+        // qué mediría una cota apagada, que es justo lo que hace falta para
+        // decidir si volver a encenderla.
+        auto all = configs;
+        for (auto& config : all) {
+            config.enabled = true;
+        }
+        const auto results =
+            inspection::runTools(image, analysis.value().fixture, all,
+                                 calibration_.mmPerPixel, currentUnit(), cv::Mat(), &board);
+        drawn.reserve(results.size());
+        for (const auto& result : results) {
+            for (const auto& config : configs) {
+                if (config.id != result.toolId || config.name != result.name) {
+                    continue;
+                }
+                PieceReportDialog::DrawnTool entry;
+                entry.config = config;
+                entry.result = result;
+                entry.text = inspection::formatMeasure(result, calibration_.mmPerPixel,
+                                                       currentUnit(), true);
+                drawn.push_back(std::move(entry));
+                break;
+            }
+        }
+    }
+
+    PieceReportDialog dialog(report, currentSourceLabel(), repos_.settings, this,
+                             std::move(drawn));
+    const int answer = dialog.exec();
+    // LOS INTERRUPTORES SE GUARDAN AUNQUE SE CIERRE SIN «vigilar».
+    //
+    // Apagar una cota y vigilar unas propuestas son decisiones independientes:
+    // atar la primera a que se pulse el botón de la segunda perdería el cambio
+    // que el operador acaba de hacer, sin decirle nada.
+    if (const auto changed = dialog.toolsWithChangedState(); !changed.empty()) {
+        int saved = 0;
+        for (const auto& config : changed) {
+            for (auto& tool : liveTools_) {
+                if (tool.config.id == config.id && tool.config.name == config.name) {
+                    tool.config.enabled = config.enabled;
+                    ++saved;
+                }
+            }
+            // `save` hace UPDATE cuando la herramienta ya tiene id, y la
+            // columna `enabled` va dentro: no hace falta un método aparte.
+            if (repos_.tools != nullptr && config.id >= 0 && selectedPieceId() >= 0) {
+                if (auto ok = repos_.tools->save(selectedPieceId(), config,
+                                                 activeTemplate());
+                    !ok.isOk()) {
+                    core::logWarning("No se pudo guardar el interruptor de la "
+                                     "herramienta: " + ok.error().message);
+                }
+            }
+        }
+        video_->update();
+        statusBar()->showMessage(
+            tr("%1 cota(s) cambiaron de estado: las desmarcadas dejan de medirse y de "
+               "pesar en el veredicto.")
+                .arg(saved));
+        reanalyseCurrentFrame();
+    }
+    if (answer != QDialog::Accepted) {
         return;
     }
     const auto watch = dialog.toWatch();
