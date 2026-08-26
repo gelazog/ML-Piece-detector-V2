@@ -90,8 +90,8 @@ Todo esto salió de una auditoría anterior y está verificado.
 
 Sale de una auditoría con el mapa de contenidos medido.
 
-- [ ] **D1 · Arreglar las contradicciones antes de mover nada.** Son ediciones
-  de una línea:
+- [x] **D1 · Arreglar las contradicciones antes de mover nada.** Hecho. Las
+  cuatro, y las cuatro verificadas contra el código antes de tocarlas:
   - `README.md:248` dice que la separación de piezas pegadas aguanta «hasta un
     13 % de solape. Más allá se rinde», y `ARQUITECTURA.md:4266` dice «se rinde
     a partir del 19 %». **Verificado en `tests/test_split_touching.cpp:164-166`:
@@ -100,9 +100,11 @@ Sale de una auditoría con el mapa de contenidos medido.
     afirma más de lo que se probó.
   - `ARQUITECTURA.md:4977` abre el capítulo de mejoras con «ninguna de estas
     cosas está hecha» y en su propia lista hay tres marcadas como hechas.
-  - Informado (falta verificar): el capítulo de mejoras daría por pendientes el
-    registro de otro acabado, el mapa de calor de diferencia y la exportación
-    del histórico, y los tres estarían hechos.
+  - El mapa de calor de diferencia y la exportación del histórico seguían
+    listados como pendientes. **Verificado que existen y están conectados**:
+    `vision/difference_map.cpp` lo usa `ui/inspection_result_dialog.cpp`, y
+    `domain/shift_report.cpp` lo usa `ui/history_dialog.cpp`, los dos con
+    prueba. Marcados como hechos.
 - [ ] **D2 · Sacar la bitácora de defectos de ARQUITECTURA.** Informado:
   `ARQUITECTURA.md:3751-4940` serían **1 190 líneas** de narración de defectos
   encontrados y arreglados, viviendo dentro de un capítulo titulado
@@ -114,11 +116,20 @@ Sale de una auditoría con el mapa de contenidos medido.
 - [ ] **D4 · Quitar del README las secciones «Fase 1…6» (214 líneas).** Es
   documentación de ingeniería dentro de un manual de uso, y repite
   ARQUITECTURA casi entera.
-- [ ] **D5 · Antes de mover nada, ampliar `tests/test_readme_paths.cpp`.** Es la
-  **única** prueba que abre un `.md` de verdad. Vigila 21 rutas de menú del
-  README, pero su red es `EXPECT_GT(checked, 5)`: si el reparto deja seis rutas,
-  **pasa en verde habiendo perdido quince**. Hay que hacer que recorra todos los
-  documentos y subir el tope. Este paso va **antes** del reparto, no después.
+- [x] **D5 · Ampliar `tests/test_readme_paths.cpp` antes de mover nada.** Hecho,
+  y encontró cosas. Ahora lee **toda** la documentación en vez de solo el README,
+  y el `EXPECT_GT(checked, 5)` —que dejaba perder quince rutas de veintiuna sin
+  fallar— es un trinquete en 29.
+
+  Al ampliarla saltaron **cuatro rutas de ARQUITECTURA que nunca había mirado
+  nadie**. Tres eran falsos positivos míos: una tabla que enseña rutas VIEJAS
+  frente a las nuevas, y estaban en cursiva como si fueran instrucciones. Ahora
+  van entre comillas de código, que es lo que son — cadenas del pasado, no
+  sitios a los que ir. La cuarta era real y la guardia no podía verla:
+  `Configurar ▸ Rendimiento` es una **pestaña**, no una acción de menú, así que
+  ahora la guardia también abre el diálogo de Configurar y recoge sus pestañas.
+
+  Resultado: **de 21 rutas vigiladas a 29, y cero rotas.**
 
 ## E. Límites medidos que siguen ahí
 

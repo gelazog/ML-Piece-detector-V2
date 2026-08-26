@@ -35,23 +35,56 @@
 #include <fstream>
 #include <sstream>
 
+#include <QTabWidget>
+
+#include "ui/configure_dialog.h"
 #include "ui/main_window.h"
 
 namespace {
 
-QString readmeText() {
-    for (const auto* candidate : {"README.md", "../README.md", "../../README.md",
-                                  "../../../README.md"}) {
+// TODA la documentación, no solo el README.
+//
+// Antes esto abría únicamente `README.md`, y las rutas de menú que vivían en
+// `ARQUITECTURA.md` no las comprobaba nadie. Son catorce separadores «▸» que
+// llevaban ahí sin vigilancia.
+//
+// Y hay una segunda razón, más urgente: la documentación está a punto de
+// repartirse en varios ficheros. Con la versión anterior, una ruta que se
+// mudara a un documento nuevo dejaba de comprobarse **en silencio** — el
+// recuento bajaba y `EXPECT_GT(checked, 5)` seguía pasando en verde. Perder
+// cobertura sin enterarse es exactamente el fallo que esta prueba narra en su
+// propia cabecera.
+QString allDocumentation() {
+    // Se ancla en un fichero conocido para dar con la raíz del proyecto. Buscar
+    // «la carpeta que tenga .md» no vale: el árbol de compilación crea
+    // directorios vacíos con los mismos nombres, y este proyecto ya ha
+    // tropezado dos veces con eso.
+    std::filesystem::path root;
+    for (const auto* candidate : {".", "..", "../..", "../../.."}) {
         std::error_code ec;
-        if (!std::filesystem::exists(candidate, ec)) {
+        if (std::filesystem::exists(std::filesystem::path(candidate) / "CONTEXTO.md", ec)) {
+            root = candidate;
+            break;
+        }
+    }
+    if (root.empty()) {
+        return {};
+    }
+
+    QString joined;
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
+        if (entry.path().extension() != ".md") {
             continue;
         }
-        std::ifstream file(candidate, std::ios::binary);
+        std::ifstream file(entry.path(), std::ios::binary);
         std::ostringstream all;
         all << file.rdbuf();
-        return QString::fromUtf8(all.str().c_str());
+        // Un salto entre ficheros, para que la última ruta de uno y la primera
+        // del siguiente no se peguen en una sola.
+        joined += QString::fromUtf8(all.str().c_str()) + QStringLiteral("\n\n");
     }
-    return {};
+    return joined;
 }
 
 // Todo lo que el operador puede leer en un menú: títulos de menú, títulos de
@@ -87,6 +120,25 @@ QSet<QString> everythingReachable(const pci::ui::MainWindow& window) {
     for (auto* button : window.findChildren<QAbstractButton*>()) {
         names.insert(clean(button->text()));
     }
+    // Y LAS PESTAÑAS DEL DIALOGO DE CONFIGURAR.
+    //
+    // El manual escribe rutas como «Configurar ▸ Rendimiento», y esa segunda
+    // mitad no es una accion de menu: es una pestaña dentro del dialogo. Sin
+    // recogerlas, la ruta salia rota siendo correcta — y peor todavia, nadie lo
+    // sabia, porque hasta ahora esta guardia solo leia el README y esa ruta vive
+    // en ARQUITECTURA.
+    pci::ui::ConfigureDialog configure{pci::ui::ConfigureDialog::Inputs{}};
+    for (auto* tabs : configure.findChildren<QTabWidget*>()) {
+        for (int i = 0; i < tabs->count(); ++i) {
+            names.insert(clean(tabs->tabText(i)));
+        }
+    }
+    for (auto* action : configure.findChildren<QAction*>()) {
+        if (!action->isSeparator()) {
+            names.insert(clean(action->text()));
+        }
+    }
+
     names.remove(QString());
     return names;
 }
@@ -135,7 +187,7 @@ bool exists(const QSet<QString>& names, const QString& wanted) {
 }  // namespace
 
 TEST(ReadmePaths, EveryMenuPathInTheManualExistsInTheApplication) {
-    const QString readme = readmeText();
+    const QString readme = allDocumentation();
     if (readme.isEmpty()) {
         GTEST_SKIP() << "no se encontró README.md junto al proyecto";
     }
@@ -185,8 +237,21 @@ TEST(ReadmePaths, EveryMenuPathInTheManualExistsInTheApplication) {
         std::printf("  [manual]    %s\n", one.toStdString().c_str());
     }
 
-    EXPECT_GT(checked, 5) << "no se encontró ninguna ruta en el manual: o cambió el "
-                             "formato, o la expresión que las busca dejó de valer";
+    // UN TRINQUETE, NO UN SUELO CUALQUIERA.
+    //
+    // El «> 5» de antes no protegía de nada: con veintitantas rutas escritas,
+    // quedarse en seis significaba haber perdido quince y aprobar igual. Se
+    // apunta cuántas hay HOY y se prohíbe bajar. Si una ruta se muda a un
+    // documento nuevo que esta prueba no lee, el recuento cae y salta aquí, que
+    // es justo lo que hace falta mientras se reparte la documentación.
+    //
+    // Cuando se añadan rutas nuevas, este número sube. Es una línea de
+    // mantenimiento a cambio de que perder cobertura sea imposible en silencio.
+    constexpr int kPathsWrittenToday = 29;
+    EXPECT_GE(checked, kPathsWrittenToday)
+        << "se comprueban menos rutas de menú que antes. O se ha movido documentación a "
+           "un fichero que esta prueba no lee, o cambió el formato en que se escriben. "
+           "Las dos cosas dejan al manual mandando al operador a sitios sin vigilar.";
     EXPECT_TRUE(broken.isEmpty())
         << "el manual manda al operador a sitios que no existen. Con una ruta rota, "
            "quien la sigue concluye que el programa está roto.";

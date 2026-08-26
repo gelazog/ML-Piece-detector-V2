@@ -244,10 +244,14 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    a dos piezas. Enciéndela si tus piezas se tocan; déjala apagada si son
    alargadas con cabeza. Cuesta entre 3 y 16 ms por análisis.
 
-   Y tiene un alcance medido: con piezas de 260 px separa hasta un **13 % de
-   solape** entre ellas. Más allá se rinde devolviendo **una** pieza — que es lo
-   correcto: con media pieza dentro de otra, el cuello es tan ancho como las
-   propias piezas y no hay forma de saber dónde acaba una.
+   Y tiene un alcance medido: con piezas de 260 px **aguanta un 13 % de solape**
+   entre ellas y **se rinde con un 19 %**, devolviendo **una** pieza. Entre esos
+   dos valores no se ha probado, así que no se sabe dónde está exactamente el
+   límite — solo que está ahí en medio.
+
+   Rendirse es lo correcto: con media pieza dentro de otra, el cuello es tan
+   ancho como las propias piezas y no hay forma de saber dónde acaba una. Lo que
+   importa es que devuelva **una** y no invente tres.
 
    En la pestaña *Detección* están además el **área mínima y máxima de pieza**
    (en % de la imagen): deciden qué se acepta como pieza y antes estaban fijas

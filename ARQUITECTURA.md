@@ -405,12 +405,19 @@ El mismo repaso, aplicado al README, encontro **seis referencias rotas de una
 vez**. El menu «Camara» se renombro a «Fuente» y sus entradas de medida se
 movieron a «Medida»; el manual se quedo con los nombres viejos:
 
+Las rutas viejas van entre comillas de codigo y no en cursiva, y no es
+cosmetica: son CADENAS DE TEXTO del pasado, no sitios a los que ir. La guardia
+de rutas (`tests/test_readme_paths.cpp`) lee toda la documentacion buscando
+rutas en cursiva y comprobandolas contra los menus reales — con estas en
+cursiva, las cuatro salian como rotas, que es correcto y a la vez inutil: estan
+rotas a proposito, esa es la noticia.
+
 | el manual decia | donde esta de verdad |
 |---|---|
-| *Camara ▸ Configurar…* | Fuente ▸ Configurar… |
-| *Camara ▸ Calibrar escala* | Medida ▸ Calibrar escala (mm)… |
-| *Camara ▸ Escala por marcador* | Medida ▸ Escala por marcador ArUco (en vivo) |
-| *Ver ▸ Unidad* | Medida ▸ Unidad de medida |
+| `Camara ▸ Configurar…` | *Fuente ▸ Configurar…* |
+| `Camara ▸ Calibrar escala` | *Medida ▸ Calibrar escala (mm)…* |
+| `Camara ▸ Escala por marcador` | *Medida ▸ Escala por marcador ArUco (en vivo)* |
+| `Ver ▸ Unidad` | *Medida ▸ Unidad de medida* |
 
 Una cifra obsoleta en un documento tecnico despista a quien programa. Una ruta
 de menu obsoleta en el manual **manda a quien esta midiendo piezas a buscar algo
@@ -4263,7 +4270,8 @@ solapan». Con discos de 260 px de diámetro:
 |---|---|---|---|---|---|
 | piezas | 2 ✓ | 2 ✓ | 2 ✓ | 1 | 1 |
 
-Se rinde a partir del 19 % del diámetro, y **rendirse ahí es lo correcto**: con medio
+Aguanta el 13 % y se rinde con el 19 %; **entre esos dos valores no se ha
+medido**, así que el límite exacto no se conoce. Y **rendirse ahí es lo correcto**: con medio
 disco dentro del otro el cuello es tan ancho como las propias piezas y ninguna
 técnica basada en la forma puede saber dónde acaba una. Lo que importa es que se
 rinda devolviendo **una** pieza y no inventando tres.
@@ -4974,8 +4982,14 @@ métodos que no usa:
 
 ## 13. Cómo mejorarlo
 
-Ordenado por relación entre lo que aporta y lo que cuesta. Ninguna de estas
-cosas está hecha; son propuestas con su contrapartida dicha en voz alta.
+Ordenado por relación entre lo que aporta y lo que cuesta. Son propuestas con
+su contrapartida dicha en voz alta, y **las que se han ido haciendo quedan
+tachadas y marcadas**, con lo que se midió al hacerlas.
+
+Este párrafo decía «ninguna de estas cosas está hecha» y era falso en su propia
+lista: tres de los ítems de abajo ya estaban tachados cuando se escribió. Lo
+detectó la auditoría de documentación, y es el tipo de frase que envejece sola —
+cierta el día que se escribe y mentira a la semana siguiente.
 
 ### Mejoras de precisión
 
@@ -5016,8 +5030,11 @@ cosas está hecha; son propuestas con su contrapartida dicha en voz alta.
    Falta la interfaz para registrar un acabado nuevo: hoy se guarda con
    `saveReference(pieza, referencia, "nombre")` y el motor ya juzga contra
    todas.
-7. **Mapa de calor de diferencia** contra el recorte de referencia: es barato
-   (resta y suavizado) y ayuda muchísimo a que el operador entienda un NG.
+7. ~~**Mapa de calor de diferencia** contra el recorte de referencia~~ —
+   **hecho**. Vive en `vision/difference_map.cpp` y lo consume el diálogo de
+   resultado (`ui/inspection_result_dialog.cpp`), con su prueba en
+   `tests/test_difference_map.cpp`. Seguía listado como pendiente: lo destapó
+   la auditoría de documentación.
 8. **Curva ROC con piezas malas reales**: hoy el umbral es estadístico. Con un
    puñado de piezas defectuosas etiquetadas se podría elegir el umbral que
    maximiza el acierto en lugar de asumir 3σ.
@@ -5028,7 +5045,10 @@ cosas está hecha; son propuestas con su contrapartida dicha en voz alta.
    continua por temporizador, para líneas con cadencia fija.
 10. **Salida a PLC / señal digital** del veredicto: sin eso, la app informa pero
     no actúa sobre la línea.
-11. **Exportar el historial a CSV/Excel** y un informe por turno.
+11. ~~**Exportar el historial a CSV/Excel** y un informe por turno~~ —
+    **hecho**. El informe de turno está en `domain/shift_report.cpp` y la
+    exportación en `ui/history_dialog.cpp`, con `tests/test_shift_report.cpp`.
+    También seguía listado como pendiente.
 12. **Multi-cámara** (varias vistas de la misma pieza) con veredicto combinado.
 
 ### Mejoras técnicas
