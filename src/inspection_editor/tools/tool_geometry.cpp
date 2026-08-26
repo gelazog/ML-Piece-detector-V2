@@ -465,7 +465,7 @@ const char* operandKindLabel(OperandKind kind) {
 
 const char* toolTypeLabel(ToolType type) {
     switch (type) {
-        case ToolType::Caliper: return "Caliper";
+        case ToolType::Caliper: return "Calibre";
         case ToolType::Circle: return "Círculo";
         case ToolType::PointToLine: return "Punto-Línea";
         case ToolType::EdgeFlaw: return "Borde liso";
@@ -504,7 +504,7 @@ const char* toolTypeLabel(ToolType type) {
 const char* toolTypeDescription(ToolType type) {
     switch (type) {
         case ToolType::Caliper:
-            return "Caliper — mide la distancia entre dos bordes (px).\n"
+            return "Calibre — mide la distancia entre dos bordes (px).\n"
                    "Dibuja una línea que CRUCE perpendicularmente los dos bordes a medir\n"
                    "(p. ej. de lado a lado del ancho de un brazo o una ranura).";
         case ToolType::Circle:

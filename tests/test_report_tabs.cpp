@@ -85,6 +85,23 @@ QString visibleTextWith(const ui::PieceReportDialog& dialog, const QString& need
     return found;
 }
 
+// La fila de una herramienta, la busque donde la busque.
+//
+// Antes esto era `tree->topLevelItem(0)`, y al agrupar por clase el primer nivel
+// pasó a ser la CLASE: tres pruebas se rompieron sin que nada de lo que
+// afirmaban hubiera dejado de ser cierto. Buscar por nombre las ata a la
+// promesa —«esta cota se abre en lo que su figura mide»— y no a en qué renglón
+// acabó dibujada.
+QTreeWidgetItem* rowNamed(QTreeWidget* tree, const QString& name) {
+    QTreeWidgetItemIterator it(tree);
+    for (; *it != nullptr; ++it) {
+        if ((*it)->text(1) == name) {
+            return *it;
+        }
+    }
+    return nullptr;
+}
+
 QTabWidget* tabsOf(const ui::PieceReportDialog& dialog) {
     const auto found = dialog.findChildren<QTabWidget*>();
     return found.isEmpty() ? nullptr : found.first();
@@ -281,10 +298,8 @@ TEST(ReportTabs, AToolOpensIntoEverythingItsFigureCanMeasure) {
     auto trees = dialog.findChildren<QTreeWidget*>();
     ASSERT_FALSE(trees.isEmpty()) << "la pestaña de herramientas no tiene dos niveles";
     QTreeWidget* tree = trees.first();
-    ASSERT_EQ(tree->topLevelItemCount(), 1);
-
-    QTreeWidgetItem* tool = tree->topLevelItem(0);
-    EXPECT_EQ(tool->text(1), QStringLiteral("Zona del taladro"));
+    QTreeWidgetItem* tool = rowNamed(tree, QStringLiteral("Zona del taladro"));
+    ASSERT_NE(tool, nullptr) << "no aparece la herramienta en la pestaña";
     ASSERT_EQ(tool->childCount(), 4)
         << "la herramienta no se abre en todo lo que su figura mide";
 
@@ -314,7 +329,8 @@ TEST(ReportTabs, MarkingASiblingMeasureAsksForItWithoutTouchingTheTool) {
     ui::PieceReportDialog dialog(plainReport(), QStringLiteral("una imagen"), nullptr,
                                  nullptr, {regionThatAlsoMeasures()});
     auto* tree = dialog.findChildren<QTreeWidget*>().first();
-    QTreeWidgetItem* tool = tree->topLevelItem(0);
+    QTreeWidgetItem* tool = rowNamed(tree, QStringLiteral("Zona del taladro"));
+    ASSERT_NE(tool, nullptr);
 
     EXPECT_TRUE(dialog.measuresToAdd().empty()) << "pide cotas que nadie marcó";
 
@@ -344,7 +360,8 @@ TEST(ReportTabs, AToolWithASingleMeasureDoesNotPretendToHaveMore) {
     ui::PieceReportDialog dialog(plainReport(), QStringLiteral("una imagen"), nullptr,
                                  nullptr, {toolThat("ancho", true, true)});
     auto* tree = dialog.findChildren<QTreeWidget*>().first();
-    ASSERT_EQ(tree->topLevelItemCount(), 1);
-    EXPECT_EQ(tree->topLevelItem(0)->childCount(), 0);
-    EXPECT_FALSE(tree->topLevelItem(0)->isExpanded());
+    QTreeWidgetItem* tool = rowNamed(tree, QStringLiteral("ancho"));
+    ASSERT_NE(tool, nullptr);
+    EXPECT_EQ(tool->childCount(), 0);
+    EXPECT_FALSE(tool->isExpanded());
 }

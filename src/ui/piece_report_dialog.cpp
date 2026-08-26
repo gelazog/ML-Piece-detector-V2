@@ -1,4 +1,6 @@
 #include "ui/piece_report_dialog.h"
+#include "inspection_editor/tools/tool_geometry.h"
+#include <algorithm>
 
 #include <QClipboard>
 #include <QFileDialog>
@@ -206,8 +208,8 @@ QWidget* PieceReportDialog::buildToolsTab() {
     if (drawn_.empty()) {
         auto* empty = new QLabel(
             tr("No hay ninguna herramienta dibujada sobre esta pieza.\n\n"
-               "Las cotas de la otra pestaña las mide el programa solo. Para vigilar\n"
-               "una en cada inspección, dibújala sobre la pieza o usa el botón\n"
+               "Las cotas de la otra pestana las mide el programa solo. Para vigilar\n"
+               "una en cada inspeccion, dibujala sobre la pieza o usa el boton\n"
                "«Vigilar estas cotas»."),
             page);
         empty->setWordWrap(true);
@@ -218,9 +220,9 @@ QWidget* PieceReportDialog::buildToolsTab() {
     }
 
     auto* intro = new QLabel(
-        tr("Cada herramienta se abre en todo lo que su figura puede medir. Desmarca\n"
-           "arriba la cota que no quieras que cuente; marca abajo cualquier otra\n"
-           "medida de la misma figura para vigilarla también, sin dibujar nada."),
+        tr("Tus cotas, agrupadas por la clase de herramienta que las mide. Abre una\n"
+           "clase para ver todas las veces que la has usado, y abre un uso para ver\n"
+           "todo lo que esa misma figura puede medir."),
         page);
     intro->setWordWrap(true);
     layout->addWidget(intro);
@@ -236,101 +238,166 @@ QWidget* PieceReportDialog::buildToolsTab() {
     const QBrush black(QColor(20, 20, 20));
     const QBrush red(QColor(198, 40, 40));
 
-    for (std::size_t index = 0; index < drawn_.size(); ++index) {
-        const DrawnTool& tool = drawn_[index];
-
-        // NIVEL 1: LA HERRAMIENTA. Lo que mide hoy y si cuenta.
-        auto* parent = new QTreeWidgetItem(tree);
-        parent->setText(1, QString::fromStdString(tool.config.name));
-        parent->setText(2, QString::fromStdString(tool.text));
-
-        auto* box = new QCheckBox(tree);
-        box->setChecked(tool.config.enabled);
-        box->setToolTip(tr("Si lo desmarcas, esta cota deja de medirse y deja de\n"
-                           "pesar en el veredicto. La herramienta NO se borra:\n"
-                           "vuelve en cuanto la marques."));
-        tree->setItemWidget(parent, 0, box);
-        toolSwitches_.push_back(box);
-        switchesAtStart_.push_back(tool.config.enabled);
-
-        // EL VEREDICTO, Y DE DÓNDE SALE.
-        //
-        // Petición de uso: «si no cumple, simplemente diga que no cumple en su
-        // descripción de medida, o de dónde sale». Un «NG» a secas obliga a ir
-        // a buscar la tolerancia en otra pantalla para saber por qué.
-        QString verdict;
-        if (!tool.config.enabled) {
-            verdict = tr("No cuenta: la has desmarcado.");
-        } else if (!tool.result.ok && !tool.result.detail.empty()) {
-            verdict = tr("NO CUMPLE — %1").arg(QString::fromStdString(tool.result.detail));
-        } else if (!tool.result.ok) {
-            verdict = tr("NO CUMPLE — mide %1 y se admite entre %2 y %3")
-                          .arg(tool.result.measured, 0, 'f', 2)
-                          .arg(tool.config.toleranceMin, 0, 'f', 2)
-                          .arg(tool.config.toleranceMax, 0, 'f', 2);
-        } else {
-            verdict = tr("Cumple: entre %1 y %2")
-                          .arg(tool.config.toleranceMin, 0, 'f', 2)
-                          .arg(tool.config.toleranceMax, 0, 'f', 2);
+    // NIVEL 1: LA CLASE DE HERRAMIENTA.
+    //
+    // Peticion de uso: «que las separases por la herramienta en cuestion que se
+    // esta usando, y luego que se desglose todas las veces que se uso esa
+    // herramienta».
+    //
+    // Tiene sentido mas alla de la peticion: doce cotas seguidas con nombres que
+    // genera el proponedor —«Lado 1», «Lado 2», «Radio 3»— se leen como una
+    // lista plana donde no se ve QUE clase de medida domina la pieza. Agrupadas,
+    // «Calibre (7)» dice de un vistazo que la pieza se esta midiendo a
+    // distancias y a casi nada mas.
+    //
+    // El orden de las clases es el de la PRIMERA aparicion, no alfabetico: asi
+    // la pestana se parece al orden en que el operador fue dibujando, que es el
+    // que tiene en la cabeza.
+    std::vector<inspection::ToolType> orderOfTypes;
+    for (const auto& tool : drawn_) {
+        if (std::find(orderOfTypes.begin(), orderOfTypes.end(), tool.config.type) ==
+            orderOfTypes.end()) {
+            orderOfTypes.push_back(tool.config.type);
         }
-        parent->setText(3, verdict);
-        if (tool.config.enabled && !tool.result.ok) {
-            parent->setForeground(3, red);
-        } else if (!tool.config.enabled) {
-            for (int column = 1; column < 4; ++column) {
-                parent->setForeground(column, grey);
-            }
-        }
+    }
 
-        // NIVEL 2: TODAS LAS MEDIDAS DE ESA MISMA FIGURA.
-        //
-        // La que ya mide sale marcada y sin interruptor propio: SU interruptor
-        // es el de arriba. Darle uno segundo pondría dos casillas para el mismo
-        // hecho, y una de las dos tendría que mentir.
-        for (const auto& other : tool.alsoMeasures) {
-            auto* child = new QTreeWidgetItem(parent);
-            child->setText(1, QString::fromStdString(other.label));
-            child->setText(2, QString::fromStdString(other.text));
-
-            if (other.isTheOneItMeasures) {
-                child->setText(3, tr("Es la que mide esta herramienta."));
-                for (int column = 1; column < 4; ++column) {
-                    child->setForeground(column, QBrush(QColor(90, 90, 90)));
-                }
-                QFont bold = child->font(1);
-                bold.setBold(true);
-                child->setFont(1, bold);
+    for (const auto type : orderOfTypes) {
+        std::vector<std::size_t> uses;
+        int failing = 0;
+        int off = 0;
+        for (std::size_t i = 0; i < drawn_.size(); ++i) {
+            if (drawn_[i].config.type != type) {
                 continue;
             }
-
-            // LAS OTRAS NO LLEVAN VEREDICTO, y no es un olvido: nadie ha
-            // declarado tolerancia para ellas. Poner «Cumple» sobre una banda
-            // que no existe sería inventarse una conformidad.
-            child->setText(3, tr("Sin tolerancia declarada — márcala para vigilarla."));
-            for (int column = 1; column < 4; ++column) {
-                child->setForeground(column, QBrush(QColor(120, 120, 120)));
+            uses.push_back(i);
+            if (!drawn_[i].config.enabled) {
+                ++off;
+            } else if (!drawn_[i].result.ok) {
+                ++failing;
             }
-
-            auto* add = new QCheckBox(tree);
-            add->setToolTip(tr("Añade esta medida como cota nueva sobre la MISMA figura,\n"
-                               "sin volver a dibujarla. Tendrás que declararle su\n"
-                               "tolerancia igual que a cualquier otra."));
-            tree->setItemWidget(child, 0, add);
-            siblingBoxes_.push_back(
-                {add, MeasureToAdd{static_cast<int>(index), other.value, other.label}});
+        }
+        if (uses.empty()) {
+            continue;
         }
 
-        // Las herramientas con una sola medida no se abren: un desplegable con
-        // un hijo que repite al padre es ruido.
-        parent->setExpanded(tool.alsoMeasures.size() > 1);
+        auto* family = new QTreeWidgetItem(tree);
+        family->setText(1, tr("%1 (%2)")
+                               .arg(QString::fromUtf8(inspection::toolTypeLabel(type)))
+                               .arg(uses.size()));
+        QFont heading = family->font(1);
+        heading.setBold(true);
+        family->setFont(1, heading);
 
-        // Y la fila entera se apaga cuando la cota no cuenta: si sigue igual de
-        // negra que las demás, el operador la lee como vigente.
-        connect(box, &QCheckBox::toggled, tree, [parent, black, grey](bool on) {
-            for (int column = 1; column < 4; ++column) {
-                parent->setForeground(column, on ? black : grey);
+        // EL RESUMEN DE LA CLASE, EN LA FILA DE LA CLASE: cuantas de sus cotas no
+        // cumplen. Sin esto habria que abrir cada clase para saber si dentro hay
+        // algo rojo, que es justo lo que agrupar tenia que evitar.
+        if (failing > 0) {
+            family->setText(3, tr("%n cota(s) NO cumplen", nullptr, failing));
+            family->setForeground(3, red);
+        } else if (off == static_cast<int>(uses.size())) {
+            family->setText(3, tr("ninguna cuenta: las has desmarcado todas"));
+            family->setForeground(3, grey);
+        } else {
+            family->setText(3, tr("todas cumplen"));
+        }
+
+        for (const std::size_t index : uses) {
+            const DrawnTool& tool = drawn_[index];
+
+            // NIVEL 2: CADA USO DE ESA CLASE.
+            auto* use = new QTreeWidgetItem(family);
+            use->setText(1, QString::fromStdString(tool.config.name));
+            use->setText(2, QString::fromStdString(tool.text));
+
+            auto* box = new QCheckBox(tree);
+            box->setChecked(tool.config.enabled);
+            box->setToolTip(tr("Si lo desmarcas, esta cota deja de medirse y deja de\n"
+                               "pesar en el veredicto. La herramienta NO se borra:\n"
+                               "vuelve en cuanto la marques."));
+            tree->setItemWidget(use, 0, box);
+            toolSwitches_.push_back({box, index});
+            switchesAtStart_.push_back(tool.config.enabled);
+
+            // EL VEREDICTO, Y DE DONDE SALE.
+            QString verdict;
+            if (!tool.config.enabled) {
+                verdict = tr("No cuenta: la has desmarcado.");
+            } else if (!tool.result.ok && !tool.result.detail.empty()) {
+                verdict =
+                    tr("NO CUMPLE — %1").arg(QString::fromStdString(tool.result.detail));
+            } else if (!tool.result.ok) {
+                verdict = tr("NO CUMPLE — mide %1 y se admite entre %2 y %3")
+                              .arg(tool.result.measured, 0, 'f', 2)
+                              .arg(tool.config.toleranceMin, 0, 'f', 2)
+                              .arg(tool.config.toleranceMax, 0, 'f', 2);
+            } else {
+                verdict = tr("Cumple: entre %1 y %2")
+                              .arg(tool.config.toleranceMin, 0, 'f', 2)
+                              .arg(tool.config.toleranceMax, 0, 'f', 2);
             }
-        });
+            use->setText(3, verdict);
+            if (tool.config.enabled && !tool.result.ok) {
+                use->setForeground(3, red);
+            } else if (!tool.config.enabled) {
+                for (int column = 1; column < 4; ++column) {
+                    use->setForeground(column, grey);
+                }
+            }
+
+            // NIVEL 3: TODAS LAS MEDIDAS DE ESA MISMA FIGURA.
+            //
+            // La que ya mide sale marcada y sin interruptor propio: SU
+            // interruptor es el de arriba. Darle uno segundo pondria dos casillas
+            // para el mismo hecho, y una de las dos tendria que mentir.
+            for (const auto& other : tool.alsoMeasures) {
+                auto* child = new QTreeWidgetItem(use);
+                child->setText(1, QString::fromStdString(other.label));
+                child->setText(2, QString::fromStdString(other.text));
+
+                if (other.isTheOneItMeasures) {
+                    child->setText(3, tr("Es la que mide esta herramienta."));
+                    for (int column = 1; column < 4; ++column) {
+                        child->setForeground(column, QBrush(QColor(90, 90, 90)));
+                    }
+                    QFont bold = child->font(1);
+                    bold.setBold(true);
+                    child->setFont(1, bold);
+                    continue;
+                }
+
+                // LAS OTRAS NO LLEVAN VEREDICTO, y no es un olvido: nadie ha
+                // declarado tolerancia para ellas. Poner «Cumple» sobre una banda
+                // que no existe seria inventarse una conformidad.
+                child->setText(3, tr("Sin tolerancia declarada — marcala para vigilarla."));
+                for (int column = 1; column < 4; ++column) {
+                    child->setForeground(column, QBrush(QColor(120, 120, 120)));
+                }
+
+                auto* add = new QCheckBox(tree);
+                add->setToolTip(
+                    tr("Anade esta medida como cota nueva sobre la MISMA figura,\n"
+                       "sin volver a dibujarla. Tendras que declararle su\n"
+                       "tolerancia igual que a cualquier otra."));
+                tree->setItemWidget(child, 0, add);
+                siblingBoxes_.push_back(
+                    {add, MeasureToAdd{static_cast<int>(index), other.value, other.label}});
+            }
+
+            use->setExpanded(false);
+
+            // Y la fila entera se apaga cuando la cota no cuenta: si sigue igual
+            // de negra que las demas, el operador la lee como vigente.
+            connect(box, &QCheckBox::toggled, tree, [use, black, grey](bool on) {
+                for (int column = 1; column < 4; ++column) {
+                    use->setForeground(column, on ? black : grey);
+                }
+            });
+        }
+
+        // LA CLASE SE ABRE SI HAY ALGO QUE MIRAR DENTRO. Con una sola cota, o con
+        // algo que no cumple, se abre; con siete que cumplen se deja cerrada y el
+        // resumen de la fila basta.
+        family->setExpanded(failing > 0 || uses.size() == 1);
     }
 
     for (int column = 0; column < 3; ++column) {
@@ -339,6 +406,7 @@ QWidget* PieceReportDialog::buildToolsTab() {
     layout->addWidget(tree, 1);
     return page;
 }
+
 
 std::vector<PieceReportDialog::MeasureToAdd> PieceReportDialog::measuresToAdd() const {
     std::vector<MeasureToAdd> wanted;
@@ -352,12 +420,18 @@ std::vector<PieceReportDialog::MeasureToAdd> PieceReportDialog::measuresToAdd() 
 
 std::vector<inspection::ToolConfig> PieceReportDialog::toolsWithChangedState() const {
     std::vector<inspection::ToolConfig> changed;
-    for (std::size_t i = 0; i < toolSwitches_.size() && i < drawn_.size(); ++i) {
-        const bool now = toolSwitches_[i]->isChecked();
+    for (std::size_t i = 0; i < toolSwitches_.size() && i < switchesAtStart_.size(); ++i) {
+        const bool now = toolSwitches_[i].box->isChecked();
         if (now == switchesAtStart_[i]) {
             continue;
         }
-        inspection::ToolConfig config = drawn_[i].config;
+        // POR EL INDICE QUE LLEVA LA CASILLA, no por su posicion en el vector:
+        // al agrupar por clase las casillas se crean en otro orden que `drawn_`.
+        const std::size_t which = toolSwitches_[i].tool;
+        if (which >= drawn_.size()) {
+            continue;
+        }
+        inspection::ToolConfig config = drawn_[which].config;
         config.enabled = now;
         changed.push_back(std::move(config));
     }

@@ -54,6 +54,7 @@
 #include "ui/calibration_dialog.h"
 #include "ui/camera_image_page.h"
 #include "ui/configure_dialog.h"
+#include "ui/delete_scope.h"
 #include "ui/detection_page.h"
 #include "ui/inspection_result_dialog.h"
 #include "ui/history_dialog.h"
@@ -1078,7 +1079,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         liveParamSpin_->setEnabled(false);
         liveParamSpin_->setToolTip(
             tr("Cantidad de puntos de muestreo de la herramienta seleccionada:\n"
-               "Caliper: grosor de banda (px) · Círculo: rayos · Borde liso: escaneos\n"
+               "Calibre: grosor de banda (px) · Círculo: rayos · Borde liso: escaneos\n"
                "· Blob: área mínima (px²)"));
         paramRow->addWidget(liveParamSpin_, 1);
         panelLayout->addLayout(paramRow);
@@ -4773,7 +4774,33 @@ void MainWindow::onDeleteToolClicked() {
 
 void MainWindow::onDeleteAllToolsClicked() {
     const int total = static_cast<int>(liveTools_.size());
-    if (total == 0) {
+
+    // SIN PIEZA ABIERTA TAMBIÉN HAY QUE PODER BORRAR.
+    //
+    // Queja de uso: «la herramienta de borrar todo no detecta nada o no me deja
+    // usarla, hasta que selecciono una pieza». Era exacto, y con una ironía
+    // dentro: este botón se iba EN SILENCIO cuando `liveTools_` estaba vacío, y
+    // `liveTools_` solo se llena al seleccionar pieza. O sea que la salida
+    // «borrar las de todas las piezas» —que se añadió justo para no tener que ir
+    // pieza por pieza— vivía dentro de un diálogo que no se abría nunca si no
+    // habías entrado en una.
+    //
+    // Ahora el recuento de TODO el programa se hace antes de decidir si hay algo
+    // que hacer, y no después.
+    repositories::ToolRepository::ToolTally everywhere;
+    if (repos_.tools != nullptr) {
+        if (auto tally = repos_.tools->tallyAll(); tally.isOk()) {
+            everywhere = tally.value();
+        }
+    }
+
+    const DeleteScope scope = decideDeleteScope(total, everywhere.tools);
+    if (scope.nothingAnywhere) {
+        // Y SI NO HAY NADA EN NINGUNA PARTE, SE DICE. Un botón que no hace nada
+        // y no explica por qué se lee como un botón roto: el operador vuelve a
+        // pulsarlo, y luego busca qué ha hecho mal.
+        statusBar()->showMessage(
+            tr("No hay ninguna herramienta que borrar, ni en esta pieza ni en las demás."));
         return;
     }
 
@@ -4796,17 +4823,21 @@ void MainWindow::onDeleteAllToolsClicked() {
     // existe, y solo cuando de verdad hay algo en otras piezas: un botón para
     // borrarlo todo, visible siempre, sería un botón peligroso a la vista de
     // alguien que casi nunca lo necesita.
-    repositories::ToolRepository::ToolTally everywhere;
-    if (repos_.tools != nullptr) {
-        if (auto tally = repos_.tools->tallyAll(); tally.isOk()) {
-            everywhere = tally.value();
-        }
-    }
-    const bool othersHaveTools = everywhere.tools > total && everywhere.pieces > 1;
+    // Hay trabajo fuera de esta pieza si el total del programa supera al de
+    // aquí. Con la pieza sin abrir (`total` = 0) eso es cierto en cuanto haya
+    // una sola herramienta guardada, que es justo el caso que antes se perdía.
+    const bool othersHaveTools = scope.offerEverywhere;
 
-    QMessageBox box(QMessageBox::Warning, tr("Borrar todas las herramientas"),
-                    tr("Se van a borrar las %n herramienta(s) de esta pieza.", nullptr, total),
-                    QMessageBox::NoButton, this);
+    // EL TÍTULO DICE DE QUÉ SE HABLA. Sin pieza abierta no hay «esta pieza», y
+    // un diálogo que anuncia «se van a borrar las 0 herramientas de esta pieza»
+    // parece un error del programa en vez de una pregunta.
+    QMessageBox box(
+        QMessageBox::Warning, tr("Borrar todas las herramientas"),
+        total > 0
+            ? tr("Se van a borrar las %n herramienta(s) de esta pieza.", nullptr, total)
+            : tr("No hay ninguna pieza abierta, pero el programa guarda %n "
+                 "herramienta(s).", nullptr, everywhere.tools),
+        QMessageBox::NoButton, this);
     if (othersHaveTools) {
         // LA VERDAD SOBRE EL DESHACER, que es lo delicado de esta opción.
         //
@@ -4816,16 +4847,28 @@ void MainWindow::onDeleteAllToolsClicked() {
         // funciona a medias es peor que no prometer nada, así que las dos
         // salidas dicen exactamente lo que se puede recuperar de cada una.
         box.setInformativeText(
-            tr("Borrar las de esta pieza se puede deshacer con Ctrl+Z.\n\n"
-               "En el programa hay %1 herramientas repartidas en %2 piezas. "
-               "Borrarlas TODAS de una vez NO se puede deshacer.")
-                .arg(everywhere.tools)
-                .arg(everywhere.pieces));
+            total > 0
+                ? tr("Borrar las de esta pieza se puede deshacer con Ctrl+Z.\n\n"
+                     "En el programa hay %1 herramientas repartidas en %2 piezas. "
+                     "Borrarlas TODAS de una vez NO se puede deshacer.")
+                      .arg(everywhere.tools)
+                      .arg(everywhere.pieces)
+                // Sin pieza abierta NO se menciona Ctrl+Z, y no es un olvido:
+                // la pila de deshacer guarda las herramientas de la pieza
+                // abierta, y aquí no hay ninguna. Prometer una vuelta atrás que
+                // no existe es peor que avisar de que no la hay.
+                : tr("Están repartidas en %1 piezas. Borrarlas NO se puede "
+                     "deshacer.")
+                      .arg(everywhere.pieces));
     } else {
         box.setInformativeText(tr("Se puede deshacer con Ctrl+Z."));
     }
-    auto* confirm = box.addButton(tr("Borrar las %n de esta pieza", nullptr, total),
-                                  QMessageBox::DestructiveRole);
+    // La salida «esta pieza» solo existe si hay una pieza con algo dentro.
+    QPushButton* confirm = nullptr;
+    if (scope.offerThisPiece) {
+        confirm = box.addButton(tr("Borrar las %n de esta pieza", nullptr, total),
+                                QMessageBox::DestructiveRole);
+    }
     QPushButton* confirmAll = nullptr;
     if (othersHaveTools) {
         confirmAll = box.addButton(
@@ -4857,7 +4900,7 @@ void MainWindow::onDeleteAllToolsClicked() {
                 .arg(everywhere.pieces));
         return;
     }
-    if (box.clickedButton() != confirm) {
+    if (confirm == nullptr || box.clickedButton() != confirm) {
         return;
     }
 

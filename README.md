@@ -1152,6 +1152,13 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    sombras y objetos fuera de la zona dejan de estorbar. Ambos ajustes
    persisten y aplican al video en vivo, al registro y a la inspección.
 
+   **Con el pincel puesto, Ctrl+rueda acerca.** La rueda sola sigue cambiando
+   el grosor del pincel, que es lo que se ajusta a cada momento mientras
+   corriges; pero antes esa era la ÚNICA cosa que hacía la rueda, así que para
+   acercarte a perfilar un borde tenías que apagar el pincel, hacer zoom y
+   volver a encenderlo. Ctrl+rueda acerca sin apagar nada, y es el mismo gesto
+   que en Krita, GIMP o Photoshop.
+
    **Recuperar lo que el brillo se lleva** (pestaña *Detección*). Si tus piezas
    son metálicas y salen **mordidas o partidas en trozos**, casi siempre es el
    reflejo: sube hasta el nivel del fondo y el corte de gris lo deja fuera. Con

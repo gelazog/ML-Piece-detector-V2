@@ -825,7 +825,20 @@ void EditorCanvas::wheelEvent(QWheelEvent* event) {
     // constantemente mientras se corrige —grueso para rellenar, fino para
     // perfilar— y tener que ir a un menú por cada cambio haría que nadie lo
     // cambiara.
-    if (brush_ != EdgeBrush::Off) {
+    // CON CTRL, LA RUEDA ACERCA AUNQUE EL PINCEL ESTE ENCENDIDO.
+    //
+    // Queja de uso: «hay algo que se siente incomodo al momento de usar los
+    // pinceles». Esto era una parte medible de ese algo: con el pincel puesto,
+    // la rueda solo cambiaba el tamano y NO habia forma de hacer zoom. Perfilar
+    // un borde es justo cuando mas falta hace acercarse, y para acercarse habia
+    // que apagar el pincel, mover la rueda y volver a encenderlo.
+    //
+    // Ctrl+rueda es el gesto que ya llevan Krita, GIMP y Photoshop para lo
+    // mismo, asi que no hay nada que aprender. Y sigue funcionando con el
+    // pincel apagado —donde la rueda sola ya acerca—, para que el gesto no
+    // dependa del modo: uno que solo vale a veces se acaba no usando.
+    const bool zoomAnyway = (event->modifiers() & Qt::ControlModifier) != 0;
+    if (brush_ != EdgeBrush::Off && !zoomAnyway) {
         // Paso proporcional: subir de 2 a 3 px y de 60 a 61 no son el mismo
         // gesto, y con paso fijo llegar a un pincel grande cuesta veinte
         // muescas.

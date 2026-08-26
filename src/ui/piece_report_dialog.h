@@ -114,7 +114,18 @@ private:
     QTableWidget* table_ = nullptr;
     QLabel* status_ = nullptr;
     std::vector<DrawnTool> drawn_;
-    std::vector<QCheckBox*> toolSwitches_;
+    // EL INTERRUPTOR, CON LA HERRAMIENTA A LA QUE PERTENECE.
+    //
+    // Antes esto era un vector de casillas y se emparejaba con `drawn_` POR
+    // POSICION. Funciono mientras la pestana era una lista plana; al agrupar por
+    // clase, las casillas se crean en otro orden y apagar una cota guardaba OTRA
+    // —«Ø» apagaba «alto»— sin decir nada. Un emparejamiento implicito que
+    // depende del orden de pintado es una bomba de relojeria.
+    struct ToolSwitch {
+        QCheckBox* box = nullptr;
+        std::size_t tool = 0;  // indice en `drawn_`
+    };
+    std::vector<ToolSwitch> toolSwitches_;
     // Las casillas de las medidas hermanas, con a qué herramienta y a qué valor
     // pertenece cada una.
     struct SiblingBox {

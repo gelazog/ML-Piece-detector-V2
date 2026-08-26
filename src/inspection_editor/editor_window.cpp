@@ -177,7 +177,7 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     paramSpin_->setRange(1, 1000);
     paramSpin_->setToolTip(
         tr("Cantidad de puntos de muestreo de la herramienta:\n"
-           "Caliper: grosor de banda promediada (px)\n"
+           "Calibre: grosor de banda promediada (px)\n"
            "Círculo: rayos de búsqueda del borde\n"
            "Borde liso: escaneos perpendiculares\n"
            "Blob: área mínima de cada mancha (px²)"));

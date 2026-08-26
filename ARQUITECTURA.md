@@ -3711,6 +3711,50 @@ tienen dos corazones separados por un cuello estrecho; una pieza sola tiene uno.
 | un engranaje solo | 1 | 1 | 1 |
 | **un tornillo largo solo** | 1 | 1 | **2** ✗ |
 
+#### Tres arreglos de uso, con su porqué
+
+**El botón de borrar todo no hacía nada sin pieza abierta.** Queja: *«la
+herramienta de borrar todo no detecta nada o no me deja usarla, hasta que
+selecciono una pieza»*. Exacta, y con una ironía dentro: `onDeleteAllToolsClicked`
+se iba **en silencio** cuando `liveTools_` estaba vacío, y `liveTools_` solo se
+llena al seleccionar pieza. O sea que la salida «borrar las de todas las piezas»
+—añadida justo para no tener que ir pieza por pieza— vivía dentro de un diálogo
+que ese `return` impedía abrir. Ahora el recuento de todo el programa se hace
+**antes** de decidir si hay algo que hacer, y cuando de verdad no hay nada en
+ninguna parte **se dice**: un botón que no hace nada y no explica por qué se lee
+como un botón roto. La decisión vive en `ui/delete_scope.h`, fuera de la ventana,
+porque es la parte que se puede equivocar y la única comprobable sin abrir un
+diálogo modal. Sin pieza abierta **no se menciona Ctrl+Z**, y no es un olvido: la
+pila de deshacer guarda las herramientas de la pieza abierta, y ahí no hay
+ninguna que devolver.
+
+**«Mis herramientas», agrupadas por clase.** Petición: *«que las separases por la
+herramienta en cuestión que se está usando, y luego que se desglose todas las
+veces que se usó esa herramienta»*. La pestaña pasa a tres niveles —la clase,
+cada uso, y todo lo que la figura de ese uso puede medir—. La fila de la clase
+lleva su resumen (*«2 cotas NO cumplen»*) porque agrupar esconde lo de dentro, y
+sin resumen habría que abrir las siete para saber si hay algo rojo, que es justo
+el trabajo que agrupar tenía que ahorrar. El orden de las clases es el de la
+**primera aparición**, no alfabético: así se parece al orden en que el operador
+fue dibujando.
+
+> **Un fallo que introdujo este cambio, cazado por su propia prueba.** Los
+> interruptores se emparejaban con las herramientas **por posición** en el
+> vector. Funcionó mientras la pestaña era una lista plana; al agrupar, las
+> casillas se crean en otro orden y apagar «Ø» guardaba **«alto»** — se apagaba
+> una cota distinta de la que tocaste, sin decir nada. Ahora cada casilla lleva
+> el índice de su herramienta. Un emparejamiento implícito que depende del orden
+> de pintado es una bomba de relojería.
+
+**Con el pincel puesto no se podía acercar.** Queja: *«hay algo que se siente
+incómodo al momento de usar los pinceles»*. Una parte medible de ese algo: con el
+pincel encendido la rueda cambiaba **solo** su tamaño y no quedaba ninguna forma
+de hacer zoom. Perfilar un borde a mano es justo cuando más falta hace acercarse,
+y para hacerlo había que apagar el pincel, mover la rueda y volver a encenderlo:
+tres gestos para uno. **Ctrl+rueda** acerca sin apagar nada, y funciona igual con
+el pincel apagado para que el gesto no dependa del modo — uno que solo vale a
+veces se acaba no usando.
+
 #### Recuperar lo que el brillo se lleva
 
 Queja de uso: *«tengo una tuerca, con reflejos, brillo, sombras, y eso afecta a
