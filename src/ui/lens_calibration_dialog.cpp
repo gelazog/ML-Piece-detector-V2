@@ -173,7 +173,6 @@ bool LensCalibrationDialog::offerFrame(const QImage& frame) {
     if (frame.isNull()) {
         return false;
     }
-    pendingFrame_ = frame;
     const cv::Mat image = camera::qImageToMat(frame);
     pending_ = vision::findBoard(image, boardSpec());
     showPreview(frame, pending_.has_value());

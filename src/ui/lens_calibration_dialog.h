@@ -65,7 +65,6 @@ private:
 
     std::vector<vision::BoardView> views_;
     std::optional<vision::BoardView> pending_;
-    QImage pendingFrame_;
     std::optional<vision::LensCalibration> result_;
 
     QLabel* preview_ = nullptr;

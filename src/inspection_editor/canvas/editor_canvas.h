@@ -48,7 +48,6 @@ public:
     // la principal. Catorce etiquetas por seis piezas es ruido, no información:
     // se dibujan las marcas de todas pero los números de una sola.
     void setFocusedPiece(int pieceIndex);
-    [[nodiscard]] int focusedPiece() const { return focusedPiece_; }
     void clearResults();
     void setSelectedIndex(int index);
     [[nodiscard]] int selectedIndex() const { return selected_; }
@@ -267,7 +266,6 @@ public:
     // Ejes y grilla con el 0 en el origen elegido. Informa, no estorba: líneas
     // finas semitransparentes por debajo de las herramientas.
     void setBoardVisible(bool visible);
-    [[nodiscard]] bool boardVisible() const { return boardVisible_; }
     void setBoardConfig(const vision::BoardConfig& config);
     // Centro geométrico del contorno de la pieza (coords de imagen). Es el que
     // usa el centrado automático del tablero; sin él se cae al centro de masa.
@@ -283,7 +281,6 @@ public:
     // las herramientas.
     void setContourReport(bool visible, const vision::ContourReport& report = {});
     [[nodiscard]] bool contourReportVisible() const { return contourVisible_; }
-    [[nodiscard]] const vision::ContourReport& contourReport() const { return contourReport_; }
     // Resumen del contorno (perímetro, área, agujeros, envolvente, tramos) en la
     // unidad activa, una línea por dato. Lo pinta el propio lienzo y además lo
     // lee la ventana para el panel de estado: un solo sitio donde se decide el
@@ -295,7 +292,6 @@ public:
     // unidad activa, más una barra de escala. Sirven para leer una medida de un
     // vistazo sin tener que dibujar una herramienta.
     void setRulerVisible(bool visible);
-    [[nodiscard]] bool rulerVisible() const { return rulerVisible_; }
 
 signals:
     // El zoom, el desplazamiento o el tamaño del lienzo cambiaron: quien

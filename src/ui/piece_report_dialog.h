@@ -103,8 +103,6 @@ private slots:
     void onWatchClicked();
 
 private:
-    // La pestaña de siempre: qué mide la pieza, medido solo.
-    [[nodiscard]] QWidget* buildMeasurementsTab();
     // La pestaña nueva: las herramientas del operador, con su lectura, su
     // veredicto y su interruptor.
     [[nodiscard]] QWidget* buildToolsTab();

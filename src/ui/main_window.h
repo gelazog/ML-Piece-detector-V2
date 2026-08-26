@@ -304,7 +304,6 @@ private:
 
     // Menú y acciones de baja frecuencia (antes botones sueltos).
     QAction* refreshAction_ = nullptr;
-    QAction* calibrateAction_ = nullptr;
     QAction* configureAction_ = nullptr;  // Cámara > Configurar… (C1)
     // Panel Configurar abierto (no modal, uno solo) y su última pestaña.
     ConfigureDialog* configureDialog_ = nullptr;
@@ -319,9 +318,6 @@ private:
     // N >= 1 = manual (tienen que ser exactamente N). Ver la migración v9.
     int expectedPieces_ = 0;
     int lastPieceCount_ = -1;  // piezas vistas en el último análisis
-    QAction* registerWizardAction_ = nullptr;
-    QAction* managePiecesAction_ = nullptr;
-    QAction* editorAction_ = nullptr;
     // Espejo en el menú del botón de auto-inspección de la barra: una acción
     // que solo existe en la barra no la encuentra quien navega con el teclado.
     QAction* autoInspectAction_ = nullptr;
@@ -513,7 +509,6 @@ private:
     bool mosaicOffered_ = false;
     // Lo que pidió la pieza seleccionada. Se guarda con ella, no con la máquina.
     bool showMosaic_ = false;
-    QPushButton* managePiecesButton_ = nullptr;
 
     // Guía del primer arranque (I3). No es un asistente: es una línea que
     // señala la tira de estado y se quita cuando el operador la ha leído.

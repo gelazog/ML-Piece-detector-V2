@@ -1724,7 +1724,7 @@ void MainWindow::buildMenuBar() {
     // Lo que las une es la pregunta que contestan: con qué se mide. Quien busca
     // cualquiera de las dos va al mismo sitio.
     auto* measureMenu = menuBar()->addMenu(tr("&Medida"));
-    calibrateAction_ = measureMenu->addAction(tr("Calibrar escala (mm)…"), this,
+    measureMenu->addAction(tr("Calibrar escala (mm)…"), this,
                                              &MainWindow::onCalibrateClicked);
     measureMenu->addSeparator();
     measureMenu->addAction(tr("Calibrar la lente…"), this,
@@ -1813,7 +1813,7 @@ void MainWindow::buildMenuBar() {
                            &MainWindow::onMeasurementModeClicked);
 
     auto* pieceMenu = menuBar()->addMenu(tr("&Pieza"));
-    registerWizardAction_ = pieceMenu->addAction(tr("Registrar con asistente…"), this,
+    pieceMenu->addAction(tr("Registrar con asistente…"), this,
                                                  &MainWindow::onRegisterWizardClicked);
     // OTRO ACABADO DE LA MISMA PIEZA, y no una pieza nueva.
     //
@@ -1823,7 +1823,7 @@ void MainWindow::buildMenuBar() {
     // herramientas y su historial aparte.
     pieceMenu->addAction(tr("Registrar otro acabado de esta pieza…"), this,
                          &MainWindow::onRegisterVariantClicked);
-    managePiecesAction_ = pieceMenu->addAction(tr("Gestionar piezas…"), this,
+    pieceMenu->addAction(tr("Gestionar piezas…"), this,
                                                &MainWindow::onManagePiecesClicked);
     pieceMenu->addSeparator();
     // Las plantillas son de la pieza, así que sus acciones viven aquí y no solo
@@ -1845,7 +1845,7 @@ void MainWindow::buildMenuBar() {
         }
     });
     inspectionMenu->addSeparator();
-    editorAction_ = inspectionMenu->addAction(tr("Editor de plantilla…"), this,
+    inspectionMenu->addAction(tr("Editor de plantilla…"), this,
                                               &MainWindow::onOpenEditorClicked);
     inspectionMenu->addAction(tr("Ver historial…"), this,
                               &MainWindow::onShowHistoryClicked);
