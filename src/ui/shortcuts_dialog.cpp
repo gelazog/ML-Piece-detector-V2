@@ -48,11 +48,32 @@ ShortcutsDialog::ShortcutsDialog(std::vector<ShortcutSpec>* shortcuts,
 
     auto* buttonsLayout = new QHBoxLayout();
     auto* restore = new QPushButton(tr("Restaurar por defecto"), this);
+    // ENTER NO PUEDE DISPARAR ESTE BOTÓN.
+    //
+    // En un `QDialog` sin botón por defecto declarado, Qt coge el primero que
+    // tenga `autoDefault` — o sea, el primero que se construyó. Aquí ese era
+    // «Restaurar por defecto», que **borra toda la tabla de teclas que el
+    // operador acaba de editar**. Comprobado ejecutándolo, no deducido: la
+    // prueba `DefaultButtons` preguntaba a los botones quién se llevaba el Enter
+    // y la respuesta era este.
+    //
+    // Pulsar Enter creyendo que guardas y perder el trabajo es el peor desenlace
+    // posible de un diálogo, y no hacía falta ningún fallo de programación para
+    // llegar a él: bastaba con teclear.
+    //
+    // Se le quita `autoDefault` además de no ser el por defecto, y eso importa:
+    // `autoDefault` hace que un botón se lleve el Enter EN CUANTO RECIBE EL
+    // FOCO, así que sin esto seguiría siendo una trampa a la que se llega
+    // tabulando.
+    restore->setAutoDefault(false);
     buttonsLayout->addWidget(restore);
     buttonsLayout->addStretch(1);
     auto* save = new QPushButton(tr("Guardar"), this);
+    // Y el Enter va donde el operador cree que va.
+    save->setDefault(true);
     buttonsLayout->addWidget(save);
     auto* cancel = new QPushButton(tr("Cancelar"), this);
+    cancel->setAutoDefault(false);
     buttonsLayout->addWidget(cancel);
     rootLayout->addLayout(buttonsLayout);
 

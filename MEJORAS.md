@@ -69,12 +69,38 @@ Todo esto salió de una auditoría anterior y está verificado.
 
 - [ ] **C1 · Ningún menú enseña su atajo.** 0 de 58 entradas. El operador no
   puede descubrir un atajo sin abrir la ayuda.
+
+  **Ojo, el arreglo NO es poner `setShortcut` en las entradas de menú.**
+  Investigado: los 21 atajos son `QAction` **invisibles** que `addShortcut()`
+  cuelga de la ventana (`main_window.cpp:2805`), y las entradas de menú son
+  `QAction` **distintas**. Poner la misma tecla en las dos da dos acciones con la
+  misma secuencia en la misma ventana, que es `ambiguousActivate` — Qt no
+  dispara ninguna de forma fiable. Este proyecto ya se comió ese fallo con
+  `Ctrl+1` y `Ctrl+2`.
+
+  El arreglo bueno es que **haya una sola acción**: meter en el menú la que ya
+  tiene el atajo, en vez de crear una gemela. Eso obliga a construir los atajos
+  antes que los menús, o a casarlos después, y `shortcuts_` tendría que apuntar a
+  la acción superviviente para que la guía de atajos siga pudiendo editarla.
 - [ ] **C2 · Ningún botón tiene acelerador `Alt+letra`.** 0 de unos 40.
-- [ ] **C3 · Seis diálogos donde Enter dispara el botón equivocado**, y en algún
-  caso uno destructivo: `shortcuts_dialog.cpp:50` dispara «Restaurar por
-  defecto», que borra la tabla de teclas que el operador acaba de editar;
-  `calibration_dialog.cpp:124` dispara «Calcular escala» en vez de «Aplicar
-  calibración».
+- [~] **C3 · Diálogos donde Enter dispara el botón equivocado.** Hecho el
+  peligroso, y **medido en vez de razonado**: una prueba pregunta a los botones
+  quién se lleva el Enter, y en la guía de atajos la respuesta era «Restaurar por
+  defecto» — que **borra toda la tabla de teclas que el operador acaba de
+  editar**. Pulsar Enter creyendo que guardas y perder el trabajo, sin que haya
+  ningún fallo de programación: basta con teclear.
+
+  Nadie lo escribió a propósito. En un `QDialog` sin botón por defecto declarado,
+  Qt coge el primero que se construyó, así que lo decidía el orden de tres líneas
+  de C++ que nadie vuelve a mirar.
+
+  `tests/test_default_buttons.cpp` no arregla un diálogo: arregla la **clase** de
+  fallo, y también exige que ningún botón destructivo conserve `autoDefault` —
+  porque con él basta tabular hasta el botón para que el Enter siguiente
+  destruya.
+
+  Falta extender la prueba a los demás diálogos, empezando por
+  `calibration_dialog.cpp`.
 - [ ] **C4 · `detection_page.cpp` apila 17 filas de formulario sin agrupar.** El
   propio fichero, en su comentario de las líneas 437-441, ya identifica ese
   problema como el que resuelve en otro sitio.
