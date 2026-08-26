@@ -50,8 +50,8 @@ batería y `-Package` arma un zip portable.
 `reanudar.ps1` retoma el trabajo cuando vuelve a haber cupo. Se instala una vez:
 
 ```powershell
-.eanudar.ps1 -Instalar      # tarea horaria; -Publicar si además debe hacer push
-.eanudar.ps1 -Desinstalar   # quitarla
+.\reanudar.ps1 -Instalar      # tarea horaria; -Publicar si además debe hacer push
+.\reanudar.ps1 -Desinstalar   # quitarla
 ```
 
 Lo intenta **cada hora** en vez de adivinar la hora del reinicio, porque el cupo
@@ -121,8 +121,13 @@ Anotadas porque han costado tiempo más de una vez:
 - **`../src/ui` existe también dentro del árbol de compilación y está vacío.**
   Cualquier guardia que recorra directorios tiene que anclarse en un fichero
   conocido, no en la carpeta. Ha pasado dos veces.
-- **`README.md` y `ARQUITECTURA.md` son CRLF.** Un parche que meta líneas con LF
-  los deja mezclados.
+- **Los finales de línea son LF y ahora git los impone.** Lo fueron mal mucho
+  tiempo: `.gitattributes` declaraba LF y los dos documentos grandes estaban
+  guardados con CRLF, así que cada edición automatizada tenía que convertir a
+  mano. Ya está renormalizado y `*.md text eol=lf` le quita la decisión a la
+  heurística de git — que con el README se equivocaba y lo tomaba por binario
+  por culpa de un `
+` doblado.
 - **El ejecutable se queda bloqueado** si la aplicación sigue abierta, y el
   enlazado falla con «Permission denied». Se borra el `.exe` y se recompila.
 - **Un recuento no mide la calidad de una silueta.** Hubo una segmentación que
