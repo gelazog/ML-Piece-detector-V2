@@ -1,4 +1,5 @@
 #include "vision/edge_segmentation.h"
+#include "vision/gray.h"
 #include <cstdio>
 #include "vision/pipeline.h"
 
@@ -12,26 +13,6 @@ namespace pci::vision {
 
 namespace {
 
-cv::Mat toGray(const cv::Mat& image) {
-    if (image.empty()) {
-        return {};
-    }
-    cv::Mat gray;
-    switch (image.channels()) {
-        case 1:
-            gray = image;
-            break;
-        case 3:
-            cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
-            break;
-        case 4:
-            cv::cvtColor(image, gray, cv::COLOR_BGRA2GRAY);
-            break;
-        default:
-            return {};
-    }
-    return gray;
-}
 
 // El grosor del marco exterior del que se toma la muestra del fondo.
 int borderWidth(const cv::Size& size) {

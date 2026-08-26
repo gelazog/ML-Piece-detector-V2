@@ -56,9 +56,41 @@ grande.
   —longitudes, formas, GD&T, torneadas, construcciones— con el despacho
   quedándose donde está.
 - [ ] **B3 · `inspection_editor/canvas/editor_canvas.cpp`, 3 282 líneas.**
-- [ ] **B4 · Auditoría de código muerto y duplicado.** Pendiente: el agente que
-  la estaba haciendo se quedó sin cupo a mitad. Buscar funciones que no llama
-  nadie, lógica duplicada, cabeceras sobrantes y constantes mágicas repetidas.
+- [~] **B4 · Auditoría de código muerto y duplicado.** Hecha una pasada, a mano,
+  después de que el agente se quedara sin cupo.
+
+  **Once cosas muertas, verificadas una a una** (el barrido automático da muchos
+  falsos positivos: `paintEvent` y `sizeHint` los llama Qt, las señales se
+  conectan por nombre):
+
+  | qué | dónde |
+  |---|---|
+  | `buildMeasurementsTab()` | **declarada y nunca escrita** — si alguien la llamara, no enlazaría |
+  | 4 getters de `editor_canvas.h` | `focusedPiece`, `boardVisible`, `contourReport`, `rulerVisible`: nadie los llama |
+  | `managePiecesButton_` | declarado y **nunca asignado** |
+  | 4 punteros a `QAction` de menú | se guardan al crear la entrada y nadie los vuelve a leer |
+  | `pendingFrame_` | guarda una copia del frame que ya se pasa aparte |
+
+  **Y un hallazgo mejor que el código muerto: `toGray` estaba escrita CUATRO
+  veces en `vision/`, y tres contestaban distinto.** La de
+  `orientation_anchor.cpp` convertía si había tres canales y **devolvía la
+  imagen tal cual en cualquier otro caso** — un BGRA salía sin convertir y el
+  resto del código lo trataba como gris. Eso no falla: da números. Ahora es una
+  sola en `vision/gray.h`, con sus tres decisiones escritas y su prueba.
+
+  Falta el resto: cabeceras incluidas y no usadas, y constantes mágicas
+  repetidas. El barrido de funciones con el mismo nombre en varios ficheros dejó
+  además estos candidatos sin mirar: `round0` (camera_controls y shape_class),
+  `toHex` (dos ficheros de cámara), `readProperty`, `describe` y `errorOf`.
+
+  **`canonicalDirection` ya está mirada y NO hay que unificarla.** Son dos
+  funciones **distintas con el mismo nombre**, y esa es justamente la trampa: la
+  de `auto_measure.cpp` normaliza la dirección de un tramo de contorno y la
+  canonicaliza para que **`x > 0`**; la de `tool_executor.cpp` recibe una
+  dirección ya normalizada y la canonicaliza para que **`y > 0`**. Ejes
+  distintos. Las dos son correctas donde viven, y quien las junte creyéndolas la
+  misma rompe una de las dos en silencio. Lo que convendría es que se llamaran
+  distinto.
 - [ ] **B5 · Auditoría de la suite de pruebas.** Igual: se quedó a mitad. 42 272
   líneas de prueba para 48 673 de código. Buscar tests redundantes, tests sin
   aserto útil, y módulos sin cobertura.

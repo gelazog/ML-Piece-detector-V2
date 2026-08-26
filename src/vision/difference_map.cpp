@@ -1,4 +1,5 @@
 #include "vision/difference_map.h"
+#include "vision/gray.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -13,29 +14,6 @@ namespace {
 // `paintDifference`.
 constexpr double kNothingToShow = 0.05;
 
-cv::Mat toGray(const cv::Mat& image) {
-    if (image.empty()) {
-        return {};
-    }
-    cv::Mat gray;
-    switch (image.channels()) {
-        case 1:
-            gray = image.clone();
-            break;
-        case 3:
-            cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
-            break;
-        case 4:
-            cv::cvtColor(image, gray, cv::COLOR_BGRA2GRAY);
-            break;
-        default:
-            return {};
-    }
-    if (gray.depth() != CV_8U) {
-        gray.convertTo(gray, CV_8U);
-    }
-    return gray;
-}
 
 // Iguala el brillo y el contraste globales de `image` a los de `like`, usando
 // solo los píxeles de la pieza.
@@ -72,7 +50,19 @@ DifferenceMap compareToReference(const cv::Mat& current, const cv::Mat& referenc
         return result;
     }
     if (before.size() != now.size()) {
-        cv::resize(before, before, now.size(), 0.0, 0.0, cv::INTER_AREA);
+        // A OTRA MATRIZ, no encima de la que vino.
+        //
+        // `toGray` COMPARTE los datos cuando la imagen ya era de un canal —no
+        // clona, porque hacerlo costaría una copia del frame entero en el camino
+        // que corre en cada fotograma—. Así que redimensionar «sobre sí misma»
+        // estaría escribiendo, en ese caso, sobre la imagen que nos pasó el
+        // llamante. Hoy `cv::resize` reasigna cuando el tamaño cambia y no
+        // llegaría a pasar, pero eso es apoyarse en un detalle de OpenCV para
+        // que un alias no muerda. Con un destino propio no hay nada en lo que
+        // apoyarse.
+        cv::Mat scaled;
+        cv::resize(before, scaled, now.size(), 0.0, 0.0, cv::INTER_AREA);
+        before = std::move(scaled);
     }
 
     // La pieza es lo que no es fondo. El recorte canónico trae el fondo a cero,

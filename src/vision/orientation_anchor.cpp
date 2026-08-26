@@ -1,4 +1,5 @@
 #include "vision/orientation_anchor.h"
+#include "vision/gray.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -19,14 +20,6 @@ Fixture flipped(const Fixture& fixture) {
     return result;
 }
 
-cv::Mat toGray(const cv::Mat& image) {
-    if (image.channels() == 3) {
-        cv::Mat gray;
-        cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
-        return gray;
-    }
-    return image;
-}
 
 }  // namespace
 

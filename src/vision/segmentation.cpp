@@ -1,6 +1,7 @@
 #include "vision/segmentation.h"
 
 #include "vision/edge_segmentation.h"
+#include "vision/gray.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -169,17 +170,13 @@ core::Result<cv::Mat> segmentPiece(const cv::Mat& image, const SegmentationOptio
         return core::Result<cv::Mat>::err("Imagen vacía");
     }
 
-    cv::Mat gray;
-    switch (image.channels()) {
-        case 1:
-            gray = image;
-            break;
-        case 3:
-            cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
-            break;
-        default:
-            return core::Result<cv::Mat>::err("Formato de imagen no soportado: " +
-                                              std::to_string(image.channels()) + " canales");
+    // La cuarta copia de «pasar a gris» que tenía este módulo. Ahora es la de
+    // `vision/gray.h`, que además convierte el BGRA que aquí se rechazaba — y
+    // BGRA es lo que entrega más de una fuente de imagen.
+    cv::Mat gray = toGray(image);
+    if (gray.empty()) {
+        return core::Result<cv::Mat>::err("Formato de imagen no soportado: " +
+                                          std::to_string(image.channels()) + " canales");
     }
 
     // AQUÍ SE DECIDE QUÉ CANAL SE SEGMENTA.
