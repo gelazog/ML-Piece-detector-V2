@@ -45,6 +45,27 @@ batería y `-Package` arma un zip portable.
 | [ARQUITECTURA.md](ARQUITECTURA.md) | **Lo que hay**, desde dentro: cómo funciona cada subsistema y **por qué se decidió así** | quien vaya a tocar el código |
 | [MEJORAS.md](MEJORAS.md) | **Lo que hay que mejorar**: lo pendiente, lo medido y lo que se sabe que falla | quien planifique el siguiente paso |
 
+## Seguir trabajando solo
+
+`reanudar.ps1` retoma el trabajo cuando vuelve a haber cupo. Se instala una vez:
+
+```powershell
+.eanudar.ps1 -Instalar      # tarea horaria; -Publicar si además debe hacer push
+.eanudar.ps1 -Desinstalar   # quitarla
+```
+
+Lo intenta **cada hora** en vez de adivinar la hora del reinicio, porque el cupo
+va en ventanas móviles y esa hora cambia de un día para otro. Si no hay cupo,
+sale en segundos y se anota en `.claude/reanudar.log`.
+
+Cuatro barreras, cada una por un motivo: Visual Studio Code tiene que estar
+abierto (es lo que se pidió, y es la señal de que alguien está delante); no
+arranca si ya hay una sesión de Claude viva (la tarea salta a la hora en punto,
+que es justo cuando puede haber alguien trabajando a mano); un cerrojo impide
+que se pise a sí misma; y **no publica** salvo que se le diga.
+
+Cada ejecución coge **una** tarea de `MEJORAS.md`, la hace entera y para.
+
 ## Las capas, y la regla que no se toca
 
 ```

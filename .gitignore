@@ -20,3 +20,7 @@ CMakeUserPresets.json
 #
 # Las pruebas que lo usan se saltan solas si no esta descargado.
 testdata/real/
+
+# Registro y cerrojo del reanudador automático
+.claude/reanudar.log
+.claude/reanudar.lock
