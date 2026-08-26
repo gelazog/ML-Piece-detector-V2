@@ -24,6 +24,7 @@ add_executable(pci_tests
   test_caliper_ambiguity.cpp
   test_delete_scope.cpp
   test_glare_recovery.cpp
+  test_new_photos.cpp
   test_region_own_otsu.cpp
   test_edges_on_reflections.cpp
   test_sibling_measures.cpp
@@ -95,6 +96,7 @@ add_executable(pci_gui_tests
   test_selfexplaining.cpp
   test_brush_persistence.cpp
   test_brush_comfort.cpp
+  test_context_menu.cpp
   test_two_pieces_ui.cpp
   test_report_tabs.cpp
   test_tools_by_family.cpp

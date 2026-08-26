@@ -11,6 +11,7 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QWidgetAction>
+#include <QClipboard>
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
@@ -1255,8 +1256,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             &MainWindow::onTemplateChanged);
     connect(newTemplateButton_, &QPushButton::clicked, this,
             &MainWindow::onNewTemplateClicked);
-    connect(video_, &inspection::EditorCanvas::toolRightClicked, this,
-            &MainWindow::onToolRightClicked);
+    connect(video_, &inspection::EditorCanvas::contextMenuRequested, this,
+            &MainWindow::onCanvasContextMenu);
 
     connect(registerLiveButton_, &QPushButton::clicked, this,
             &MainWindow::onRegisterLiveClicked);
@@ -4380,6 +4381,7 @@ void MainWindow::onAnalysisFinished() {
         }
         // Medidas en vivo de las herramientas dibujadas (px o mm calibrados).
         video_->setResults(overlay.toolResults);
+        lastToolResults_ = overlay.toolResults;
         // Y el lienzo enseña las cotas de ESA pieza. Sin esto sólo salían las de
         // la primera en orden de lectura, así que enfocar la tercera dejaba la
         // pieza remarcada y las cifras encima de otra.
@@ -6433,6 +6435,185 @@ void MainWindow::onNewTemplateClicked() {
 
 void MainWindow::onToolRightClicked(int index) {
     deleteToolAt(index);
+}
+
+// EL MENÚ DEL CLIC DERECHO SOBRE EL VÍDEO.
+//
+// Petición de uso: «agrega alguna función al clic derecho». Y al ir a hacerlo
+// apareció algo peor que un hueco: el clic derecho sobre una cota LA BORRABA en
+// el acto, sin menú y sin preguntar. En cualquier otro programa ese gesto
+// significa «enséñame qué puedo hacer aquí»; aquí era el único que destruía
+// trabajo, y bastaba errar el botón del ratón una vez.
+//
+// Tres reglas al montarlo, y las tres se notan:
+//
+//   - SOLO SALE LO QUE APLICA. Un menú con la mitad de las entradas en gris
+//     obliga a leerlas todas para descubrir que no servían. Sobre una cota se
+//     ofrecen las de la cota; sobre el vacío, las del vídeo.
+//   - LO DESTRUCTIVO, AL FINAL Y SEPARADO. Borrar comparte menú con duplicar, y
+//     un gesto de más con el ratón no puede costar el trabajo de media hora.
+//   - CADA ENTRADA DICE SOBRE QUÉ ACTÚA. «Borrar» a secas no distingue entre la
+//     cota de debajo del cursor y todas; el nombre va dentro.
+// RENOMBRAR LA COTA. El nombre es lo que sale en el informe y en el parte, así
+// que «Ø exterior» vale y «Círculo 7» no.
+//
+// Se rechaza el nombre repetido, y no por pulcritud: la ventana empareja
+// herramienta y resultado POR NOMBRE en varios sitios, y dos cotas llamadas
+// igual harían que una enseñara el valor de la otra.
+void MainWindow::renameToolAt(int index) {
+    if (index < 0 || index >= static_cast<int>(liveTools_.size())) {
+        return;
+    }
+    auto& tool = liveTools_[static_cast<std::size_t>(index)];
+    bool accepted = false;
+    const QString proposed = QInputDialog::getText(
+        this, tr("Renombrar la cota"),
+        tr("Cómo quieres que se llame en el informe:"), QLineEdit::Normal,
+        QString::fromStdString(tool.config.name), &accepted);
+    if (!accepted) {
+        return;
+    }
+    const QString wanted = proposed.trimmed();
+    if (wanted.isEmpty()) {
+        statusBar()->showMessage(tr("Una cota sin nombre no se puede leer en un parte."));
+        return;
+    }
+    const std::string newName = wanted.toStdString();
+    if (newName == tool.config.name) {
+        return;
+    }
+    for (const auto& other : liveTools_) {
+        if (other.config.name == newName) {
+            statusBar()->showMessage(
+                tr("Ya hay una cota llamada «%1». Dos con el mismo nombre acaban "
+                   "enseñando el valor la una de la otra.")
+                    .arg(wanted));
+            return;
+        }
+    }
+    tool.config.name = newName;
+    commitUndoState();
+    video_->update();
+    statusBar()->showMessage(tr("Ahora se llama «%1».").arg(wanted));
+}
+
+// COPIAR LO QUE MIDE, para pegarlo en un correo o en una hoja.
+//
+// Se copia la ÚLTIMA lectura guardada y no una nueva: volver a ejecutar la
+// herramienta ahora daría un número medido en otro instante, con la pieza ya
+// movida, y el operador creería estar copiando lo que tiene delante.
+void MainWindow::copyReadingAt(int index) {
+    if (index < 0 || index >= static_cast<int>(liveTools_.size())) {
+        return;
+    }
+    const auto& tool = liveTools_[static_cast<std::size_t>(index)];
+    for (const auto& result : lastToolResults_) {
+        if (result.name != tool.config.name) {
+            continue;
+        }
+        const QString text =
+            QStringLiteral("%1\t%2")
+                .arg(QString::fromStdString(tool.config.name))
+                .arg(QString::fromStdString(inspection::formatMeasure(
+                    result, calibration_.mmPerPixel, currentUnit(), true)));
+        QGuiApplication::clipboard()->setText(text);
+        statusBar()->showMessage(tr("Copiado: %1").arg(text));
+        return;
+    }
+    // Y SI NO HAY LECTURA, SE DICE. Copiar en silencio un portapapeles vacío
+    // hace que el operador pegue lo que copió antes sin enterarse.
+    statusBar()->showMessage(
+        tr("«%1» todavía no ha medido nada: inspecciona o mide la pieza primero.")
+            .arg(QString::fromStdString(tool.config.name)));
+}
+
+// MARCAR EL RASGO EN EL PUNTO DONDE SE PULSÓ.
+//
+// Es la misma operación de siempre, sin el modo: antes había que pulsar un
+// botón, dejar el programa esperando, y acertar con el siguiente clic. Aquí el
+// operador ya ha señalado dónde lo quiere.
+void MainWindow::markAnchorAt(const cv::Point2f& imagePoint) {
+    boardPointPick_ = false;  // este camino es el del rasgo, no el del cero
+    video_->setPickMode(false);
+    onAnchorPicked(imagePoint);
+}
+
+void MainWindow::onCanvasContextMenu(int tool, const QPoint& globalPos,
+                                     const cv::Point2f& imagePoint) {
+    QMenu menu(this);
+    menu.setToolTipsVisible(true);
+
+    const bool onATool = tool >= 0 && tool < static_cast<int>(liveTools_.size());
+    if (onATool) {
+        const auto& hit = liveTools_[static_cast<std::size_t>(tool)];
+        const QString name = QString::fromStdString(hit.config.name);
+
+        // Un encabezado que dice sobre QUÉ va el menú. Sin él, con dos cotas
+        // pegadas no hay forma de saber cuál se ha cogido hasta ejecutar algo.
+        auto* header = menu.addAction(tr("%1 — %2")
+                                          .arg(typeLabel(hit.config.type))
+                                          .arg(name));
+        header->setEnabled(false);
+        menu.addSeparator();
+
+        auto* rename = menu.addAction(tr("Renombrar…"));
+        rename->setToolTip(tr("El nombre es lo que sale en el informe y en el parte:\n"
+                              "«Ø exterior» se lee, «Círculo 7» no."));
+        connect(rename, &QAction::triggered, this, [this, tool] { renameToolAt(tool); });
+
+        auto* duplicate = menu.addAction(tr("Duplicar"));
+        duplicate->setToolTip(tr("Una copia con la misma tolerancia, desplazada un poco\n"
+                                 "para que se vea que son dos."));
+        connect(duplicate, &QAction::triggered, this, [this, tool] {
+            video_->setSelectedIndex(tool);
+            onDuplicateToolClicked();
+        });
+
+        auto* copy = menu.addAction(tr("Copiar lo que mide"));
+        copy->setToolTip(tr("El último valor medido, al portapapeles, para pegarlo\n"
+                            "en un correo o en una hoja de cálculo."));
+        connect(copy, &QAction::triggered, this, [this, tool] { copyReadingAt(tool); });
+
+        // LO DESTRUCTIVO, AL FINAL Y DETRÁS DE UNA SEPARACIÓN.
+        menu.addSeparator();
+        auto* remove = menu.addAction(tr("Borrar «%1»").arg(name));
+        remove->setToolTip(tr("Ctrl+Z la devuelve."));
+        connect(remove, &QAction::triggered, this, [this, tool] { deleteToolAt(tool); });
+    } else {
+        auto* header = menu.addAction(tr("Aquí no hay ninguna cota"));
+        header->setEnabled(false);
+        menu.addSeparator();
+
+        // MARCAR EL RASGO AQUÍ, en el punto exacto donde se ha pulsado.
+        //
+        // Hasta ahora marcar el rasgo distintivo era un MODO: se pulsaba un
+        // botón, el programa se quedaba esperando, y el siguiente clic contaba.
+        // Dos gestos y un estado invisible en medio para poner un punto. Aquí ya
+        // se sabe dónde quiere ponerlo el operador: ha pulsado justo ahí.
+        auto* anchor = menu.addAction(tr("Marcar aquí el rasgo distintivo"));
+        anchor->setToolTip(
+            tr("Fija la orientación de la pieza cuando es simétrica o puede\n"
+               "llegar girada 180°. Elige un punto que solo exista en un sitio:\n"
+               "un agujero, una marca, una esquina achaflanada.\n\n"
+               "Solo se aplica si «seguir la rotación» está encendido."));
+        anchor->setEnabled(streaming_ && liveFixture_.has_value());
+        if (!anchor->isEnabled()) {
+            anchor->setToolTip(tr("Necesita vídeo en vivo con la pieza detectada."));
+        }
+        connect(anchor, &QAction::triggered, this,
+                [this, imagePoint] { markAnchorAt(imagePoint); });
+
+        menu.addSeparator();
+        auto* fit = menu.addAction(tr("Ajustar a la ventana"));
+        connect(fit, &QAction::triggered, video_, &inspection::EditorCanvas::resetView);
+        auto* actual = menu.addAction(tr("Píxeles reales (100 %)"));
+        actual->setToolTip(tr("Un píxel de la imagen, un píxel de la pantalla: es la\n"
+                              "única vista en la que lo que ves es lo que se mide."));
+        connect(actual, &QAction::triggered, video_,
+                &inspection::EditorCanvas::zoomToActualPixels);
+    }
+
+    menu.exec(globalPos);
 }
 
 void MainWindow::onDuplicateToolClicked() {

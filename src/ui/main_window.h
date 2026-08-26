@@ -160,6 +160,13 @@ private slots:
     void rescalePixelSettings(const QSize& from, const QSize& to);
     void onMeasurementModeClicked();  // modo de medición de la pieza (M2)
     void onToolRightClicked(int index);
+    // El menú del clic derecho sobre el vídeo. Ver el .cpp para el porqué de
+    // qué entra y qué no.
+    void onCanvasContextMenu(int tool, const QPoint& globalPos,
+                             const cv::Point2f& imagePoint);
+    void renameToolAt(int index);
+    void copyReadingAt(int index);
+    void markAnchorAt(const cv::Point2f& imagePoint);
 
 protected:
     void closeEvent(QCloseEvent* event) override;  // aviso de cambios sin guardar (P2)
@@ -564,6 +571,10 @@ private:
 
     AppRepositories repos_;
     QImage lastFrame_;
+    // Lo que midió cada herramienta la última vez. Se guarda porque el menú del
+    // clic derecho ofrece copiar ese valor, y pedírselo otra vez al ejecutor
+    // daría un número medido en OTRO instante — con la pieza ya movida.
+    std::vector<inspection::ToolRunResult> lastToolResults_;
     // Cuándo se leyó la escena por última vez. Leerla cuesta dos segmentaciones
     // (13,1 ms medidos), y lo que describe es la iluminación: una vez por
     // segundo dice lo mismo que treinta y no deja la vista a tirones.

@@ -1152,6 +1152,14 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    sombras y objetos fuera de la zona dejan de estorbar. Ambos ajustes
    persisten y aplican al video en vivo, al registro y a la inspección.
 
+   **Clic derecho sobre el vídeo.** Antes borraba la cota al instante, sin
+   preguntar. Ahora abre un menú con lo que aplica en ese punto: sobre una cota,
+   *renombrar*, *duplicar*, *copiar lo que mide* y —abajo del todo y separado—
+   *borrar*; sobre el vídeo vacío, *marcar aquí el rasgo distintivo*, *ajustar a
+   la ventana* y *píxeles reales*. Lo del rasgo se ahorra el paso de antes:
+   pulsabas un botón, el programa se quedaba esperando y tenías que acertar con
+   el clic siguiente; ahora ya has señalado dónde lo quieres.
+
    **Con el pincel puesto, Ctrl+rueda acerca.** La rueda sola sigue cambiando
    el grosor del pincel, que es lo que se ajusta a cada momento mientras
    corriges; pero antes esa era la ÚNICA cosa que hacía la rueda, así que para

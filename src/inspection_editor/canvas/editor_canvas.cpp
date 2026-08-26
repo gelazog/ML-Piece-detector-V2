@@ -1022,15 +1022,19 @@ void EditorCanvas::mousePressEvent(QMouseEvent* event) {
         return;
     }
 
-    // Clic derecho sobre una herramienta: borrado rápido (aunque la edición
-    // esté bloqueada por inspección, borrar sigue permitido salvo bloqueo).
+    // CLIC DERECHO = PEDIR OPCIONES.
+    //
+    // Antes esto BORRABA la herramienta en el acto. El clic derecho es el gesto
+    // universal de «enseñame que puedo hacer aqui», y aqui era el unico que
+    // destruia trabajo sin preguntar: bastaba errar el boton del raton una vez.
+    //
+    // Se emite tambien sobre el vacio (`tool` = -1), porque el vacio tiene sus
+    // propias acciones. Y se emite AUNQUE la edicion este bloqueada por una
+    // inspeccion en marcha: quien monte el menu decide que ofrecer entonces, que
+    // es distinto de no ofrecer nada.
     if (event->button() == Qt::RightButton) {
-        if (!editingLocked_) {
-            const int hit = hitTest(pressPoint);
-            if (hit >= 0) {
-                emit toolRightClicked(hit);
-            }
-        }
+        emit contextMenuRequested(hitTest(pressPoint), event->globalPosition().toPoint(),
+                                  pressPoint);
         return;
     }
     if (event->button() != Qt::LeftButton) {

@@ -3711,6 +3711,45 @@ tienen dos corazones separados por un cuello estrecho; una pieza sola tiene uno.
 | un engranaje solo | 1 | 1 | 1 |
 | **un tornillo largo solo** | 1 | 1 | **2** ✗ |
 
+#### El clic derecho pedía opciones y borraba
+
+Petición de uso: *«agrega alguna función al clic derecho»*. Al ir a hacerlo
+apareció algo peor que un hueco: **el clic derecho sobre una cota la borraba en
+el acto**, sin menú y sin preguntar. En cualquier otro programa ese gesto
+significa «enséñame qué puedo hacer aquí»; aquí era el único que destruía
+trabajo, y bastaba errar el botón del ratón una vez sobre la cota equivocada.
+
+Tres reglas al montar el menú, y las tres se notan:
+
+- **Solo sale lo que aplica.** Un menú con la mitad de las entradas en gris
+  obliga a leerlas todas para descubrir que no servían. Sobre una cota se
+  ofrecen las de la cota; sobre el vacío, las del vídeo.
+- **Lo destructivo, al final y separado.** Borrar comparte menú con duplicar, y
+  un gesto de más con el ratón no puede costar el trabajo de media hora.
+- **Cada entrada dice sobre qué actúa.** «Borrar» a secas no distingue entre la
+  cota bajo el cursor y todas; el nombre va dentro: *Borrar «Ø exterior»*.
+
+Y una entrada que **se ahorra un modo entero**: *marcar aquí el rasgo
+distintivo*. Antes era pulsar un botón, dejar el programa esperando en un estado
+invisible, y acertar con el siguiente clic — dos gestos y una espera para poner
+un punto. En el menú el operador ya ha señalado dónde lo quiere, así que el punto
+del clic viaja con el aviso.
+
+La lona **no monta el menú**: dice dónde se pulsó y sobre qué, y quien conoce las
+acciones lo monta. Emite también sobre el vacío (`tool` = −1), que antes se
+tragaba el clic sin hacer nada.
+
+Dos detalles que salieron al escribirlo:
+
+- **Renombrar rechaza el nombre repetido**, y no por pulcritud: la ventana
+  empareja herramienta y resultado **por nombre** en varios sitios, así que dos
+  cotas llamadas igual harían que una enseñara el valor de la otra.
+- **Copiar lo que mide** copia la ÚLTIMA lectura guardada, no una nueva. Volver a
+  ejecutar la herramienta daría un número medido en otro instante, con la pieza
+  ya movida, y el operador creería estar copiando lo que tiene delante. Y si no
+  hay lectura todavía, se dice — copiar en silencio un portapapeles vacío hace
+  que se pegue lo que se copió antes sin enterarse.
+
 #### Tres arreglos de uso, con su porqué
 
 **El botón de borrar todo no hacía nada sin pieza abierta.** Queja: *«la

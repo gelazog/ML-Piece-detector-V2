@@ -311,6 +311,19 @@ signals:
     void edgeCorrected(const cv::Mat& forcePiece, const cv::Mat& forceBackground);
     // El tamaño del pincel cambió con la rueda: quien lo muestre debe seguirlo.
     void brushRadiusChanged(int radiusPx);
+
+    // EL CLIC DERECHO PIDE OPCIONES; NO EJECUTA NINGUNA.
+    //
+    // Antes el clic derecho sobre una herramienta la BORRABA en el acto, sin
+    // menu y sin preguntar. En cualquier otro programa el clic derecho es el
+    // gesto de «enseñame que puedo hacer aqui», asi que el que mas se parece a
+    // pedir informacion era el unico que destruia trabajo.
+    //
+    // La lona no monta el menu: dice DONDE se pulso —y sobre que, si es que hay
+    // algo— y quien conoce las acciones lo monta. `tool` vale -1 cuando el clic
+    // cae sobre el vacio, que tambien tiene cosas que ofrecer.
+    void contextMenuRequested(int tool, const QPoint& globalPos,
+                              const cv::Point2f& imagePoint);
     // Que ha hecho la ultima pincelada. Existe para poder DECIRLO: una ayuda que
     // unas veces actua y otras no, sin explicar cual de las dos ha pasado, se
     // vive como que el programa va a rachas.
