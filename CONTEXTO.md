@@ -29,7 +29,7 @@ sobre en qué se les parece y en qué no (ver *lo que hay que mejorar*).
 |---|---|
 | Código fuente | 48 673 líneas, 205 ficheros |
 | Pruebas | 42 272 líneas, 77 ficheros, **1 254 casos** |
-| Clases de herramienta de medición | 33 |
+| Clases de herramienta de medición | 32 |
 | Commits | 300 |
 
 Se compila con **MSYS2 UCRT64**, C++20, `-Werror`. `.\run.ps1` prepara todo
@@ -45,6 +45,7 @@ batería y `-Package` arma un zip portable.
 | [ARQUITECTURA.md](ARQUITECTURA.md) | **Lo que hay**, desde dentro: cómo funciona cada subsistema y **por qué se decidió así** | quien vaya a tocar el código |
 | [MEJORAS.md](MEJORAS.md) | **Lo que hay que mejorar**: lo pendiente, lo medido y lo que se sabe que falla | quien planifique el siguiente paso |
 | [BITACORA.md](BITACORA.md) | **Lo que ya falló**: cada defecto que apareció en uso, con lo que se midió al buscarlo | quien vaya a tocar algo que ya se rompió una vez |
+| [HERRAMIENTAS.md](HERRAMIENTAS.md) | **Qué mide cada una de las 32**, cómo se traza y qué NO puede medir | quien prepare una plantilla de inspección |
 
 ## Seguir trabajando solo
 

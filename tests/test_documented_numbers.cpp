@@ -21,11 +21,14 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <regex>
+#include <fstream>
 #include <string>
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include "inspection_editor/tools/tool_geometry.h"
 #include "vision/pipeline.h"
 #include "vision/quality_metrics.h"
 #include "vision/subpixel_edge.h"
@@ -193,4 +196,55 @@ TEST(DocumentedNumbers, TheSubpixelAccuracyClaimStillHolds) {
     EXPECT_GT(errorThreshold / std::max(errorSubpixel, 1e-9), 10.0)
         << "el afinado ya no es un orden de magnitud mejor: la razon por la que "
            "existe deja de sostenerse";
+}
+
+// --- CUÁNTAS HERRAMIENTAS DICE QUE HAY ---------------------------------------
+//
+// Este entró por un error cometido el mismo día que se escribió la guardia:
+// contando el `enum` con un `grep` mal puesto salieron 33 y ese 33 acabó en dos
+// documentos nuevos. Las herramientas son 32.
+//
+// Es la clase de error más fácil de cometer y más difícil de ver: el número está
+// en prosa, en cinco sitios distintos, y nadie lo vuelve a contar. `allToolTypes()`
+// devuelve un `std::array<ToolType, 32>`, así que la cuenta de verdad vive en el
+// tipo y no puede desincronizarse del código — solo de la prosa. Esto ata las dos.
+TEST(DocumentedNumbers, EveryDocumentAgreesOnHowManyToolsThereAre) {
+    const std::size_t real = pci::inspection::allToolTypes().size();
+
+    std::filesystem::path root;
+    for (const auto* candidate : {".", "..", "../..", "../../.."}) {
+        std::error_code ec;
+        if (std::filesystem::exists(std::filesystem::path(candidate) / "CONTEXTO.md", ec)) {
+            root = candidate;
+            break;
+        }
+    }
+    ASSERT_FALSE(root.empty()) << "no se encuentra la raíz del proyecto";
+
+    const std::regex claim(R"((\d+)\s+herramientas)");
+    int claims = 0;
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
+        if (entry.path().extension() != ".md") {
+            continue;
+        }
+        std::ifstream file(entry.path());
+        std::string line;
+        int number = 0;
+        while (std::getline(file, line)) {
+            ++number;
+            for (std::sregex_iterator it(line.begin(), line.end(), claim), end; it != end; ++it) {
+                const auto said = static_cast<std::size_t>(std::stoul((*it)[1].str()));
+                ++claims;
+                EXPECT_EQ(said, real)
+                    << entry.path().filename().string() << ":" << number
+                    << " dice que hay " << said << " herramientas y el enum tiene " << real
+                    << ". Un número copiado a mano a un documento empieza a caducar el "
+                       "mismo día.";
+            }
+        }
+    }
+    std::printf("  [herramientas] %d afirmaciones revisadas, el enum tiene %zu\n", claims, real);
+    EXPECT_GE(claims, 4) << "casi no se ha revisado ninguna afirmación: o cambió la forma de "
+                            "escribirlas, o esta guardia dejó de leer los documentos";
 }

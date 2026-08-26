@@ -52,7 +52,7 @@ grande.
   construcción de menús y atajos, la tira de capturas, el ciclo de vídeo, los
   manejadores de inspección.
 - [ ] **B2 · `inspection_editor/execution/tool_executor.cpp` tiene 4 700
-  líneas** con las 33 herramientas en un solo `switch`. Un fichero por familia
+  líneas** con las 32 herramientas en un solo `switch`. Un fichero por familia
   —longitudes, formas, GD&T, torneadas, construcciones— con el despacho
   quedándose donde está.
 - [ ] **B3 · `inspection_editor/canvas/editor_canvas.cpp`, 3 282 líneas.**
@@ -118,9 +118,13 @@ Sale de una auditoría con el mapa de contenidos medido.
   `ARQUITECTURA.md`: **5 119 → 3 955 líneas**. Y la guardia de rutas siguió
   marcando 29 y 0 rotas después de mover todo, que es exactamente para lo que se
   puso el trinquete el paso anterior.
-- [ ] **D3 · Partir el README (1 666 líneas).** El paso 5, «dibujar sobre el
-  vídeo en vivo», ocupa **822 líneas — el 49 % del total** — y dentro lleva el
-  catálogo de las 33 herramientas (353 líneas). Salen dos documentos propios.
+- [~] **D3 · Partir el README.** Hecha la mitad grande: el catálogo de las 32
+  herramientas —**409 líneas, una cuarta parte del manual entero**— estaba metido
+  dentro de un solo paso de nueve. Ahora es [HERRAMIENTAS.md](HERRAMIENTAS.md) y
+  en el README queda la tabla de las cinco familias con un enlace.
+
+  **README: 1 670 → 1 273 líneas.** Falta el resto del paso 5, que sigue siendo
+  el más largo con diferencia.
 - [ ] **D4 · Quitar del README las secciones «Fase 1…6» (214 líneas).** Es
   documentación de ingeniería dentro de un manual de uso, y repite
   ARQUITECTURA casi entera.
