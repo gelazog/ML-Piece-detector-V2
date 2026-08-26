@@ -10,6 +10,7 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(pci_tests
   test_auto_measure.cpp
+  test_tool_for_the_piece.cpp
   test_brush_snap.cpp
   test_camera_profile.cpp
   test_calibration_images.cpp

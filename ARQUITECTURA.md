@@ -2460,6 +2460,123 @@ Qué propone, a partir de la descomposición del contorno y de los agujeros:
 por redondeo, un **Calíper** por cada par de caras paralelas enfrentadas y un
 **Ángulo** por esquina viva.
 
+#### Y si la pieza se REPITE: rosca y engranaje
+
+Salió de una queja del taller: «en unos tornillos, que tienen rosca, usa otras
+herramientas en lugar de las correctas, o se pasa». Las dos mitades eran ciertas
+y las dos se midieron sobre las dieciséis fotos del banco (la prueba vive en
+`tests/test_tool_for_the_piece.cpp` y publica la tabla entera).
+
+**Conocía siete de las treinta y dos clases de herramienta.** Ni la Rosca ni el
+Engranaje estaban entre ellas, así que:
+
+| Foto | Proponía | Le tocaba |
+|---|---|---|
+| `tornillo-2.png` (tirafondo) | 9 «Radio» y 3 reglas | el **paso de rosca** |
+| `rosca-1.png` (varilla) | 6 ángulos, los seis de 102° | el **paso de rosca** |
+| `engranaje-1.png` (z=20) | 9 «Lado» y 2 arcos | **contar los dientes** |
+
+Los seis ángulos de 102° son el mismo flanco contado seis veces. Los nueve
+«Lado» del engranaje son ocho de sus cuarenta flancos de diente, elegidos por
+orden de lista — y el número del nombre es un índice interno: se llegaron a ver
+**«Espesor 117», «Lado 30» y «Radio 42»**. Con el tope de doce propuestas, esa
+muestra arbitraria se llevaba el presupuesto entero y las cotas que sí valen se
+quedaban fuera.
+
+Ahora, antes de descomponer el contorno, se pregunta **si la pieza se repite**:
+se prueba el Engranaje en la corona y la Rosca a lo largo del eje. Si alguna
+mide, se propone —y **se apagan las propuestas por primitiva**, porque esos
+tramos ya están medidos donde corresponde: en «z=20 dientes, Ø cabeza, Ø raíz,
+excentricidad» y en «paso, Ø exterior, Ø de fondo».
+
+Resultado medido:
+
+| Foto | Antes | Ahora |
+|---|---|---|
+| `rosca-1.png` | 12 cotas de ruido | Largo, Ancho, **Paso 66 px** |
+| `tornillo-1.png` | 12 cotas de ruido | Largo, Ancho, **Paso 34 px** |
+| `engranaje-1.png` | 12 cotas de ruido | Largo, **z=20 dientes** |
+| arandelas y tuercas | (lo de siempre) | igual: ni rosca ni engranaje |
+
+**Dónde trazar el eje de la rosca, probando.** Con el eje de punta a punta y la
+banda al ancho entero, la Rosca no mide **ninguna** de las tres roscas del
+banco: en un tornillo ese eje mete dentro la cabeza y el perfil deja de
+repetirse. Un operador no lo trazaría así, lo trazaría sobre la caña. Así que se
+prueban cinco colocaciones —la pieza entera y los dos extremos, con dos anchos
+de banda— y se queda la primera que mida. Probar no es disparar a ciegas
+*porque* la herramienta rechaza las que no valen.
+
+**Por qué es seguro proponer una rosca a cualquier pieza:** el generador ya
+ejecuta cada propuesta antes de ofrecerla y tira la que no consigue medir. Esa
+red solo funciona si la herramienta sabe negarse — y la Rosca no sabía; ver la
+sección siguiente.
+
+**Un hexágono no es una rueda de seis dientes**, aunque su radio se repita seis
+veces por vuelta exactamente igual. La primera versión de esto proponía
+engranaje a los hexágonos y, al darlos por periódicos, les apagaba sus seis
+lados y sus seis ángulos; lo cazaron quince pruebas que ya existían. La
+distinción no hubo que inventarla: `classifyShape` dice «polígono» o «polígono
+redondeado» y con cuántos lados, y se rinde con «irregular» justo donde vive un
+engranaje. Se propone Engranaje solo si la forma no es un polígono, o si los
+dientes pasan del techo de lados del clasificador (doce), porque por encima de
+ahí ya no hay polígono que valga.
+
+**Lo que NO se hizo, y por qué:** hubo una versión que colapsaba las propuestas
+de valor repetido —seis ángulos de 102° en una— y rompió el octógono y el
+dodecágono. Las N caras iguales de un polígono regular **sí** son N cotas: cada
+una puede salirse de tolerancia por su cuenta, y fundirlas dejaría N−1 sin
+comprobar. La diferencia con los dientes no es que se repitan, es que seis caras
+son *todas* las que hay y ocho flancos de cuarenta son una *muestra*. El colapso
+se borró en vez de ajustarle el umbral.
+
+#### La Rosca aprende a decir que no
+
+Medido con el eje trazado a lo bruto sobre las dieciséis fotos del banco: la
+herramienta de Rosca decía que **sí a las dieciséis**. Arandelas, tuercas y
+cáncamos incluidos, con perlas como «paso=1,3 px» en una bolsa de arandelas —un
+paso de 1,3 píxeles no es una rosca, es la rejilla de la cámara. Con las
+tolerancias abiertas que pone el generador de propuestas, cada una de esas se
+habría llevado un OK verde.
+
+Su hermana la del Engranaje, mismo módulo de periodicidad y mismo fichero, decía
+que **no en quince de dieciséis** y explicando por qué. La diferencia no era de
+información: la Rosca ya calculaba los dos números que hacían falta y los dejaba
+en un aviso al final del texto, donde un aviso que sale en todas las piezas se
+aprende a ignorar. Ahora deciden:
+
+1. **Tiene que haber filete.** El perfil *plegado* por su periodo es la parte que
+   de verdad se repite; si no se puede formar —porque el periodo se quedó clavado
+   en el suelo del rango de búsqueda, que es lo que pasaba en las arandelas— o si
+   su altura no llega a un píxel, no hay filete. Medido: en la rosca de verdad el
+   plegado sube 28,9 y 30,1 px a cada lado del eje; en las arandelas y tuercas,
+   0,00 por los dos.
+2. **Los dos lados del eje tienen que decir lo mismo.** Cuando no lo dicen, lo
+   típico no es ruido: es *aliasing* —el eje coge una cresta sí y otra no— y el
+   paso sale al doble. Medido en `tornillo-2.png`: los dos lados discrepaban un
+   49 % y el paso salía 48,9 px cuando contando crestas se ven unas veintidós en
+   ese tramo, o sea la mitad. El 15 % ya estaba en el código como umbral del
+   aviso.
+
+Con las dos puertas: **16 de 16 rechazadas** con el eje ingenuo, y las dos
+medidas verificadas siguen pasando.
+
+**Cómo se comprobó que no se ha vuelto un «no» a todo.** `rosca-1.png` lleva
+impreso «1 pulgada» con su flecha y numera 6 hilos dentro; midiendo la flecha por
+sus píxeles cian salen 399 px, o sea **66,5 px de paso**. La herramienta mide
+**65,9 px**: 0,9 % de error. Y en `tornillo-1.png`, contando las vueltas sobre la
+foto ampliada con rejilla salen ≈34 px y mide **34,0 px**.
+
+**«flanco=0,00°» no es un ángulo.** `flankAngleDeg` devuelve cero cuando se
+rinde, y ese cero se escribía con dos decimales en **catorce de las dieciséis**
+fotos. Un flanco de 0° sería una rosca de paredes verticales: no existe. Ahora
+dice que no se puede medir.
+
+**Y un segundo recuento, que avisa en vez de rechazar.** Contar crestas es otro
+camino al mismo número, y cuando los dos discrepan hay algo que mirar. Aquí no
+manda, y eso está medido: en `tornillo-1.png` el paso sale correcto mientras el
+recuento de crestas da 2 de un lado y 12 del otro, porque en ese lado el borde de
+la caña cae contra una sombra. Negarse ahí habría tirado una medida buena.
+
 #### Y antes de todo eso, QUÉ FIGURA ES
 
 Lo anterior mira el tamaño de los rasgos y nunca la **forma**, y eso se notaba

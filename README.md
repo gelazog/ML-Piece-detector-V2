@@ -455,6 +455,23 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    | **Un polígono redondeado** | cada tramo recto, el **radio de cada redondeo** y el largo/ancho |
    | Cualquier otra | **cada cara recta** que tenga, largo y ancho, un círculo por agujero, un espesor por cada par de caras paralelas y un ángulo por esquina |
 
+   | **Una rueda dentada** | **cuántos dientes**, Ø de cabeza, Ø de raíz y la excentricidad |
+   | **Una rosca de perfil** | el **paso**, el Ø exterior y el Ø de fondo |
+
+   **Rosca y engranaje son nuevos, y antes faltaban del todo.** La medición
+   automática conocía siete de las treinta y dos herramientas, y ninguna de esas
+   dos estaba: a un tornillo roscado te ofrecía nueve «Radio» y tres reglas, y a
+   una rueda de veinte dientes, nueve «Lado» — que eran ocho de sus cuarenta
+   flancos, elegidos por orden de lista. Ahora, cuando la pieza **se repite**
+   —dientes alrededor del centro, filetes a lo largo del eje— te propone la
+   herramienta que le toca y **deja de ofrecerte los tramos sueltos**, porque ya
+   están medidos ahí dentro. En la varilla roscada de prueba, que lleva impreso
+   «6 hilos por pulgada», el paso que mide sale con un 0,9 % de error.
+
+   Una **tuerca hexagonal sigue recibiendo sus seis caras**: su radio se repite
+   seis veces por vuelta igual que en una rueda, pero seis caras son *todas* las
+   que tiene, mientras que ocho flancos de cuarenta son solo una muestra.
+
    Las caras rectas salen **para cualquier forma que no sea redonda**, no solo
    para los polígonos: una pieza de canto escalonado se quedaba antes sin una
    sola cota de sus caras. Una elipse sigue sin recibir lados, y eso también es
@@ -590,6 +607,25 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
      identifica ningún tornillo. Necesita ver **varias vueltas**, y el ángulo de
      flanco además necesita que el filete se vea grande: con 50 px de altura de
      filete sale a ±1°, con 12 px deja de ser fiable y la herramienta lo dice.
+
+     **Y ahora sabe decir que no.** Antes publicaba SIEMPRE: probada sobre las
+     dieciséis fotos del banco con el eje trazado de punta a punta, decía que sí
+     a las dieciséis —arandelas, tuercas y cáncamos incluidos—, con perlas como
+     «paso=1,3 px» en una bolsa de arandelas. Un paso de 1,3 píxeles no es una
+     rosca, es la rejilla de la cámara. Ahora se niega cuando **no hay filete**
+     (plegando el perfil por su periodo, lo que se repite no llega a un píxel de
+     altura) o cuando **los dos lados del eje dan pasos distintos**, que suele
+     ser que el eje coge una cresta sí y otra no y el paso sale al doble. Los dos
+     números ya se calculaban y se quedaban en un aviso al final del texto.
+
+     Con eso: 16 de 16 rechazadas con el eje mal trazado, y las medidas buenas
+     intactas — sobre la varilla que lleva impreso «6 hilos por pulgada», mide el
+     paso con **0,9 % de error**.
+
+     Otro detalle que se corrigió: cuando el flanco no se puede medir, antes
+     escribía **«flanco=0,00°»**, que salía en catorce de las dieciséis fotos. Un
+     flanco de cero grados sería una rosca de paredes verticales; ahora dice que
+     no se puede medir.
 
      Hay un segundo límite del ángulo de flanco, y este **no se arregla
      acercando la cámara**: una rosca no es un perfil plano repetido, es una

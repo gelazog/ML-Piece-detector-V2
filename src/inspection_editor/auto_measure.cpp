@@ -135,8 +135,9 @@ const std::vector<ToolType>& proposableTypes() {
     // Vive aquí, al lado de quién las propone, para que añadir una clase nueva
     // y olvidarse de la interfaz no sea posible.
     static const std::vector<ToolType> kTypes = {
-        ToolType::Caliper, ToolType::Ruler,     ToolType::Circle, ToolType::Arc,
-        ToolType::Angle,   ToolType::Roundness, ToolType::Polygon};
+        ToolType::Caliper, ToolType::Ruler,     ToolType::Circle,  ToolType::Arc,
+        ToolType::Angle,   ToolType::Roundness, ToolType::Polygon, ToolType::Thread,
+        ToolType::Gear};
     return kTypes;
 }
 
@@ -311,6 +312,132 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
         }
     }
 
+    // --- ¿ESTA PIEZA SE REPITE? RUEDA DENTADA Y ROSCA -----------------------
+    //
+    // Esto es lo que faltaba, y faltaba entero: la medición automática conocía
+    // SIETE de las treinta y dos clases de herramienta, y ni la Rosca ni el
+    // Engranaje estaban entre ellas. Medido sobre el banco de fotos: cero
+    // propuestas de rosca en tres fotos de rosca evidente, cero de engranaje en
+    // el engranaje. A un tornillo roscado le ofrecía nueve «Radio» y tres
+    // reglas; a la rueda de veinte dientes, nueve «Lado».
+    //
+    // Y no es que estas dos herramientas no supieran medirlo: la del engranaje
+    // saca z=20 en esa foto con dos recuentos independientes que coinciden, y la
+    // de la rosca mide 65,9 px de paso en `rosca-1.png`, donde la propia imagen
+    // declara 6 hilos por pulgada y la pulgada mide 399 px — o sea 66,5 px. Un
+    // 0,9 % de error. Estaban ahí, escritas y funcionando, sin que nadie se las
+    // ofreciera al operador.
+    //
+    // POR QUÉ ES SEGURO PROPONERLAS: este generador ya EJECUTA cada propuesta
+    // antes de ofrecerla y tira la que no consigue medir. Con eso, ofrecer un
+    // engranaje a una arandela no cuesta nada — la herramienta se niega y la
+    // propuesta desaparece. Esa red solo funciona si la herramienta sabe decir
+    // que no, y por eso la Rosca tuvo que aprender a hacerlo antes (decía que sí
+    // en las dieciséis fotos, con perlas como «paso=1,3 px» en unas arandelas).
+    cv::Point2f rimCentre;
+    float rimRadius = 0.0F;
+    cv::minEnclosingCircle(contour, rimCentre, rimRadius);
+    const cv::RotatedRect axisBox = cv::minAreaRect(contour);
+    bool rimRepeatsItself = false;
+
+    if (options.allows(ToolType::Gear) && rimRadius > options.minFeatureLength) {
+        AutoProposal p;
+        p.config.type = ToolType::Gear;
+        p.config.name = "Dientes (z)";
+        GearGeometry g;
+        g.center = toPiece(fixture, rimCentre);
+        g.outerRadius = rimRadius;
+        // Por dentro de la raíz del diente y por fuera del cubo. Un diente
+        // normalizado sobresale ~2,25 módulos, así que el 55 % del radio de
+        // cabeza cae holgadamente dentro de la corona en cualquier rueda de uso.
+        g.innerRadius = rimRadius * 0.55F;
+        g.rayCount = 1440;
+        p.geometry = g;
+        p.reason = "El contorno se repite alrededor del centro: cuenta los dientes y da "
+                   "el Ø de cabeza, el de raíz y la excentricidad. El recuento se "
+                   "comprueba por dos caminos y la herramienta se niega si no coinciden.";
+        // UN HEXÁGONO NO ES UNA RUEDA DE SEIS DIENTES.
+        //
+        // Y sin embargo lo es para la herramienta: el radio de una tuerca
+        // hexagonal se repite SEIS veces por vuelta, exactamente igual de
+        // periódico que un engranaje. La primera versión de esto proponía
+        // engranaje a los hexágonos y, peor, al darlos por periódicos les
+        // apagaba sus seis lados y sus seis ángulos. Lo cazaron quince pruebas
+        // que ya existían.
+        //
+        // La distinción no hay que inventarla, ya está hecha: el clasificador de
+        // formas dice «polígono» o «polígono redondeado» y con cuántos lados, y
+        // se rinde con «irregular» justo cuando el contorno tiene más detalle
+        // del que un polígono explica. Ese es el sitio donde vive un engranaje.
+        //
+        // Y se deja una puerta por si una rueda de pocos dientes llegara a
+        // clasificarse como polígono: por encima del techo de lados del
+        // clasificador —doce— ya no hay polígono que valga, es una rueda.
+        const bool couldBeAPolygon = shape.kind == vision::ShapeKind::Polygon ||
+                                     shape.kind == vision::ShapeKind::Rounded;
+        if (measureProposal(gray, fixture, mmPerPixel, p) &&
+            (!couldBeAPolygon || p.measured > vision::ClassifyOptions{}.maxSides)) {
+            rimRepeatsItself = true;
+            proposals.push_back(std::move(p));
+        }
+    }
+
+    if (options.allows(ToolType::Thread) && !rimRepeatsItself) {
+        const double angle = axisBox.angle * CV_PI / 180.0;
+        cv::Point2f dir(static_cast<float>(std::cos(angle)), static_cast<float>(std::sin(angle)));
+        float longSide = axisBox.size.width;
+        float shortSide = axisBox.size.height;
+        if (axisBox.size.height > axisBox.size.width) {
+            dir = cv::Point2f(-dir.y, dir.x);
+            longSide = axisBox.size.height;
+            shortSide = axisBox.size.width;
+        }
+        const cv::Point2f tail = axisBox.center - dir * (longSide / 2.0F);
+
+        // DÓNDE TRAZAR EL EJE, PROBANDO — porque importa y está medido.
+        //
+        // Con el eje de punta a punta y la banda al ancho entero, la Rosca no
+        // mide NINGUNA de las tres roscas del banco: en un tornillo, ese eje
+        // mete dentro la cabeza, y el perfil deja de repetirse. Un operador no
+        // lo trazaría así, trazaría sobre la caña. Así que se prueban varias
+        // colocaciones y se queda la primera que mida — la herramienta ya
+        // rechaza las que no, de modo que «probar» no es disparar a ciegas.
+        //
+        // Se prueban los dos extremos porque de qué lado cae la cabeza no se
+        // sabe: el eje del rectángulo mínimo no tiene sentido preferente.
+        struct Placement {
+            double from;
+            double to;
+            double band;
+        };
+        static const Placement kPlacements[] = {
+            {0.00, 1.00, 1.00},  // la pieza entera, que es lo que vale en una varilla
+            {0.30, 1.00, 0.60}, {0.00, 0.70, 0.60},
+            {0.30, 1.00, 1.00}, {0.00, 0.70, 1.00},
+        };
+        for (const auto& placement : kPlacements) {
+            AutoProposal p;
+            p.config.type = ToolType::Thread;
+            p.config.name = "Paso de rosca";
+            ThreadGeometry g;
+            g.axisFrom = toPiece(fixture,
+                                 tail + dir * static_cast<float>(longSide * placement.from));
+            g.axisTo = toPiece(fixture,
+                               tail + dir * static_cast<float>(longSide * placement.to));
+            g.searchBand = static_cast<float>(shortSide / 2.0 * placement.band);
+            g.stations = 240;
+            p.geometry = g;
+            p.reason = "El perfil se repite a lo largo del eje: es una rosca vista de "
+                       "perfil. Da el paso, el Ø exterior y el Ø de fondo, y con "
+                       "calibración px→mm propone la designación métrica.";
+            if (measureProposal(gray, fixture, mmPerPixel, p)) {
+                rimRepeatsItself = true;
+                proposals.push_back(std::move(p));
+                break;
+            }
+        }
+    }
+
     // --- Descomposición del contorno --------------------------------------
     // Con las MISMAS opciones que usó el clasificador, ajustadas al tamaño de
     // la pieza. Si cada uno mirara el contorno con un paso distinto, el
@@ -337,7 +464,26 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
     // no una cara. Y una ELIPSE, que también es de contorno libre, no recibe
     // lados porque no tiene ninguno — esa es la frontera que impide que quitar
     // la condición se convierta en inventar cotas.
-    if (!isRound) {
+    // CUANDO LA PIEZA ES PERIÓDICA, SUS PRIMITIVAS NO SON COTAS.
+    //
+    // Aquí es donde se arregla el «se pasa». La descomposición de un contorno
+    // dentado o roscado devuelve DECENAS de tramos —la rueda de veinte dientes
+    // da unos cuarenta flancos, la rosca da más de cien— y el generador tiene un
+    // presupuesto de doce propuestas. Cualquier docena que elija de ahí es una
+    // MUESTRA ARBITRARIA: en el engranaje ofrecía «Lado 2», «Lado 7», «Lado 8»,
+    // «Lado 17», «Lado 22», «Lado 25», «Lado 30» —ocho de cuarenta flancos, y el
+    // número del nombre es un índice interno que al operador no le dice nada—, y
+    // en la rosca, seis ángulos que medían los seis 102°: el mismo flanco
+    // contado seis veces.
+    //
+    // Y de paso se llevaban el presupuesto entero, así que las cotas que sí
+    // valen —el diámetro, la envolvente, los agujeros— se quedaban fuera.
+    //
+    // Con la rueda o la rosca ya propuestas, esos tramos están medidos donde
+    // corresponde: en «z=20 dientes, Ø cabeza, Ø raíz, excentricidad» y en
+    // «paso, Ø exterior, Ø de fondo». Volver a ofrecerlos de uno en uno no
+    // añade una cota, añade ruido.
+    if (!isRound && !rimRepeatsItself) {
         int sideIndex = 0;
         for (const auto& primitive : primitives) {
             if (primitive.kind != vision::PrimitiveKind::Line ||
@@ -363,13 +509,12 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
     // es la mitad del diámetro que ya se ha propuesto. Serían dos nombres para
     // la misma cota, que es justo lo que hace que una lista no se revise.
     // El tamaño de la pieza, que es la vara para decidir si un «redondeo» lo es.
-    cv::Point2f pieceCentre;
-    float pieceRadius = 0.0F;
-    cv::minEnclosingCircle(contour, pieceCentre, pieceRadius);
+    // Ya se midió arriba, para acotar la corona de dientes.
+    const float pieceRadius = rimRadius;
 
     int arcIndex = 0;
     for (const auto& primitive : primitives) {
-        if (isRound || primitive.kind != vision::PrimitiveKind::Arc ||
+        if (isRound || rimRepeatsItself || primitive.kind != vision::PrimitiveKind::Arc ||
             primitive.length < options.minFeatureLength) {
             continue;
         }
@@ -421,7 +566,7 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
         }
     }
     int caliperIndex = 0;
-    for (std::size_t i = 0; i < lines.size(); ++i) {
+    for (std::size_t i = 0; !rimRepeatsItself && i < lines.size(); ++i) {
         for (std::size_t j = i + 1; j < lines.size(); ++j) {
             const cv::Point2f di = canonicalDirection(*lines[i]);
             const cv::Point2f dj = canonicalDirection(*lines[j]);
@@ -484,7 +629,7 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
     // siempre se queda uno corto es peor que no tenerlo, porque cuadra con la
     // pieza casi siempre y falla justo cuando cuentas.
     int cornerIndex = 0;
-    for (std::size_t i = 0; i < primitives.size(); ++i) {
+    for (std::size_t i = 0; !rimRepeatsItself && i < primitives.size(); ++i) {
         const auto& a = primitives[i];
         const auto& b = primitives[(i + 1) % primitives.size()];
         if (primitives.size() < 2) {

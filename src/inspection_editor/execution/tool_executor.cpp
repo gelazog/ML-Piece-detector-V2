@@ -1344,6 +1344,76 @@ std::vector<double> foldByPeriod(const std::vector<double>& offsets, double peri
 // y estaba mal: la proporción de muestras que caen en el flanco depende de
 // cuánto llano tenga la cresta, así que el resultado cambiaba con el PASO en
 // vez de con el ángulo.
+// SEGUNDO RECUENTO DE CRESTAS, POR OTRO CAMINO.
+//
+// El engranaje ya hace esto y por eso sabe decir que no: cuenta los dientes por
+// periodicidad Y contando picos, y si los dos no coinciden se niega a publicar
+// un recuento. La rosca no lo hacía, y el resultado está medido — decía que sí
+// en las dieciséis fotos del banco, arandelas y tuercas incluidas.
+//
+// Cuenta los tramos contiguos por encima de un umbral alto del filete.
+//
+// SE LE QUITA ANTES LA ENVOLVENTE, y eso no es un adorno: la primera versión
+// contaba sobre el perfil crudo y en un tornillo real daba 2 crestas de un lado
+// y 11 del otro cuando hay veintitantas. El motivo es que el perfil de una
+// rosca no es plano — la caña se ve más ancha por el centro, el eje nunca queda
+// exactamente paralelo— y un umbral fijo sobre esa pendiente se queda con el
+// trozo más ancho y se come el resto. El engranaje no sufre esto porque un
+// radio alrededor de una vuelta no tiene pendiente que quitar.
+int crestRuns(const std::vector<double>& offsets) {
+    if (offsets.size() < 8) {
+        return 0;
+    }
+    const int n = static_cast<int>(offsets.size());
+    // Ventana de la media móvil: una fracción del recorrido, lo bastante ancha
+    // para no comerse el propio filete y lo bastante estrecha para seguir la
+    // envolvente.
+    const int window = std::max(3, n / 12);
+    std::vector<double> flat(offsets.size(), 0.0);
+    for (int i = 0; i < n; ++i) {
+        double sum = 0.0;
+        int count = 0;
+        for (int k = std::max(0, i - window); k <= std::min(n - 1, i + window); ++k) {
+            sum += offsets[static_cast<std::size_t>(k)];
+            ++count;
+        }
+        flat[static_cast<std::size_t>(i)] =
+            offsets[static_cast<std::size_t>(i)] - sum / count;
+    }
+    const double low = *std::min_element(flat.begin(), flat.end());
+    const double high = *std::max_element(flat.begin(), flat.end());
+    if (high - low < 1e-6) {
+        return 0;
+    }
+    const double threshold = low + 0.75 * (high - low);
+    int runs = 0;
+    bool inside = false;
+    for (double value : flat) {
+        if (value > threshold) {
+            if (!inside) {
+                inside = true;
+                ++runs;
+            }
+        } else {
+            inside = false;
+        }
+    }
+    return runs;
+}
+
+// Amplitud del filete: la altura del perfil PLEGADO por el periodo, que es la
+// parte que se repite de verdad. La diferencia con `decileMean` es toda la
+// cuestión — el decil mide la ENVOLVENTE (en un tornillo entero, la cabeza
+// contra la punta) y esto mide el rizado.
+double foldedRipple(const std::vector<double>& offsets, double period) {
+    const std::vector<double> folded = foldByPeriod(offsets, period);
+    if (folded.empty()) {
+        return 0.0;
+    }
+    return *std::max_element(folded.begin(), folded.end()) -
+           *std::min_element(folded.begin(), folded.end());
+}
+
 double flankAngleDeg(const std::vector<double>& offsets, double period,
                      double stationSpacing) {
     const std::vector<double> folded = foldByPeriod(offsets, period);
@@ -1436,6 +1506,15 @@ const char* closestMetricThread(double diameterMm, double pitchMm, double& error
     return best;
 }
 
+// Altura mínima del filete plegado, en píxeles. Es el mismo suelo con el que
+// `flankAngleDeg` se rinde: por debajo de un píxel no hay perfil, hay ruido.
+constexpr double kMinCrestHeightPx = 1.0;
+
+// Cuánto pueden discrepar los dos lados del eje antes de que el paso deje de
+// valer. El 15 % ya estaba en el código como umbral del aviso; lo único que
+// cambia es que ahora decide en vez de comentar.
+constexpr double kSidesMustAgree = 0.15;
+
 ToolRunResult runThread(const cv::Mat& gray, const Fixture& fixture, const ToolConfig& config,
                         const ThreadGeometry& g, const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
@@ -1497,11 +1576,99 @@ ToolRunResult runThread(const cv::Mat& gray, const Fixture& fixture, const ToolC
                           flankAngleDeg(sideB.offsets, periodB.period, spacing)) /
                          2.0;
 
+    // --- LA ROSCA APRENDE A DECIR QUE NO -----------------------------------
+    //
+    // Hasta aquí esta herramienta publicaba SIEMPRE. Medido sobre las dieciséis
+    // fotos del banco con el eje trazado de punta a punta: decía que sí en las
+    // dieciséis, arandelas y tuercas incluidas, con perlas como «paso=1,3 px» en
+    // una bolsa de arandelas. Un paso de 1,3 píxeles no es una rosca, es la
+    // rejilla de la cámara.
+    //
+    // Su hermana la del engranaje —mismo módulo de periodicidad, mismo fichero—
+    // sí sabe negarse: dijo que no en quince de las dieciséis y explicando por
+    // qué. La diferencia no era de información: la rosca YA calculaba estos dos
+    // números y los dejaba en un aviso al final del texto, donde un aviso que
+    // sale en todas las piezas se aprende a ignorar.
+    //
+    // Los dos criterios salen de medir cuáles separan, no de elegirlos bonitos.
+
+    // (1) TIENE QUE HABER FILETE.
+    //
+    // El perfil PLEGADO por el periodo es la parte que de verdad se repite. Si
+    // no se puede formar —porque el periodo se quedó clavado en el suelo del
+    // rango de búsqueda, que es lo que pasaba en las arandelas— o si su altura
+    // no llega a un píxel, no hay filete que medir. Es el mismo píxel de suelo
+    // que ya usa el ángulo de flanco para rendirse.
+    //
+    // Medido: en la rosca de verdad el plegado sube 28,9 y 30,1 px a cada lado;
+    // en las arandelas y tuercas, 0,00 por los dos.
+    const double rippleA = foldedRipple(sideA.offsets, periodA.period);
+    const double rippleB = foldedRipple(sideB.offsets, periodB.period);
+    if (rippleA < kMinCrestHeightPx || rippleB < kMinCrestHeightPx) {
+        result.detail =
+            "No hay filete que medir: plegando el perfil por su periodo, lo que se "
+            "repite mide " + fmt2(std::min(rippleA, rippleB)) +
+            " px de altura. O el eje no cae sobre la parte roscada, o esta pieza no "
+            "lleva rosca vista de perfil";
+        return result;
+    }
+
+    // (2) LOS DOS LADOS TIENEN QUE DECIR LO MISMO.
+    //
+    // Los flancos de una rosca son los mismos por arriba y por abajo del eje, así
+    // que los dos perfiles tienen que dar el mismo paso. Cuando no lo dan, lo
+    // típico no es ruido: es ALIASING —el eje coge una cresta sí y otra no— y el
+    // paso sale al doble. Medido en tornillo-2: los dos lados discrepan un 49 %
+    // y el paso salía 48,9 px cuando contando crestas se ven unas veintidós en
+    // ese tramo, o sea la mitad.
+    //
+    // Este número ya se calculaba y ya se avisaba de él. Lo único que cambia es
+    // que ahora manda: un paso que depende de qué lado del eje mires no es un
+    // paso.
+    if (sidesDisagreement > kSidesMustAgree) {
+        result.detail =
+            "Los dos lados del eje dan pasos distintos (" + fmt2(sidesDisagreement * 100.0) +
+            " % de diferencia), así que el paso no es de fiar. Suele ser que el eje "
+            "coge una cresta sí y otra no: reduce el alcance de búsqueda o vuelve a "
+            "trazar el eje por el centro de la caña";
+        return result;
+    }
+
     result.measured = pitchPx;  // el paso es lo que identifica una rosca
     result.ok = withinTolerance(config, result.measured);
+    // «flanco=0,00°» NO ES UN ÁNGULO.
+    //
+    // `flankAngleDeg` devuelve cero cuando se rinde —perfil plegado de menos de
+    // un píxel, o menos de tres puntos en la banda del flanco—, y ese cero se
+    // venía escribiendo con dos decimales como si fuera una medida. Salía en
+    // catorce de las dieciséis fotos del banco. Un flanco de 0° sería una rosca
+    // de paredes verticales, que no existe: lo que dice es «no lo sé».
+    const std::string flankText =
+        flank > 0.0 ? ", flanco=" + fmt2(flank) + "°"
+                    : ", flanco: no se puede medir (el filete no da perfil suficiente)";
     result.detail = "paso=" + fmtLen(pitchPx, fmt) + ", Ø ext=" + fmtLen(majorDiameter, fmt) +
-                    ", Ø fondo=" + fmtLen(minorDiameter, fmt) +
-                    ", flanco=" + fmt2(flank) + "°";
+                    ", Ø fondo=" + fmtLen(minorDiameter, fmt) + flankText;
+
+    // SEGUNDO RECUENTO, COMO EN EL ENGRANAJE — PERO AVISANDO, NO RECHAZANDO.
+    //
+    // Contar crestas es otro camino para llegar al mismo número, y cuando los dos
+    // caminos discrepan hay algo que mirar. Aquí AVISA en vez de negarse, y eso
+    // está medido: en tornillo-1 el paso sale 34,0 px —correcto, contando los
+    // hilos de la foto salen unos 34 px— mientras el recuento de crestas da 2 de
+    // un lado y 12 del otro, porque en ese lado el borde de la caña queda contra
+    // una sombra y el umbral no lo pilla. Negarse ahí habría tirado una medida
+    // buena.
+    const int crestsA = crestRuns(sideA.offsets);
+    const int crestsB = crestRuns(sideB.offsets);
+    const double crestsByPeriod = stations / ((periodA.period + periodB.period) / 2.0);
+    const int fewest = std::min(crestsA, crestsB);
+    if (fewest > 0 && crestsByPeriod > 0.0 &&
+        (crestsByPeriod > 1.5 * fewest || fewest > 1.5 * crestsByPeriod)) {
+        result.detail += " (¡ojo! por periodo salen " + fmt2(crestsByPeriod) +
+                         " crestas y contándolas " + std::to_string(crestsA) + "/" +
+                         std::to_string(crestsB) +
+                         ": comprueba el paso antes de fiarte de él)";
+    }
 
     if (fmt.mmPerPixel > 0.0) {
         double designationError = 0.0;
@@ -1559,9 +1726,6 @@ ToolRunResult runThread(const cv::Mat& gray, const Fixture& fixture, const ToolC
     }
     if (confidence < 0.5) {
         result.detail += " (repetición débil: confianza " + fmt2(confidence) + ")";
-    }
-    if (sidesDisagreement > 0.15) {
-        result.detail += " (los dos lados no concuerdan: revisa el eje)";
     }
 
     appendConditionWarnings(result.detail, fmt,
