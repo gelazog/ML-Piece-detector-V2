@@ -71,6 +71,22 @@ inline constexpr const char* kBadOnDark = "#f2836b";        // 6,82:1
 inline constexpr const char* kWarnOnDark = "#f0b26a";       // 9,35:1
 inline constexpr const char* kGoodOnDark = "#7ddba0";       // 10,37:1
 
+// --- PASTILLAS DE VEREDICTO: fondo saturado con texto claro encima ----------
+//
+// Faltaban, y se notaba. Los chips de OK/NG y las luces de estación llevaban su
+// color escrito a mano en cada sitio, y al verlos juntos salió el mismo desorden
+// que motivó esta paleta: TRES verdes distintos para «bien» (#1e6f2f, #2e7d32 y
+// el kGood de aquí), tres rojos para «mal» y tres ámbares para «aviso».
+//
+// Se conservan los valores que ya estaban en uso —no hay motivo para cambiar el
+// aspecto— pero ahora hay uno solo de cada, y su contraste está calculado:
+inline constexpr const char* kGoodChip = "#1e6f2f";  // 6,23:1 con kInkOnChip
+inline constexpr const char* kBadChip = "#8f1f1f";   // 8,81:1
+inline constexpr const char* kWarnChip = "#a15c00";  // 5,19:1
+// El texto que va encima de las tres. Blanco puro y no kInkOnDark: sobre un
+// fondo saturado, un gris claro pierde el poco contraste que hay en el ámbar.
+inline constexpr const char* kInkOnChip = "#ffffff";
+
 // --- Superficie -------------------------------------------------------------
 inline constexpr const char* kOutline = "#c9c9c9";
 inline constexpr const char* kSurfaceSunken = "#f5f6f7";
@@ -95,6 +111,14 @@ inline constexpr const char* kSurfaceSunken = "#f5f6f7";
     return QStringLiteral("color:%1; background:%2; border:1px solid %1;"
                           " border-radius:4px; padding:6px;")
         .arg(QString(ink), QString(field));
+}
+
+// Una pastilla de veredicto entera: fondo saturado, texto claro y esquinas
+// redondeadas. Existe por lo mismo que `noticeStyle`: es donde se escribían a
+// mano las parejas fondo/texto, y donde se colaban las que no contrastaban.
+[[nodiscard]] inline QString chipStyle(const char* background, const QString& extra = {}) {
+    return QStringLiteral("background:%1; color:%2; border-radius:8px; padding:3px;%3")
+        .arg(QString(background), QString(kInkOnChip), extra);
 }
 
 }  // namespace pci::ui::theme

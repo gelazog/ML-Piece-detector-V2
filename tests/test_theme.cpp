@@ -122,3 +122,55 @@ TEST(Theme, TheNoticeStyleCarriesBothColoursAtOnce) {
     EXPECT_TRUE(style.contains(QStringLiteral("border")))
         << "sin borde, un campo de color claro se confunde con el fondo del panel";
 }
+
+// --- LAS PASTILLAS DE VEREDICTO ---------------------------------------------
+//
+// Fondo saturado con texto claro encima: el chip de OK/NG y el rótulo de
+// resultado. Aquí lo que hay que medir no es el color contra el blanco de la
+// ventana sino contra el TEXTO QUE LLEVA DENTRO, que es lo único que se lee.
+//
+// Entraron porque los mismos tres papeles estaban escritos a mano en cada sitio
+// y no coincidían: tres verdes distintos para «bien», tres rojos para «mal» y
+// tres ámbares para «aviso». Conservan los valores que ya se usaban —no había
+// motivo para cambiar el aspecto— pero ahora hay uno de cada y su contraste está
+// comprobado.
+TEST(Theme, EveryVerdictChipCanBeReadAgainstItsOwnText) {
+    struct Chip {
+        const char* name;
+        const char* value;
+    };
+    const Chip chips[] = {
+        {"kGoodChip", theme::kGoodChip},
+        {"kBadChip", theme::kBadChip},
+        {"kWarnChip", theme::kWarnChip},
+    };
+    for (const auto& chip : chips) {
+        const double ratio = contrast(chip.value, theme::kInkOnChip);
+        std::printf("  [pastilla] %-12s %s  %5.2f:1 con el texto de dentro\n", chip.name,
+                    chip.value, ratio);
+        EXPECT_GE(ratio, 4.5)
+            << chip.name << " (" << chip.value
+            << ") no llega al contraste mínimo contra el texto que lleva encima. Una "
+               "pastilla de veredicto es lo primero que mira el operador y lo único que "
+               "tiene dentro es esa palabra.";
+    }
+}
+
+TEST(Theme, TheChipsAreTellableApartWithoutColourToo) {
+    // El mismo criterio que ya se aplica a los tres colores de veredicto: si un
+    // daltónico deutan no distingue el verde del rojo, tienen que separarse por
+    // CLARIDAD. Y en un parte impreso en blanco y negro también.
+    const double good = relativeLuminance(theme::kGoodChip);
+    const double bad = relativeLuminance(theme::kBadChip);
+    const double warn = relativeLuminance(theme::kWarnChip);
+    std::printf("  [pastilla] luminancias  bien=%.3f  mal=%.3f  aviso=%.3f\n", good, bad, warn);
+
+    const auto separadas = [](double a, double b) {
+        return (std::max(a, b) + 0.05) / (std::min(a, b) + 0.05);
+    };
+    EXPECT_GE(separadas(good, bad), 1.2)
+        << "las pastillas de «cumple» y «no cumple» tienen casi la misma claridad: sin "
+           "color son la misma cosa";
+    EXPECT_GE(separadas(bad, warn), 1.2)
+        << "«no cumple» y «aviso» tienen casi la misma claridad";
+}

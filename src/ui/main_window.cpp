@@ -4608,12 +4608,18 @@ void MainWindow::updateStationStatus() {
         auto* light = stationLights_[i];
         light->setText(indicator.label);
         light->setToolTip(indicator.reason);
-        const char* colour = "#888888";
+        // Aquí el color es del TEXTO, no de un fondo, así que van los tokens
+        // de superficie clara. Antes llevaba un verde (#2e7d32) y un rojo
+        // (#c62828) propios, distintos de los del resto de la aplicación: el
+        // operador que aprende que «lo rojo no cumple» tiene que poder fiarse
+        // del mismo rojo en todas partes. Y de paso suben de contraste, porque
+        // aquellos rondaban el mínimo.
+        const char* colour = theme::kInkOff;
         switch (indicator.light) {
-            case StationLight::Good: colour = "#2e7d32"; break;
-            case StationLight::Neutral: colour = "#888888"; break;
+            case StationLight::Good: colour = theme::kGood; break;
+            case StationLight::Neutral: colour = theme::kInkOff; break;
             case StationLight::Warning: colour = theme::kWarn; break;
-            case StationLight::Bad: colour = "#c62828"; break;
+            case StationLight::Bad: colour = theme::kBad; break;
         }
         light->setStyleSheet(
             QStringLiteral("QPushButton { border: none; padding: 0 6px; color: %1; }")
@@ -7409,11 +7415,8 @@ void MainWindow::onAutoTick() {
 
 void MainWindow::showLiveVerdict(const engine::InspectionEngine::Outcome& outcome) {
     verdictBanner_->setStyleSheet(
-        outcome.verdict.ok
-            ? QStringLiteral(
-                  "background:#1e6f2f; color:white; font-size:16px; font-weight:bold;")
-            : QStringLiteral(
-                  "background:#8f1f1f; color:white; font-size:16px; font-weight:bold;"));
+        theme::chipStyle(outcome.verdict.ok ? theme::kGoodChip : theme::kBadChip,
+                         QStringLiteral(" font-size:16px; font-weight:bold;")));
     verdictBanner_->setText(QString::fromStdString(outcome.verdict.summary));
     // Los overlays de herramientas ya los pinta la medición en vivo de cada
     // frame; aquí solo el veredicto y la similitud.
@@ -7574,7 +7577,23 @@ void MainWindow::onOpenEditorClicked() {
         return;
     }
 
-    const auto analysis = vision::analyzeFrame(camera::qImageToMat(reference));
+    // CON LA CONFIGURACIÓN QUE EL OPERADOR AJUSTÓ, no con la de fábrica.
+    //
+    // Esta llamada no llevaba ninguna, así que el fixture con el que se abre el
+    // editor salía de una detección distinta de la que se está viendo en la
+    // ventana: sin recuperación de brillos, sin separar piezas que se tocan, sin
+    // clave de color de fondo y con el umbral y la polaridad de fábrica.
+    //
+    // Lo peor no es que el fixture saliera desplazado. Es que si esa detección de
+    // fábrica FALLA —y sobre una mesa de color falla: el gris del cartón rojo cae
+    // en 116 y Otsu devuelve una sola mancha del 89 % del cuadro— el editor se
+    // negaba a abrir con «no se pudo analizar la imagen», mientras la ventana
+    // principal enseñaba la pieza perfectamente detectada al lado.
+    //
+    // El editor sí recibía la configuración buena y volvía a analizar con ella;
+    // el que se quedaba fuera era este primer análisis, el que decide si se abre.
+    const auto analysis =
+        vision::analyzeFrame(camera::qImageToMat(reference), inspectionConfig());
     if (!analysis.isOk()) {
         QMessageBox::warning(this, tr("Sin pieza detectada"),
                              tr("No se pudo analizar la imagen: %1")

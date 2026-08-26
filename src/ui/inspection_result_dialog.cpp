@@ -71,11 +71,9 @@ InspectionResultDialog::InspectionResultDialog(
     auto* banner = new QLabel(this);
     banner->setAlignment(Qt::AlignCenter);
     banner->setMinimumHeight(48);
-    banner->setStyleSheet(outcome_.verdict.ok
-                              ? QStringLiteral("background:#1e6f2f; color:white; "
-                                               "font-size:20px; font-weight:bold;")
-                              : QStringLiteral("background:#8f1f1f; color:white; "
-                                               "font-size:20px; font-weight:bold;"));
+    banner->setStyleSheet(
+        theme::chipStyle(outcome_.verdict.ok ? theme::kGoodChip : theme::kBadChip,
+                         QStringLiteral(" font-size:20px; font-weight:bold;")));
     banner->setText(QString::fromStdString(outcome_.verdict.summary));
     rootLayout->addWidget(banner);
 
