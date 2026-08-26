@@ -338,6 +338,29 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
     float rimRadius = 0.0F;
     cv::minEnclosingCircle(contour, rimCentre, rimRadius);
     const cv::RotatedRect axisBox = cv::minAreaRect(contour);
+
+    // SE APAGA LA PIEZA ENTERA, Y NO SOLO EL TRAMO ROSCADO. POR QUÉ.
+    //
+    // Lo intuitivo sería apagar solo lo que cae dentro del tramo de eje sobre el
+    // que la Rosca consiguió medir, y así conservar las caras y las esquinas de
+    // la cabeza de un tornillo, que son cotas de verdad. Se probó y se midió, y
+    // no vale: **ese tramo no delimita la rosca**.
+    //
+    // El buscador de colocaciones se queda con la primera que MIDA, y medir no
+    // es lo mismo que acotar. En `tornillo-1.png`, descomponiendo el contorno, la
+    // rosca va del 0 % al 89 % del eje —tramos de 0,6 a 0,9 pasos, uno cada 3,5 %
+    // del eje, que es justo el paso— y la cabeza ocupa del 89 % al 100 %, con
+    // tramos de 2,5 a 3,8 pasos. La colocación ganadora fue del 30 % al 100 %:
+    // metía la cabeza entera dentro y dejaba fuera el primer 30 % de rosca.
+    //
+    // El resultado de filtrar por ese tramo, medido: volvían NUEVE arcos al
+    // tornillo, sentados al 4, 8, 11, 15, 18, 22 y 25 % del eje y separados
+    // exactamente un paso. Se llamaban «Radio 14», «Radio 15», «Radio 16»... que
+    // es palabra por palabra el «se pasa» del que venimos.
+    //
+    // Así que se apaga todo. El precio es real y conviene decirlo: un tornillo de
+    // cabeza hexagonal se queda sin las cotas de su cabeza y hay que dibujarlas a
+    // mano. Se paga porque la alternativa medida es peor.
     bool rimRepeatsItself = false;
 
     if (options.allows(ToolType::Gear) && rimRadius > options.minFeatureLength) {

@@ -2521,6 +2521,43 @@ engranaje. Se propone Engranaje solo si la forma no es un polígono, o si los
 dientes pasan del techo de lados del clasificador (doce), porque por encima de
 ahí ya no hay polígono que valga.
 
+**Se apaga la pieza ENTERA, no solo el tramo roscado — y se intentó lo otro.**
+Lo intuitivo sería apagar únicamente lo que cae dentro del tramo de eje donde la
+Rosca consiguió medir, y así conservar las caras y esquinas de la cabeza de un
+tornillo, que son cotas de verdad. Se implementó y se midió: **ese tramo no
+delimita la rosca.** El buscador se queda con la primera colocación que MIDA, y
+medir no es acotar. Descomponiendo `tornillo-1.png`, la rosca va del 0 % al 89 %
+del eje —tramos de 0,6 a 0,9 pasos, uno cada 3,5 % del eje, que es justo el
+paso— y la cabeza ocupa del 89 % al 100 %, con tramos de 2,5 a 3,8 pasos. La
+colocación ganadora fue del 30 % al 100 %: metía la cabeza entera y dejaba fuera
+el primer 30 % de rosca. Volvían **nueve arcos** al tornillo, sentados al 4, 8,
+11, 15, 18, 22 y 25 % del eje y separados exactamente un paso, llamados «Radio
+14», «Radio 15», «Radio 16»… que es palabra por palabra el problema del que
+venimos. El precio de apagarlo todo es real y está dicho en el README: un
+tornillo de cabeza hexagonal se queda sin las cotas de su cabeza. Se paga porque
+la alternativa medida es peor.
+
+**Dos ruedas que se solapan: la respuesta correcta es negarse.**
+`engranajes-1.jpg` son dos ruedas dentadas vistas de cara, de unos treinta
+dientes y nueve agujeros de aligeramiento cada una, y se solapan. Con la
+detección por defecto la segmentación las funde en **una sola pieza de 210×406**
+—una rueda sola daría una caja cuadrada— y el Engranaje se niega. Encendiendo
+«Separar las piezas que se tocan» salen dos piezas, pero el separador corta por
+donde se solapan y **se lleva dientes por delante**: una queda en 203×184 y el
+recuento deja de ser estable (30 con el radio interior al 70 % del exterior, 31
+al 88 %). Los dientes son la identidad de la rueda, así que uno de más o de
+menos ya es otra pieza: publicar un número ahí sería peor que no publicar
+ninguno. Hay una prueba que lo fija.
+
+De paso, un límite de la geometría con la que se PROPONE el engranaje: el radio
+interior sale al 55 % del exterior, y en una rueda con **agujeros de
+aligeramiento** ese anillo cae justo encima de ellos y los rayos encuentran el
+borde equivocado. En esas ruedas hay que dibujar la herramienta a mano con los
+radios ajustados, que es lo que el propio aviso pide. No se puso una barrida de
+varios radios porque el único caso que la motivaba es esa foto de las dos ruedas
+solapadas, donde el recuento no se puede verificar — y una barrida convertiría
+un «no» correcto en un número que nadie ha comprobado.
+
 **Lo que NO se hizo, y por qué:** hubo una versión que colapsaba las propuestas
 de valor repetido —seis ángulos de 102° en una— y rompió el octógono y el
 dodecágono. Las N caras iguales de un polígono regular **sí** son N cotas: cada

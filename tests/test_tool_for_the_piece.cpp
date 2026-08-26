@@ -51,6 +51,7 @@
 #include <vector>
 
 #include "inspection_editor/auto_measure.h"
+#include "vision/geometry_features.h"
 #include "vision/pipeline.h"
 #include "vision/position_fixture.h"
 #include "vision/shape_class.h"
@@ -108,7 +109,7 @@ const std::vector<Photo>& photos() {
         {"tornillo-2.png", 32.0, 0.20, 0, "tirafondo de cabeza hexagonal, rosca gruesa"},
         {"tornillos-1.png", 18.0, 0.25, 0, "tres tornillos; segmenta el más alto"},
         {"engranaje-1.png", 0.0, 0.0, 20, "rueda dentada de cara, con chavetero"},
-        {"engranajes-1.jpg", 0.0, 0.0, 0, "pila de piñones: ninguno se ve de cara entero"},
+        {"engranajes-1.jpg", 0.0, 0.0, 0, "dos ruedas dentadas que se solapan"},
         {"tornillo-ojo-3.png", 0.0, 0.0, 0, "un cáncamo"},
         {"tornillo-ojo-4.png", 0.0, 0.0, 0, "dos cáncamos que se tocan"},
         {"tornillo-ojo-5.png", 0.0, 0.0, 0, "cinco cáncamos"},
@@ -401,4 +402,91 @@ TEST(ToolForThePiece, ARegularPolygonStillGetsEveryOneOfItsSides) {
         << "un hexágono repite su radio seis veces por vuelta, igual que un engranaje de "
            "seis dientes. Si se le propone contar dientes, el filtro no distingue una "
            "tuerca de una rueda";
+}
+
+TEST(ToolForThePiece, AThreadedBoltDoesNotGetItsCrestsOfferedAsRadii) {
+    // El mismo criterio que con los dientes, y aquí hubo que aprenderlo dos
+    // veces.
+    //
+    // Hubo una versión que apagaba solo lo que caía DENTRO del tramo de eje
+    // sobre el que la Rosca había conseguido medir, para conservar las caras y
+    // las esquinas de la cabeza del tornillo, que son cotas de verdad. La idea
+    // era buena y la medición la tumbó: ese tramo no delimita la rosca.
+    //
+    // Descomponiendo `tornillo-1.png`, la rosca va del 0 % al 89 % del eje
+    // —tramos de 0,6 a 0,9 pasos, uno cada 3,5 % del eje, que es el paso— y la
+    // cabeza está del 89 % al 100 %, con tramos de 2,5 a 3,8 pasos. La
+    // colocación que ganó fue la del 30 % al 100 %: metía la cabeza entera y
+    // dejaba fuera el primer 30 % de rosca. Volvían NUEVE arcos sentados al 4,
+    // 8, 11, 15, 18, 22 y 25 % del eje, separados exactamente un paso, llamados
+    // «Radio 14», «Radio 15», «Radio 16»...
+    //
+    // Esta prueba existe para que eso no vuelva. El precio —el tornillo se queda
+    // sin las cotas de su cabeza— está asumido y dicho en el README.
+    for (const auto& photo : photos()) {
+        if (photo.pitch <= 0.0) {
+            continue;
+        }
+        Scene scene;
+        if (!load(photo.file, scene)) {
+            continue;
+        }
+        const auto proposals =
+            inspection::proposeTools(scene.gray, scene.mask, scene.fixture);
+        int arcs = 0;
+        int sides = 0;
+        for (const auto& p : proposals) {
+            if (p.config.type == inspection::ToolType::Arc) {
+                ++arcs;
+            }
+            if (p.config.name.rfind("Lado ", 0) == 0) {
+                ++sides;
+            }
+        }
+        std::printf("  %-22s %zu cotas, %d arcos, %d «Lado»\n", photo.file, proposals.size(),
+                    arcs, sides);
+        EXPECT_EQ(arcs, 0) << photo.file
+                           << ": se están ofreciendo crestas de la rosca como radios de "
+                              "redondeo, que es exactamente el «se pasa» de la queja";
+        EXPECT_EQ(sides, 0) << photo.file << ": se están ofreciendo flancos de filete como "
+                               "caras de la pieza";
+        EXPECT_LE(proposals.size(), 6U) << photo.file << ": la lista vuelve a estar llena";
+    }
+}
+
+TEST(ToolForThePiece, TwoOverlappingGearsAreRefusedAndThatIsTheRightAnswer) {
+    // `engranajes-1.jpg` son DOS ruedas dentadas vistas de cara y se solapan.
+    // Miradas de cerca, cada una tiene unos treinta dientes y nueve agujeros de
+    // aligeramiento.
+    //
+    // Con la detección por defecto, la segmentación las funde en UNA pieza de
+    // 210x406 —una rueda sola daría una caja cuadrada— y el Engranaje se niega.
+    // Encendiendo «Separar las piezas que se tocan» salen dos piezas, pero el
+    // separador corta por donde se solapan y se lleva dientes por delante: la
+    // caja de una queda en 203x184 y el recuento deja de ser estable (sale 30 con
+    // el radio interior al 70 % del exterior y 31 al 88 %).
+    //
+    // Así que la herramienta tiene razón al negarse, y esta prueba lo fija. Los
+    // dientes son la identidad de la rueda: uno de más o de menos ya es otra
+    // pieza, y no hay forma de contarlos con fiabilidad en esta foto. Publicar
+    // un número aquí sería peor que no publicar ninguno.
+    Scene scene;
+    if (!load("engranajes-1.jpg", scene)) {
+        GTEST_SKIP() << "no está el banco de fotos";
+    }
+    const auto contour = biggestContour(scene.mask);
+    ASSERT_FALSE(contour.empty());
+    const cv::RotatedRect box = cv::minAreaRect(contour);
+    const double aspect = std::max(box.size.width, box.size.height) /
+                          std::max(1.0F, std::min(box.size.width, box.size.height));
+    std::printf("  [dos ruedas] una sola pieza de %.0fx%.0f (relación %.2f)\n", box.size.width,
+                box.size.height, aspect);
+    EXPECT_GT(aspect, 1.5)
+        << "la segmentación ya no funde las dos ruedas; entonces esta prueba mide otra "
+           "cosa y hay que volver a mirarla";
+
+    const auto proposals = inspection::proposeTools(scene.gray, scene.mask, scene.fixture);
+    EXPECT_EQ(findType(proposals, inspection::ToolType::Gear), nullptr)
+        << "se está publicando un recuento de dientes sobre dos ruedas fundidas en una "
+           "sola silueta";
 }

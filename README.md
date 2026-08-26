@@ -468,6 +468,22 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    están medidos ahí dentro. En la varilla roscada de prueba, que lleva impreso
    «6 hilos por pulgada», el paso que mide sale con un 0,9 % de error.
 
+   **Lo que cuesta, dicho claro:** en una pieza roscada se apagan *todas* las
+   cotas de contorno, así que un tornillo de cabeza hexagonal se queda sin las
+   cotas de su cabeza y hay que dibujarlas a mano. Se probó a apagar solo el
+   tramo roscado y salió peor: ese tramo no delimita la rosca, y volvían nueve
+   «Radio» que eran crestas de filete separadas exactamente un paso.
+
+   **Una rueda con agujeros de aligeramiento** hay que medirla a mano: la
+   propuesta automática busca los dientes en un anillo que en esas ruedas cae
+   encima de los agujeros. La herramienta te lo dice y te pide ajustar los
+   radios.
+
+   **Dos ruedas que se solapan** (como en la foto de prueba con dos piñones) no
+   se pueden contar: la detección las funde en una sola silueta, y separándolas
+   el corte se lleva dientes por delante. La app se niega a dar un recuento, que
+   es lo correcto — un diente de más o de menos ya es otra rueda.
+
    Una **tuerca hexagonal sigue recibiendo sus seis caras**: su radio se repite
    seis veces por vuelta igual que en una rueda, pero seis caras son *todas* las
    que tiene, mientras que ocho flancos de cuarenta son solo una muestra.
