@@ -61,12 +61,6 @@
       "skillPath": "skills/qt-ui-design/SKILL.md",
       "computedHash": "232774eb03632f484d6d6f0415bf019238a0d1dd5c5a6325c30306f4438a968f"
     },
-    "remotion-best-practices": {
-      "source": "remotion-dev/skills",
-      "sourceType": "github",
-      "skillPath": "skills/remotion/SKILL.md",
-      "computedHash": "664bd31140897056bd575ef57a15f22f517bd576c6b81df429c1f4ed6453e312"
-    },
     "systematic-debugging": {
       "source": "obra/superpowers",
       "sourceType": "github",
