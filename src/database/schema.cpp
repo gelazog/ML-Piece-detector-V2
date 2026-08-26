@@ -235,6 +235,35 @@ const char* const kMigrationV12 = R"sql(
 ALTER TABLE Pieces ADD COLUMN show_mosaic INTEGER NOT NULL DEFAULT 0;
 )sql";
 
+// v13: LO QUE UN PERFIL DE DETECCIÓN SE DEJABA FUERA.
+//
+// `DetectionProfiles` guardaba CUATRO campos —umbral, polaridad, suavizado y
+// morfología— de los ocho que tiene `SegmentationOptions`. Los otros cuatro se
+// perdían al guardar y volvían a fábrica al cargar, en silencio:
+//
+//   method                 nivel de gris o canto de la pieza
+//   split_touching_pieces  separar las piezas que se rozan
+//   recover_highlights_by  recuperar lo que el brillo se lleva
+//   background_key + BGR   separar por el color del fondo
+//
+// El efecto es el peor de los posibles: el operador afina la detección, la ve
+// funcionar, la guarda como perfil —«contraluz», «mesa roja»— y al volver a
+// cargarla la mitad de lo que ajustó ya no está. Y no falla ni avisa: detecta
+// peor, y parece que el programa «va peor desde hace un tiempo».
+//
+// No es que se olvidaran: los cuatro se añadieron DESPUÉS de esta tabla, cada
+// uno en su momento, y ninguno se acordó de ella. Por eso el perfil tiene ahora
+// su prueba de ida y vuelta, igual que la ventana de Configurar.
+const char* const kMigrationV13 = R"sql(
+ALTER TABLE DetectionProfiles ADD COLUMN method INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE DetectionProfiles ADD COLUMN split_touching_pieces INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE DetectionProfiles ADD COLUMN recover_highlights_by INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE DetectionProfiles ADD COLUMN background_key INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE DetectionProfiles ADD COLUMN background_b INTEGER NOT NULL DEFAULT 255;
+ALTER TABLE DetectionProfiles ADD COLUMN background_g INTEGER NOT NULL DEFAULT 255;
+ALTER TABLE DetectionProfiles ADD COLUMN background_r INTEGER NOT NULL DEFAULT 255;
+)sql";
+
 const char* migrationFor(int targetVersion) {
     switch (targetVersion) {
         case 1: return kSchemaV1;
@@ -249,6 +278,7 @@ const char* migrationFor(int targetVersion) {
         case 10: return kMigrationV10;
         case 11: return kMigrationV11;
         case 12: return kMigrationV12;
+        case 13: return kMigrationV13;
     }
     return nullptr;
 }
