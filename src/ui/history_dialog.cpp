@@ -1,4 +1,5 @@
 #include "ui/history_dialog.h"
+#include "ui/theme.h"
 
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -135,7 +136,8 @@ void HistoryDialog::reload() {
         table_->setItem(row, 0,
                         new QTableWidgetItem(QString::fromStdString(e.startedAt)));
         auto* verdictItem = new QTableWidgetItem(QString::fromStdString(e.verdict));
-        verdictItem->setForeground(ok ? QBrush(QColor(0, 170, 0)) : QBrush(QColor(200, 40, 40)));
+        verdictItem->setForeground(ok ? QBrush(theme::color(theme::kGood))
+                                      : QBrush(theme::color(theme::kBad)));
         table_->setItem(row, 1, verdictItem);
         table_->setItem(row, 2,
                         new QTableWidgetItem(QString::number(e.similarity, 'f', 4)));

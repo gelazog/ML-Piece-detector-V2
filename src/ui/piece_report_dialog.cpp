@@ -1,4 +1,5 @@
 #include "ui/piece_report_dialog.h"
+#include "ui/theme.h"
 #include "inspection_editor/tools/tool_geometry.h"
 #include <algorithm>
 
@@ -77,8 +78,7 @@ PieceReportDialog::PieceReportDialog(inspection::PieceReport report,
     for (const auto& warning : report_.warnings) {
         auto* label = new QLabel(QString::fromStdString(warning), this);
         label->setWordWrap(true);
-        label->setStyleSheet(QStringLiteral("color:#3a2a00; background:#ffc861;"
-                                            " border-radius:6px; padding:6px;"));
+        label->setStyleSheet(theme::noticeStyle(theme::kWarn, theme::kWarnField));
         root->addWidget(label);
     }
 
@@ -214,7 +214,8 @@ QWidget* PieceReportDialog::buildToolsTab() {
             page);
         empty->setWordWrap(true);
         empty->setAlignment(Qt::AlignCenter);
-        empty->setStyleSheet(QStringLiteral("color:#999; padding:24px;"));
+        empty->setStyleSheet(
+            theme::textStyle(theme::kInkOff, QStringLiteral("padding:24px;")));
         layout->addWidget(empty);
         return page;
     }
@@ -234,9 +235,11 @@ QWidget* PieceReportDialog::buildToolsTab() {
     tree->setUniformRowHeights(false);
     tree->header()->setSectionResizeMode(3, QHeaderView::Stretch);
 
-    const QBrush grey(QColor(150, 150, 150));
-    const QBrush black(QColor(20, 20, 20));
-    const QBrush red(QColor(198, 40, 40));
+    // Los tres, de la paleta. El rojo de antes era el CUARTO distinto que la
+    // aplicación usaba para «no cumple».
+    const QBrush grey(theme::color(theme::kInkOff));
+    const QBrush black(theme::color(theme::kInk));
+    const QBrush red(theme::color(theme::kBad));
 
     // NIVEL 1: LA CLASE DE HERRAMIENTA.
     //
@@ -357,7 +360,8 @@ QWidget* PieceReportDialog::buildToolsTab() {
                 if (other.isTheOneItMeasures) {
                     child->setText(3, tr("Es la que mide esta herramienta."));
                     for (int column = 1; column < 4; ++column) {
-                        child->setForeground(column, QBrush(QColor(90, 90, 90)));
+                        child->setForeground(column,
+                                            QBrush(theme::color(theme::kInkMuted)));
                     }
                     QFont bold = child->font(1);
                     bold.setBold(true);
@@ -370,7 +374,7 @@ QWidget* PieceReportDialog::buildToolsTab() {
                 // que no existe seria inventarse una conformidad.
                 child->setText(3, tr("Sin tolerancia declarada — marcala para vigilarla."));
                 for (int column = 1; column < 4; ++column) {
-                    child->setForeground(column, QBrush(QColor(120, 120, 120)));
+                    child->setForeground(column, QBrush(theme::color(theme::kInkOff)));
                 }
 
                 auto* add = new QCheckBox(tree);
@@ -441,7 +445,7 @@ std::vector<inspection::ToolConfig> PieceReportDialog::toolsWithChangedState() c
 void PieceReportDialog::onCopyClicked() {
     QGuiApplication::clipboard()->setText(
         QString::fromStdString(inspection::measurementsToText(report_.rows, report_.warnings)));
-    status_->setStyleSheet(QStringLiteral("color:#22cc44;"));
+    status_->setStyleSheet(theme::textStyle(theme::kGood));
     status_->setText(tr("%n medida(s) copiadas al portapapeles.", nullptr,
                         static_cast<int>(report_.rows.size())));
 }
@@ -463,7 +467,7 @@ void PieceReportDialog::onExportClicked() {
                              tr("No se pudo escribir en %1: %2").arg(path, file.errorString()));
         return;
     }
-    status_->setStyleSheet(QStringLiteral("color:#22cc44;"));
+    status_->setStyleSheet(theme::textStyle(theme::kGood));
     status_->setText(tr("Medidas exportadas a %1.").arg(path));
 }
 
@@ -496,7 +500,7 @@ void PieceReportDialog::onWatchClicked() {
     if (toWatch_.empty()) {
         // No se cierra: cerrar sin añadir nada y sin decir por qué se lee como
         // que se añadieron.
-        status_->setStyleSheet(QStringLiteral("color:#e08a00;"));
+        status_->setStyleSheet(theme::textStyle(theme::kWarn));
         status_->setText(tr("No se ha añadido ninguna: ya tienes las %1 cotas que se "
                             "proponen. Mira la pestaña «Mis herramientas».")
                              .arg(already));

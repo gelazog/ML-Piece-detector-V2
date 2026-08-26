@@ -1,4 +1,5 @@
 #include "ui/piece_mosaic.h"
+#include "ui/theme.h"
 
 #include <QGridLayout>
 #include <QLabel>
@@ -40,7 +41,8 @@ PieceMosaic::PieceMosaic(QWidget* parent) : QWidget(parent) {
                         this);
     empty_->setWordWrap(true);
     empty_->setAlignment(Qt::AlignCenter);
-    empty_->setStyleSheet(QStringLiteral("color:#999; padding:12px;"));
+    empty_->setStyleSheet(
+        theme::textStyle(theme::kInkOff, QStringLiteral("padding:12px;")));
     root->addWidget(empty_);
 
     board_ = new QWidget(this);

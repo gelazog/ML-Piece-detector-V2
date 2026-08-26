@@ -1,4 +1,5 @@
 #include "ui/measurement_mode_dialog.h"
+#include "ui/theme.h"
 
 #include <QCheckBox>
 #include <QDoubleSpinBox>
@@ -32,7 +33,8 @@ MeasurementModeDialog::MeasurementModeDialog(const repositories::PieceMeasuremen
         modeLayout->addWidget(radio);
         auto* help = new QLabel(QString::fromUtf8(domain::modeDescription(mode)), modeBox);
         help->setWordWrap(true);
-        help->setStyleSheet(QStringLiteral("color:#999; margin-left:22px;"));
+        help->setStyleSheet(
+            theme::textStyle(theme::kInkOff, QStringLiteral("margin-left:22px;")));
         modeLayout->addWidget(help);
         return radio;
     };

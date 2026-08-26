@@ -141,6 +141,14 @@ public:
     [[nodiscard]] bool brushStraight() const { return brushStraight_; }
     [[nodiscard]] bool brushSnap() const { return brushSnap_; }
 
+    // LO QUE SE ESCRIBE SOBRE CADA COTA EN EL VÍDEO.
+    //
+    // Se publica para poder comprobarlo: lo que esta etiqueta dice es lo único
+    // que el operador lee mientras trabaja, y hasta hace poco el veredicto iba
+    // solo en el COLOR de la letra. Un daltónico no lo veía, en blanco y negro
+    // desaparecía, y sobre mesa blanca el rojo quedaba en 2,21:1 de contraste.
+    [[nodiscard]] QString overlayLabel(const ToolRunResult& result) const;
+
     // Deshacer y rehacer las pinceladas.
     //
     // Con PARCHES y no con instantáneas del frame entero: cada máscara mide lo

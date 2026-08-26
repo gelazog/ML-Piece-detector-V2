@@ -1,4 +1,5 @@
 #include "ui/lens_calibration_dialog.h"
+#include "ui/theme.h"
 
 #include <QDialogButtonBox>
 
@@ -27,7 +28,7 @@ namespace {
 // dibujan con borde porque son las que no se pueden dejar sin cubrir.
 QString cellStyle(bool touched, bool corner) {
     const QString background = touched ? QStringLiteral("#2e7d32") : QStringLiteral("#3a3a3a");
-    const QString border = corner ? QStringLiteral("2px solid #ffc861")
+    const QString border = corner ? QStringLiteral("2px solid ") + theme::kWarn
                                   : QStringLiteral("1px solid #555");
     return QStringLiteral("background:%1; border:%2; border-radius:4px; color:#ddd;")
         .arg(background, border);
@@ -104,7 +105,7 @@ LensCalibrationDialog::LensCalibrationDialog(QWidget* parent) : QDialog(parent) 
     side->addWidget(status_);
     advice_ = new QLabel(this);
     advice_->setWordWrap(true);
-    advice_->setStyleSheet(QStringLiteral("color:#ffc861;"));
+    advice_->setStyleSheet(theme::textStyle(theme::kWarn));
     side->addWidget(advice_);
 
     capture_ = new QPushButton(tr("Guardar esta toma"), this);

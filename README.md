@@ -955,8 +955,8 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    editor), por si prefieres no usar la rueda: `⤢` mínimo (ajustar a la ventana),
    `−` alejar, el **porcentaje actual**, `+` acercar y `⛶` máximo. Los botones se
    apagan al llegar a cada tope. Atajos equivalentes: **Ctrl++** / **Ctrl+-**
-   acercar/alejar, **Ctrl+0** ajustar a la ventana, **Ctrl+1** ver al 100 %
-   (píxeles reales), **Ctrl+2** zoom máximo y **doble clic** para volver al
+   acercar/alejar, **Ctrl+0** ajustar a la ventana, **Ctrl+Alt+1** ver al 100 %
+   (píxeles reales), **Ctrl+Alt+2** zoom máximo y **doble clic** para volver al
    ajuste. El porcentaje es la escala real de pantalla, así que "100 %" significa
    un píxel de imagen por píxel de pantalla. Al cambiar de pieza el encuadre
    vuelve al ajuste.
@@ -1152,6 +1152,15 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    sombras y objetos fuera de la zona dejan de estorbar. Ambos ajustes
    persisten y aplican al video en vivo, al registro y a la inspección.
 
+   **En el vídeo, cada cota dice «OK» o «NG» con palabras**, no solo con el
+   color de la letra. Antes el veredicto iba únicamente en verde o rojo: quien
+   no distingue esos dos colores no lo veía, y en un parte impreso en blanco y
+   negro desaparecía. Además la caja de fondo tapa más, así que la lectura se ve
+   igual sobre una pieza clara que sobre una oscura.
+
+   **Supr, con el ratón sobre la tira de fotos, quita esa foto** — y antes
+   borraba una cota de la plantilla, que no es lo que decía la ayuda.
+
    **Clic derecho sobre el vídeo.** Antes borraba la cota al instante, sin
    preguntar. Ahora abre un menú con lo que aplica en ese punto: sobre una cota,
    *renombrar*, *duplicar*, *copiar lo que mide* y —abajo del todo y separado—
@@ -1260,7 +1269,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    `R` registrar y activar, `A` auto-inspección, `I` inspeccionar, `P`
    plantilla, `C` calibrar, `D` rasgo distintivo, `Ctrl+S` guardar la
    plantilla. Vista: `Ctrl++`/`Ctrl+-` acercar/alejar, `Ctrl+0` ajustar,
-   `Ctrl+1` 100 % y `Ctrl+2` zoom máximo.
+   `Ctrl+Alt+1` 100 % y `Ctrl+Alt+2` zoom máximo.
 
    **Rasgo distintivo** (piezas simétricas o para robustez extra): con el
    botón *Rasgo distintivo*, haz clic sobre un punto visualmente único de la

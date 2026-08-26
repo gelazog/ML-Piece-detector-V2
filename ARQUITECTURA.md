@@ -3711,6 +3711,76 @@ tienen dos corazones separados por un cuello estrecho; una pieza sola tiene uno.
 | un engranaje solo | 1 | 1 | 1 |
 | **un tornillo largo solo** | 1 | 1 | **2** ✗ |
 
+#### La paleta, y lo que apareció al auditar la interfaz
+
+Petición de uso: *«sigue haciendo las interfaces del usuario más estéticos, y
+cómodos a simple vista»*. Lo primero que salió al medir no fue cuestión de
+gusto.
+
+**No había ninguna paleta.** `main.cpp` no fija estilo ni hoja de aplicación:
+**48 llamadas a `setStyleSheet` repartidas en 12 ficheros**, cada una con el
+color escrito a mano. El resultado, contado: **81 valores de color distintos**,
+con **nueve** para «no cumple», **seis** para «cumple», **seis** para «aviso» y
+**siete** para «texto apagado». Un operador que aprende que lo rojo no cumple
+tiene que poder fiarse en toda la aplicación.
+
+**Y cinco colores no llegaban al contraste mínimo de WCAG**, calculado:
+
+| color | para qué | contraste |
+|---|---|---|
+| `#ffc861` | la pista «prueba el otro método» | **1,35:1** |
+| `#ffb454` | nota de posición | 1,55:1 |
+| `#22cc44` | confirmaciones y el punto ● de estado | 1,88:1 |
+| `#e08a00` | avisos | 2,36:1 |
+| `#999999` | ayudas y estados vacíos | 2,50:1 |
+
+Ninguno lo sabía, porque nadie los había calculado nunca. Ahora `ui/theme.h`
+define los papeles —no los aspectos: `kBad`, no `kRojo`— y `tests/test_theme.cpp`
+recalcula el contraste de cada uno en cada compilación.
+
+**Un fallo de mi propia paleta, cazado por su propia prueba.** El primer intento
+puso «no cumple» en `#b3261e` y «aviso» en `#8a5300`: los dos con contraste de
+sobra sobre blanco, y con luminancias de **0,111 y 0,116**. Casi el mismo gris.
+Para un daltónico deutan —uno de cada doce hombres— ese par es indistinguible, y
+en un parte impreso también. Los tokens se separan ahora **por luminancia además
+de por tono**.
+
+**Dos juegos, porque la aplicación no es de un solo tema.** El informe de
+inspección y el calibrador de lente se pintan sobre negro —llevan imagen encima,
+y un marco claro alrededor de una foto la falsea—. Poner el rojo de fondo claro
+sobre `#1a1a1a` da 1,95:1: ilegible. De ahí `kBadOnDark` y compañía.
+
+**Un trinquete, no un portazo.** Quedan 49 colores a mano y `test_palette_guard`
+prohíbe que ese número suba. Convertirlos todos de golpe sería un cambio enorme
+sobre diálogos que funcionan, y se revisaría mal; dejarlos sin vigilancia es
+exactamente como se llegó a tener nueve rojos.
+
+##### Tres fallos que la auditoría destapó, y no eran de estética
+
+**La ayuda enseñaba a pulsar la tecla que borra el trabajo.** El tooltip de la
+tira de capturas prometía *«con Supr se quita de la tira»* y eso **no pasaba**:
+`CaptureTray::removeAt` estaba escrita y no la llamaba nadie. Mientras tanto
+`Supr` es un atajo de VENTANA atado a borrar la herramienta seleccionada, y
+`QListWidget` no se queda con esa tecla — así que pulsar Supr con el foco en la
+tira borraba una cota de la plantilla **y de la base de datos**, en silencio.
+Ahora hay un atajo de ámbito widget: mientras el foco esté en la tira, Supr es
+suyo.
+
+**`Ctrl+1` y `Ctrl+2` estaban asignados dos veces.** Las cinco familias de
+herramientas se reparten `Ctrl+1 … Ctrl+5`, y el encuadre volvía a pedir `Ctrl+1`
+para «vista al 100 %» y `Ctrl+2` para «zoom máximo». Dos acciones con la misma
+secuencia no se turnan: Qt emite `ambiguousActivate` y **no dispara ninguna de
+forma fiable**. Cuatro atajos documentados en F1 y ninguno hacía lo que decía.
+Los de encuadre se mueven a `Ctrl+Alt`.
+
+**En el vídeo, el veredicto iba solo en el color.** La etiqueta de cada cota
+escribía «nombre: medida» en verde o rojo, sin OK ni NG. Es la pantalla que el
+operador mira mientras trabaja. Medido: sobre mesa blanca —el montaje normal— la
+caja de fondo al 67 % dejaba el rojo de «no cumple» en **2,21:1**, peor que el
+verde de «cumple» (3,99:1). *El estado que hay que ver era el que menos se
+veía.* Ahora la etiqueta dice «OK» o «NG» y la caja tapa al 88 %: el rojo pasa a
+**4,94:1** y deja de depender del color de la pieza que estés midiendo.
+
 #### El clic derecho pedía opciones y borraba
 
 Petición de uso: *«agrega alguna función al clic derecho»*. Al ir a hacerlo

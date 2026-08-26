@@ -2103,6 +2103,31 @@ QString EditorCanvas::measureText(const ToolRunResult& result) const {
     return QStringLiteral("%1 px").arg(result.measured, 0, 'f', 1);
 }
 
+QString EditorCanvas::overlayLabel(const ToolRunResult& result) const {
+// EL VEREDICTO, EN TEXTO Y NO SOLO EN COLOR.
+//
+// Esta es la pantalla que el operador mira mientras trabaja, y hasta
+// ahora que una cota cumpliera o no lo decía ÚNICAMENTE el color de la
+// letra. Tres motivos por los que eso no vale, y los tres se miden:
+//
+//   - Un daltónico deutan o protán —uno de cada doce hombres— no
+//     distingue este verde de este rojo.
+//   - Sobre mesa blanca, que es el montaje industrial normal, la caja
+//     de fondo dejaba el rojo de «no cumple» en 2,21:1 de contraste,
+//     por debajo incluso del 3:1 de un simple indicador. El estado que
+//     hay que ver era el que MENOS se veía.
+//   - En un parte impreso en blanco y negro, o en una captura de
+//     pantalla, el color desaparece entero.
+//
+// El proyecto ya lo hace bien en otros sitios —la tabla del informe
+// escribe «OK» y «NG», la tira de estación lleva su glifo—, así que
+// esto no inventa un criterio: aplica el que ya había.
+const QString verdict = result.ok ? QStringLiteral("OK") : QStringLiteral("NG");
+const QString text = QString::fromStdString(result.name) + QStringLiteral(": ") +
+       measureText(result) + QStringLiteral("  ") + verdict;
+    return text;
+}
+
 void EditorCanvas::paintResults(QPainter& painter) const {
     painter.save();
     QFont measureFont = painter.font();
@@ -2149,8 +2174,7 @@ void EditorCanvas::paintResults(QPainter& painter) const {
             continue;
         }
 
-        const QString text = QString::fromStdString(result.name) + QStringLiteral(": ") +
-                             measureText(result);
+        const QString text = overlayLabel(result);
         const QFontMetricsF metrics(painter.font());
         const QRectF preferred = metrics.boundingRect(text).adjusted(-4, -2, 4, 2)
                                      .translated(labelPos + QPointF(8, -10));
@@ -2160,8 +2184,15 @@ void EditorCanvas::paintResults(QPainter& painter) const {
         taken.push_back(placed);
         const QRectF box(placed.x, placed.y, placed.width, placed.height);
 
+        // Y LA CAJA TAPA DE VERDAD.
+        //
+        // Con 170 de 255 de opacidad, lo que quedaba detrás seguía contando: el
+        // contraste de la lectura dependía del color de la PIEZA que estabas
+        // midiendo, y sobre una mesa blanca era el peor de la aplicación. Con
+        // 225 el fondo es prácticamente negro haya lo que haya debajo, así que
+        // la medida se lee igual sobre una pieza clara que sobre una oscura.
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(0, 0, 0, 170));
+        painter.setBrush(QColor(0, 0, 0, 225));
         painter.drawRect(box);
         painter.setPen(color);
         painter.drawText(box, Qt::AlignCenter, text);

@@ -1,4 +1,5 @@
 #include "ui/registration_wizard.h"
+#include "ui/theme.h"
 
 #include <QCheckBox>
 #include <QFileDialog>
@@ -180,7 +181,7 @@ void RegistrationWizard::onCaptureProcessed() {
     }
     const auto& feedback = result.value();
     if (feedback.accepted) {
-        feedbackLabel_->setStyleSheet(QStringLiteral("color: #22cc44;"));
+        feedbackLabel_->setStyleSheet(theme::textStyle(theme::kGood));
         feedbackLabel_->setText(tr("Captura %1 aceptada").arg(feedback.count));
     } else {
         feedbackLabel_->setStyleSheet(QStringLiteral("color: #ff9944;"));

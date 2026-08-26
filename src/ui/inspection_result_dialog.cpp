@@ -1,4 +1,5 @@
 #include "ui/inspection_result_dialog.h"
+#include "ui/theme.h"
 
 #include <QClipboard>
 #include <QFileDialog>
@@ -178,14 +179,15 @@ InspectionResultDialog::InspectionResultDialog(
                                  this);
         label->setWordWrap(true);
         if (!position.ok) {
-            label->setStyleSheet(QStringLiteral("color:#ff8080; font-weight:bold;"));
+            label->setStyleSheet(
+            theme::textStyle(theme::kBadOnDark, QStringLiteral("font-weight:bold;")));
         }
         sideLayout->addWidget(label);
     }
     if (const auto& position = outcome_.verdict.position; !position.note.empty()) {
         auto* note = new QLabel(QString::fromStdString(position.note), this);
         note->setWordWrap(true);
-        note->setStyleSheet(QStringLiteral("color:#ffb454;"));
+        note->setStyleSheet(theme::textStyle(theme::kWarnOnDark));
         sideLayout->addWidget(note);
     }
 
@@ -215,9 +217,10 @@ InspectionResultDialog::InspectionResultDialog(
         auto* state = new QTableWidgetItem(neutral  ? QStringLiteral("—")
                                            : result.ok ? QStringLiteral("OK")
                                                        : QStringLiteral("NG"));
-        state->setForeground(neutral  ? QBrush(QColor(150, 150, 150))
-                             : result.ok ? QBrush(QColor(0, 170, 0))
-                                         : QBrush(QColor(220, 40, 40)));
+        // Esta tabla va sobre fondo OSCURO: los tokens claros no valen aquí.
+        state->setForeground(neutral    ? QBrush(theme::color(theme::kInkMutedOnDark))
+                             : result.ok ? QBrush(theme::color(theme::kGoodOnDark))
+                                         : QBrush(theme::color(theme::kBadOnDark)));
         table->setItem(row, 2, state);
         table->setItem(row, 3,
                        new QTableWidgetItem(QString::fromStdString(result.detail)));
@@ -228,7 +231,7 @@ InspectionResultDialog::InspectionResultDialog(
         auto* persist = new QLabel(tr("Aviso: historial no guardado (%1)")
                                        .arg(QString::fromStdString(outcome_.persistError)),
                                    this);
-        persist->setStyleSheet(QStringLiteral("color:#ff9944;"));
+        persist->setStyleSheet(theme::textStyle(theme::kWarnOnDark));
         persist->setWordWrap(true);
         sideLayout->addWidget(persist);
     }
@@ -317,12 +320,12 @@ void InspectionResultDialog::onLearnClicked() {
     learnButton_->setEnabled(false);
     const auto version = engine_->updateReference(pieceId_, outcome_.embedding);
     if (version.isOk()) {
-        learnStatus_->setStyleSheet(QStringLiteral("color:#22cc44;"));
+        learnStatus_->setStyleSheet(theme::textStyle(theme::kGood));
         learnStatus_->setText(tr("Referencia actualizada a la versión %1 (las versiones "
                                  "anteriores se conservan).")
                                   .arg(version.value()));
     } else {
-        learnStatus_->setStyleSheet(QStringLiteral("color:#ff5555;"));
+        learnStatus_->setStyleSheet(theme::textStyle(theme::kBadOnDark));
         learnStatus_->setText(QString::fromStdString(version.error().message));
         learnButton_->setEnabled(true);
     }
@@ -338,7 +341,7 @@ void InspectionResultDialog::onCopyMeasurementsClicked() {
                                                   inspection::LengthUnit::Auto);
     QGuiApplication::clipboard()->setText(
         QString::fromStdString(inspection::measurementsToText(rows)));
-    learnStatus_->setStyleSheet(QStringLiteral("color:#22cc44;"));
+    learnStatus_->setStyleSheet(theme::textStyle(theme::kGood));
     learnStatus_->setText(tr("%n medida(s) copiadas al portapapeles.", nullptr,
                              static_cast<int>(rows.size())));
 }
@@ -365,7 +368,7 @@ void InspectionResultDialog::onExportMeasurementsClicked() {
                                  .arg(path, file.errorString()));
         return;
     }
-    learnStatus_->setStyleSheet(QStringLiteral("color:#22cc44;"));
+    learnStatus_->setStyleSheet(theme::textStyle(theme::kGood));
     learnStatus_->setText(tr("%n medida(s) exportadas a %1.", nullptr,
                              static_cast<int>(rows.size()))
                               .arg(path));

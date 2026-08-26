@@ -1,4 +1,5 @@
 #include "ui/main_window.h"
+#include "ui/theme.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -2865,9 +2866,24 @@ void MainWindow::buildShortcuts() {
                 [this] { video_->zoomOut(); });
     addShortcut("zoom_fit", tr("Ajustar la vista a la ventana (zoom mínimo)"),
                 QKeySequence(Qt::CTRL | Qt::Key_0), [this] { video_->zoomToMin(); });
+    // CTRL+1 Y CTRL+2 YA ESTABAN COGIDOS.
+    //
+    // Las cinco familias de herramientas se reparten Ctrl+1 … Ctrl+5 más arriba,
+    // y aquí se volvían a pedir Ctrl+1 para «vista al 100 %» y Ctrl+2 para
+    // «zoom máximo». Dos acciones con la misma secuencia en la misma ventana no
+    // se reparten el turno: Qt emite `ambiguousActivate` y NO dispara ninguna de
+    // forma fiable. Los dos atajos estaban documentados en F1 y ninguno de los
+    // cuatro hacía lo que decía.
+    //
+    // Se mueven a Ctrl+Alt, que no choca con nada, y se dejan al lado de
+    // Ctrl+0 —que sí está libre— en vez de repartirlos por otras teclas: los
+    // tres son «encuadre», y encuadrar con tres modificadores distintos sería
+    // otra forma de lo mismo.
     addShortcut("zoom_actual", tr("Vista al 100 % (píxeles reales)"),
-                QKeySequence(Qt::CTRL | Qt::Key_1), [this] { video_->zoomToActualPixels(); });
-    addShortcut("zoom_max", tr("Zoom máximo"), QKeySequence(Qt::CTRL | Qt::Key_2),
+                QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_1),
+                [this] { video_->zoomToActualPixels(); });
+    addShortcut("zoom_max", tr("Zoom máximo"),
+                QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_2),
                 [this] { video_->zoomToMax(); });
 }
 
@@ -2984,7 +3000,8 @@ void MainWindow::updateStatusIndicators() {
     // Punto de color + leyenda por indicador (rich text: sin assets externos).
     auto set = [](QLabel* label, const QString& caption, bool ok, const QString& okText,
                   const QString& badText) {
-        const QString color = ok ? QStringLiteral("#22cc44") : QStringLiteral("#cc4444");
+        const QString color =
+            ok ? QString(theme::kGood) : QString(theme::kBad);
         label->setText(QStringLiteral("<span style='color:%1'>&#9679;</span> %2")
                            .arg(color, caption));
         label->setToolTip(ok ? okText : badText);
@@ -3612,6 +3629,36 @@ void MainWindow::buildCaptureDock() {
     captureList_->setToolTip(
         tr("Las fotos tomadas en esta sesión. Haz clic en una para trabajar sobre\n"
            "ella; con Supr se quita de la tira."));
+
+    // SUPR, AQUÍ, QUITA LA FOTO — Y ANTES NO LO HACÍA.
+    //
+    // La ayuda de arriba lo prometía desde el principio y era falso:
+    // `CaptureTray::removeAt` estaba escrita y no la llamaba NADIE. Mientras
+    // tanto, Supr es un atajo de ventana atado a borrar la herramienta
+    // seleccionada, y `QListWidget` no se queda con esa tecla, así que ganaba el
+    // atajo: pulsar Supr con el foco en la tira borraba una cota de la plantilla
+    // Y la quitaba de la base de datos.
+    //
+    // O sea que la propia ayuda enseñaba a pulsar la tecla que destruye trabajo
+    // guardado, en silencio y mirando a otro panel.
+    //
+    // Se resuelve con un atajo de ámbito WIDGET: mientras el foco esté en la
+    // tira, Supr es suyo; en cuanto el foco sale, vuelve a ser el de la ventana.
+    auto* dropCapture = new QAction(tr("Quitar la foto de la tira"), captureList_);
+    dropCapture->setShortcut(QKeySequence::Delete);
+    dropCapture->setShortcutContext(Qt::WidgetShortcut);
+    connect(dropCapture, &QAction::triggered, this, [this] {
+        const int row = captureList_->currentRow();
+        if (row < 0 || row >= captureTray_.count()) {
+            return;
+        }
+        captureTray_.removeAt(row);
+        refreshCaptureList();
+        updateLearnFromCaptureAvailability();
+        statusBar()->showMessage(
+            tr("Foto quitada de la tira. Quedan %n.", nullptr, captureTray_.count()));
+    });
+    captureList_->addAction(dropCapture);
     column->addWidget(captureList_, 1);
 
     auto* buttons = new QHBoxLayout();
@@ -4546,7 +4593,7 @@ void MainWindow::updateStationStatus() {
         switch (indicator.light) {
             case StationLight::Good: colour = "#2e7d32"; break;
             case StationLight::Neutral: colour = "#888888"; break;
-            case StationLight::Warning: colour = "#e08a00"; break;
+            case StationLight::Warning: colour = theme::kWarn; break;
             case StationLight::Bad: colour = "#c62828"; break;
         }
         light->setStyleSheet(
@@ -5119,10 +5166,12 @@ void MainWindow::updatePiecesChip() {
         someLeftOut ? tr(" %1 de %2 ").arg(lastPieceCount_).arg(lastPiecesSeen_)
                     : (several ? tr(" %1 piezas ").arg(lastPieceCount_) : tr(" 1 pieza ")));
     piecesChip_->setStyleSheet(
-        (several || someLeftOut) ? QStringLiteral("color:#3a2a00; background:#ffc861; border-radius:8px;"
-                                 " padding:1px 6px; font-weight:bold;")
-                : QStringLiteral("color:#ddd; background:#3a3a3a; border-radius:8px;"
-                                 " padding:1px 6px;"));
+        (several || someLeftOut)
+            ? theme::noticeStyle(theme::kWarn, theme::kWarnField) +
+                  QStringLiteral(" border-radius:8px; padding:1px 6px; font-weight:bold;")
+            : QStringLiteral("color:%1; background:%2; border-radius:8px;"
+                             " padding:1px 6px;")
+                  .arg(QString(theme::kInkMuted), QString(theme::kSurfaceSunken)));
     if (someLeftOut) {
         piecesChip_->setToolTip(
             tr("Se ven %1 manchas y has declarado %2 piezas: se trabaja con las %2 "

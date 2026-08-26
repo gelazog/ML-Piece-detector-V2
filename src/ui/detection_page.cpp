@@ -1,4 +1,5 @@
 #include "ui/detection_page.h"
+#include "ui/theme.h"
 
 #include "vision/pipeline.h"
 
@@ -514,7 +515,7 @@ void DetectionPage::setSceneReading(const vision::SceneReading& reading) {
                "el borde no depende del nivel de gris.")
                 .arg(100.0 * reading.thresholdSwing, 0, 'f', 1));
     }
-    sceneHint_->setStyleSheet(QStringLiteral("color:#ffc861;"));
+    sceneHint_->setStyleSheet(theme::textStyle(theme::kWarn));
 }
 
 vision::SegmentationOptions DetectionPage::options() const {
