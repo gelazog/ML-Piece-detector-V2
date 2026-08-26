@@ -5,6 +5,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -96,6 +97,73 @@ cv::Mat recoverWhatTheGlareTook(const cv::Mat& blurred, const cv::Mat& seeds,
 
 }  // namespace
 
+cv::Vec3b estimateBackgroundColour(const cv::Mat& image) {
+    if (image.empty()) {
+        return {0, 0, 0};
+    }
+    cv::Mat bgr;
+    if (image.channels() == 1) {
+        cv::cvtColor(image, bgr, cv::COLOR_GRAY2BGR);
+    } else if (image.channels() == 3) {
+        bgr = image;
+    } else {
+        return {0, 0, 0};
+    }
+    // Un marco proporcional, no un número de píxeles: una banda de 8 px es todo
+    // en una imagen de webcam y nada en una de 4000 px de ancho.
+    const int band = std::max(2, std::min(bgr.rows, bgr.cols) / 25);
+    std::array<std::vector<unsigned char>, 3> channels;
+    for (int y = 0; y < bgr.rows; ++y) {
+        const bool horizontalBand = y < band || y >= bgr.rows - band;
+        for (int x = 0; x < bgr.cols; ++x) {
+            if (!horizontalBand && x >= band && x < bgr.cols - band) {
+                continue;
+            }
+            const cv::Vec3b pixel = bgr.at<cv::Vec3b>(y, x);
+            for (int c = 0; c < 3; ++c) {
+                channels[static_cast<std::size_t>(c)].push_back(pixel[c]);
+            }
+        }
+    }
+    cv::Vec3b median{0, 0, 0};
+    for (int c = 0; c < 3; ++c) {
+        auto& values = channels[static_cast<std::size_t>(c)];
+        if (values.empty()) {
+            continue;
+        }
+        const auto middle = values.begin() + static_cast<std::ptrdiff_t>(values.size() / 2);
+        std::nth_element(values.begin(), middle, values.end());
+        median[c] = *middle;
+    }
+    return median;
+}
+
+cv::Mat distanceToBackground(const cv::Mat& bgr, const cv::Vec3b& background) {
+    if (bgr.empty() || bgr.channels() != 3) {
+        return {};
+    }
+    cv::Mat lab;
+    cv::cvtColor(bgr, lab, cv::COLOR_BGR2Lab);
+    cv::Mat onePixel(1, 1, CV_8UC3, cv::Scalar(background[0], background[1], background[2]));
+    cv::Mat backgroundLab;
+    cv::cvtColor(onePixel, backgroundLab, cv::COLOR_BGR2Lab);
+    const cv::Vec3b reference = backgroundLab.at<cv::Vec3b>(0, 0);
+
+    cv::Mat distance(bgr.size(), CV_8UC1);
+    for (int y = 0; y < lab.rows; ++y) {
+        const auto* row = lab.ptr<cv::Vec3b>(y);
+        auto* out = distance.ptr<unsigned char>(y);
+        for (int x = 0; x < lab.cols; ++x) {
+            const double dL = static_cast<double>(row[x][0]) - reference[0];
+            const double dA = static_cast<double>(row[x][1]) - reference[1];
+            const double dB = static_cast<double>(row[x][2]) - reference[2];
+            const double d = std::sqrt(dL * dL + dA * dA + dB * dB);
+            out[x] = static_cast<unsigned char>(std::min(255.0, d));
+        }
+    }
+    return distance;
+}
+
 core::Result<cv::Mat> segmentPiece(const cv::Mat& image, const SegmentationOptions& options) {
     if (image.empty()) {
         return core::Result<cv::Mat>::err("Imagen vacía");
@@ -114,9 +182,35 @@ core::Result<cv::Mat> segmentPiece(const cv::Mat& image, const SegmentationOptio
                                               std::to_string(image.channels()) + " canales");
     }
 
+    // AQUÍ SE DECIDE QUÉ CANAL SE SEGMENTA.
+    //
+    // Hasta esta línea, lo primero que hacía el programa con una foto en color
+    // era tirar el color. Con la clave de fondo encendida, en vez de la claridad
+    // se segmenta la DISTANCIA AL COLOR DEL FONDO, y a partir de ahí todo sigue
+    // exactamente igual: mismo Otsu, misma morfología, misma recuperación por
+    // histéresis. Lo único que cambia es qué mide cada píxel.
+    //
+    // La polaridad deja de ser una pregunta: en una imagen de distancias, la
+    // pieza es siempre lo que está LEJOS del fondo. Se fija aquí en vez de
+    // dejarla a la detección automática, que se equivocaría la mitad de las
+    // veces sin motivo.
+    SegmentationOptions active = options;
+    if (options.backgroundKey != SegmentationOptions::BackgroundKey::Off &&
+        image.channels() == 3) {
+        const cv::Vec3b background =
+            options.backgroundKey == SegmentationOptions::BackgroundKey::Fixed
+                ? options.background
+                : estimateBackgroundColour(image);
+        cv::Mat distance = distanceToBackground(image, background);
+        if (!distance.empty()) {
+            gray = std::move(distance);
+            active.polarity = SegmentationPolarity::LightPiece;
+        }
+    }
+
     // Segmentar por el CANTO es un camino aparte: no hay corte de gris que
     // ajustar, así que ni el umbral ni la polaridad tienen nada que decir.
-    if (options.method == SegmentationMethod::Edges) {
+    if (active.method == SegmentationMethod::Edges) {
         EdgeSegmentationOptions edges;
         auto mask = segmentByEdges(gray, edges);
         if (!mask.isOk()) {
@@ -124,7 +218,7 @@ core::Result<cv::Mat> segmentPiece(const cv::Mat& image, const SegmentationOptio
         }
         // La limpieza morfológica sí se comparte: quitar grano suelto y cerrar
         // huecos pequeños vale igual venga la máscara de donde venga.
-        const int morphology = options.morphKernel | 1;
+        const int morphology = active.morphKernel | 1;
         if (morphology >= 3) {
             const cv::Mat kernel = cv::getStructuringElement(
                 cv::MORPH_ELLIPSE, cv::Size(morphology, morphology));
@@ -135,7 +229,7 @@ core::Result<cv::Mat> segmentPiece(const cv::Mat& image, const SegmentationOptio
     }
 
     cv::Mat blurred;
-    const int blur = options.blurKernel | 1;  // los kernels deben ser impares
+    const int blur = active.blurKernel | 1;  // los kernels deben ser impares
     if (blur >= 3) {
         cv::GaussianBlur(gray, blurred, cv::Size(blur, blur), 0.0);
     } else {
@@ -146,8 +240,8 @@ core::Result<cv::Mat> segmentPiece(const cv::Mat& image, const SegmentationOptio
     // iluminación engaña al automático.
     cv::Mat binary;
     double usedThreshold = 0.0;
-    if (options.manualThreshold >= 0) {
-        usedThreshold = static_cast<double>(options.manualThreshold);
+    if (active.manualThreshold >= 0) {
+        usedThreshold = static_cast<double>(active.manualThreshold);
         cv::threshold(blurred, binary, usedThreshold, 255.0, cv::THRESH_BINARY);
     } else {
         usedThreshold =
@@ -160,7 +254,7 @@ core::Result<cv::Mat> segmentPiece(const cv::Mat& image, const SegmentationOptio
     // tiene que invertir igual, y volver a mirar el marco sobre una máscara
     // distinta podría decidir lo contrario y dejar las dos del revés.
     bool pieceIsTheDarkSide = false;
-    switch (options.polarity) {
+    switch (active.polarity) {
         case SegmentationPolarity::Auto:
             // El fondo domina el marco exterior: si quedó blanco, invertir.
             pieceIsTheDarkSide = borderMean(binary) > 127.0;
@@ -177,7 +271,7 @@ core::Result<cv::Mat> segmentPiece(const cv::Mat& image, const SegmentationOptio
     }
 
     // Apertura elimina ruido suelto; cierre rellena huecos pequeños de la pieza.
-    const int morph = options.morphKernel | 1;
+    const int morph = active.morphKernel | 1;
     const cv::Mat kernel =
         morph >= 3 ? cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(morph, morph))
                    : cv::Mat();
@@ -191,9 +285,9 @@ core::Result<cv::Mat> segmentPiece(const cv::Mat& image, const SegmentationOptio
     // Va DESPUÉS de la morfología a propósito: las semillas tienen que estar ya
     // limpias. Con el grano suelto todavía dentro, cualquier mota de ruido
     // pegada al fondo sería una semilla y arrastraría media mesa.
-    if (options.recoverHighlightsBy > 0) {
+    if (active.recoverHighlightsBy > 0) {
         binary = recoverWhatTheGlareTook(blurred, binary, usedThreshold,
-                                         options.recoverHighlightsBy, pieceIsTheDarkSide,
+                                         active.recoverHighlightsBy, pieceIsTheDarkSide,
                                          kernel);
     }
 

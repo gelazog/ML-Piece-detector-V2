@@ -91,11 +91,72 @@ struct SegmentationOptions {
     // se funde en 64 y los tres tornillos en uno. 12 es lo medido como seguro.
     int recoverHighlightsBy = 0;
 
+    // SEPARAR POR COLOR DE FONDO, NO POR CLARIDAD.
+    //
+    // Queja de uso, y tenía razón: «en arandelas-1 el fondo es rojo, y solo
+    // detecta las piezas de color gris o cromado, las demás no las toma en
+    // cuenta».
+    //
+    // Lo primero que hacía esta función era tirar el color —`cvtColor` a gris—,
+    // y ahí se pierde justo lo que separa una arandela de latón de un cartón
+    // rojo: el TONO. En claridad son casi la misma cosa. Medido sobre esa foto,
+    // con el rojo del fondo en gris 116:
+    //
+    //     por claridad     7 piezas, 11,4 % del cuadro
+    //     por color       20 piezas, 22,9 % del cuadro
+    //
+    // Y las trece que aparecen son exactamente las que faltaban: la de caucho
+    // negro, la de fibra marrón, la de fibra gris, el aro dentado de latón, el
+    // anillo de cobre y las pequeñas de latón.
+    //
+    // Cómo: se mide la distancia de cada píxel al color del fondo en Lab —que
+    // separa la claridad del tono, que es el problema— y esa distancia se
+    // segmenta con la MISMA maquinaria de siempre (Otsu, morfología, y sobre
+    // todo la recuperación por histéresis). No hay un umbral nuevo que ajustar.
+    //
+    // Se probó antes a cortar la distancia con Otsu a secas y NO vale: Otsu
+    // supone dos poblaciones, y en una bandeja de tuercas sobre fondo blanco hay
+    // tres —fondo, cuerpo cromado (cerca del blanco) y nylon azul del inserto
+    // (lejos)—. El corte caía en medio y la máscara marcaba solo los aros
+    // azules, dejando el cromado del lado del fondo. El recuento de piezas decía
+    // 100 en los dos casos: solo mirando la imagen se veía. La histéresis lo
+    // arregla porque es el mismo problema que el brillo — parte de la pieza está
+    // al nivel del fondo — y para eso se escribió.
+    //
+    // NACE APAGADO, como todo lo que mueve una medida.
+    enum class BackgroundKey {
+        Off,    // como siempre: se segmenta la claridad
+        Auto,   // el color del fondo se toma de la mediana del marco
+        Fixed,  // lo dice quien monta la estación
+    };
+    BackgroundKey backgroundKey = BackgroundKey::Off;
+    // Solo con `Fixed`. En BGR, como todo lo que entra por OpenCV.
+    cv::Vec3b background{0, 0, 0};
+
     int manualThreshold = -1;  // -1 = umbral automático (Otsu); 0-255 manual
     SegmentationPolarity polarity = SegmentationPolarity::Auto;
     int blurKernel = 5;   // suavizado previo (impar; <3 = sin suavizado)
     int morphKernel = 5;  // limpieza morfológica (impar; <3 = sin morfología)
 };
+
+// El color del fondo, estimado del MARCO de la imagen.
+//
+// La pieza está en medio y el borde es fondo casi siempre. Se usa la MEDIANA y
+// no la media porque en una bandeja llena las piezas llegan al marco: medido en
+// la bandeja de cien tuercas, la mediana del borde sale (248,244,243) —blanco,
+// correcto— mientras que cualquier estadístico que mire la cola se contamina
+// con las tuercas. Aguanta mientras menos de la mitad del borde sea pieza.
+//
+// Devuelve un color BGR. Con una imagen de un solo canal devuelve el gris
+// repetido, que es lo coherente.
+[[nodiscard]] cv::Vec3b estimateBackgroundColour(const cv::Mat& image);
+
+// Distancia de cada píxel al color del fondo, en Lab, como imagen de un canal.
+//
+// Lab y no BGR porque lo que hace falta es «cuánto se PARECE», y en BGR la
+// distancia euclídea no significa eso. Saturada a 255: por encima ya da igual
+// cuánto más lejos esté.
+[[nodiscard]] cv::Mat distanceToBackground(const cv::Mat& bgr, const cv::Vec3b& background);
 
 // Segmenta la pieza del fondo por umbral + morfología. Devuelve máscara
 // binaria CV_8UC1 con pieza = 255.

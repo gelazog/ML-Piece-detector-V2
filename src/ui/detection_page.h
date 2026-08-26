@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QWidget>
 
 #include <cstdint>
@@ -93,6 +94,11 @@ private:
     QLabel* clipResult_ = nullptr;
     QComboBox* method_ = nullptr;
     QComboBox* polarity_ = nullptr;
+    QComboBox* backgroundKey_ = nullptr;
+    QPushButton* backgroundColour_ = nullptr;
+    QColor background_{255, 255, 255};
+
+    void paintBackgroundSwatch();
 
 public:
     // LO QUE LA IMAGEN DE AHORA DICE DE SI MISMA.

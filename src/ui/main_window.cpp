@@ -1367,6 +1367,21 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         // Se guarda el NÚMERO, no un sí/no: el día que el nivel de aflojado sea
         // ajustable, lo que ya está guardado sigue queriendo decir lo mismo.
         seg.recoverHighlightsBy = repos_.settings->getInt("det_recover_glare", 0).value();
+        // LA CLAVE DE COLOR DE FONDO ES UNA PROPIEDAD DEL PUESTO.
+        //
+        // El color de la mesa no cambia entre inspecciones, así que preguntarlo
+        // cada vez sería preguntar por algo que ya se sabe. Se guarda el modo y
+        // el color por separado: quien lo tenga en «lo busca solo» y un día pase
+        // a «lo digo yo» se encuentra el último color que eligió, no un blanco.
+        seg.backgroundKey = static_cast<vision::SegmentationOptions::BackgroundKey>(
+            std::clamp(repos_.settings->getInt("det_background_key", 0).value(), 0, 2));
+        seg.background = cv::Vec3b(
+            static_cast<unsigned char>(
+                std::clamp(repos_.settings->getInt("det_background_b", 255).value(), 0, 255)),
+            static_cast<unsigned char>(
+                std::clamp(repos_.settings->getInt("det_background_g", 255).value(), 0, 255)),
+            static_cast<unsigned char>(
+                std::clamp(repos_.settings->getInt("det_background_r", 255).value(), 0, 255)));
         pipelineConfig_.roi = cv::Rect(repos_.settings->getInt("det_roi_x", 0).value(),
                                        repos_.settings->getInt("det_roi_y", 0).value(),
                                        repos_.settings->getInt("det_roi_w", 0).value(),
@@ -2048,6 +2063,10 @@ void MainWindow::persistPipelineConfig() {
     repos_.settings->setInt("det_morph", seg.morphKernel);
     repos_.settings->setInt("det_split_touching", seg.splitTouchingPieces ? 1 : 0);
     repos_.settings->setInt("det_recover_glare", seg.recoverHighlightsBy);
+    repos_.settings->setInt("det_background_key", static_cast<int>(seg.backgroundKey));
+    repos_.settings->setInt("det_background_b", seg.background[0]);
+    repos_.settings->setInt("det_background_g", seg.background[1]);
+    repos_.settings->setInt("det_background_r", seg.background[2]);
     repos_.settings->setInt("det_roi_x", pipelineConfig_.roi.x);
     repos_.settings->setInt("det_roi_y", pipelineConfig_.roi.y);
     repos_.settings->setInt("det_roi_w", pipelineConfig_.roi.width);

@@ -2445,6 +2445,62 @@ esquinas de radio 40 → **4 rectas y 4 arcos** de R ≈ 38,3.
 Los **agujeros** salen aparte, de la jerarquía de `findContours`: un contorno con
 padre es un hueco interno, y cada uno es candidato a un Círculo.
 
+### La clave de color de fondo
+
+Queja de uso: «en arandelas-1 el fondo es rojo, y solo detecta las piezas de
+color gris o cromado, las demás no las toma en cuenta». Era literal, y el motivo
+estaba en la primera línea de `segmentPiece`: `cvtColor(BGR2GRAY)`. **Lo primero
+que hacía el programa con una foto en color era tirar el color.**
+
+Sobre un cartón rojo eso pierde justo lo que separa una arandela de latón del
+fondo — el tono. Ese rojo cae en **gris 116**, un gris medio. Medido sobre esa
+foto, con una veintena de arandelas de acero, latón, cobre, caucho, fibra y
+plástico:
+
+| | piezas | área |
+|---|---|---|
+| por claridad | 7 | 11,4 % |
+| por color | **20** | **22,9 %** |
+
+Cómo funciona: se mide la distancia de cada píxel al color del fondo **en Lab**
+—que separa la claridad del tono, que es el problema— y esa imagen de distancias
+entra en la maquinaria de siempre. Mismo Otsu, misma morfología, misma
+recuperación por histéresis. No hay un umbral nuevo que ajustar; lo único que
+cambia es qué mide cada píxel. La polaridad deja de ser una pregunta: en una
+imagen de distancias la pieza es siempre lo que está **lejos** del fondo.
+
+**Dos caminos que se probaron y no valen**, porque el que quedó no es obvio:
+
+1. **Cortar la distancia con Otsu a secas.** Otsu supone dos poblaciones, y en
+   una bandeja de tuercas sobre fondo blanco hay tres: el fondo, el cuerpo
+   cromado (cerca del blanco) y el nylon azul del inserto (lejos). El corte caía
+   en medio y la máscara marcaba **solo los aros azules**, dejando todo el
+   cromado del lado del fondo. Y esto es lo importante: **el recuento de piezas
+   decía 100 en los dos casos.** El fallo solo apareció al dibujar las máscaras
+   encima de la foto y mirarlas. Un recuento no mide la calidad de una silueta.
+2. **Sacar el umbral del ruido del propio marco.** En una bandeja llena las
+   piezas **llegan al marco**, así que ese «ruido» sale de las piezas y no del
+   fondo: el p99 del borde subía a 161-210 sobre fondo blanco y tres de las cinco
+   fotos se quedaban en **cero piezas**.
+
+Lo que sí funciona es la histéresis, y tiene sentido que sea ella: es el mismo
+problema que el brillo —parte de la pieza está al nivel del fondo— y para eso se
+escribió.
+
+El color del fondo se estima con la **mediana** del marco, no con la media ni con
+un percentil: en la bandeja de cien tuercas las piezas tocan el borde, y la
+mediana sale (248,244,243) —blanco, correcto— mientras cualquier estadístico que
+mire la cola se contamina. Aguanta mientras menos de la mitad del borde sea
+pieza. Y se puede **declarar** desde la pestaña *Detección*, que es lo sensato en
+un puesto fijo.
+
+Nace apagada, como todo lo que mueve una medida. Hay una prueba que comprueba que
+con la clave apagada pasar la foto en color y en gris da exactamente la misma
+máscara.
+
+Un límite conocido: una arandela de **plástico traslúcido** sigue sin salir,
+porque a través de ella se ve el fondo y no hay color que la separe.
+
 ### Medición automática: propuestas, no números
 
 `inspection_editor/auto_measure.*` mira la pieza y propone qué medir. La

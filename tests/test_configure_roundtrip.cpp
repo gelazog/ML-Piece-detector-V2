@@ -50,6 +50,8 @@ TEST(ConfigureRoundTrip, TheDetectionPageGivesBackEverythingItWasGiven) {
     given.blurKernel = 7;
     given.morphKernel = 3;
     given.splitTouchingPieces = true;
+    given.backgroundKey = pci::vision::SegmentationOptions::BackgroundKey::Fixed;
+    given.background = cv::Vec3b(77, 63, 238);  // el rojo del cartón, en BGR
 
     const double minArea = 0.021;
     const double maxArea = 0.77;
@@ -68,6 +70,18 @@ TEST(ConfigureRoundTrip, TheDetectionPageGivesBackEverythingItWasGiven) {
     EXPECT_EQ(back.morphKernel, given.morphKernel) << "la morfología no vuelve";
     EXPECT_EQ(back.splitTouchingPieces, given.splitTouchingPieces)
         << "la separación de piezas que se tocan no vuelve: aceptar la apaga sola";
+    EXPECT_EQ(static_cast<int>(back.backgroundKey), static_cast<int>(given.backgroundKey))
+        << "la clave de color de fondo no vuelve: aceptar te devuelve a separar por "
+           "claridad, y sobre un fondo de color eso deja de ver la mitad de las piezas";
+    // Y el COLOR, canal a canal. Devolverlo al revés —RGB donde se esperaba BGR—
+    // no se vería en la ventana, que enseñaría un color parecido, pero
+    // segmentaría contra otra cosa: sobre un fondo rojo se estaría midiendo la
+    // distancia a un azul.
+    EXPECT_EQ(back.background[0], given.background[0]) << "el azul del fondo no vuelve";
+    EXPECT_EQ(back.background[1], given.background[1]) << "el verde del fondo no vuelve";
+    EXPECT_EQ(back.background[2], given.background[2])
+        << "el rojo del fondo no vuelve. Ojo con el orden: OpenCV usa BGR y Qt RGB, y "
+           "cruzarlos da un color parecido en pantalla y una segmentación contra otra cosa";
 
     // Las áreas se enseñan en porcentaje con un decimal, así que un 0,021 puede
     // volver como 0,021 exacto o redondeado a la resolución del campo; lo que

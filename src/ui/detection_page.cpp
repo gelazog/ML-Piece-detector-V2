@@ -4,6 +4,7 @@
 #include "vision/pipeline.h"
 
 #include <QCheckBox>
+#include <QColorDialog>
 #include <QComboBox>
 #include "vision/edge_segmentation.h"
 #include <QDoubleSpinBox>
@@ -185,6 +186,73 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "Nace apagado porque cambia lo que se mide."));
     form->addRow(recoverGlare_);
 
+    // SEPARAR POR EL COLOR DEL FONDO.
+    //
+    // Queja de uso: «en arandelas-1 el fondo es rojo, y solo detecta las piezas
+    // de color gris o cromado, las demás no las toma en cuenta». Era literal, y
+    // el motivo es que lo primero que hacía el programa con una foto en color
+    // era tirar el color.
+    //
+    // Va aquí, junto a las otras dos correcciones de contorno, porque las tres
+    // responden a lo mismo: la silueta que sale no es la que se ve.
+    backgroundKey_ = new QComboBox(this);
+    backgroundKey_->addItem(tr("No: separar por claridad (lo habitual)"));
+    backgroundKey_->addItem(tr("Sí, y el color del fondo lo busca solo"));
+    backgroundKey_->addItem(tr("Sí, y el color del fondo lo digo yo"));
+    backgroundKey_->setToolTip(
+        tr("Separa la pieza por lo distinto que es su COLOR del color del fondo,\n"
+           "en vez de por lo claro u oscuro que sea.\n"
+           "\n"
+           "Sirve cuando el fondo tiene color. Sobre un cartón rojo, una arandela\n"
+           "de latón tiene casi la misma CLARIDAD que el fondo —el rojo cae en\n"
+           "gris 116, un gris medio— y lo único que las separa es el tono.\n"
+           "\n"
+           "Medido sobre esa foto, con una veintena de arandelas de acero, latón,\n"
+           "cobre, caucho, fibra y plástico:\n"
+           "  · por claridad:   7 piezas, 11 %% del cuadro\n"
+           "  · por color:     20 piezas, 23 %%\n"
+           "\n"
+           "Las trece que aparecen son las que no son cromadas.\n"
+           "\n"
+           "Sobre fondo blanco no cambia nada: el engranaje, el cáncamo y la\n"
+           "bandeja de cien tuercas dan las mismas piezas por los dos caminos.\n"
+           "\n"
+           "«Lo busca solo» toma la mediana del marco de la imagen, que es fondo\n"
+           "casi siempre. Dilo tú si el puesto tiene piezas pegadas al borde o si\n"
+           "quieres que no dependa de lo que haya en la escena.\n"
+           "\n"
+           "Nace apagado porque cambia lo que se mide."));
+    form->addRow(tr("Clave de color de fondo"), backgroundKey_);
+
+    backgroundColour_ = new QPushButton(this);
+    backgroundColour_->setToolTip(
+        tr("El color exacto del fondo del puesto. Solo se usa con «lo digo yo»."));
+    form->addRow(QString(), backgroundColour_);
+    connect(backgroundKey_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int index) {
+                backgroundColour_->setEnabled(index == 2);
+            });
+    connect(backgroundColour_, &QPushButton::clicked, this, [this] {
+        const QColor chosen = QColorDialog::getColor(background_, this,
+                                                     tr("Color del fondo del puesto"));
+        if (chosen.isValid()) {
+            background_ = chosen;
+            paintBackgroundSwatch();
+        }
+    });
+    // Y SE PARTE DE LO QUE ENTRA, no de un blanco fijo.
+    //
+    // La primera versión ponía aquí blanco y «no» a pelo, sin mirar los ajustes
+    // que recibe la página. El efecto: entrabas a cambiar el umbral, aceptabas,
+    // y de paso te apagaba la clave de color y te borraba el color del puesto —
+    // sin decirlo, y la detección empeoraba «desde hace un tiempo». Lo cazó la
+    // prueba de ida y vuelta que ya existía justo para esta familia de fallos.
+    backgroundKey_->setCurrentIndex(static_cast<int>(current.backgroundKey));
+    background_ = QColor(current.background[2], current.background[1], current.background[0]);
+    paintBackgroundSwatch();
+    backgroundColour_->setEnabled(current.backgroundKey ==
+                                  vision::SegmentationOptions::BackgroundKey::Fixed);
+
     method_ = new QComboBox(this);
     method_->addItem(tr("Por nivel de gris (lo habitual)"));
     method_->addItem(tr("Por el canto de la pieza"));
@@ -329,6 +397,13 @@ void DetectionPage::applyOptions(const vision::SegmentationOptions& options) {
     polarity_->setCurrentIndex(static_cast<int>(options.polarity));
     blur_->setValue(options.blurKernel);
     morph_->setValue(options.morphKernel);
+    if (backgroundKey_ != nullptr) {
+        backgroundKey_->setCurrentIndex(static_cast<int>(options.backgroundKey));
+        background_ = QColor(options.background[2], options.background[1], options.background[0]);
+        paintBackgroundSwatch();
+        backgroundColour_->setEnabled(options.backgroundKey ==
+                                      vision::SegmentationOptions::BackgroundKey::Fixed);
+    }
 }
 
 void DetectionPage::restoreDefaults() {
@@ -518,6 +593,24 @@ void DetectionPage::setSceneReading(const vision::SceneReading& reading) {
     sceneHint_->setStyleSheet(theme::textStyle(theme::kWarn));
 }
 
+// EL BOTÓN ENSEÑA EL COLOR, no solo lo nombra.
+//
+// Un botón que pusiera «#EE3F4D» obligaría a traducir un hexadecimal a un color
+// mentalmente. Se pinta el color de fondo del propio botón y se escribe encima
+// su nombre en claro, con la letra en blanco o negro según cuál de las dos se
+// lea mejor sobre él — que es la misma cuenta de contraste de `ui/theme.h`.
+void DetectionPage::paintBackgroundSwatch() {
+    if (backgroundColour_ == nullptr) {
+        return;
+    }
+    const double luminance = 0.2126 * background_.redF() + 0.7152 * background_.greenF() +
+                             0.0722 * background_.blueF();
+    const char* ink = luminance > 0.45 ? theme::kInk : theme::kInkOnDark;
+    backgroundColour_->setText(tr("Color del fondo: %1").arg(background_.name().toUpper()));
+    backgroundColour_->setStyleSheet(QStringLiteral("background:%1; color:%2; padding:6px;")
+                                         .arg(background_.name(), QString::fromUtf8(ink)));
+}
+
 vision::SegmentationOptions DetectionPage::options() const {
     vision::SegmentationOptions result;
     result.method = static_cast<vision::SegmentationMethod>(method_->currentIndex());
@@ -530,6 +623,16 @@ vision::SegmentationOptions DetectionPage::options() const {
     // tuercas se funde en 64 y los tres tornillos en uno.
     result.recoverHighlightsBy =
         (recoverGlare_ != nullptr && recoverGlare_->isChecked()) ? 12 : 0;
+    if (backgroundKey_ != nullptr) {
+        result.backgroundKey = static_cast<vision::SegmentationOptions::BackgroundKey>(
+            backgroundKey_->currentIndex());
+        // BGR, que es como entra todo por OpenCV. Escribirlo al revés daría un
+        // fondo azul donde el operador eligió rojo, y con la clave encendida eso
+        // no es un detalle de color: es segmentar contra otra cosa.
+        result.background = cv::Vec3b(static_cast<unsigned char>(background_.blue()),
+                                      static_cast<unsigned char>(background_.green()),
+                                      static_cast<unsigned char>(background_.red()));
+    }
     return result;
 }
 

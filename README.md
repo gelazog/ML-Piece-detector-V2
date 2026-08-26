@@ -1238,6 +1238,38 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    galvanizado de **2 a 1**; la bandeja de cien tuercas se queda en 100. Nace
    apagada porque cambia lo que se mide.
 
+   **Clave de color de fondo** (pestaña *Detección*). Si tu mesa **tiene color**
+   —cartón rojo, tapete azul, una bandeja verde— y ves que solo te detecta las
+   piezas cromadas, es esto: hasta ahora el programa tiraba el color de la foto
+   antes de separar nada, y trabajaba solo con lo claro y lo oscuro. Sobre un
+   cartón rojo, una arandela de latón tiene casi la **misma claridad** que el
+   fondo (ese rojo cae en gris 116, un gris medio) y lo único que las distingue
+   es el tono.
+
+   Con la clave encendida, cada píxel se mide por **lo distinto que es su color**
+   del color del fondo. Medido sobre una foto de una veintena de arandelas de
+   acero, latón, cobre, caucho, fibra y plástico sobre cartón rojo:
+
+   | | piezas encontradas | pieza del cuadro |
+   |---|---|---|
+   | por claridad | 7 | 11 % |
+   | por color | **20** | **23 %** |
+
+   Las trece que aparecen son exactamente las que no son cromadas.
+
+   El color del fondo puede **buscarlo solo** (toma la mediana del marco de la
+   imagen, que es fondo casi siempre — aguanta aunque haya piezas tocando el
+   borde) o puedes **decírselo tú** con un selector de color, que es lo sensato
+   si el puesto siempre tiene la misma mesa.
+
+   **Sobre fondo blanco no cambia nada** y eso está comprobado: el engranaje, el
+   cáncamo y la bandeja de cien tuercas dan las mismas piezas por los dos
+   caminos. Nace apagada porque cambia lo que se mide.
+
+   Un aviso honesto: una arandela de **plástico traslúcido** sigue sin
+   detectarse bien, porque a través de ella se ve el fondo — ahí no hay color que
+   la separe.
+
    **Piezas brillantes: reflejos y fondo.** Si tus piezas son metálicas y salen
    partidas en trozos o medidas cortas, el problema suele ser el corte de gris:
    pasa por dentro de la pieza y se deja fuera material. La pestaña *Detección*
