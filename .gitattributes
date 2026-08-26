@@ -21,3 +21,12 @@
 *.onnx binary
 *.db binary
 *.ico binary
+
+# Markdown SIEMPRE como texto, sin heurística.
+#
+# `text=auto` decide mirando el contenido, y con README.md decidió que era
+# BINARIO: `git ls-files --eol` lo daba como `i/-text` y por eso se quedó fuera
+# de la renormalización mientras ARQUITECTURA.md sí entraba. No tiene un solo
+# byte NUL, así que la heurística se equivocaba sola. Declararlo `text` a secas
+# le quita la decisión.
+*.md text eol=lf
