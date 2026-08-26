@@ -4074,9 +4074,25 @@ por el camino exacto del botón *Medir pieza* —`analyzeFrame` →
 
 | imagen | agujeros de verdad | lo que dice el informe |
 |---|---|---|
-| tuerca | 1 | **5** |
-| moneda de 5 yenes | 1 | **117** |
-| piñón | 1 | **19** |
+| moneda de 5 yenes | **1** | **117** |
+| «tuerca» | *no es una tuerca* — ver abajo | 5 |
+| «piñón» | *no es un piñón* — ver abajo | 19 |
+
+> **CORRECCIÓN.** La primera versión de esta nota daba las tres como defecto,
+> con «un agujero» de verdad en las tres. **Dos de esas tres verdades eran
+> falsas, y se pusieron sin abrir las fotos.** Al mirarlas:
+>
+> - `tuerca_dominio_publico.jpg` son **siete** tuercas y racores distintos. La
+>   pieza mayor es una brida con cuatro taladros más el central: **sus cinco
+>   agujeros eran correctos** y se denunciaron como fallo.
+> - `pinon_corona_dentada.jpg` es un **montón de piñones solapados** llenando el
+>   encuadre, no un piñón con su eje. Diecinueve no es obviamente un error.
+> - `arandelas_con_agujero.jpg`, usada en las medidas de área, es una **bolsa con
+>   etiqueta impresa en ruso**: la figura que se mide es el texto y sus
+>   «agujeros» son las letras.
+>
+> Queda **un solo caso verificado**: la moneda, que es una moneda con un agujero
+> y sale con ciento diecisiete. El defecto es real; el tamaño de la muestra, no.
 
 ##### La mejor opción, con la evidencia delante
 
@@ -4088,10 +4104,24 @@ agujeros— y sale de `describeContour`, que no filtra nada. Arreglarlo ahí arr
 el informe y de paso deja a las diez herramientas algo correcto que mirar.
 Arreglarlo solo dentro de la Región dejaría el informe mintiendo.
 
-Y **no vale un filtro por tamaño a secas**: con un mínimo del 1 % de la figura
-salen 2, 4 y **0** agujeros donde hay uno — al piñón se le borra el del eje. Ni
-el área ni la forma (circularidad ≥ 0,75, ya probado) los separan. Hace falta un
-criterio de verdad, y las dos ideas evidentes están descartadas con números.
+**¿Con qué criterio?** La primera respuesta —«un filtro por tamaño no vale, al 1 %
+salen 2, 4 y 0 agujeros»— se apoyaba en las verdades de campo falsas y no se
+sostiene. Con el único caso verificado delante, el filtro por tamaño **sí
+separa**, y con holgura:
+
+| moneda de 5 yenes | área del hueco | % de la figura |
+|---|---|---|
+| el agujero de verdad | 110 595 px² | **16,40 %** |
+| el siguiente mayor | 6 174 px² | 0,92 % |
+
+Casi **dieciocho veces** entre el agujero y el mayor de los impostores: un
+mínimo del 3 % deja exactamente uno. Lo que NO se puede decir es que ese 3 %
+valga en general — está ajustado sobre **una sola imagen verificada**, y elegir
+un umbral con un caso es lo mismo que fabricar la respuesta.
+
+Lo que hace falta antes de tocar `describeContour` son **más piezas con agujeros
+contados a mano**: una arandela de verdad, una brida, una tuerca sola. Sin eso,
+cualquier número que se ponga aquí es una corazonada con aspecto de medida.
 
 Ventaja práctica: **nadie pierde nada**. No hay tolerancia declarada sobre «117
 agujeros» que hoy funcione, así que corregirlo no rompe ninguna medida buena.

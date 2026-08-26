@@ -234,17 +234,32 @@ TEST(RegionOwnOtsu, HolesNeedAMinimumSizeToMeanAnything) {
 //
 // Si la diera, la mejor opción sería que las herramientas miraran ESA silueta.
 // Si no la diera, no habría a dónde ir y la recomendación tendría que ser otra.
-TEST(RegionOwnOtsu, TheAppsOwnSegmentationMiscountsHolesToo) {
+TEST(RegionOwnOtsu, TheAppsOwnSegmentationMiscountsTheHolesOfACoin) {
     const auto dir = corpusDir();
     if (dir.empty()) {
         GTEST_SKIP() << "corpus no descargado";
     }
+    // VERDAD DE CAMPO, MIRANDO LAS FOTOS. La primera versión de esta prueba puso
+    // «1 agujero» en las cuatro sin abrirlas, y tres de esas cuatro eran falsas:
+    //
+    //   tuerca_dominio_publico.jpg   SIETE tuercas y racores distintos. La pieza
+    //                                mayor es una brida con cuatro taladros más
+    //                                el central: sus CINCO agujeros eran
+    //                                correctos y se denunciaron como defecto.
+    //   pinon_corona_dentada.jpg     un MONTÓN de piñones solapados llenando el
+    //                                encuadre, no un piñón con su eje.
+    //   arandelas_con_agujero.jpg    una BOLSA con etiqueta impresa en ruso; la
+    //                                figura que se mide es el texto, y sus
+    //                                «agujeros» son las letras.
+    //
+    // Solo la moneda es lo que decía ser, y solo ella queda con verdad fijada.
+    // Las otras se quedan para publicar su número, sin afirmar nada de él.
     struct Case { const char* file; int truth; };
     const Case cases[] = {
-        {"tuerca_dominio_publico.jpg", 1},
         {"moneda_5_yen_con_agujero.png", 1},
-        {"pinon_corona_dentada.jpg", 1},
-        {"arandelas_con_agujero.jpg", -1},  // varias arandelas: no se fija verdad
+        {"tuerca_dominio_publico.jpg", -1},
+        {"pinon_corona_dentada.jpg", -1},
+        {"arandelas_con_agujero.jpg", -1},
     };
     int looked = 0;
     for (const auto& one : cases) {
@@ -284,9 +299,9 @@ TEST(RegionOwnOtsu, WhatTheReportShowsTheOperator) {
         GTEST_SKIP() << "corpus no descargado";
     }
     struct Case { const char* file; int truth; };
-    const Case cases[] = {{"tuerca_dominio_publico.jpg", 1},
-                          {"moneda_5_yen_con_agujero.png", 1},
-                          {"pinon_corona_dentada.jpg", 1}};
+    const Case cases[] = {{"moneda_5_yen_con_agujero.png", 1}};
+
+
     for (const auto& one : cases) {
         const cv::Mat gray = cv::imread((dir / one.file).string(), cv::IMREAD_GRAYSCALE);
         if (gray.empty()) continue;
