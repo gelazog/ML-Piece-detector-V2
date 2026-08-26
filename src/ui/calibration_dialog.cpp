@@ -122,6 +122,10 @@ CalibrationDialog::CalibrationDialog(const QImage& snapshot,
     cameraDistMm_->setSuffix(QStringLiteral(" mm"));
     formB->addRow(tr("Cámara → superficie:"), cameraDistMm_);
     auto* useDistance = new QPushButton(tr("Calcular escala con la distancia"), methodB);
+    // Este era el que se llevaba el Enter, por ser el primero que se construye.
+    // No destruye nada, pero tampoco es lo que espera quien pulsa Enter en un
+    // diálogo de calibración: lo que espera es aplicarla.
+    useDistance->setAutoDefault(false);
     formB->addRow(useDistance);
     sideLayout->addWidget(methodB);
 
@@ -144,12 +148,19 @@ CalibrationDialog::CalibrationDialog(const QImage& snapshot,
 
     auto* buttonsLayout = new QHBoxLayout();
     applyButton_ = new QPushButton(tr("Aplicar calibración"), this);
+    // El Enter va donde el operador cree que va.
+    applyButton_->setDefault(true);
     applyButton_->setEnabled(result_.valid());
     buttonsLayout->addWidget(applyButton_);
     auto* resetButton = new QPushButton(tr("Quitar calibración"), this);
+    // Y este SÍ destruye: quita la calibración y deja todas las cotas de la
+    // pieza en píxeles. Sin quitarle `autoDefault` bastaría tabular hasta él
+    // para que el Enter siguiente la borrase.
+    resetButton->setAutoDefault(false);
     resetButton->setToolTip(tr("Vuelve a medir en píxeles."));
     buttonsLayout->addWidget(resetButton);
     auto* cancel = new QPushButton(tr("Cancelar"), this);
+    cancel->setAutoDefault(false);
     buttonsLayout->addWidget(cancel);
     sideLayout->addLayout(buttonsLayout);
 

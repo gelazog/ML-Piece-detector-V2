@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include <QApplication>
+#include <QImage>
 #include <QPushButton>
 #include <QString>
 #include <QStringList>
@@ -29,6 +30,8 @@
 #include "database/db.h"
 #include "database/schema.h"
 #include "repositories/settings_repository.h"
+#include "domain/calibration.h"
+#include "ui/calibration_dialog.h"
 #include "ui/shortcuts_dialog.h"
 
 namespace {
@@ -141,5 +144,40 @@ TEST(DefaultButtons, NoDestructiveButtonKeepsAutoDefaultInTheShortcutsDialog) {
                "siguiente destruya la tabla.";
         EXPECT_FALSE(button->isDefault())
             << "«" << button->text().toStdString() << "» es el botón por defecto.";
+    }
+}
+
+TEST(DefaultButtons, TheCalibrationDialogAppliesInsteadOfRecalculatingOrRemoving) {
+    // El mismo patrón, y aquí con dos problemas de golpe. Los botones se
+    // construyen en el orden «Calcular escala con la distancia», «Aplicar
+    // calibración», «Quitar calibración», «Cancelar», así que el Enter se lo
+    // llevaba el primero — que no destruye nada, pero tampoco es lo que espera
+    // quien pulsa Enter en un diálogo de calibración.
+    //
+    // Y «Quitar calibración» sí destruye: deja todas las cotas de la pieza en
+    // píxeles. Con `autoDefault` puesto bastaba tabular hasta él.
+    QImage snapshot(64, 48, QImage::Format_RGB888);
+    snapshot.fill(Qt::gray);
+    pci::ui::CalibrationDialog dialog(snapshot, pci::domain::ScaleCalibration{});
+
+    auto* chosen = defaultButton(dialog);
+    ASSERT_NE(chosen, nullptr);
+    std::printf("  [Enter] calibración -> «%s»\n", chosen->text().toStdString().c_str());
+    EXPECT_TRUE(chosen->text().contains(QStringLiteral("Aplicar")))
+        << "el Enter no aplica la calibración, dispara «" << chosen->text().toStdString()
+        << "»";
+
+    for (auto* button : dialog.findChildren<QPushButton*>()) {
+        if (!looksDestructive(button->text())) {
+            continue;
+        }
+        std::printf("  [Enter] botón destructivo: «%s» (autoDefault=%d)\n",
+                    button->text().toStdString().c_str(),
+                    static_cast<int>(button->autoDefault()));
+        EXPECT_FALSE(button->autoDefault())
+            << "«" << button->text().toStdString()
+            << "» conserva autoDefault: se llega a él tabulando y el Enter siguiente "
+               "borra la calibración, dejando todas las cotas en píxeles.";
+        EXPECT_FALSE(button->isDefault());
     }
 }

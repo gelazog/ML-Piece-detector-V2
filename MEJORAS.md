@@ -99,8 +99,20 @@ Todo esto salió de una auditoría anterior y está verificado.
   porque con él basta tabular hasta el botón para que el Enter siguiente
   destruya.
 
-  Falta extender la prueba a los demás diálogos, empezando por
-  `calibration_dialog.cpp`.
+  **Calibración, hecho también**, y tenía los dos problemas de golpe: el Enter
+  se lo llevaba «Calcular escala con la distancia» —por ser el primero que se
+  construye— en vez de «Aplicar calibración», y «Quitar calibración» conservaba
+  `autoDefault`. Ese sí destruye: deja **todas las cotas de la pieza en
+  píxeles**.
+
+  Al mutar el arreglo para comprobar que la prueba lo caza salió un matiz:
+  quitar el `setDefault(true)` **no** cambió el botón por defecto, porque el
+  `setAutoDefault(false)` del primero ya lo desplazaba. Lo cazó la segunda
+  comprobación. Las dos hacen falta y no son redundantes: una fija quién se lleva
+  el Enter, la otra impide llegar al botón destructivo tabulando.
+
+  Faltan los otros nueve diálogos. Construirlos en una prueba cuesta distinto en
+  cada uno, así que van de uno en uno.
 - [ ] **C4 · `detection_page.cpp` apila 17 filas de formulario sin agrupar.** El
   propio fichero, en su comentario de las líneas 437-441, ya identifica ese
   problema como el que resuelve en otro sitio.
