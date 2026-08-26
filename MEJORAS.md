@@ -105,11 +105,19 @@ Sale de una auditoría con el mapa de contenidos medido.
     `vision/difference_map.cpp` lo usa `ui/inspection_result_dialog.cpp`, y
     `domain/shift_report.cpp` lo usa `ui/history_dialog.cpp`, los dos con
     prueba. Marcados como hechos.
-- [ ] **D2 · Sacar la bitácora de defectos de ARQUITECTURA.** Informado:
-  `ARQUITECTURA.md:3751-4940` serían **1 190 líneas** de narración de defectos
-  encontrados y arreglados, viviendo dentro de un capítulo titulado
-  «Persistencia». Sacarlas a `BITACORA.md` libera casi la cuarta parte del
-  documento de un tirón.
+- [x] **D2 · Sacar la bitácora de defectos de ARQUITECTURA.** Hecho, y el
+  hallazgo era exacto: **1 191 líneas** de narración de defectos dentro de un
+  capítulo titulado «Persistencia» cuyo contenido de persistencia real ocupaba
+  **veintiuna**. Ahora en [BITACORA.md](BITACORA.md).
+
+  De paso salió otra: las otras 165 líneas de ese capítulo eran **menús, teclado
+  y barra de botones**, o sea interfaz. Son el capítulo 11 nuevo. Lo único que
+  se quedó en Persistencia fue la persistencia — incluida «volver a donde lo
+  dejaste», que sí lo es y por eso lleva una nota diciéndolo.
+
+  `ARQUITECTURA.md`: **5 119 → 3 955 líneas**. Y la guardia de rutas siguió
+  marcando 29 y 0 rotas después de mover todo, que es exactamente para lo que se
+  puso el trinquete el paso anterior.
 - [ ] **D3 · Partir el README (1 666 líneas).** El paso 5, «dibujar sobre el
   vídeo en vivo», ocupa **822 líneas — el 49 % del total** — y dentro lleva el
   catálogo de las 33 herramientas (353 líneas). Salen dos documentos propios.

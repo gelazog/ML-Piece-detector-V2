@@ -1,8 +1,8 @@
 # Contexto — PC Inspector
 
 **Empieza por aquí.** Este fichero es el mapa: qué es esto, cómo se trabaja en
-él, y a qué documento ir según lo que busques. Los cuatro documentos grandes
-responden a cuatro preguntas distintas y no hay que leerlos enteros.
+él, y a qué documento ir según lo que busques. Los documentos grandes
+responden cada uno a una pregunta distinta y no hay que leerlos enteros.
 
 ---
 
@@ -36,7 +36,7 @@ Se compila con **MSYS2 UCRT64**, C++20, `-Werror`. `.\run.ps1` prepara todo
 —verifica paquetes, descarga el modelo, compila y lanza—; `-Test` corre la
 batería y `-Package` arma un zip portable.
 
-## Los cuatro documentos
+## Los documentos
 
 | Documento | Responde a | Para quién |
 |---|---|---|
@@ -44,6 +44,7 @@ batería y `-Package` arma un zip portable.
 | [README.md](README.md) | **Lo que hay**, desde fuera: manual de uso, pantalla por pantalla | el operador y quien evalúa la aplicación |
 | [ARQUITECTURA.md](ARQUITECTURA.md) | **Lo que hay**, desde dentro: cómo funciona cada subsistema y **por qué se decidió así** | quien vaya a tocar el código |
 | [MEJORAS.md](MEJORAS.md) | **Lo que hay que mejorar**: lo pendiente, lo medido y lo que se sabe que falla | quien planifique el siguiente paso |
+| [BITACORA.md](BITACORA.md) | **Lo que ya falló**: cada defecto que apareció en uso, con lo que se midió al buscarlo | quien vaya a tocar algo que ya se rompió una vez |
 
 ## Seguir trabajando solo
 
