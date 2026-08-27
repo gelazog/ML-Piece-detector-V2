@@ -118,6 +118,7 @@ add_executable(pci_gui_tests
   test_variant_wizard.cpp
   test_result_dialog.cpp
   test_piece_mosaic.cpp
+  test_mosaic_click_survives.cpp
   test_scale_dialog.cpp
   test_selfexplaining.cpp
   test_brush_persistence.cpp
@@ -135,6 +136,7 @@ add_executable(pci_gui_tests
   test_configure_dialog.cpp
   test_configure_roundtrip.cpp
   test_frame_sources.cpp
+  test_source_remembers.cpp
   test_session_state.cpp
 )
 set_target_properties(pci_gui_tests PROPERTIES AUTOMOC ON)

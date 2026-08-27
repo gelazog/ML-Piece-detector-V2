@@ -65,12 +65,78 @@ int PieceMosaic::tileCount() const {
     return static_cast<int>(tiles_.size());
 }
 
+namespace {
+
+// ¿Son las mismas piezas, en el mismo sitio? Se compara la envolvente de cada
+// una con una tolerancia: entre fotograma y fotograma una pieza quieta se mueve
+// una fracción de píxel por el ruido de la segmentación, y tratar eso como «han
+// cambiado» sería no arreglar nada.
+bool sameLayout(const std::vector<QPolygonF>& before, const std::vector<QPolygonF>& after) {
+    if (before.size() != after.size()) {
+        return false;
+    }
+    constexpr int kTolerancePx = 6;
+    for (std::size_t i = 0; i < before.size(); ++i) {
+        const QRect a = before[i].boundingRect().toAlignedRect();
+        const QRect b = after[i].boundingRect().toAlignedRect();
+        if (std::abs(a.x() - b.x()) > kTolerancePx ||
+            std::abs(a.y() - b.y()) > kTolerancePx ||
+            std::abs(a.width() - b.width()) > kTolerancePx ||
+            std::abs(a.height() - b.height()) > kTolerancePx) {
+            return false;
+        }
+    }
+    return true;
+}
+
+}  // namespace
+
 void PieceMosaic::setPieces(const QImage& frame, const std::vector<QPolygonF>& outlines,
                             int measured) {
+    // NO SE RECONSTRUYE SI NO HACE FALTA, y esto es un arreglo, no una
+    // optimización.
+    //
+    // Queja del taller: «en piezas de encuadre, bastantes veces, cuando la
+    // presiono no se cambia de imagen».
+    //
+    // `setPieces` se llama en CADA fotograma analizado, y `rebuild()` destruye
+    // todas las baldosas y crea otras. Un clic necesita que apretar y soltar
+    // caigan en el MISMO widget: si entre las dos cosas llega un fotograma, el
+    // botón que se apretó ya no existe y el clic no llega a ninguna parte. De
+    // ahí el «bastantes veces» — depende de si el fotograma cae en medio.
+    //
+    // Y de paso: con la bandeja de cien tuercas eso era crear y destruir cien
+    // QToolButton por fotograma para enseñar lo mismo.
+    const bool layoutHeld = sameLayout(outlines_, outlines);
     frame_ = frame;
     outlines_ = outlines;
+    const int previousMeasured = measured_;
     measured_ = measured;
+    if (layoutHeld && !tiles_.empty()) {
+        refreshTiles(previousMeasured != measured_);
+        return;
+    }
     rebuild();
+}
+
+// Poner al día lo que se ve sin tocar los widgets: qué baldosa lleva el marco y
+// qué número va resaltado. La imagen del recorte no se rehace — entre
+// fotogramas de la misma escena no cambia lo bastante como para pagar cien
+// escalados, y el operador no lo distinguiría.
+void PieceMosaic::refreshTiles(bool measuredChanged) {
+    if (!measuredChanged) {
+        return;
+    }
+    for (std::size_t i = 0; i < tiles_.size(); ++i) {
+        const int number = static_cast<int>(i) + 1;
+        tiles_[i]->setChecked(number == measured_);
+        tiles_[i]->setStyleSheet(
+            number == measured_
+                ? QStringLiteral("QToolButton { border:2px solid %1; border-radius:4px; }")
+                      .arg(QString(theme::kChipEdited))
+                : QStringLiteral("QToolButton { border:1px solid %1; border-radius:4px; }")
+                      .arg(QString(theme::kInkMuted)));
+    }
 }
 
 void PieceMosaic::rebuild() {

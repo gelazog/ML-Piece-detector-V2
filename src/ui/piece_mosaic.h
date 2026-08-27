@@ -49,6 +49,10 @@ signals:
 
 private:
     void rebuild();
+    // Poner al día lo que se ve SIN destruir las baldosas. Existe porque
+    // destruirlas se come los clics: apretar y soltar tienen que caer en el
+    // mismo widget, y `setPieces` corre en cada fotograma.
+    void refreshTiles(bool measuredChanged);
 
     QScrollArea* area_ = nullptr;
     QWidget* board_ = nullptr;

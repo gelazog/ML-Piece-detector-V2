@@ -453,6 +453,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     auto* cameraLayout = new QHBoxLayout();
     cameraLayout->addWidget(new QLabel(tr("Fuente:"), central));
     cameraCombo_ = new QComboBox(central);
+    cameraCombo_->setObjectName(QStringLiteral("sourceCombo"));
     cameraCombo_->setMinimumWidth(200);
     // Ancho ACOTADO, y no estirado hasta donde llegue.
     //
@@ -4794,15 +4795,47 @@ void MainWindow::onStreamStopped() {
         // ahí sería tirar el suelo mientras se está de pie encima.
         fileSource_.release()->deleteLater();
     }
+    // QUÉ ERA LO QUE SE ESTABA USANDO, antes de olvidarlo.
+    //
+    // Hace falta unas líneas más abajo: al quitar la entrada del fichero, la
+    // selección del desplegable cae en lo que quede en su sitio —la cámara
+    // integrada— y eso no lo ha elegido nadie. Queja del taller: «usar imagen,
+    // luego cerrarla, y que se ponga cámara integrada arruina la experiencia».
+    const camera::SourceKind closedKind = sourceKind_;
     sourceKind_ = camera::SourceKind::Camera;
     freezeButton_->setText(tr("Capturar foto"));
     freezeButton_->setEnabled(false);
     // Se quita la entrada del fichero que estaba abierto. Por su DATO y no por
     // su índice: entre abrir y cerrar puede haberse reenumerado la lista.
+    bool hadFileOpen = false;
     for (int i = cameraCombo_->count() - 1; i >= 0; --i) {
         if (cameraCombo_->itemData(i).isValid() &&
             cameraCombo_->itemData(i).toInt() == kSourceOpenedFile) {
             cameraCombo_->removeItem(i);
+            hadFileOpen = true;
+        }
+    }
+    // Y LA SELECCIÓN SE QUEDA EN EL MISMO TIPO QUE SE ACABA DE CERRAR.
+    //
+    // Quitar un elemento de un QComboBox deja la selección en el que ocupe ese
+    // sitio, que aquí es la primera cámara. Nadie lo eligió: es la consecuencia
+    // de borrar la entrada, y desde fuera se vive como que el programa cambia
+    // de fuente solo.
+    //
+    // Lo que sigue a cerrar una imagen es abrir otra, casi siempre la de al
+    // lado en la misma carpeta. Así que el desplegable se queda en «Abrir
+    // imagen…» y basta con darle a Iniciar.
+    //
+    // Con las señales BLOQUEADAS: elegir en este desplegable abre el diálogo de
+    // fichero, y esto no es una elección del operador. Igual que al restaurar
+    // la fuente al arrancar, se PRESELECCIONA y nada más — un programa que al
+    // cerrar un fichero se pone a abrir otro hace algo que nadie ha pedido.
+    if (hadFileOpen) {
+        const int wanted = closedKind == camera::SourceKind::Video ? kSourceOpenVideo
+                                                                  : kSourceOpenImage;
+        if (const int index = cameraCombo_->findData(QVariant(wanted)); index >= 0) {
+            QSignalBlocker blocker(cameraCombo_);
+            cameraCombo_->setCurrentIndex(index);
         }
     }
     autoInspectButton_->setChecked(false);

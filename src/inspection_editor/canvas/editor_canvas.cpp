@@ -866,10 +866,30 @@ void EditorCanvas::wheelEvent(QWheelEvent* event) {
     //
     // Así que la rueda vuelve a hacer lo único que un ratón sobre una imagen
     // debería hacer, y el pincel se dimensiona por teclado —donde ya lo busca
-    // quien viene de cualquiera de esos tres programas— o con Alt+rueda, que es
-    // el gesto para quien no quiere soltar el ratón mientras perfila.
+    // quien viene de cualquiera de esos tres programas— o con la rueda y un
+    // modificador, que es el gesto para quien no quiere soltar el ratón
+    // mientras perfila.
+    //
+    // DOS MODIFICADORES, Y CTRL NO ES NINGUNO DE ELLOS.
+    //
+    // Alt estaba desde el principio. Shift se añadió a petición del taller, y
+    // tiene un motivo: el lienzo vive también en la ventana principal, que sí
+    // tiene barra de menús con mnemónicos `Alt+letra`, así que ahí Alt está
+    // cargado y el gesto se vuelve incómodo. En el editor —un QDialog sin
+    // menús— Alt no estorba, pero el gesto tiene que ser el mismo en los dos
+    // sitios o no se aprende.
+    //
+    // Lo que se pidió primero fue Ctrl+rueda, y se descartó con el motivo por
+    // delante: Ctrl+rueda es ZOOM en GIMP, en Krita, en los navegadores, en VS
+    // Code y en el explorador de Windows. Es la costumbre más fuerte que existe
+    // con una rueda, y aquí además ya hace eso —cae en el mismo camino que la
+    // rueda sola—. Shift, en cambio, está libre: aquí no hace nada y en los
+    // editores es desplazamiento horizontal, que sobre una imagen con zoom no
+    // lo echa de menos nadie.
+    const auto modifiers = event->modifiers();
     const bool sizingTheBrush =
-        brush_ != EdgeBrush::Off && (event->modifiers() & Qt::AltModifier) != 0;
+        brush_ != EdgeBrush::Off &&
+        ((modifiers & Qt::AltModifier) != 0 || (modifiers & Qt::ShiftModifier) != 0);
     if (sizingTheBrush) {
         stepBrushRadius(static_cast<int>(std::lround(steps)));
         event->accept();

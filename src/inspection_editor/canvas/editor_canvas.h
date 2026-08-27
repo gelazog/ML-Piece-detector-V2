@@ -105,7 +105,7 @@ public:
     void setBrushRadius(int radiusPx);
 
     // Un paso de tamaño de pincel, hacia arriba o hacia abajo. Es lo que hacen
-    // las teclas [ y ], y lo que llama Alt+rueda: un solo sitio donde vive el
+    // las teclas [ y ], y lo que llaman Alt+rueda y Shift+rueda: un solo sitio donde vive el
     // paso, para que los dos gestos no se separen con el tiempo.
     void stepBrushRadius(int steps);
     [[nodiscard]] EdgeBrush edgeBrush() const { return brush_; }

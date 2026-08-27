@@ -135,3 +135,27 @@ TEST(BrushComfort, CtrlWheelAlsoZoomsWithTheBrushOff) {
     turnTheWheel(canvas, 2, Qt::ControlModifier);
     EXPECT_GT(canvas.zoomFactor(), before) << "Ctrl+rueda no acerca con el pincel apagado";
 }
+
+TEST(BrushComfort, ShiftWheelSizesTheBrushToo) {
+    // Segundo modificador, a petición del taller. Alt ya estaba, y el lienzo
+    // vive también en la ventana principal, que sí tiene barra de menús con
+    // mnemónicos Alt+letra: ahí Alt está cargado y el gesto se vuelve incómodo.
+    //
+    // Lo que se pidió primero fue Ctrl+rueda y se descartó con el motivo por
+    // delante: Ctrl+rueda es ZOOM en GIMP, en Krita, en los navegadores, en VS
+    // Code y en el explorador de Windows. Es la costumbre más fuerte que hay con
+    // una rueda. Shift, en cambio, aquí no hacía nada.
+    inspection::EditorCanvas canvas;
+    canvas.setFrame(aFlatImage());
+    canvas.resize(400, 300);
+    canvas.setEdgeBrush(inspection::EditorCanvas::EdgeBrush::AddPiece);
+    canvas.setBrushRadius(20);
+    const double zoomBefore = canvas.zoomFactor();
+
+    turnTheWheel(canvas, 3, Qt::ShiftModifier);
+    std::printf("  [pincel] Shift+rueda: radio 20 -> %d (zoom sin tocar: %.2f)\n",
+                canvas.brushRadius(), canvas.zoomFactor());
+    EXPECT_GT(canvas.brushRadius(), 20) << "Shift+rueda no dimensiona el pincel";
+    EXPECT_DOUBLE_EQ(canvas.zoomFactor(), zoomBefore)
+        << "Shift+rueda además acerca: entonces hace dos cosas a la vez y ninguna bien";
+}
