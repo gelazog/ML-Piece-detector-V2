@@ -219,7 +219,7 @@ AnalysisOverlay buildOverlay(const QImage& frame,
         core::Result<vision::PieceAnalysis> analysis =
             core::Result<vision::PieceAnalysis>::err("sin analizar");
         if (countPieces) {
-            auto all = vision::analyzeFrames(image, pipeline);
+            auto all = vision::analyzeFrames(image, pipeline, &overlay.piecesTooSmall);
             if (all.isOk()) {
                 overlay.piecesFound = static_cast<int>(all.value().size());
                 // EL NUMERO DECLARADO MANDA SOBRE QUE SE TRATA COMO PIEZA.
@@ -4451,6 +4451,7 @@ void MainWindow::onAnalysisFinished() {
 
     if (overlay.piecesFound >= 0) {
         lastPiecesSeen_ = overlay.piecesFound;
+        lastPiecesTooSmall_ = overlay.piecesTooSmall;
         // El recuento con el que trabaja todo lo demas es el de las piezas que
         // se estan TRATANDO como tales: son las que se dibujan, las que se
         // numeran y entre las que navega el selector.
@@ -5310,21 +5311,41 @@ void MainWindow::updatePiecesChip() {
             : QStringLiteral("color:%1; background:%2; border-radius:8px;"
                              " padding:1px 6px;")
                   .arg(QString(theme::kInkMuted), QString(theme::kSurfaceSunken)));
+    // LO QUE SE CAYÓ POR PEQUEÑO, DICHO.
+    //
+    // Estas manchas se descartan ANTES de contarse, así que no aparecen en
+    // ninguna de las dos cifras de arriba. Sin esta frase el operador ve «1
+    // pieza» sobre una foto con dieciséis y no tiene ni el número ni idea de qué
+    // tocar. Medido sobre la foto de catálogo `arandelas-2`: el área mínima de
+    // fábrica deja UNA de dieciséis arandelas.
+    //
+    // Va con el ajuste que lo arregla dentro del texto, porque un aviso que dice
+    // que algo pasa y no dice dónde se toca obliga a buscarlo.
+    const QString tooSmall =
+        lastPiecesTooSmall_ > 0
+            ? tr("\n\nAdemás, %1 mancha(s) más se quedaron fuera por no llegar al "
+                 "área mínima. Si son piezas tuyas, baja «Área mínima» en "
+                 "Configurar ▸ Detección.")
+                  .arg(lastPiecesTooSmall_)
+            : QString();
+
     if (someLeftOut) {
         piecesChip_->setToolTip(
             tr("Se ven %1 manchas y has declarado %2 piezas: se trabaja con las %2 "
                "mayores y el resto no se mide.")
                 .arg(lastPiecesSeen_)
-                .arg(lastPieceCount_));
+                .arg(lastPieceCount_) +
+            tooSmall);
         updatePieceNavigator();
         return;
     }
     piecesChip_->setToolTip(
-        several ? tr("Se ven %1 piezas en el encuadre.\n\n"
+        (several ? tr("Se ven %1 piezas en el encuadre.\n\n"
                      "Las herramientas miden UNA: la que dice el selector de al lado. "
                      "Las demás se cuentan y se pueden mirar una a una con las flechas.")
                       .arg(lastPieceCount_)
-                : tr("Se ve una sola pieza en el encuadre."));
+                : tr("Se ve una sola pieza en el encuadre.")) +
+        tooSmall);
     updatePieceNavigator();
 }
 

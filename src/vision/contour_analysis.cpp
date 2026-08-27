@@ -119,9 +119,12 @@ cv::Mat splitTouchingPieces(const cv::Mat& mask, double coreRatio) {
 
 std::vector<PieceContour> findPieceContours(const cv::Mat& mask, double minAreaFraction,
                                             double maxAreaFraction, int maxCount,
-                                            int* discarded) {
+                                            int* discarded, int* belowMinArea) {
     if (discarded != nullptr) {
         *discarded = 0;
+    }
+    if (belowMinArea != nullptr) {
+        *belowMinArea = 0;
     }
     std::vector<PieceContour> pieces;
     if (mask.empty() || mask.type() != CV_8UC1 || maxCount <= 0) {
@@ -137,6 +140,17 @@ std::vector<PieceContour> findPieceContours(const cv::Mat& mask, double minAreaF
         // El mismo filtro que ya se aplicaba al contorno mayor, ahora a cada
         // uno: por debajo es ruido, por encima es una segmentacion degenerada.
         if (area < minAreaFraction * imageArea || area > maxAreaFraction * imageArea) {
+            // Y SE CUENTAN. Antes se iban con este `continue` y no las contaba
+            // nadie: el parámetro `discarded` de al lado solo cuenta las que
+            // sobran del tope de piezas, que es otra cosa.
+            //
+            // Lo que costaba, medido: en la foto de catálogo `arandelas-2` —
+            // dieciséis arandelas graduadas— el área mínima de fábrica deja
+            // UNA. Las quince pequeñas se caían sin que nada lo dijera, y el
+            // operador solo veía «1 pieza» sin motivo.
+            if (belowMinArea != nullptr && area < minAreaFraction * imageArea) {
+                ++*belowMinArea;
+            }
             continue;
         }
         accepted.emplace_back(area, &contour);

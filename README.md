@@ -259,6 +259,21 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    entre "no hay pieza" y "hay pieza" — bájalo si no se detectan, súbelo si se
    cuela ruido.
 
+   **Y ahora te dice cuántas se han quedado fuera por ese mínimo.** El recuento
+   de piezas lo pone en su explicación: «*además, 14 mancha(s) más se quedaron
+   fuera por no llegar al área mínima; si son piezas tuyas, baja «Área mínima»
+   en Configurar ▸ Detección*».
+
+   Hacía falta porque antes se descartaban en silencio. Sobre una foto de
+   catálogo con dieciséis arandelas graduadas, el mínimo de fábrica deja **una**
+   — y el operador veía «1 pieza» sin motivo y sin saber qué tocar. El mínimo
+   está bien donde está: bajándolo lo suficiente para las dieciséis, entran
+   también los rótulos y la regla de la foto. Lo que faltaba era decirlo.
+
+   **Y se calla donde no hay nada que decir**: medido sobre el banco, cinco de
+   nueve fotos no pierden ni una mancha, incluida la bandeja de cien tuercas.
+   Un aviso que sale en todas las escenas se aprende a ignorar.
+
    **Modo automático o manual** (pestaña *Piezas* de *Configurar*). En
    **automático** el programa cuenta las que haya y **las mide todas**; el
    número no se juzga. En **manual** declaras cuántas tiene que haber, y si

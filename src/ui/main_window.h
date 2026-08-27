@@ -491,6 +491,8 @@ private:
     // dicen cosas distintas y esconder cualquiera de ellas seria mentir en una
     // de las dos direcciones.
     int lastPiecesSeen_ = -1;
+    // Las que ni siquiera llegaron a contarse, por no alcanzar el área mínima.
+    int lastPiecesTooSmall_ = 0;
     void updatePieceNavigator();
     void stepFocusedPiece(int delta);
     // Vuelca en el mosaico las piezas del último análisis. La primera vez que

@@ -181,7 +181,8 @@ void applyMaskCorrection(cv::Mat& mask, const PipelineConfig& config, const cv::
 }
 
 core::Result<std::vector<PieceAnalysis>> analyzeFrames(const cv::Mat& image,
-                                                       const PipelineConfig& config) {
+                                                       const PipelineConfig& config,
+                                                       int* belowMinArea) {
     if (image.empty()) {
         return core::Result<std::vector<PieceAnalysis>>::err("Imagen vacía");
     }
@@ -201,7 +202,8 @@ core::Result<std::vector<PieceAnalysis>> analyzeFrames(const cv::Mat& image,
         findPieceContours(config.segmentation.splitTouchingPieces
                               ? splitTouchingPieces(mask.value())
                               : mask.value(),
-                          config.minAreaFraction, config.maxAreaFraction);
+                          config.minAreaFraction, config.maxAreaFraction, kMaxPieces,
+                          nullptr, belowMinArea);
     if (contours.empty()) {
         return core::Result<std::vector<PieceAnalysis>>::err(
             "No se encontró ninguna pieza en la imagen");

@@ -78,6 +78,13 @@ struct AnalysisOverlay {
     // dejar rastro; si se guardara solo la primera, el operador que declaro seis
     // veria siete y no sabria cuales se han medido.
     int piecesUsed = -1;
+    // MANCHAS QUE NO LLEGAN AL ÁREA MÍNIMA, y por eso no llegan a ser piezas.
+    //
+    // No es lo mismo que `piecesFound - piecesUsed`, que son las que sobran del
+    // número declarado. Estas se caen ANTES de contarse, así que sin este campo
+    // no aparecían en ningún sitio: el operador veía «1 pieza» sobre una foto
+    // con dieciséis y no tenía ni el número ni qué tocar.
+    int piecesTooSmall = 0;
     // Si este frame llegó a SEGMENTARSE. Con la pose congelada (contorno
     // oculto) no se segmenta: las herramientas se miden con el fixture del
     // frame anterior y no hay contorno nuevo. Distinguirlo de «se segmentó y no

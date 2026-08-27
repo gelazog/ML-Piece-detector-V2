@@ -130,8 +130,16 @@ core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image,
 // estas) por una razón de coste: el camino de una sola pieza es el que corre en
 // cada frame del vídeo, y hacerle analizar también las manchas de ruido que
 // pasan el filtro de área sería pagar de más en el sitio más caliente.
+// `belowMinArea`, si se pasa, recibe cuántas manchas se quedaron fuera por no
+// llegar al área mínima. Existe para poder DECIRLO: descartarlas en silencio
+// deja al operador viendo «1 pieza» sobre una foto con dieciséis, sin motivo
+// y sin saber qué tocar.
+//
+// Es el mismo fallo que ya se corrigió con la zona automática, que escondía
+// piezas sin decirlo, y con las cotas que el tope dejaba fuera.
 [[nodiscard]] core::Result<std::vector<PieceAnalysis>> analyzeFrames(
-    const cv::Mat& image, const PipelineConfig& config = {});
+    const cv::Mat& image, const PipelineConfig& config = {},
+    int* belowMinArea = nullptr);
 
 // La máscara de la pieza **con sus agujeros**.
 //

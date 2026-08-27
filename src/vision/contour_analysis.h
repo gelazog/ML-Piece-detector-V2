@@ -109,11 +109,21 @@ inline constexpr double kTouchingCoreMinFraction = 0.02;
                                           double coreRatio = kTouchingCoreRatio);
 
 
+// `discarded` son las que sobran del TOPE de piezas; `belowMinArea`, las que se
+// caen por debajo del área mínima. Son dos cosas distintas y llevan a dos
+// arreglos distintos —subir el tope, o bajar el mínimo—, así que se cuentan
+// aparte.
+//
+// El segundo nació porque no existía: esas manchas se descartaban con un
+// `continue` y no las contaba nadie. Medido sobre `arandelas-2`, una foto de
+// catálogo con dieciséis arandelas graduadas, el mínimo de fábrica deja UNA — y
+// el operador solo veía «1 pieza», sin motivo y sin nada que tocar.
 [[nodiscard]] std::vector<PieceContour> findPieceContours(const cv::Mat& mask,
                                                           double minAreaFraction = 0.005,
                                                           double maxAreaFraction = 0.9,
                                                           int maxCount = kMaxPieces,
-                                                          int* discarded = nullptr);
+                                                          int* discarded = nullptr,
+                                                          int* belowMinArea = nullptr);
 
 // Pone en orden de lectura una lista ya encontrada. Publica porque el orden es
 // una decision que hay que poder comprobar por separado de la deteccion.
