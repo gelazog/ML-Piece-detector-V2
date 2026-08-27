@@ -22,6 +22,7 @@ add_executable(pci_tests
   test_database.cpp
   test_detection_profiles.cpp
   test_calibration_trace.cpp
+  test_auto_zone_hides_pieces.cpp
   test_domain.cpp
   test_units.cpp
   test_synthetic_measures.cpp

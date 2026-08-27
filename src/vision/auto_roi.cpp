@@ -113,10 +113,23 @@ WorkingZoneMode modeAfterFixedZoneChanged(WorkingZoneMode current, bool hasFixed
     // ella y se quedan como estaban — incluida la libre, que tiene su propio
     // dibujo y no se entera de que la rectangular ha desaparecido.
     //
-    // Se cae a AUTOMÁTICA, no a «imagen entera». Quitar una zona es dejar de
-    // restringir, no renunciar a la optimización: la automática nunca cambia
-    // una respuesta, así que es el estado de reposo del programa.
-    return current == WorkingZoneMode::Fixed ? WorkingZoneMode::Automatic : current;
+    // SE CAE A «IMAGEN ENTERA», y antes se caía a automática.
+    //
+    // Aquí ponía que quitar una zona es «dejar de restringir, no renunciar a la
+    // optimización: la automática nunca cambia una respuesta». Esa última frase
+    // era la que sostenía la decisión, y es FALSA. Medido en
+    // `tests/test_auto_zone_hides_pieces.cpp`: sobre un frame de 640x480, el
+    // recorte automático se asienta en 188x188 —el 11,5 % del área— y con dos
+    // piezas separadas la imagen entera ve dos y el recorte ve UNA.
+    //
+    // O sea que el operador que borra su zona creyendo volver al frame completo
+    // se quedaba mirando otro recorte, más pequeño, que le esconde piezas. Y
+    // nada se lo decía.
+    //
+    // La automática sigue estando y sigue siendo útil —ahorra trabajo cuando hay
+    // UNA pieza y no se mueve de sitio—, pero es una elección con contrapartida,
+    // no el estado de reposo. Quien la quiera la enciende.
+    return current == WorkingZoneMode::Fixed ? WorkingZoneMode::Off : current;
 }
 
 WorkingZoneMode modeAfterFreeZoneChanged(WorkingZoneMode current, bool hasFreeZone) {
