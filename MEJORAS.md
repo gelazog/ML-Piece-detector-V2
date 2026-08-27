@@ -255,6 +255,43 @@ Todo esto salió de una auditoría anterior y está verificado.
 - [ ] **C5 · Quedan 49 colores escritos a mano** fuera de `ui/theme.h`. Hay un
   trinquete en `tests/test_palette_guard.cpp` que impide que suban; hay que ir
   bajándolos y bajando el tope.
+- [~] **C8 · 36 pruebas localizan un control por su TEXTO.** Trinquete puesto en
+  `tests/test_lookups_by_name.cpp`; hay que ir bajándolo.
+
+  Ha costado **cuatro** roturas, siempre igual: el taller pide que un rótulo diga
+  mejor lo que hace, se reescribe, y se caen pruebas que no tienen nada que ver
+  con ese rótulo — solo lo usaban para encontrar el control.
+
+      «¿Está el umbral cortando la pieza?»  ->  «Comprobar el corte»
+      «Separar por el color del fondo»      ->  «Separar por color»
+      «Usar lo que se ve ahora»             ->  «Usar el recuento detectado»
+      «Calibrar»                            ->  «Ca&librar»
+
+  Ninguna señalaba un fallo. Todas costaban un rato y, peor, enseñaban a no tocar
+  los rótulos — lo contrario de lo que se pedía.
+
+  Lo que se cuenta es **localizar**, no **afirmar**: un bucle sobre
+  `findChildren` que compara el texto Y ADEMÁS se lleva el widget fuera. Sin esa
+  segunda condición entrarían las comprobaciones legítimas del tipo «alguna
+  etiqueta dice el nombre de esta familia», que recorren igual pero no capturan
+  nada. Se midió con y sin: 52 contra 36, o sea que la mitad de la diferencia
+  eran falsos positivos, y un trinquete con ruido se aprende a ignorar.
+
+  | fichero | sitios |
+  |---|---|
+  | test_canvas_gestures.cpp | 25 |
+  | test_configure_roundtrip.cpp | 3 |
+  | test_report_tabs.cpp | 2 |
+  | test_two_pieces_ui.cpp | 2 |
+  | otros cuatro | 1 cada uno |
+
+  Los tres de un solo sitio son funciones auxiliares —`findAction(texto)`,
+  `labelStartingWith(prefijo)`— usadas desde muchas llamadas con textos
+  distintos, así que vaciarlas es más trabajo del que parece y se hará cuando la
+  etiqueta correspondiente se toque, que es cuando duele.
+
+  El trinquete además **obliga a apretarlo**: si el recuento baja y el tope no,
+  falla pidiendo que se baje. Un trinquete que no se aprieta deja de serlo.
 - [x] **C6 · «10 entradas antes del único separador».** Medido hoy, y **ya no es
   cierto**. Los números de línea que citaba —692-779— apuntan ahora al combo de
   pieza y al indicador de modo, o sea que el fichero se reorganizó y la nota se
