@@ -213,8 +213,28 @@ Todo esto salió de una auditoría anterior y está verificado.
   bajándolos y bajando el tope.
 - [ ] **C6 · `main_window.cpp:692-779` pone 10 entradas antes del único
   separador** del menú.
-- [ ] **C7 · `inspectButton_->setDefault(true)` sobre un `QMainWindow`** promete
-  un Enter que no puede cumplir.
+- [x] **C7 · `inspectButton_->setDefault(true)` sobre un `QMainWindow`.** Era
+  cierto que promete un Enter que no puede cumplir —Qt: «the default button
+  behavior is provided only in dialogs»— y la conclusión que parecía seguir
+  —quitarlo— resultó **falsa al medirla**.
+
+  Pintando el mismo botón con y sin la propiedad: **1645 de 1680 píxeles
+  distintos, el 97,9 %**. O sea que es exactamente lo que da el realce, y
+  quitarla dejaría el botón que se pulsa cien veces al día igual que los otros
+  doce.
+
+  Así que se queda, con el comentario corregido para que nadie la borre
+  creyéndola muerta ni espere un Enter de ella. Para inspeccionar con el teclado
+  está `I`, que ahora el menú enseña (C1).
+
+  `tests/test_default_on_main_window.cpp` deja el número escrito —no exige un
+  resultado, lo registra— y vigila lo que sí importa: que el botón principal
+  siga siendo **el único** en negrita. Hoy 1 de 22.
+
+  De paso cazó un fallo en la propia prueba: el recuento filtraba por
+  `isVisible()` y, con la ventana sin mostrar, salía **cero** y la comprobación
+  pasaba sin mirar nada. El mismo fallo que tenía `--smoke`, dentro de la prueba
+  recién escrita.
 
 ## D. Documentación
 

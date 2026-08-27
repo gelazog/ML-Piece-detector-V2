@@ -789,11 +789,29 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     pieceLayout->addWidget(autoInspectButton_);
 
     inspectButton_ = new QPushButton(tr("Inspeccionar"), central);
+    inspectButton_->setObjectName(QStringLiteral("inspectButton"));
     inspectButton_->setToolTip(tr("Inspección única con reporte detallado"));
     // LA acción de esta pantalla, y la única destacada. Con trece botones del
     // mismo peso, el que se pulsa cien veces al día parecía tan importante como
     // «Gestionar…», que se abre una vez al mes. Un solo elemento distinto llama
     // la atención; dos o tres destacados no destacan ninguno.
+    //
+    // OJO CON ESTA LÍNEA: está aquí por el MARCO, no por el Enter.
+    //
+    // Esto es un `QMainWindow` y no un `QDialog`, y la documentación de Qt es
+    // explícita: «the default button behavior is provided only in dialogs». Así
+    // que la propiedad NO hace que Enter inspeccione, y quien la lea esperando
+    // eso se equivoca. Para inspeccionar con el teclado está la tecla `I`, que
+    // el menú ya enseña.
+    //
+    // Y no se quita, aunque el nombre engañe: está medido que es lo que pinta el
+    // realce. Comparando el mismo botón con y sin la propiedad,
+    // `tests/test_default_on_main_window.cpp` da **1645 de 1680 píxeles
+    // distintos, el 97,9 %**. Quitarla dejaría el botón principal igual que los
+    // otros doce.
+    //
+    // La negrita de abajo es el realce que NO depende de estar en un diálogo, y
+    // esa es la que vigila la prueba.
     inspectButton_->setDefault(true);
     QFont emphasis = inspectButton_->font();
     emphasis.setBold(true);
