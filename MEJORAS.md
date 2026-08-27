@@ -145,9 +145,19 @@ Todo esto salió de una auditoría anterior y está verificado.
 
   Faltan los otros nueve diálogos. Construirlos en una prueba cuesta distinto en
   cada uno, así que van de uno en uno.
-- [ ] **C4 · `detection_page.cpp` apila 17 filas de formulario sin agrupar.** El
-  propio fichero, en su comentario de las líneas 437-441, ya identifica ese
-  problema como el que resuelve en otro sitio.
+- [x] **C4 · `detection_page.cpp` apilaba las filas sin agrupar.** Hecho, y para
+  cuando llegué eran **diecinueve**, porque el aviso de mesa de color le añadió
+  tres. Ahora son cuatro grupos —cómo se separa la pieza (8 filas), dónde va el
+  corte (4), corregir la silueta (4), qué cuenta como pieza (3)— que son las
+  cuatro preguntas que se hacen ahí, en el orden en que se hacen.
+
+  Lo que lo hacía urgente no era el número: **el aviso de «tu mesa tiene color»
+  salía en la fila 4 y el desplegable que lo arregla estaba en la 11**, con diez
+  controles por en medio. Quien leía el aviso tenía que buscar de qué hablaba.
+
+  `tests/test_detection_groups.cpp` fija las dos cosas: que ninguna fila quede
+  suelta fuera de un grupo, y que **la sugerencia y su control vivan en el mismo
+  grupo**.
 - [ ] **C5 · Quedan 49 colores escritos a mano** fuera de `ui/theme.h`. Hay un
   trinquete en `tests/test_palette_guard.cpp` que impide que suban; hay que ir
   bajándolos y bajando el tope.

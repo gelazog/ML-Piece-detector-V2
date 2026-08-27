@@ -10,6 +10,7 @@
 #include "vision/edge_segmentation.h"
 #include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLineEdit>
@@ -60,7 +61,29 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
                 &DetectionPage::onProfileChosen);
     }
 
-    auto* form = new QFormLayout();
+    // CUATRO BLOQUES, Y NO DIECINUEVE FILAS SEGUIDAS.
+    //
+    // Esta pestaña apilaba diecinueve filas de formulario sin ninguna división,
+    // y el orden no ayudaba: el aviso de «tu mesa tiene color» salía en la
+    // cuarta fila y el control que lo arregla estaba en la undécima, siete
+    // filas más abajo. Lo mismo con el aviso del método por canto y su
+    // desplegable.
+    //
+    // Los cuatro grupos son las cuatro preguntas que se hacen aquí, en el orden
+    // en que se hacen: cómo se separa la pieza, dónde se pone el corte, cómo se
+    // arregla la silueta que sale, y qué cuenta como pieza. El propio fichero ya
+    // decía en otro sitio que agrupar era lo que resolvía este problema.
+    auto* separateBox = new QGroupBox(tr("Cómo se separa la pieza del fondo"), this);
+    auto* separateForm = new QFormLayout(separateBox);
+
+    auto* cutBox = new QGroupBox(tr("Dónde se pone el corte de gris"), this);
+    auto* cutForm = new QFormLayout(cutBox);
+
+    auto* shapeBox = new QGroupBox(tr("Corregir la silueta que sale"), this);
+    auto* shapeForm = new QFormLayout(shapeBox);
+
+    auto* pieceBox = new QGroupBox(tr("Qué cuenta como pieza"), this);
+    auto* pieceForm = new QFormLayout(pieceBox);
 
     autoThreshold_ = new QCheckBox(tr("Automático (Otsu)"), this);
     autoThreshold_->setToolTip(
@@ -71,7 +94,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "elección automática baila entre fotogramas — entonces fija tú el\n"
            "umbral con la barra de abajo."));
     autoThreshold_->setChecked(current.manualThreshold < 0);
-    form->addRow(tr("Umbral:"), autoThreshold_);
+    cutForm->addRow(tr("Umbral:"), autoThreshold_);
 
     threshold_ = new QSlider(Qt::Horizontal, this);
     threshold_->setRange(0, 255);
@@ -81,7 +104,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     auto* sliderRow = new QHBoxLayout();
     sliderRow->addWidget(threshold_, 1);
     sliderRow->addWidget(thresholdValue_);
-    form->addRow(tr("Umbral manual:"), sliderRow);
+    cutForm->addRow(tr("Umbral manual:"), sliderRow);
 
     // CÓMO se separa la pieza del fondo. Va ANTES del umbral y la polaridad
     // porque decide si esos dos significan algo: segmentando por el canto no hay
@@ -91,7 +114,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     sceneHint_ = new QLabel(this);
     sceneHint_->setWordWrap(true);
     sceneHint_->setVisible(false);
-    form->addRow(sceneHint_);
+    separateForm->addRow(sceneHint_);
 
     // AVISAR DE QUE LA MESA TIENE COLOR.
     //
@@ -107,7 +130,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     colourHint_ = new QLabel(this);
     colourHint_->setWordWrap(true);
     colourHint_->setVisible(false);
-    form->addRow(colourHint_);
+    separateForm->addRow(colourHint_);
 
     useColourButton_ = new QPushButton(tr("Separar por el color del fondo"), this);
     useColourButton_->setToolTip(
@@ -119,7 +142,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "después de leer el aviso."));
     useColourButton_->setVisible(false);
     useColourButton_->setAutoDefault(false);
-    form->addRow(useColourButton_);
+    separateForm->addRow(useColourButton_);
     useEdgesButton_ = new QPushButton(tr("Cambiar a «por el canto»"), this);
     useEdgesButton_->setToolTip(
         tr("Pasa a separar la pieza por su CANTO en vez de por el nivel de gris.\n\n"
@@ -130,7 +153,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "En escenas fáciles NO es mejor: por eso es un botón que aparece\n"
            "cuando hace falta y no el método por defecto."));
     useEdgesButton_->setVisible(false);
-    form->addRow(useEdgesButton_);
+    separateForm->addRow(useEdgesButton_);
 
     // ¿ESTÁ EL UMBRAL CORTANDO LA PIEZA?
     //
@@ -155,12 +178,12 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "imagen consigo misma."));
     connect(clipCheckButton_, &QPushButton::clicked, this,
             &DetectionPage::clippingCheckRequested);
-    form->addRow(clipCheckButton_);
+    cutForm->addRow(clipCheckButton_);
 
     clipResult_ = new QLabel(this);
     clipResult_->setWordWrap(true);
     clipResult_->setVisible(false);
-    form->addRow(clipResult_);
+    cutForm->addRow(clipResult_);
 
     // SEPARAR LAS PIEZAS QUE SE TOCAN.
     //
@@ -186,7 +209,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "fábrica: enciéndela si tus piezas se tocan, déjala apagada si son\n"
            "alargadas con cabeza.\n\n"
            "Cuesta entre 3 y 16 ms por análisis."));
-    form->addRow(splitTouching_);
+    shapeForm->addRow(splitTouching_);
 
     // RECUPERAR LO QUE EL BRILLO SE LLEVA.
     //
@@ -213,7 +236,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "  · bandeja de cien tuercas: 100 → 100        igual\n"
            "  · un engranaje:              1 → 1          igual\n\n"
            "Nace apagado porque cambia lo que se mide."));
-    form->addRow(recoverGlare_);
+    shapeForm->addRow(recoverGlare_);
 
     // SEPARAR POR EL COLOR DEL FONDO.
     //
@@ -251,12 +274,12 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "quieres que no dependa de lo que haya en la escena.\n"
            "\n"
            "Nace apagado porque cambia lo que se mide."));
-    form->addRow(tr("Clave de color de fondo"), backgroundKey_);
+    separateForm->addRow(tr("Clave de color de fondo"), backgroundKey_);
 
     backgroundColour_ = new QPushButton(this);
     backgroundColour_->setToolTip(
         tr("El color exacto del fondo del puesto. Solo se usa con «lo digo yo»."));
-    form->addRow(QString(), backgroundColour_);
+    separateForm->addRow(QString(), backgroundColour_);
     connect(backgroundKey_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this](int index) {
                 backgroundColour_->setEnabled(index == 2);
@@ -311,7 +334,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "piezas, con tres fundidas por puentes de sombra; por el canto salen\n"
            "las siete enteras. En una pieza oscura sobre fondo claro es al revés,\n"
            "así que no es «mejor»: es para otra escena."));
-    form->addRow(tr("Cómo separar la pieza:"), method_);
+    separateForm->addRow(tr("Cómo separar la pieza:"), method_);
 
     polarity_ = new QComboBox(this);
     polarity_->addItem(tr("Automática (el fondo domina el borde)"));
@@ -328,14 +351,14 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "la decisión automática la confunde con el fondo.\n\n"
            "Solo se aplica separando «por nivel de gris»: por el canto no hay\n"
            "corte que orientar."));
-    form->addRow(tr("Polaridad:"), polarity_);
+    separateForm->addRow(tr("Polaridad:"), polarity_);
 
     blur_ = new QSpinBox(this);
     blur_->setRange(1, 31);
     blur_->setSingleStep(2);
     blur_->setValue(current.blurKernel);
     blur_->setToolTip(tr("Suavizado previo: más alto = menos ruido, bordes menos finos"));
-    form->addRow(tr("Suavizado (px):"), blur_);
+    shapeForm->addRow(tr("Suavizado (px):"), blur_);
 
     morph_ = new QSpinBox(this);
     morph_->setRange(1, 31);
@@ -343,7 +366,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     morph_->setValue(current.morphKernel);
     morph_->setToolTip(
         tr("Limpieza morfológica: elimina motas y rellena huecos de ese tamaño"));
-    form->addRow(tr("Limpieza (px):"), morph_);
+    shapeForm->addRow(tr("Limpieza (px):"), morph_);
 
     // Qué cuenta como pieza. Estaba fijo en el código; con piezas pequeñas el
     // 0,5 % por defecto es justo la frontera entre "no hay pieza" y "hay
@@ -358,7 +381,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
         tr("Por debajo de esta fracción de la imagen, una mancha no es una pieza.\n"
            "Por defecto 0,50 %. Bájalo si tus piezas son pequeñas y no se detectan;\n"
            "súbelo si se cuela ruido."));
-    form->addRow(tr("Área mínima de pieza:"), minArea_);
+    pieceForm->addRow(tr("Área mínima de pieza:"), minArea_);
 
     maxArea_ = new QDoubleSpinBox(this);
     maxArea_->setRange(10.0, 100.0);
@@ -370,7 +393,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
         tr("Por encima de esta fracción se considera que la segmentación falló\n"
            "(la luz marcó toda la imagen) en vez de que la pieza sea enorme.\n"
            "Por defecto 90 %."));
-    form->addRow(tr("Área máxima de pieza:"), maxArea_);
+    pieceForm->addRow(tr("Área máxima de pieza:"), maxArea_);
 
     // Afinado subpíxel del borde.
     //
@@ -395,9 +418,12 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "OJO: cambia dónde está el borde, así que cambian el área, el perímetro y\n"
            "todas las cotas de la pieza a la vez. Si ya tienes tolerancias ajustadas,\n"
            "revísalas después de encenderlo."));
-    form->addRow(tr("Precisión:"), subpixel_);
+    pieceForm->addRow(tr("Precisión:"), subpixel_);
 
-    rootLayout->addLayout(form);
+    rootLayout->addWidget(separateBox);
+    rootLayout->addWidget(cutBox);
+    rootLayout->addWidget(shapeBox);
+    rootLayout->addWidget(pieceBox);
     rootLayout->addStretch(1);
 
     connect(autoThreshold_, &QCheckBox::toggled, this,
