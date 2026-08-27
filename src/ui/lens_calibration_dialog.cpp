@@ -215,13 +215,13 @@ void LensCalibrationDialog::showPreview(const QImage& frame, bool found) {
         // zona, que es justo lo que este asistente intenta evitar.
         QPainter painter(&shown);
         painter.setRenderHint(QPainter::Antialiasing);
-        painter.setPen(QPen(QColor(0, 220, 0), 2.0));
+        painter.setPen(QPen(theme::drawColor(theme::kDrawFound), 2.0));
         const auto& corners = pending_->corners;
         for (std::size_t i = 0; i + 1 < corners.size(); ++i) {
             painter.drawLine(QPointF(corners[i].x, corners[i].y),
                              QPointF(corners[i + 1].x, corners[i + 1].y));
         }
-        painter.setBrush(QColor(255, 200, 0));
+        painter.setBrush(theme::drawColor(theme::kDrawBoard));
         painter.setPen(Qt::NoPen);
         for (const auto& corner : corners) {
             painter.drawEllipse(QPointF(corner.x, corner.y), 3.0, 3.0);

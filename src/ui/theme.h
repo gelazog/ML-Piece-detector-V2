@@ -116,6 +116,32 @@ inline constexpr const char* kSurfaceSunken = "#f5f6f7";
 // Una pastilla de veredicto entera: fondo saturado, texto claro y esquinas
 // redondeadas. Existe por lo mismo que `noticeStyle`: es donde se escribían a
 // mano las parejas fondo/texto, y donde se colaban las que no contrastaban.
+// --- LO QUE SE DIBUJA ENCIMA DE LA IMAGEN -----------------------------------
+//
+// Estos no van sobre una superficie de la aplicación sino sobre la FOTO, que
+// puede ser de cualquier color. Por eso son saturados y por eso el contorno
+// lleva halo: un verde fino sobre una pieza clara desaparece.
+//
+// Se nombran por lo que significan, igual que los demás. Antes eran
+// `QColor(0, 220, 0)` repetido en cuatro ficheros, y ya había empezado a
+// derivar — el `QColor(255, 60, 60)` del punto de origen es EL MISMO que el
+// contorno de «no cumple» del informe de inspección. Un color con dos
+// significados es el primer paso hacia dos colores con un significado.
+//
+// Los valores son exactamente los que había: aquí se les pone nombre, no se
+// les cambia el aspecto. Unificar los que colisionan es la decisión siguiente y
+// se toma aparte.
+inline constexpr int kDrawFound[3] = {0, 220, 0};      // lo que se ha detectado
+inline constexpr int kDrawAxis[3] = {0, 200, 255};     // el eje de la pieza
+inline constexpr int kDrawOrigin[3] = {255, 60, 60};   // el punto de origen
+inline constexpr int kDrawMissing[3] = {255, 120, 120};  // no hay pieza que medir
+inline constexpr int kDrawBoard[3] = {255, 200, 0};    // las esquinas del tablero
+inline constexpr int kDrawVeilAlpha = 160;             // el velo bajo un rótulo
+
+[[nodiscard]] inline QColor drawColor(const int (&rgb)[3], int alpha = 255) {
+    return QColor(rgb[0], rgb[1], rgb[2], alpha);
+}
+
 // --- PASTILLAS DE ESTADO DE LA VENTANA --------------------------------------
 //
 // Distintas de las de veredicto: aquellas dicen OK/NG sobre una pieza, estas

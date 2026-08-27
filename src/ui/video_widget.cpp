@@ -1,5 +1,7 @@
 #include "ui/video_widget.h"
 
+#include "ui/theme.h"
+
 #include <QPainter>
 #include <QPaintEvent>
 
@@ -69,13 +71,13 @@ void VideoWidget::paintEvent(QPaintEvent* event) {
         painter.scale(static_cast<double>(target.width()) / frame_.width(),
                       static_cast<double>(target.height()) / frame_.height());
 
-        QPen contourPen(QColor(0, 220, 0));
+        QPen contourPen(theme::drawColor(theme::kDrawFound));
         contourPen.setWidthF(2.0);
         contourPen.setCosmetic(true);
         painter.setPen(contourPen);
         painter.drawPolygon(overlay_.contour);
 
-        QPen axisPen(QColor(0, 200, 255));
+        QPen axisPen(theme::drawColor(theme::kDrawAxis));
         axisPen.setWidthF(2.0);
         axisPen.setCosmetic(true);
         painter.setPen(axisPen);
@@ -85,7 +87,7 @@ void VideoWidget::paintEvent(QPaintEvent* event) {
                          overlay_.centroid + QPointF(std::cos(rad) * len, std::sin(rad) * len));
 
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(255, 60, 60));
+        painter.setBrush(theme::drawColor(theme::kDrawOrigin));
         painter.drawEllipse(overlay_.centroid, 4.0, 4.0);
         painter.restore();
     }
@@ -96,10 +98,11 @@ void VideoWidget::paintEvent(QPaintEvent* event) {
                                  ? tr("Pieza: %1°").arg(overlay_.angleDeg, 0, 'f', 1)
                                  : overlay_.error;
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(0, 0, 0, 160));
+        painter.setBrush(QColor(0, 0, 0, theme::kDrawVeilAlpha));
         const QRect textRect(targetRect.left() + 8, targetRect.top() + 8, 260, 24);
         painter.drawRect(textRect);
-        painter.setPen(overlay_.valid ? QColor(0, 220, 0) : QColor(255, 120, 120));
+        painter.setPen(overlay_.valid ? theme::drawColor(theme::kDrawFound)
+                              : theme::drawColor(theme::kDrawMissing));
         painter.drawText(textRect.adjusted(6, 0, 0, 0), Qt::AlignVCenter, text);
     }
 }

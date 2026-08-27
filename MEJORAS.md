@@ -253,7 +253,7 @@ Todo esto salió de una auditoría anterior y está verificado.
   suelta fuera de un grupo, y que **la sugerencia y su control vivan en el mismo
   grupo**.
 - [~] **C5 · Colores escritos a mano fuera de `ui/theme.h`.** El trinquete de
-  `tests/test_palette_guard.cpp` impide que suban; van **56 -> 49 -> 41 -> 36 -> 31**.
+  `tests/test_palette_guard.cpp` impide que suban; van **56 -> 49 -> 41 -> 36 -> 31 -> 25**.
 
   Los cinco de esta vuelta salieron de dos grupos, no sueltos:
 
@@ -271,6 +271,18 @@ Todo esto salió de una auditoría anterior y está verificado.
     mismo significado (`#7fd1ff` y `#7fd6ff`) y **dos tintas oscuras casi
     iguales** encima (`#08243a` y `#0b2a35`). La deriva pillada en el acto:
     nadie eligió tener dos, se copió el estilo y la copia salió con otra cifra.
+  - Lo que se dibuja **encima de la imagen** —contorno, eje, punto de origen,
+    esquinas del tablero, el velo del rótulo— estaba a mano en cuatro ficheros.
+    Ahora tiene nombre por lo que significa, con los MISMOS valores: aquí se
+    nombra, no se cambia el aspecto.
+
+    Y al nombrarlos apareció una colisión que hay que resolver aparte:
+    **`QColor(255, 60, 60)` es el punto de origen en el vídeo Y el contorno de
+    «no cumple» en el informe de inspección**. Un color con dos significados es
+    el primer paso hacia dos colores con un significado. Lo suyo sería que «no
+    cumple» usara el rojo de veredicto que ya existe (`kBad`/`kBadOnDark`, con
+    su contraste medido), pero eso cambia lo que el operador ve y se decide con
+    la pantalla delante, no de paso.
 - [~] **C8 · 36 pruebas localizan un control por su TEXTO.** Trinquete puesto en
   `tests/test_lookups_by_name.cpp`; hay que ir bajándolo.
 
