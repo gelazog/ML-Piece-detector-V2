@@ -134,7 +134,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     colourHint_->setVisible(false);
     separateForm->addRow(colourHint_);
 
-    useColourButton_ = new QPushButton(tr("Usar el color"), this);
+    useColourButton_ = new QPushButton(tr("Separar por color"), this);
     useColourButton_->setObjectName(QStringLiteral("useColourButton"));
     useColourButton_->setToolTip(
         tr("Enciende la clave de color de fondo con el color que la aplicación\n"
@@ -146,7 +146,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     useColourButton_->setVisible(false);
     useColourButton_->setAutoDefault(false);
     separateForm->addRow(useColourButton_);
-    useEdgesButton_ = new QPushButton(tr("Usar el canto"), this);
+    useEdgesButton_ = new QPushButton(tr("Separar por el canto"), this);
     useEdgesButton_->setObjectName(QStringLiteral("useEdgesButton"));
     useEdgesButton_->setToolTip(
         tr("Pasa a separar la pieza por su CANTO en vez de por el nivel de gris.\n\n"
@@ -254,9 +254,9 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     // responden a lo mismo: la silueta que sale no es la que se ve.
     backgroundKey_ = new QComboBox(this);
     backgroundKey_->setObjectName(QStringLiteral("backgroundKey"));
-    backgroundKey_->addItem(tr("Claridad (lo habitual)"));
-    backgroundKey_->addItem(tr("Color, detectado solo"));
-    backgroundKey_->addItem(tr("Color, lo elijo yo"));
+    backgroundKey_->addItem(tr("Claridad (predeterminado)"));
+    backgroundKey_->addItem(tr("Color del fondo (automático)"));
+    backgroundKey_->addItem(tr("Color del fondo (manual)"));
     backgroundKey_->setToolTip(
         tr("Separa la pieza por lo distinto que es su COLOR del color del fondo,\n"
            "en vez de por lo claro u oscuro que sea.\n"
@@ -280,7 +280,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "quieres que no dependa de lo que haya en la escena.\n"
            "\n"
            "Nace apagado porque cambia lo que se mide."));
-    separateForm->addRow(tr("Distinguir por:"), backgroundKey_);
+    separateForm->addRow(tr("Separar por:"), backgroundKey_);
 
     backgroundColour_ = new QPushButton(this);
     backgroundColour_->setObjectName(QStringLiteral("backgroundColour"));
@@ -318,7 +318,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
                                   vision::SegmentationOptions::BackgroundKey::Fixed);
 
     method_ = new QComboBox(this);
-    method_->addItem(tr("Nivel de gris (lo habitual)"));
+    method_->addItem(tr("Nivel de gris (predeterminado)"));
     method_->addItem(tr("Canto de la pieza"));
     method_->setCurrentIndex(static_cast<int>(current.method));
     splitTouching_->setChecked(current.splitTouchingPieces);

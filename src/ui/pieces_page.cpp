@@ -39,7 +39,7 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
            "todas, y ninguna cantidad da NG por sí sola.\n\n"
            "Para cuando la cantidad cambia de una bandeja a otra."));
     root->addWidget(automatic_);
-    manual_ = new QRadioButton(tr("Deben ser exactamente"), this);
+    manual_ = new QRadioButton(tr("Número exacto:"), this);
     manual_->setToolTip(
         tr("Tú dices cuántas tiene que haber. Si aparecen más o menos, es NG\n"
            "diciendo cuántas esperaba y cuántas ve.\n\n"
@@ -78,7 +78,8 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
     //
     // Estaba en su propia fila, debajo, y desde ahí no se ve a qué campo
     // afecta. Va donde actúa.
-    useDetected_ = new QPushButton(tr("Usar lo que se ve ahora"), this);
+    useDetected_ = new QPushButton(tr("Usar el recuento detectado"), this);
+    useDetected_->setObjectName(QStringLiteral("useDetected"));
     useDetected_->setToolTip(
         tr("Pone en el campo de al lado EL MISMO número que dice el aviso de\n"
            "abajo: las piezas que la cámara está viendo ahora mismo.\n\n"

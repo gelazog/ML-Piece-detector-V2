@@ -884,7 +884,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    borde) o puedes **señalarlo tú en la imagen**, que es lo sensato si el puesto
    siempre tiene la misma mesa.
 
-   **Señalar el fondo.** Con «Color, lo elijo yo» el botón de debajo abre la
+   **Señalar el fondo.** Con «Color del fondo (manual)» el botón de debajo abre la
    imagen: arrastras un recuadro sobre un trozo de mesa **vacío** y de ahí sale
    el color. Antes esto abría la rueda de colores de Windows, y ahí hay que
    *adivinar* el rojo del propio cartón — que no se sabe de memoria. El color

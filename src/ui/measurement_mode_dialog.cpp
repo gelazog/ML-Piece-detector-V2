@@ -25,7 +25,7 @@ MeasurementModeDialog::MeasurementModeDialog(const repositories::PieceMeasuremen
 
     auto* root = new QVBoxLayout(this);
 
-    auto* modeBox = new QGroupBox(tr("¿Cómo se mide esta pieza?"), this);
+    auto* modeBox = new QGroupBox(tr("Modo de medición"), this);
     auto* modeLayout = new QVBoxLayout(modeBox);
     const auto addMode = [this, modeBox, modeLayout](domain::MeasurementMode mode) {
         auto* radio = new QRadioButton(QString::fromUtf8(domain::modeLabel(mode)), modeBox);

@@ -24,13 +24,17 @@ PerformancePage::PerformancePage(vision::WorkingZoneMode mode, bool hasFixedZone
     root->addWidget(intro);
 
     auto* group = new QButtonGroup(this);
-    off_ = new QRadioButton(tr("Imagen entera (siempre)"), this);
+    off_ = new QRadioButton(tr("Imagen entera (predeterminado)"), this);
     off_->setToolTip(tr("Nunca recorta. Lo más lento y lo más difícil de que falle."));
-    automatic_ = new QRadioButton(tr("Zona automática (recomendado)"), this);
+    automatic_ = new QRadioButton(tr("Zona automática (más rápida)"), this);
     automatic_->setToolTip(
         tr("Sigue a la pieza con un recorte que se ajusta a su tamaño.\n"
            "Ante cualquier duda —se pierde la pieza, toca el borde del recorte o\n"
-           "cambia de tamaño de golpe— vuelve solo a la imagen entera y lo dice."));
+           "cambia de tamaño de golpe— vuelve solo a la imagen entera y lo dice.\n"
+           "\n"
+           "Ponía «recomendado» y se le quitó: el recorte se asienta en el 11 % del\n"
+           "cuadro, y una pieza que aparezca fuera NO se ve. Es la opción rápida\n"
+           "cuando hay una pieza que no cambia de sitio, no la opción segura."));
     fixed_ = new QRadioButton(tr("Zona de detección fija"), this);
     fixed_->setToolTip(
         tr("Usa el rectángulo que dibujaste con «Zona de detección».\n"

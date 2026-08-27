@@ -1330,13 +1330,21 @@ cuerpo de esos cuatro gestos y exige que ninguno vuelva a llamar a
 
 ### La zona de trabajo automática
 
-**Es el modo de fábrica**, y también al que se vuelve cuando se borra una zona
-dibujada a mano. La razón está medida y es la misma que gobierna el resto de la
-sección: la automática **no puede cambiar ninguna respuesta** —recortar no mueve
-ni una medida, y ante cualquier duda suelta el recorte y lo dice—, así que
-arrancar apagada dejaba una mejora de seis veces esperando a que alguien la
-descubriera en una pestaña. Las zonas dibujadas a mano sí cambian la respuesta,
-que es para lo que se dibujan, y por eso esas se eligen y nunca se ponen solas.
+**Es una opción, no el estado de reposo**, y esto se corrigió: antes era el modo
+de fábrica y también al que se caía al borrar una zona dibujada a mano, con el
+argumento de que la automática «no puede cambiar ninguna respuesta».
+
+**Esa frase es falsa y está medida.** Recortar no mueve una medida —eso sigue
+siendo cierto y está comprobado píxel a píxel más abajo— pero sí cambia **qué
+piezas existen**. Sobre un frame de 640×480 el recorte se asienta en 188×188, el
+**11,5 %** del área, y con dos piezas separadas la imagen entera ve **dos** y el
+recorte ve **una** (`tests/test_auto_zone_hides_pieces.cpp`). El operador que
+borraba su zona creyendo volver al frame completo se quedaba mirando otro
+recorte, más pequeño que el que acababa de borrar, y nada se lo decía.
+
+Sigue siendo útil —ahorra trabajo de verdad cuando hay una pieza que no cambia
+de sitio— pero es una elección con contrapartida. Quien la quiera, la enciende.
+Su rótulo dice «más rápida» y no «recomendado» por lo mismo.
 
 `vision/auto_roi.*` decide en qué rectángulo buscar la pieza en el próximo
 frame. **No hizo falta mecanismo nuevo**: `PipelineConfig::roi` ya recortaba y

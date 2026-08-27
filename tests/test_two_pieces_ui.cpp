@@ -190,13 +190,13 @@ TEST(TwoPiecesUi, TheButtonUsesTheSameNumberTheNoticeReports) {
     std::printf("  [contador] aviso: «%s»\n", notice->text().toStdString().c_str());
 
     // Y ahora el botón: tiene que dejar el campo en el MISMO número.
-    QAbstractButton* use = nullptr;
-    for (auto* candidate : page->findChildren<QAbstractButton*>()) {
-        if (candidate->text().contains(QStringLiteral("lo que se ve"))) {
-            use = candidate;
-        }
-    }
-    ASSERT_NE(use, nullptr) << "no está el botón de «usar lo que se ve ahora»";
+    //
+    // POR NOMBRE Y NO POR TEXTO. Esto lo buscaba por la frase «lo que se ve», y
+    // se rompió al reescribir el rótulo — que era justo lo que se pedía hacer.
+    // Es la tercera vez que pasa en este proyecto: una prueba que se cae al
+    // reescribir una etiqueta desanima a reescribir etiquetas.
+    auto* use = page->findChild<QAbstractButton*>(QStringLiteral("useDetected"));
+    ASSERT_NE(use, nullptr) << "no está el botón que copia el recuento detectado";
     use->click();
 
     std::printf("  [contador] tras pulsar, el campo dice %d\n", page->expectedPieces());
