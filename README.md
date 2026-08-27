@@ -540,6 +540,19 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    Cada fila lleva su valor, **su unidad**, los píxeles crudos por si luego
    recalibras, el estado y la tolerancia. Sin calibración da píxeles y lo dice.
 
+   **El fichero sale en el formato que tu hoja de cálculo abre.** El separador
+   de campos y el decimal salen de tu configuración regional de Windows, igual
+   que hace Excel cuando guarda un CSV: en un equipo en español, `;` y coma
+   decimal; en uno en inglés, `,` y punto. Y lleva marca de orden de bytes, sin
+   la cual Excel se come todos los acentos y las unidades — «Perímetro» aparecía
+   como «PerÃ­metro» y «mm²» como «mmÂ²».
+
+   Los tres exportadores —medidas, contorno e informe del turno— usan el mismo
+   criterio. Antes escribían coma y punto siempre, así que en un Windows español
+   el fichero entero caía en la columna A, con los números leídos como fechas y
+   los acentos rotos: tres motivos independientes, y con cualquiera de ellos el
+   fichero ya no servía.
+
    **Ver contorno** (mismo panel) dibuja encima el contorno detectado con su
    descomposición: los tramos **rectos en azul**, los **arcos en naranja** con su
    radio escrito al lado y los **agujeros en magenta**, sobre el contorno crudo

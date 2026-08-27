@@ -4,6 +4,7 @@
 
 #include <string>
 #include <vector>
+#include "core/csv_dialect.h"
 
 namespace pci::vision {
 
@@ -163,6 +164,10 @@ struct ProfileDeviation {
 // columna (`x_mm` / `x_px`) en vez de en una línea de comentario porque los
 // importadores de CAD y las hojas de cálculo tragan cabeceras pero no
 // comentarios, y un archivo de coordenadas sin unidad es papel mojado.
-[[nodiscard]] std::string contourToCsv(const ContourReport& report, double mmPerPixel = 0.0);
+// `dialect`: el formato que la hoja de cálculo del equipo sabe abrir. Ver
+// `core/csv_dialect.h`.
+[[nodiscard]] std::string contourToCsv(
+    const ContourReport& report, double mmPerPixel = 0.0,
+    const core::CsvDialect& dialect = core::systemCsvDialect());
 
 }  // namespace pci::vision

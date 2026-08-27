@@ -144,6 +144,21 @@ int countOf(const std::vector<ContourPrimitive>& primitives, PrimitiveKind kind,
 
 }  // namespace
 
+// El dialecto a mano: `parseCsv` de aquí abajo parte por comas, y con el del
+// sistema el fichero saldría separado por punto y coma en una máquina española.
+inline pci::core::CsvDialect classicCsv() {
+    pci::core::CsvDialect dialect;
+    dialect.separator = ',';
+    dialect.decimal = '.';
+    // SIN LA MARCA DE ORDEN DE BYTES. No porque estorbe —en producción hace
+    // falta, es lo que evita que Excel se coma los acentos— sino porque lo que
+    // estas pruebas miran son las COLUMNAS, y la marca desplaza tres bytes la
+    // primera celda. Que la marca esté donde tiene que estar lo comprueba
+    // `tests/test_csv_for_excel.cpp`, que es de quien es ese asunto.
+    dialect.byteOrderMark = false;
+    return dialect;
+}
+
 TEST(Resampling, WalksTheWholePerimeterAtAConstantStep) {
     // Si el paso no fuera uniforme, todo lo que se construye encima -residuos,
     // longitudes, elección entre recta y arco- estaría sesgado hacia los tramos
@@ -381,7 +396,7 @@ TEST(ContourCsv, TheExportedFileEnclosesTheDrawnArea) {
     const ContourReport report = describeContour(plateWithTwoHoles());
     ASSERT_TRUE(report.valid);
 
-    const CsvContent content = parseCsv(contourToCsv(report));
+    const CsvContent content = parseCsv(contourToCsv(report, 0.0, classicCsv()));
     EXPECT_EQ(content.header, "contorno,punto,x_px,y_px");
     EXPECT_EQ(content.badFieldCount, 0) << "un campo de más = separador decimal equivocado";
 
@@ -412,7 +427,7 @@ TEST(ContourCsv, WithCalibrationTheFileIsInMillimetres) {
     ASSERT_TRUE(report.valid);
     constexpr double kMmPerPixel = 0.25;
 
-    const CsvContent content = parseCsv(contourToCsv(report, kMmPerPixel));
+    const CsvContent content = parseCsv(contourToCsv(report, kMmPerPixel, classicCsv()));
     EXPECT_EQ(content.header, "contorno,punto,x_mm,y_mm")
         << "la unidad va en la cabecera o el archivo no sirve para nada";
     EXPECT_EQ(content.badFieldCount, 0);
@@ -429,7 +444,7 @@ TEST(ContourCsv, WithCalibrationTheFileIsInMillimetres) {
 TEST(ContourCsv, AnInvalidReportStillWritesTheHeader) {
     // Un archivo con solo la cabecera se abre y se entiende; uno vacío parece
     // un fallo de escritura.
-    const std::string csv = contourToCsv(ContourReport{});
+    const std::string csv = contourToCsv(ContourReport{}, 0.0, classicCsv());
     EXPECT_EQ(csv, "contorno,punto,x_px,y_px\n");
 }
 

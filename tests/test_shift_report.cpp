@@ -69,6 +69,22 @@ std::vector<InspectionRow> shiftWithADriftAtEleven() {
 }  // namespace
 
 // PRIMERA PREGUNTA: cuántas van y cuántas han pasado.
+// El dialecto a mano, no el del equipo: estas pruebas miran la ESTRUCTURA del
+// informe, y con el del sistema pasarían o fallarían según la región de la
+// máquina donde corran. Lo regional lo mide `tests/test_csv_for_excel.cpp`.
+inline pci::core::CsvDialect classicCsv() {
+    pci::core::CsvDialect dialect;
+    dialect.separator = ',';
+    dialect.decimal = '.';
+    // SIN LA MARCA DE ORDEN DE BYTES. No porque estorbe —en producción hace
+    // falta, es lo que evita que Excel se coma los acentos— sino porque lo que
+    // estas pruebas miran son las COLUMNAS, y la marca desplaza tres bytes la
+    // primera celda. Que la marca esté donde tiene que estar lo comprueba
+    // `tests/test_csv_for_excel.cpp`, que es de quien es ese asunto.
+    dialect.byteOrderMark = false;
+    return dialect;
+}
+
 TEST(ShiftReport, ItCountsTheShift) {
     const auto rows = shiftWithADriftAtEleven();
     const auto summary = summarise(rows);
@@ -150,7 +166,7 @@ TEST(ShiftReport, NoPiecesIsNotZeroPercentYield) {
     EXPECT_LT(summary.yield, 0.0) << "un turno sin piezas sale con rendimiento 0 %, que es "
                                      "una cosa muy distinta de «no se inspeccionó nada»";
 
-    const std::string csv = shiftReportCsv({}, summary);
+    const std::string csv = shiftReportCsv({}, summary, classicCsv());
     EXPECT_EQ(csv.find("rendimiento"), std::string::npos)
         << "el CSV inventa un rendimiento donde no hubo piezas";
     const std::string text = shiftReportText({}, summary);
@@ -163,7 +179,7 @@ TEST(ShiftReport, NoPiecesIsNotZeroPercentYield) {
 TEST(ShiftReport, TheSummaryComesBeforeTheRows) {
     const auto rows = shiftWithADriftAtEleven();
     const auto summary = summarise(rows);
-    const std::string csv = shiftReportCsv(rows, summary);
+    const std::string csv = shiftReportCsv(rows, summary, classicCsv());
 
     const auto summaryAt = csv.find("RESUMEN");
     const auto reasonsAt = csv.find("MOTIVOS DE RECHAZO");
@@ -189,7 +205,7 @@ TEST(ShiftReport, AReasonWithCommasDoesNotBreakTheCsv) {
     rows.push_back(ng("2026-08-22 10:00:00", "ancho fuera de tolerancia, 12,4 mm (max 12,0)"));
     rows.push_back(ng("2026-08-22 10:01:00", "el operador dijo \"revisar\""));
     const auto summary = summarise(rows);
-    const std::string csv = shiftReportCsv(rows, summary);
+    const std::string csv = shiftReportCsv(rows, summary, classicCsv());
 
     // Cada línea de motivo tiene que ser UNA línea, con las comillas cerradas.
     int quotes = 0;

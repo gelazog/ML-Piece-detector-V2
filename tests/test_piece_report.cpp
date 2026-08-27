@@ -320,7 +320,11 @@ TEST(PieceReport, TheWholeReportSurvivesGoingOutAsCsv) {
     // columnas, el informe no serviría para lo que se hizo.
     const auto report = reportOf(regularPolygon(6), 0.25);
     ASSERT_TRUE(report.ok) << report.problem;
-    const std::string csv = measurementsToCsv(report.rows);
+    pci::core::CsvDialect classic;
+    classic.byteOrderMark = false;
+    // A mano y no el del sistema: lo que se comprueba aquí es qué columnas
+    // hay, no la configuración regional de esta máquina.
+    const std::string csv = measurementsToCsv(report.rows, {}, classic);
 
     int newlines = 0;
     for (const char c : csv) {

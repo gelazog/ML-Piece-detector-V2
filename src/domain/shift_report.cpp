@@ -9,22 +9,6 @@ namespace pci::domain {
 
 namespace {
 
-// Un campo de CSV a prueba de comas y comillas. Los motivos de rechazo llevan
-// comas —«ancho fuera de tolerancia, 12,4 mm»— así que esto no es teórico.
-std::string csvField(const std::string& text) {
-    if (text.find_first_of(",\"\n\r") == std::string::npos) {
-        return text;
-    }
-    std::string quoted = "\"";
-    for (const char c : text) {
-        if (c == '"') {
-            quoted += '"';
-        }
-        quoted += c;
-    }
-    quoted += '"';
-    return quoted;
-}
 
 std::string hourOf(const std::string& timestamp) {
     // "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DD HH". Si viene con otra forma, se
@@ -112,44 +96,54 @@ ShiftSummary summarise(const std::vector<InspectionRow>& rows) {
 }
 
 std::string shiftReportCsv(const std::vector<InspectionRow>& rows,
-                           const ShiftSummary& summary) {
+                           const ShiftSummary& summary,
+                           const core::CsvDialect& dialect) {
+    const char sep = dialect.separator;
+    const auto field = [&dialect](const std::string& text) {
+        return core::csvField(text, dialect);
+    };
     std::ostringstream out;
+    // La marca de orden de bytes, la primera de todo: si va después, Excel ya
+    // ha decidido que el fichero es ANSI y se come todos los acentos.
+    out << core::csvByteOrderMark(dialect);
     out << "RESUMEN\n";
-    out << "inspecciones," << summary.total << "\n";
-    out << "correctas," << summary.okCount << "\n";
-    out << "rechazadas," << summary.ngCount << "\n";
+    out << "inspecciones" << sep << summary.total << "\n";
+    out << "correctas" << sep << summary.okCount << "\n";
+    out << "rechazadas" << sep << summary.ngCount << "\n";
     if (summary.yield >= 0.0) {
-        out << "rendimiento," << percent(summary.yield) << " %\n";
+        out << "rendimiento" << sep
+            << core::csvNumber(100.0 * summary.yield, 1, dialect) << " %\n";
     }
     if (!summary.from.empty()) {
-        out << "desde," << csvField(summary.from) << "\n";
-        out << "hasta," << csvField(summary.to) << "\n";
+        out << "desde" << sep << field(summary.from) << "\n";
+        out << "hasta" << sep << field(summary.to) << "\n";
     }
     if (!summary.worstHour.empty()) {
-        out << "hora con mas rechazos," << csvField(summary.worstHour) << "\n";
+        out << "hora con mas rechazos" << sep << field(summary.worstHour) << "\n";
     }
     if (!summary.reasons.empty()) {
         out << "\nMOTIVOS DE RECHAZO\n";
-        out << "motivo,veces\n";
+        out << "motivo" << sep << "veces\n";
         for (const auto& reason : summary.reasons) {
-            out << csvField(reason.reason) << "," << reason.count << "\n";
+            out << field(reason.reason) << sep << reason.count << "\n";
         }
     }
     if (!summary.hours.empty()) {
         out << "\nPOR HORA\n";
-        out << "hora,inspecciones,rechazadas\n";
+        out << "hora" << sep << "inspecciones" << sep << "rechazadas\n";
         for (const auto& hour : summary.hours) {
-            out << csvField(hour.hour) << "," << hour.total << "," << hour.ngCount << "\n";
+            out << field(hour.hour) << sep << hour.total << sep << hour.ngCount << "\n";
         }
     }
 
     out << "\nINSPECCIONES\n";
-    out << "fecha,pieza,veredicto,similitud,version_referencia,motivo\n";
+    out << "fecha" << sep << "pieza" << sep << "veredicto" << sep << "similitud" << sep
+        << "version_referencia" << sep << "motivo\n";
     for (const auto& row : rows) {
-        out << csvField(row.startedAt) << "," << csvField(row.piece) << ","
-            << (row.ok ? "OK" : "NG") << "," << std::fixed << std::setprecision(4)
-            << row.similarity << "," << row.referenceVersion << ","
-            << csvField(row.reason) << "\n";
+        out << field(row.startedAt) << sep << field(row.piece) << sep
+            << (row.ok ? "OK" : "NG") << sep
+            << core::csvNumber(row.similarity, 4, dialect) << sep << row.referenceVersion
+            << sep << field(row.reason) << "\n";
     }
     return out.str();
 }

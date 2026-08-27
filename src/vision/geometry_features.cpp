@@ -487,26 +487,36 @@ ContourReport describeContour(const cv::Mat& mask, const DecomposeOptions& optio
     return report;
 }
 
-std::string contourToCsv(const ContourReport& report, double mmPerPixel) {
+std::string contourToCsv(const ContourReport& report, double mmPerPixel,
+                         const core::CsvDialect& dialect) {
     std::ostringstream out;
-    // Locale clásico a la fuerza: en un Windows en español el separador decimal
-    // por defecto es la coma, y un CSV con "12,50" en una columna separada por
-    // comas no lo abre nadie.
+    // AQUÍ ESTABA VISTO EL PROBLEMA Y MAL RESUELTO.
+    //
+    // Ponía: «locale clásico a la fuerza: en un Windows en español el
+    // separador decimal por defecto es la coma, y un CSV con "12,50" en una
+    // columna separada por comas no lo abre nadie». Cierto — y la salida que
+    // elegía era clavar el punto decimal y dejar la coma de separador.
+    //
+    // Eso arregla la colisión y no arregla el fichero: Excel en español
+    // separa por PUNTO Y COMA, así que la fila entera sigue cayendo en la
+    // columna A. La salida no era clavar un lado, era mover los dos.
     out.imbue(std::locale::classic());
+    const char sep = dialect.separator;
+    out << core::csvByteOrderMark(dialect);
 
     const bool inMm = mmPerPixel > 0.0;
     const double scale = inMm ? mmPerPixel : 1.0;
     const int decimals = inMm ? 4 : 2;
-    out << "contorno,punto,x_" << (inMm ? "mm" : "px") << ",y_" << (inMm ? "mm" : "px") << '\n';
+    out << "contorno" << sep << "punto" << sep << "x_" << (inMm ? "mm" : "px") << sep
+        << "y_" << (inMm ? "mm" : "px") << '\n';
     if (!report.valid) {
         return out.str();
     }
-    out << std::fixed << std::setprecision(decimals);
-
     const auto emit = [&](const std::string& name, const std::vector<cv::Point>& points) {
         for (std::size_t i = 0; i < points.size(); ++i) {
-            out << name << ',' << i << ',' << points[i].x * scale << ','
-                << points[i].y * scale << '\n';
+            out << name << sep << i << sep
+                << core::csvNumber(points[i].x * scale, decimals, dialect) << sep
+                << core::csvNumber(points[i].y * scale, decimals, dialect) << '\n';
         }
     };
     emit("exterior", report.outer);

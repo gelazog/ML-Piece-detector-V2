@@ -28,6 +28,7 @@ add_executable(pci_tests
   test_measured_piece.cpp
   test_same_piece_everywhere.cpp
   test_option_labels.cpp
+  test_csv_for_excel.cpp
   test_domain.cpp
   test_units.cpp
   test_synthetic_measures.cpp

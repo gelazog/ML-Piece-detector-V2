@@ -87,6 +87,34 @@ std::vector<std::string> lines(const std::string& text) {
 
 }  // namespace
 
+// EL DIALECTO SE PASA A MANO EN TODO ESTE FICHERO.
+//
+// Estas llamadas usaban el del sistema, y desde que el CSV sigue la
+// configuración regional del equipo eso las volvería intermitentes: pasarían en
+// una máquina con punto decimal y fallarían en una española, sin que el código
+// hubiera cambiado. Lo que comprueban es la ESTRUCTURA —qué columnas hay y que
+// un texto raro no las desplaza—, así que se fija un dialecto y se comprueba
+// sobre él. Lo que depende de la región lo mide `tests/test_csv_for_excel.cpp`.
+inline pci::core::CsvDialect classicCsv() {
+    pci::core::CsvDialect dialect;
+    dialect.separator = ',';
+    dialect.decimal = '.';
+    // SIN LA MARCA DE ORDEN DE BYTES. No porque estorbe —en producción hace
+    // falta, es lo que evita que Excel se coma los acentos— sino porque lo que
+    // estas pruebas miran son las COLUMNAS, y la marca desplaza tres bytes la
+    // primera celda. Que la marca esté donde tiene que estar lo comprueba
+    // `tests/test_csv_for_excel.cpp`, que es de quien es ese asunto.
+    dialect.byteOrderMark = false;
+    return dialect;
+}
+
+inline pci::core::CsvDialect spanishCsv() {
+    pci::core::CsvDialect dialect;
+    dialect.separator = ';';
+    dialect.decimal = ',';
+    return dialect;
+}
+
 TEST(MeasurementReport, TheValueIsANumberAndTheUnitIsItsOwnColumn) {
     // Si el valor saliera como «50,00 mm (200,0 px)», la columna sería texto y
     // no se podría ni sumar ni promediar. Una exportación cuyas columnas no se
@@ -101,7 +129,7 @@ TEST(MeasurementReport, TheValueIsANumberAndTheUnitIsItsOwnColumn) {
     // y con ellos se rehace la conversión sin volver a medir la pieza.
     EXPECT_DOUBLE_EQ(rows.front().pixels, 200.0);
 
-    const auto csv = lines(measurementsToCsv(rows));
+    const auto csv = lines(measurementsToCsv(rows, {}, classicCsv()));
     ASSERT_EQ(csv.size(), 2U);
     EXPECT_EQ(cell(csv[0], 1), "valor");
     EXPECT_EQ(cell(csv[0], 2), "unidad");
@@ -145,7 +173,7 @@ TEST(MeasurementReport, ACommaInsideATextDoesNotShiftTheColumns) {
     auto result = measured("Ø", 200.0, MeasuredKind::Length);
     result.detail = "Ø=50,00mm, redondez 0,12, cámara inclinada";
     const auto rows = measurementRows({result}, kScale, LengthUnit::Millimeters);
-    const auto csv = lines(measurementsToCsv(rows));
+    const auto csv = lines(measurementsToCsv(rows, {}, classicCsv()));
     ASSERT_EQ(csv.size(), 2U);
 
     // La fila sigue teniendo el detalle ENTERO en su columna, la última.
@@ -158,21 +186,27 @@ TEST(MeasurementReport, ACommaInsideATextDoesNotShiftTheColumns) {
     auto quotedResult = measured("Pieza", 10.0, MeasuredKind::Length);
     quotedResult.detail = "el borde \"bueno\" no se ve";
     const auto quotedCsv = lines(measurementsToCsv(
-        measurementRows({quotedResult}, 0.0, LengthUnit::Pixels)));
+        measurementRows({quotedResult}, 0.0, LengthUnit::Pixels), {}, classicCsv()));
     ASSERT_EQ(quotedCsv.size(), 2U);
     EXPECT_EQ(cell(quotedCsv[1], 8), quotedResult.detail);
 }
 
-TEST(MeasurementReport, TheDecimalSeparatorIsAlwaysADotWhateverTheMachineSays) {
-    // En un Windows en español el separador decimal por defecto es la coma, y
-    // un CSV con «12,50» en una columna separada por comas no lo abre nadie. Es
-    // la misma decisión que ya tomó la exportación del contorno.
-    const auto csv = measurementsToCsv(
-        measurementRows({measured("Ancho", 200.0, MeasuredKind::Length)}, kScale,
-                        LengthUnit::Millimeters));
-    EXPECT_NE(csv.find("50.0000"), std::string::npos) << csv;
-    EXPECT_EQ(csv.find("50,0000"), std::string::npos)
-        << "el separador decimal salió como coma: el CSV no se puede abrir";
+TEST(MeasurementReport, TheDecimalSeparatorFollowsTheDialectAndNotAMachineSetting) {
+    // ESTA PRUEBA DECÍA LO CONTRARIO, y su nombre lo anunciaba:
+    // «TheDecimalSeparatorIsAlwaysADotWhateverTheMachineSays».
+    //
+    // El razonamiento era: «en un Windows en español el separador decimal por
+    // defecto es la coma, y un CSV con "12,50" en una columna separada por
+    // comas no lo abre nadie». La primera mitad es cierta. La conclusión no:
+    // clavar el punto decimal arregla la COLISIÓN y no arregla el fichero,
+    // porque Excel en español separa por punto y coma y la fila entera sigue
+    // cayendo en la columna A. La salida no era clavar un lado, era mover los
+    // dos — que es lo que hace Excel cuando guarda un CSV.
+    const auto rows = measurementRows({measured("Ancho", 200.0, MeasuredKind::Length)},
+                                      kScale, LengthUnit::Millimeters);
+    EXPECT_NE(measurementsToCsv(rows, {}, classicCsv()).find("50.0000"), std::string::npos);
+    EXPECT_NE(measurementsToCsv(rows, {}, spanishCsv()).find("50,0000"), std::string::npos)
+        << "con dialecto español el decimal sigue saliendo con punto";
 }
 
 TEST(MeasurementReport, AConstructionThatJudgedNothingIsNotAnOk) {
@@ -220,7 +254,7 @@ TEST(MeasurementReport, WithoutTolerancesTheColumnsAreEmptyAndNotZero) {
                                       kScale, LengthUnit::Millimeters);
     ASSERT_EQ(rows.size(), 1U);
     EXPECT_FALSE(rows.front().hasTolerance);
-    const auto csv = lines(measurementsToCsv(rows));
+    const auto csv = lines(measurementsToCsv(rows, {}, classicCsv()));
     ASSERT_EQ(csv.size(), 2U);
     EXPECT_TRUE(cell(csv[1], 5).empty()) << "tolerancia mínima inventada";
     EXPECT_TRUE(cell(csv[1], 6).empty()) << "tolerancia máxima inventada";
@@ -259,7 +293,7 @@ TEST(MeasurementReport, TheTextFormAlignsWithTheLongestNameAndNotAFixedWidth) {
 TEST(MeasurementReport, NothingMeasuredGivesAHeaderAndNoRows) {
     // Un fichero vacío del todo no se distingue de un fallo de escritura. Con
     // la cabecera, se ve que se exportó y que no había nada.
-    const auto csv = lines(measurementsToCsv({}));
+    const auto csv = lines(measurementsToCsv({}, {}, classicCsv()));
     ASSERT_EQ(csv.size(), 1U);
     EXPECT_EQ(cell(csv[0], 0), "herramienta");
     EXPECT_TRUE(measurementsToText({}).empty());
@@ -290,7 +324,7 @@ TEST(MeasurementExport, TheWarningsAreInsideTheFileAndNotJustOnScreen) {
         "La pieza toca el borde derecho del encuadre: esta cortada, asi que sus "
         "medidas son limites inferiores y no medidas."};
 
-    const std::string csv = pci::inspection::measurementsToCsv(rows, warnings);
+    const std::string csv = pci::inspection::measurementsToCsv(rows, warnings, classicCsv());
     std::printf("  [csv] primeras lineas:\n%s",
                 csv.substr(0, csv.find("herramienta")).c_str());
 
@@ -308,7 +342,7 @@ TEST(MeasurementExport, TheWarningsAreInsideTheFileAndNotJustOnScreen) {
 
     // Sin avisos, el fichero es EXACTAMENTE el de antes: quien ya tuviera una
     // hoja de calculo apuntando a estas columnas no se entera del cambio.
-    const std::string plain = pci::inspection::measurementsToCsv(rows);
+    const std::string plain = pci::inspection::measurementsToCsv(rows, {}, classicCsv());
     EXPECT_EQ(plain.find("herramienta"), 0U)
         << "sin avisos, el CSV tiene que empezar por la cabecera como siempre";
     EXPECT_EQ(plain.find("AVISO"), std::string::npos);
@@ -330,7 +364,7 @@ TEST(MeasurementExport, AWarningWithCommasDoesNotBreakTheCsv) {
 
     const std::vector<std::string> warnings{
         "sus medidas (ancho, alto, area, perimetro) son \"limites inferiores\""};
-    const std::string csv = pci::inspection::measurementsToCsv(rows, warnings);
+    const std::string csv = pci::inspection::measurementsToCsv(rows, warnings, classicCsv());
 
     // La linea del aviso tiene que ser UNA sola linea y tener exactamente dos
     // campos: la etiqueta y el texto entrecomillado.

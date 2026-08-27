@@ -46,23 +46,6 @@ Converted convert(const ToolRunResult& result, double mmPerPixel, LengthUnit uni
     return {result.measured, "px"};
 }
 
-// Un campo de CSV que puede llevar comas o comillas —el detalle las lleva— se
-// entrecomilla y sus comillas se duplican. Sin esto, una sola coma en un texto
-// desplaza todas las columnas siguientes de esa fila, y el fallo no se ve hasta
-// que alguien abre la hoja y encuentra la tolerancia en la columna del estado.
-std::string quoted(const std::string& text) {
-    std::string out;
-    out.reserve(text.size() + 2);
-    out.push_back('"');
-    for (const char c : text) {
-        if (c == '"') {
-            out.push_back('"');
-        }
-        out.push_back(c);
-    }
-    out.push_back('"');
-    return out;
-}
 
 }  // namespace
 
@@ -108,37 +91,48 @@ std::vector<MeasurementRow> measurementRows(const std::vector<ToolRunResult>& re
 }
 
 std::string measurementsToCsv(const std::vector<MeasurementRow>& rows,
-                              const std::vector<std::string>& warnings) {
+                              const std::vector<std::string>& warnings,
+                              const core::CsvDialect& dialect) {
     // Los avisos van primero: el CSV es lo que sobrevive a la ventana, y un
     // aviso que no viaja con el fichero no llega a quien lo abre despues.
+    const char sep = dialect.separator;
     std::string preamble;
     for (const auto& warning : warnings) {
-        preamble += "AVISO," + quoted(warning) + "\n";
+        preamble += "AVISO" + std::string(1, sep) + core::csvField(warning, dialect) + "\n";
     }
     if (!preamble.empty()) {
         preamble += "\n";
     }
     std::ostringstream out;
     out.imbue(std::locale::classic());
-    out << preamble;
+    // La marca de orden de bytes va la PRIMERA de todo, antes incluso de los
+    // avisos: si va después, Excel ya ha decidido que el fichero es ANSI.
+    out << core::csvByteOrderMark(dialect) << preamble;
     // `grupo` va la ÚLTIMA a propósito: añadir una columna al final no mueve
     // ninguna de las que ya había, así que una hoja de cálculo hecha con la
     // versión anterior sigue apuntando a la misma columna.
-    out << "herramienta,valor,unidad,pixeles,estado,tolerancia_min,tolerancia_max,"
-           "pieza,detalle,grupo\n";
-    out << std::fixed;
-    for (const auto& row : rows) {
-        out << quoted(row.tool) << ',' << std::setprecision(4) << row.value << ','
-            << quoted(row.unit) << ',' << std::setprecision(2) << row.pixels << ','
-            << row.state << ',';
-        if (row.hasTolerance) {
-            out << std::setprecision(4) << row.toleranceMin << ','
-                << std::setprecision(4) << row.toleranceMax;
-        } else {
-            out << ',';  // dos columnas vacías: no hay banda que escribir
+    for (const char* column :
+         {"herramienta", "valor", "unidad", "pixeles", "estado", "tolerancia_min",
+          "tolerancia_max", "pieza", "detalle", "grupo"}) {
+        if (column != std::string("herramienta")) {
+            out << sep;
         }
-        out << ',' << (row.pieceIndex + 1) << ',' << quoted(row.detail) << ','
-            << quoted(row.group) << '\n';
+        out << column;
+    }
+    out << '\n';
+    for (const auto& row : rows) {
+        out << core::csvField(row.tool, dialect) << sep
+            << core::csvNumber(row.value, 4, dialect) << sep
+            << core::csvField(row.unit, dialect) << sep
+            << core::csvNumber(row.pixels, 2, dialect) << sep << row.state << sep;
+        if (row.hasTolerance) {
+            out << core::csvNumber(row.toleranceMin, 4, dialect) << sep
+                << core::csvNumber(row.toleranceMax, 4, dialect);
+        } else {
+            out << sep;  // dos columnas vacías: no hay banda que escribir
+        }
+        out << sep << (row.pieceIndex + 1) << sep << core::csvField(row.detail, dialect)
+            << sep << core::csvField(row.group, dialect) << '\n';
     }
     return out.str();
 }

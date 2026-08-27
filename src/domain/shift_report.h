@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/csv_dialect.h"
+
 #include <string>
 #include <utility>
 #include <vector>
@@ -77,8 +79,11 @@ struct ShiftSummary {
 // abra esto en una hoja de cálculo lee lo de arriba, y un resumen al final de
 // cuatrocientas filas no lo ve nadie. La cabecera de las filas sigue estando
 // donde estaba para quien parsee el fichero.
-[[nodiscard]] std::string shiftReportCsv(const std::vector<InspectionRow>& rows,
-                                         const ShiftSummary& summary);
+// `dialect`: el formato que la hoja de cálculo del equipo sabe abrir. Ver
+// `core/csv_dialect.h`.
+[[nodiscard]] std::string shiftReportCsv(
+    const std::vector<InspectionRow>& rows, const ShiftSummary& summary,
+    const core::CsvDialect& dialect = core::systemCsvDialect());
 
 // El mismo informe en texto corrido, para pegarlo en un parte o en un correo.
 [[nodiscard]] std::string shiftReportText(const std::vector<InspectionRow>& rows,

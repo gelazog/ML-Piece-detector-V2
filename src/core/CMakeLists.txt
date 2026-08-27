@@ -1,5 +1,6 @@
 add_library(pci_core STATIC
   crash_guard.cpp
+  csv_dialect.cpp
   logging.cpp
 )
 target_include_directories(pci_core PUBLIC ${CMAKE_SOURCE_DIR}/src)

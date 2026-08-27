@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "core/csv_dialect.h"
 #include "inspection_editor/execution/tool_executor.h"
 
 namespace pci::inspection {
@@ -77,8 +78,18 @@ struct MeasurementRow {
 // Van como lineas sueltas en la primera columna y separadas por una linea en
 // blanco: quien abra esto en una hoja de calculo las lee arriba del todo, y
 // quien lo parsee busca la cabecera, que sigue estando donde estaba.
-[[nodiscard]] std::string measurementsToCsv(const std::vector<MeasurementRow>& rows,
-                                            const std::vector<std::string>& warnings = {});
+// `dialect` es el formato que la hoja de cálculo del equipo sabe abrir:
+// separador de campo, separador decimal y marca de orden de bytes. Por
+// defecto, el del sistema — ver `core/csv_dialect.h`, donde está medido lo
+// que costaba no mirarlo.
+//
+// Se puede pasar uno a mano, y las pruebas lo hacen: una prueba que
+// dependiera de la configuración regional de la máquina donde corre pasaría
+// o fallaría según el equipo, que es la peor clase de prueba intermitente.
+[[nodiscard]] std::string measurementsToCsv(
+    const std::vector<MeasurementRow>& rows,
+    const std::vector<std::string>& warnings = {},
+    const core::CsvDialect& dialect = core::systemCsvDialect());
 
 // Lo mismo en texto alineado, para pegar en un correo o en un parte. El CSV es
 // para la hoja de cálculo; esto es para que alguien lo lea.
