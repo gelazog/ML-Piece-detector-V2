@@ -306,8 +306,8 @@ void EditorCanvas::stepBrushRadius(int steps) {
     // Un paso MÍNIMO de un píxel: con radios pequeños el factor 1,2 redondea al
     // mismo número y el gesto no hace nada, que es peor que hacer poco.
     const int wanted = scaled == brushRadius_ ? brushRadius_ + (steps > 0 ? 1 : -1) : scaled;
+    // El aviso lo da `setBrushRadius`; aquí se emitía otra vez y salía doble.
     setBrushRadius(wanted);
-    emit brushRadiusChanged(brushRadius_);
 }
 
 void EditorCanvas::keyPressEvent(QKeyEvent* event) {
@@ -333,6 +333,20 @@ void EditorCanvas::setBrushRadius(int radiusPx) {
     }
     brushRadius_ = wanted;
     update();
+    // Y SE AVISA, lo cambie quien lo cambie.
+    //
+    // El aviso lo emitía solo el camino de la rueda, así que cualquier otra
+    // forma de mover el radio dejaba al deslizador del menú diciendo un número
+    // distinto del que estaba pintando. Medido: con el lienzo en 41, el
+    // deslizador seguía en 12.
+    //
+    // Dos números para el mismo ajuste es peor que un número malo: el operador
+    // mueve el deslizador desde el valor viejo y acaba en un tamaño que no
+    // esperaba, sin entender por qué.
+    //
+    // No hay bucle: quien escucha llama de vuelta con `fromCanvas` puesto, y ese
+    // camino mueve el deslizador con las señales bloqueadas.
+    emit brushRadiusChanged(brushRadius_);
 }
 
 void EditorCanvas::setBrushSteady(bool on) {

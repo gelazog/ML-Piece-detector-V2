@@ -580,6 +580,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     sizeLayout->setContentsMargins(12, 4, 12, 4);
     sizeLayout->addWidget(new QLabel(tr("Tamaño:"), sizeRow));
     brushSizeSlider_ = new QSlider(Qt::Horizontal, sizeRow);
+    brushSizeSlider_->setObjectName(QStringLiteral("brushSizeSlider"));
     brushSizeSlider_->setRange(2, 120);  // los mismos topes que el lienzo
     brushSizeSlider_->setMinimumWidth(150);
     brushSizeSlider_->setToolTip(
