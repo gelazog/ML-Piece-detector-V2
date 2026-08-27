@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Reanuda el trabajo automático en PC Inspector cuando vuelve a haber cupo.
 
