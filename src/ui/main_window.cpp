@@ -7501,7 +7501,12 @@ void MainWindow::onRegisterWizardClicked() {
         return;
     }
 
-    RegistrationWizard wizard(&controller_, repos_.embedFn, repos_.pieces, this);
+    // Con la detección configurada: el asistente SEGMENTA cada captura para sacar
+    // el recorte del que nace el embedding, y sin esto aprendía la pieza con los
+    // valores de fábrica mientras «Registrar y activar» —que hace lo mismo— usaba
+    // los del operador.
+    RegistrationWizard wizard(&controller_, repos_.embedFn, repos_.pieces,
+                              inspectionConfig(), this);
     keepDialogSize(wizard, repos_.settings, "registration", 900, 640);
     if (wizard.exec() == QDialog::Accepted) {
         loadPieceList(wizard.createdPieceId());
@@ -7527,7 +7532,7 @@ void MainWindow::onRegisterVariantClicked() {
     const QString pieceName = pieceCombo_ != nullptr ? pieceCombo_->currentText() : QString();
 
     RegistrationWizard wizard(&controller_, repos_.embedFn, repos_.pieces, pieceId,
-                              pieceName, this);
+                              pieceName, inspectionConfig(), this);
     keepDialogSize(wizard, repos_.settings, "registration", 900, 640);
     if (wizard.exec() != QDialog::Accepted) {
         return;

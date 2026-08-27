@@ -223,6 +223,28 @@ Sale de una auditoría con el mapa de contenidos medido.
 
   Resultado: **de 21 rutas vigiladas a 29, y cero rotas.**
 
+## E2. Una detección, no tres — CERRADO
+
+Persiguiendo «sigue habiendo problemas con el color del fondo y el de la pieza, y
+el cómo detecta las piezas» aparecieron **tres sitios** que segmentaban con los
+valores de fábrica en vez de con los configurados. Los tres arreglados, y los
+tres con guardia.
+
+- [x] **Abrir el editor de plantilla.** Analizaba sin configuración para sacar el
+  fixture. Sobre mesa de color no daba un fixture torcido: **el editor no abría**,
+  mientras la ventana principal enseñaba la pieza bien detectada al lado.
+- [x] **El asistente de registro.** Construía su sesión sin configuración, así que
+  **aprendía** la pieza con la detección de fábrica mientras «Registrar y activar»
+  —que hace lo mismo— usaba la del operador. Es el peor de los tres: la referencia
+  nace torcida y luego se compara contra inspecciones bien detectadas.
+- [x] **Cargar un perfil de detección.** Devolvía cuatro de los ocho campos a
+  fábrica.
+
+`tests/test_same_detection_everywhere.cpp` no vigila una llamada: vigila el
+patrón. Recorre los 68 ficheros y exige que nadie analice un frame sin decir cómo
+detectar la pieza. Lee el **código fuente** y no el binario, así que además es
+inmune a la trampa de `-Werror` dejando el binario viejo en pie.
+
 ## E. Límites medidos que siguen ahí
 
 - [ ] **E1 · Arandela de plástico traslúcido.** No se detecta ni por claridad ni

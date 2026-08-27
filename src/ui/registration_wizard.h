@@ -34,8 +34,20 @@ class RegistrationWizard : public QDialog {
     Q_OBJECT
 
 public:
+    // `pipeline` es la detección que el operador tiene configurada, y no es un
+    // parámetro de adorno: la sesión de registro SEGMENTA cada captura para
+    // sacar el recorte del que nace el embedding. Sin esto, el asistente
+    // aprendía la pieza con los valores de fábrica mientras el botón de
+    // «Registrar y activar» —que hace lo mismo— usaba los configurados.
+    //
+    // Dos caminos para la misma operación con dos detecciones distintas. Sobre
+    // una mesa de color, el asistente aprendía la pieza de una segmentación
+    // rota, y esa referencia torcida se compara luego contra inspecciones bien
+    // detectadas.
     RegistrationWizard(camera::CameraController* controller, engine::EmbedFn embedFn,
-                       repositories::PieceRepository* pieces, QWidget* parent = nullptr);
+                       repositories::PieceRepository* pieces,
+                       const vision::PipelineConfig& pipeline = {},
+                       QWidget* parent = nullptr);
 
     // REGISTRAR OTRO ACABADO de una pieza que YA existe.
     //
@@ -50,7 +62,9 @@ public:
     // delante es la MISMA pieza con otro acabado.
     RegistrationWizard(camera::CameraController* controller, engine::EmbedFn embedFn,
                        repositories::PieceRepository* pieces, std::int64_t existingPieceId,
-                       const QString& pieceName, QWidget* parent = nullptr);
+                       const QString& pieceName,
+                       const vision::PipelineConfig& pipeline = {},
+                       QWidget* parent = nullptr);
     ~RegistrationWizard() override;
 
     [[nodiscard]] std::int64_t createdPieceId() const { return createdPieceId_; }

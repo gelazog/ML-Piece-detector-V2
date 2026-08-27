@@ -95,6 +95,7 @@ add_executable(pci_gui_tests
   test_default_buttons.cpp
   test_coloured_table_advice.cpp
   test_detection_groups.cpp
+  test_same_detection_everywhere.cpp
   test_lens_wizard.cpp
   test_readme_paths.cpp
   test_variant_wizard.cpp

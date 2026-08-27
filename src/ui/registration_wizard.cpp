@@ -28,11 +28,11 @@ constexpr int kMinimumCaptures = 5;
 RegistrationWizard::RegistrationWizard(camera::CameraController* controller,
                                        engine::EmbedFn embedFn,
                                        repositories::PieceRepository* pieces,
+                                       const vision::PipelineConfig& pipeline,
                                        QWidget* parent)
     : QDialog(parent), controller_(controller), pieces_(pieces),
-      session_(std::make_unique<engine::RegistrationSession>(std::move(embedFn),
-                                                             kTargetCaptures,
-                                                             kMinimumCaptures)) {
+      session_(std::make_unique<engine::RegistrationSession>(
+          std::move(embedFn), kTargetCaptures, kMinimumCaptures, std::nullopt, pipeline)) {
     buildUi(QString());
 }
 
@@ -42,11 +42,12 @@ RegistrationWizard::RegistrationWizard(camera::CameraController* controller,
                                        engine::EmbedFn embedFn,
                                        repositories::PieceRepository* pieces,
                                        std::int64_t existingPieceId,
-                                       const QString& pieceName, QWidget* parent)
+                                       const QString& pieceName,
+                                       const vision::PipelineConfig& pipeline,
+                                       QWidget* parent)
     : QDialog(parent), controller_(controller), pieces_(pieces),
-      session_(std::make_unique<engine::RegistrationSession>(std::move(embedFn),
-                                                             kTargetCaptures,
-                                                             kMinimumCaptures)),
+      session_(std::make_unique<engine::RegistrationSession>(
+          std::move(embedFn), kTargetCaptures, kMinimumCaptures, std::nullopt, pipeline)),
       targetPieceId_(existingPieceId) {
     buildUi(pieceName);
 }
