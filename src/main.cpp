@@ -1,6 +1,8 @@
 #include <QApplication>
 #include <QFileInfo>
+#include <QTimer>
 
+#include <cstdio>
 #include <exception>
 #include <memory>
 #include <optional>
@@ -109,6 +111,33 @@ int main(int argc, char* argv[]) {
     try {
         pci::ui::MainWindow window(repositories);
         window.show();
+        // ARRANQUE EN SECO: `--smoke`.
+        //
+        // Esta bandera NO EXISTÍA, y llevaba tiempo usándose. La regla de cerrar
+        // un trabajo pide tres cosas —compilación limpia, banco verde y que la
+        // aplicación arranque— y la tercera se comprobaba con
+        // `pc_inspector.exe --smoke`. Qt ignora un argumento que no conoce, así
+        // que eso abría la ventana y se quedaba abierta para siempre; el «0» que
+        // se leía después venía de matar el proceso, no de la aplicación.
+        //
+        // Es decir: una comprobación que salía en verde pasara lo que pasara. La
+        // peor clase de prueba, porque además da confianza.
+        //
+        // Ahora es de verdad: se construye la ventana, se deja correr el bucle
+        // de eventos —ahí es donde ocurre la inicialización diferida, la
+        // enumeración de cámaras entre otras— y se sale con un código. Si algo
+        // revienta al arrancar, revienta aquí y se ve.
+        if (QCoreApplication::arguments().contains(QStringLiteral("--smoke"))) {
+            // Un segundo y medio. No es un número mágico: la enumeración de
+            // cámaras del log tarda entre 200 y 400 ms, y salir antes de eso
+            // dejaría sin mirar justo la parte que ya ha matado el proceso una
+            // vez (un driver de captura dividiendo por cero).
+            QTimer::singleShot(1500, &app, [] {
+                pci::core::logInfo("Arranque en seco: la ventana vive y el bucle corrió");
+                std::puts("[smoke] la ventana arrancó y el bucle de eventos corrió");
+                QCoreApplication::quit();
+            });
+        }
         const int code = QApplication::exec();
         pci::core::logInfo("Aplicación finalizada con código " + std::to_string(code));
         return code;

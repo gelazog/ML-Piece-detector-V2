@@ -1082,7 +1082,14 @@ $env:PATH = "C:\msys64\ucrt64\bin;$env:PATH"
 cmake --preset mingw-release
 cmake --build --preset mingw-release
 ctest --preset mingw-release
+.\build\release\pc_inspector.exe --smoke
 ```
+
+La última línea es el **arranque en seco**: construye la ventana, deja correr el
+bucle de eventos —ahí es donde se enumeran las cámaras, que es lo que ya ha
+matado el proceso alguna vez por un driver de captura roto— y sale sola con un
+código. Sin ella, un banco entero en verde no dice nada sobre si la aplicación
+llega a abrirse.
 
 El ejecutable queda en `build/release/pc_inspector.exe` (necesita
 `C:\msys64\ucrt64\bin` en el PATH para las DLL de Qt/OpenCV; `onnxruntime.dll`
