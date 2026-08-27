@@ -555,6 +555,24 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    Cada fila lleva su valor, **su unidad**, los píxeles crudos por si luego
    recalibras, el estado y la tolerancia. Sin calibración da píxeles y lo dice.
 
+   **Y te dice si esa medida depende de la luz.** El informe avisa cuando la
+   cifra se movería al cambiar un poco la iluminación: «*moviendo el corte de
+   gris 8 niveles a cada lado, esta pieza mide entre 160,9 y 176,3 px: oscila un
+   9,2 %*». Ocho niveles es menos de lo que cambia una lámpara al calentarse.
+
+   Hace falta porque el efecto es real y no se ve mirando. Medido sobre el banco
+   de fotos, con el mismo barrido: `rosca-1` oscila **0,0 %**, `tornillo-1` un
+   **0,1 %** — ahí el borde manda sobre la luz y la cifra es de fiar. Pero
+   `tornillo-ojo-4` se mueve un **4,1 %** y `arandelas-1` un **9,2 %**: en esas
+   escenas hay sombra pegada al borde o reflejo de frente, y la medida depende
+   de la lámpara tanto como de la pieza.
+
+   Ocho de once fotos se quedan por debajo del 0,5 % y no ven este aviso nunca —
+   uno que saliera siempre se aprendería a ignorar. Y no es la incertidumbre
+   expandida de la norma: le falta la escala, la repetibilidad del montaje y la
+   del operador. Es una de sus componentes, la más barata de medir y justo la
+   que se ve con los ojos.
+
    **El fichero sale en el formato que tu hoja de cálculo abre.** El separador
    de campos y el decimal salen de tu configuración regional de Windows, igual
    que hace Excel cuando guarda un CSV: en un equipo en español, `;` y coma

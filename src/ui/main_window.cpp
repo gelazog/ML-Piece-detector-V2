@@ -2660,10 +2660,29 @@ void MainWindow::onMeasurePieceClicked() {
     // Con el TAMAÑO DEL ENCUADRE: sin él, el informe no puede saber si la pieza
     // está cortada por el borde, y entonces publicaría sus cotas como medidas
     // cuando son límites inferiores.
-    const auto report = inspection::measureWholePiece(image, mask,
-                                                      analysis.value().fixture,
-                                                      calibration_.mmPerPixel, currentUnit(),
-                                                      image.size());
+    auto report = inspection::measureWholePiece(image, mask,
+                                                analysis.value().fixture,
+                                                calibration_.mmPerPixel, currentUnit(),
+                                                image.size());
+    // CUÁNTO SE MOVERÍA ESTO SI LA LUZ CAMBIARA UN POCO.
+    //
+    // Queja del taller: «la manera en que toma los contornos varía mucho por su
+    // sombra y la luz de enfrente, y estar midiendo mal». Es cierto y se puede
+    // poner número: se barre el corte de gris unos niveles a cada lado y se mira
+    // cuánto se mueve el ancho.
+    //
+    // Va AQUÍ y no en el vídeo porque cuesta un análisis por nivel. En este
+    // botón, que ya cuesta dos, se paga sin que se note; por fotograma sería
+    // pagar nueve veces para decir casi siempre que no pasa nada.
+    //
+    // Y solo se dice cuando pasa: ocho de once fotos del banco se quedan por
+    // debajo del 0,5 % y no ven este aviso nunca. Uno que saliera siempre se
+    // aprendería a ignorar.
+    if (const auto stability = vision::measureStability(image, inspectionConfig());
+        stability.measured &&
+        stability.swingFraction >= vision::kMeasurementMovesWithTheLight) {
+        report.warnings.push_back(stability.summary);
+    }
     if (!report.ok) {
         statusBar()->showMessage(QString::fromStdString(report.problem));
         return;

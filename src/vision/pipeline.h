@@ -141,6 +141,57 @@ core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image,
     const cv::Mat& image, const PipelineConfig& config = {},
     int* belowMinArea = nullptr);
 
+// CUÁNTO SE MOVERÍA ESTA MEDIDA SI LA LUZ CAMBIARA UN POCO.
+//
+// Queja del taller: «la manera en que toma los contornos suele variar mucho por
+// su sombra y la luz de enfrente de la pieza, porque puede tener las dos, y
+// estar midiendo mal».
+//
+// Es cierto y se puede poner número. Un borde limpio no depende del corte de
+// gris: moverlo unos niveles no mueve la silueta. Un borde con una sombra
+// pegada o un reflejo, sí — y entonces la cifra que el operador apunta depende
+// de la lámpara tanto como de la pieza.
+//
+// Medido barriendo el umbral ±8 niveles —menos de lo que cambia una lámpara al
+// calentarse— sobre el banco de fotos:
+//
+//     rosca-1                    572,0 px    oscila 0,0    0,0 %
+//     tornillo-1                 961,0       oscila 1,0    0,1 %
+//     tornillo-ojo-4             488,2       oscila 19,9   4,1 %
+//     producto-tuercas-prueba     84,4       oscila 6,4    7,5 %
+//     arandelas-1                168,3       oscila 15,4   9,2 %
+//
+// La mayoría no se inmuta. Tres de once se mueven entre el 4 y el 9 %, y hasta
+// ahora la aplicación publicaba esas cifras con cuatro decimales sin decir nada.
+//
+// Esto NO es la incertidumbre expandida de la norma —falta la escala, la
+// repetibilidad del montaje y la del propio operador—. Es una de sus
+// componentes, la más barata de medir y la que este taller está viendo con los
+// ojos. Decir «esta medida se mueve un 9 % con la luz» es menos que una U, y es
+// muchísimo más que un número con cuatro decimales y ninguna advertencia.
+//
+// CUESTA UN ANÁLISIS POR NIVEL, así que va a petición y no por fotograma.
+struct MeasurementStability {
+    bool measured = false;
+    double medianWidthPx = 0.0;  // el ancho mayor de la envolvente, mediana del barrido
+    double swingPx = 0.0;        // del más grande al más pequeño del barrido
+    double swingFraction = 0.0;  // eso mismo, en fracción de la mediana
+    int levelsSwept = 0;         // cuántos niveles a cada lado
+    std::string summary;         // en castellano, para enseñarlo
+};
+
+// `levels` son los niveles de gris a cada lado del umbral actual. 8 sale de lo
+// que se mueve una lámpara al calentarse, no de un ideal.
+[[nodiscard]] MeasurementStability measureStability(const cv::Mat& image,
+                                                    const PipelineConfig& config = {},
+                                                    int levels = 8);
+
+// Por encima de esto, la medida depende de la luz tanto como de la pieza y hay
+// que decirlo. El 2 % sale del hueco medido: ocho de once fotos del banco se
+// quedan por debajo del 0,5 % y las tres que fallan van del 2,1 al 9,2 %. En
+// medio no hay nada, así que el corte no es delicado.
+inline constexpr double kMeasurementMovesWithTheLight = 0.02;
+
 // La máscara de la pieza **con sus agujeros**.
 //
 // `analyzeFrame` devuelve la máscara del contorno exterior RELLENA, y lo hace a

@@ -1,4 +1,8 @@
 #include "vision/pipeline.h"
+#include <algorithm>
+#include <cstdio>
+
+#include "vision/gray.h"
 
 #include <chrono>
 
@@ -178,6 +182,76 @@ void applyMaskCorrection(cv::Mat& mask, const PipelineConfig& config, const cv::
         cv::bitwise_not(remove, keep);
         cv::bitwise_and(mask, keep, mask);
     }
+}
+
+MeasurementStability measureStability(const cv::Mat& image, const PipelineConfig& config,
+                                     int levels) {
+    MeasurementStability out;
+    out.levelsSwept = std::max(1, levels);
+    if (image.empty()) {
+        out.summary = "No hay imagen que medir.";
+        return out;
+    }
+    // El umbral de partida: el que el operador puso, o el que elegiría Otsu.
+    int base = config.segmentation.manualThreshold;
+    if (base < 0) {
+        cv::Mat gray = toGray(image);
+        if (gray.empty()) {
+            out.summary = "No se puede leer esta imagen.";
+            return out;
+        }
+        cv::Mat binary;
+        base = static_cast<int>(
+            cv::threshold(gray, binary, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU));
+    }
+
+    std::vector<double> widths;
+    for (int delta = -out.levelsSwept; delta <= out.levelsSwept; delta += 2) {
+        PipelineConfig probe = config;
+        probe.segmentation.manualThreshold = std::clamp(base + delta, 1, 254);
+        auto all = analyzeFrames(image, probe);
+        if (!all.isOk() || all.value().empty()) {
+            continue;
+        }
+        const auto& piece = all.value()[largestPieceIndex(all.value())];
+        widths.push_back(std::max(piece.contour.rotatedRect.size.width,
+                                  piece.contour.rotatedRect.size.height));
+    }
+    // Con menos de la mitad del barrido no se puede hablar de oscilación: lo que
+    // habría es que la pieza se pierde a poco que se toque el umbral, y eso es
+    // otra cosa y se dice aparte.
+    const std::size_t expected = static_cast<std::size_t>(out.levelsSwept) + 1;
+    if (widths.size() < expected / 2 + 1) {
+        out.summary =
+            "La pieza deja de detectarse en cuanto el corte de gris se mueve un poco: "
+            "la medida no es estable y antes de fiarse hay que arreglar la iluminación.";
+        return out;
+    }
+
+    std::sort(widths.begin(), widths.end());
+    out.measured = true;
+    out.medianWidthPx = widths[widths.size() / 2];
+    out.swingPx = widths.back() - widths.front();
+    out.swingFraction = out.medianWidthPx > 0.0 ? out.swingPx / out.medianWidthPx : 0.0;
+
+    char text[320];
+    if (out.swingFraction >= kMeasurementMovesWithTheLight) {
+        std::snprintf(text, sizeof(text),
+                      "Moviendo el corte de gris %d niveles a cada lado, esta pieza mide "
+                      "entre %.1f y %.1f px: oscila un %.1f %%. A esta escena le afecta "
+                      "la luz tanto como la propia pieza — mira si hay sombra pegada al "
+                      "borde o un reflejo de frente.",
+                      out.levelsSwept, widths.front(), widths.back(),
+                      100.0 * out.swingFraction);
+    } else {
+        std::snprintf(text, sizeof(text),
+                      "Moviendo el corte de gris %d niveles a cada lado, la medida solo "
+                      "oscila un %.1f %% (%.1f px de %.1f). El borde manda sobre la luz.",
+                      out.levelsSwept, 100.0 * out.swingFraction, out.swingPx,
+                      out.medianWidthPx);
+    }
+    out.summary = text;
+    return out;
 }
 
 core::Result<std::vector<PieceAnalysis>> analyzeFrames(const cv::Mat& image,
