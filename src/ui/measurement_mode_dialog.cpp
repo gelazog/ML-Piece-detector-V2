@@ -49,15 +49,15 @@ MeasurementModeDialog::MeasurementModeDialog(const repositories::PieceMeasuremen
 
     boardLayout->addWidget(
         new QLabel(tr("<b>Automático</b> — el cero se recalcula en cada frame:"), boardBox));
-    originBounds_ = new QRadioButton(tr("Centro de la pieza (contorno) — recomendado"), boardBox);
+    originBounds_ = new QRadioButton(tr("Centro de la pie&za (contorno) — recomendado"), boardBox);
     originBounds_->setToolTip(
         tr("Centro geométrico del contorno: el punto que se ve centrado en la pieza.\n"
            "Es el centrado automático correcto para poner el cero sobre ella."));
-    originPiece_ = new QRadioButton(tr("Centro de masa de la pieza"), boardBox);
+    originPiece_ = new QRadioButton(tr("Centro de &masa de la pieza"), boardBox);
     originPiece_->setToolTip(
         tr("Centroide de la máscara. En piezas asimétricas (una L, por ejemplo) queda\n"
            "visiblemente desplazado respecto al centro del contorno."));
-    originImage_ = new QRadioButton(tr("Centro de la imagen"), boardBox);
+    originImage_ = new QRadioButton(tr("Centro de la &imagen"), boardBox);
     originImage_->setToolTip(
         tr("El cero queda fijo en pantalla: mide cuánto se desvía la pieza del centro\n"
            "del campo de visión (para centrarla en un soporte)."));
@@ -66,7 +66,7 @@ MeasurementModeDialog::MeasurementModeDialog(const repositories::PieceMeasuremen
     boardLayout->addWidget(originImage_);
 
     boardLayout->addWidget(new QLabel(tr("<b>Manual</b>:"), boardBox));
-    originFixed_ = new QRadioButton(tr("Punto fijado a mano (se marca con un clic)"), boardBox);
+    originFixed_ = new QRadioButton(tr("Punto fi&jado a mano (se marca con un clic)"), boardBox);
     originFixed_->setToolTip(
         tr("Usa el punto que marques con Ver ▸ Origen del tablero ▸\n"
            "Punto fijado a mano… (se conserva el que ya estuviera guardado)."));

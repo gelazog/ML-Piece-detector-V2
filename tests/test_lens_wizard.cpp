@@ -149,7 +149,7 @@ TEST(LensWizard, ItRefusesToCalibrateUntilTheCornersAreCovered) {
     // leer ningún mensaje.
     QPushButton* calibrate = nullptr;
     for (auto* button : dialog.findChildren<QPushButton*>()) {
-        if (button->text() == QStringLiteral("Calibrar")) {
+        if (button->objectName() == QStringLiteral("calibrate")) {
             calibrate = button;
         }
     }
@@ -170,7 +170,7 @@ TEST(LensWizard, WithTheCornersCoveredItCalibratesAndRecoversTheLens) {
 
     QPushButton* calibrate = nullptr;
     for (auto* button : dialog.findChildren<QPushButton*>()) {
-        if (button->text() == QStringLiteral("Calibrar")) {
+        if (button->objectName() == QStringLiteral("calibrate")) {
             calibrate = button;
         }
     }
@@ -203,7 +203,7 @@ TEST(LensWizard, WithNoBoardInSightThereIsNothingToSave) {
 
     QPushButton* capture = nullptr;
     for (auto* button : dialog.findChildren<QPushButton*>()) {
-        if (button->text().startsWith(QStringLiteral("Guardar"))) {
+        if (button->objectName() == QStringLiteral("saveShot")) {
             capture = button;
         }
     }

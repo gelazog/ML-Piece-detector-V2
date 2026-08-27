@@ -73,8 +73,8 @@ HistoryDialog::HistoryDialog(repositories::InspectionRepository* inspections,
 
     auto* buttons = new QDialogButtonBox(this);
     nameButtonsInSpanish(buttons);
-    auto* exportBtn = buttons->addButton(tr("Exportar CSV…"), QDialogButtonBox::ActionRole);
-    buttons->addButton(tr("Cerrar"), QDialogButtonBox::RejectRole);
+    auto* exportBtn = buttons->addButton(tr("E&xportar CSV…"), QDialogButtonBox::ActionRole);
+    buttons->addButton(tr("&Cerrar"), QDialogButtonBox::RejectRole);
     root->addWidget(buttons);
 
     connect(pieceCombo_, &QComboBox::currentIndexChanged, this, [this] { reload(); });
@@ -182,9 +182,9 @@ void HistoryDialog::exportCsv() {
     // consulta se llevaba el historial entero de la pieza y lo titulaba turno.
     QMessageBox period(QMessageBox::Question, tr("Informe del turno"),
                        tr("¿De qué periodo?"), QMessageBox::NoButton, this);
-    auto* todayButton = period.addButton(tr("Hoy"), QMessageBox::AcceptRole);
-    auto* weekButton = period.addButton(tr("Últimos 7 días"), QMessageBox::AcceptRole);
-    auto* allButton = period.addButton(tr("Todo el historial"), QMessageBox::AcceptRole);
+    auto* todayButton = period.addButton(tr("&Hoy"), QMessageBox::AcceptRole);
+    auto* weekButton = period.addButton(tr("Últimos 7 &días"), QMessageBox::AcceptRole);
+    auto* allButton = period.addButton(tr("&Todo el historial"), QMessageBox::AcceptRole);
     period.addButton(QMessageBox::Cancel);
     period.setDefaultButton(todayButton);
     period.exec();

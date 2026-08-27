@@ -108,10 +108,12 @@ LensCalibrationDialog::LensCalibrationDialog(QWidget* parent) : QDialog(parent) 
     advice_->setStyleSheet(theme::textStyle(theme::kWarn));
     side->addWidget(advice_);
 
-    capture_ = new QPushButton(tr("Guardar esta toma"), this);
+    capture_ = new QPushButton(tr("&Guardar esta toma"), this);
+    capture_->setObjectName(QStringLiteral("saveShot"));
     capture_->setEnabled(false);
     side->addWidget(capture_);
-    forget_ = new QPushButton(tr("Empezar de nuevo"), this);
+    forget_ = new QPushButton(tr("&Empezar de nuevo"), this);
+    forget_->setObjectName(QStringLiteral("startOver"));
     side->addWidget(forget_);
     side->addStretch(1);
 
@@ -120,7 +122,8 @@ LensCalibrationDialog::LensCalibrationDialog(QWidget* parent) : QDialog(parent) 
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, this);
     nameButtonsInSpanish(buttons);
-    calibrate_ = buttons->addButton(tr("Calibrar"), QDialogButtonBox::AcceptRole);
+    calibrate_ = buttons->addButton(tr("Ca&librar"), QDialogButtonBox::AcceptRole);
+    calibrate_->setObjectName(QStringLiteral("calibrate"));
     calibrate_->setEnabled(false);
     root->addWidget(buttons);
 

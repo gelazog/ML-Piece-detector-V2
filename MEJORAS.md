@@ -141,7 +141,7 @@ Todo esto salió de una auditoría anterior y está verificado.
   Queda pendiente lo contrario: **entradas de menú útiles que no tienen atajo y
   podrían tenerlo**. Eso es añadir teclas, no arreglar un fallo, y toca decidir
   cuáles merecen una.
-- [~] **C2 · Ningún botón tenía acelerador `Alt+letra`.** Cierto, y **contado en
+- [x] **C2 · Ningún botón tenía acelerador `Alt+letra`.** Cierto, y **contado en
   el sitio equivocado**: la nota los contaba sobre la ventana principal, y ahí
   la falta no es un defecto.
 
@@ -163,8 +163,21 @@ Todo esto salió de una auditoría anterior y está verificado.
   | Historial | 2 | 0 | 1 |
   | Calibración de lente | 4 | 0 | 3 |
 
-  Hechos los dos gestores, que son donde más se teclea y además los que borran
-  cosas. Faltan los otros tres.
+  **Hechos los cinco**, 22 de 27 botones. Los cinco que quedan sin acelerador
+  son los dos modos de medición —cuyo texto viene de `domain::modeLabel`, y meter
+  marcas de interfaz en la capa de dominio sería peor que la falta— y tres del
+  cuadro de botones que no salen en todos los diálogos.
+
+  Los de «Aceptar», «Aplicar», «Cancelar»… van en `ui/dialog_buttons.cpp`, que es
+  donde ya viven sus textos: seis diálogos los usan, y una letra elegida seis
+  veces son seis ocasiones de que dos se pisen. «A&plicar» lleva la P porque la A
+  es de «Aceptar» — las dos juntas son la duda clásica de una ventana de ajustes
+  y darles la misma tecla la empeoraría.
+
+  **La guardia cazó un choque en cuanto se puso**, que es exactamente para lo que
+  está: en el calibrador de lente, Alt+C lo reclamaban «&Cancelar» —compartido— y
+  «&Calibrar» —del diálogo—. Ninguno de los dos autores podía verlo, porque cada
+  uno miraba su fichero. «Calibrar» pasó a la L.
 
   `tests/test_mnemonics.cpp` vigila lo que de verdad puede romperse: **dos
   mnemónicos iguales no dan un error, dan un ciclo**. Alt+E deja de activar y

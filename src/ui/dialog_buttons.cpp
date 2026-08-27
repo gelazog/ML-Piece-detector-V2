@@ -14,22 +14,33 @@ struct ButtonText {
     const char* help;
 };
 
+// LOS ACELERADORES VAN AQUÍ Y NO EN CADA DIÁLOGO.
+//
+// Es el mismo motivo por el que los textos están aquí: seis diálogos usan
+// estos botones, y una letra elegida seis veces son seis ocasiones de que
+// dos se pisen. Dos mnemónicos iguales no dan un error, dan un CICLO — Qt va
+// saltando entre los candidatos en vez de activar—, y eso desde fuera se vive
+// como «a veces hace otra cosa».
+//
+// «A&plicar» lleva la P y no la A porque la A es de «Aceptar», que es el que
+// se pulsa siempre. Las dos juntas son además la duda clásica de cualquier
+// ventana de ajustes, y darles la misma tecla la empeoraría.
 const ButtonText kTexts[] = {
-    {QDialogButtonBox::Ok, "Aceptar",
+    {QDialogButtonBox::Ok, "&Aceptar",
      "Guarda los cambios y cierra la ventana."},
-    {QDialogButtonBox::Apply, "Aplicar",
+    {QDialogButtonBox::Apply, "A&plicar",
      "Guarda los cambios y DEJA LA VENTANA ABIERTA, para seguir probando.\n\n"
      "Es la diferencia con Aceptar, que guarda y cierra."},
-    {QDialogButtonBox::Cancel, "Cancelar",
+    {QDialogButtonBox::Cancel, "&Cancelar",
      "Cierra sin guardar. Lo que hubieras cambiado se descarta."},
-    {QDialogButtonBox::Close, "Cerrar",
+    {QDialogButtonBox::Close, "C&errar",
      "Cierra la ventana. Lo que ya hayas aplicado se queda aplicado."},
-    {QDialogButtonBox::RestoreDefaults, "Valores de fábrica",
+    {QDialogButtonBox::RestoreDefaults, "Valores de &fábrica",
      "Devuelve a los valores de fábrica lo que se ve en esta pestaña.\n\n"
      "No toca las demás pestañas ni las piezas registradas."},
-    {QDialogButtonBox::Save, "Guardar", "Guarda los cambios."},
-    {QDialogButtonBox::Discard, "Descartar", "Tira los cambios sin guardarlos."},
-    {QDialogButtonBox::Yes, "Sí", "Confirma y sigue adelante."},
+    {QDialogButtonBox::Save, "&Guardar", "Guarda los cambios."},
+    {QDialogButtonBox::Discard, "&Descartar", "Tira los cambios sin guardarlos."},
+    {QDialogButtonBox::Yes, "&Sí", "Confirma y sigue adelante."},
     {QDialogButtonBox::No, "No", "No sigue adelante."},
     {QDialogButtonBox::Reset, "Restablecer",
      "Vuelve a poner los valores que había al abrir la ventana."},

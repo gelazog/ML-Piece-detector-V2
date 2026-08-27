@@ -172,6 +172,6 @@ TEST(Mnemonics, TheDialogsAreWhereAltLetterWouldEarnItsPlace) {
     // Un trinquete al revés que los demás: aquí lo que no puede es BAJAR. Los
     // dos gestores están hechos —donde más se teclea, porque son los que borran
     // cosas— y los otros tres van cuando toque.
-    EXPECT_GE(covered, 10) << "se han perdido aceleradores de los diálogos que ya los "
+    EXPECT_GE(covered, 22) << "se han perdido aceleradores de los diálogos que ya los "
                               "tenían";
 }
