@@ -271,12 +271,11 @@ TEST(SelfExplaining, TheClippingCheckIsReachableAndExplainsItself) {
     pci::ui::ConfigureDialog dialog(inputs, nullptr);
     dialog.resize(900, 700);
 
-    QAbstractButton* check = nullptr;
-    for (auto* candidate : dialog.findChildren<QAbstractButton*>()) {
-        if (candidate->text().contains(QStringLiteral("cortando"))) {
-            check = candidate;
-        }
-    }
+    // Por NOMBRE de objeto y no por texto. Buscarlo por lo que decía ataba esta
+    // prueba a la redacción exacta, y se rompió al acortar la etiqueta — que era
+    // justo lo que se había pedido: el botón se llamaba «¿Está el umbral
+    // cortando la pieza?», que es una pregunta, y un botón no se contesta.
+    auto* check = dialog.findChild<QAbstractButton*>(QStringLiteral("clipCheckButton"));
     ASSERT_NE(check, nullptr)
         << "no hay forma de pedir la comprobación de corte desde Configurar";
     const QString help = check->toolTip();

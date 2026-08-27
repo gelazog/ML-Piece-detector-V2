@@ -73,16 +73,16 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     // en que se hacen: cómo se separa la pieza, dónde se pone el corte, cómo se
     // arregla la silueta que sale, y qué cuenta como pieza. El propio fichero ya
     // decía en otro sitio que agrupar era lo que resolvía este problema.
-    auto* separateBox = new QGroupBox(tr("Cómo se separa la pieza del fondo"), this);
+    auto* separateBox = new QGroupBox(tr("Separación"), this);
     auto* separateForm = new QFormLayout(separateBox);
 
-    auto* cutBox = new QGroupBox(tr("Dónde se pone el corte de gris"), this);
+    auto* cutBox = new QGroupBox(tr("Umbral"), this);
     auto* cutForm = new QFormLayout(cutBox);
 
-    auto* shapeBox = new QGroupBox(tr("Corregir la silueta que sale"), this);
+    auto* shapeBox = new QGroupBox(tr("Silueta"), this);
     auto* shapeForm = new QFormLayout(shapeBox);
 
-    auto* pieceBox = new QGroupBox(tr("Qué cuenta como pieza"), this);
+    auto* pieceBox = new QGroupBox(tr("Tamaño y precisión"), this);
     auto* pieceForm = new QFormLayout(pieceBox);
 
     autoThreshold_ = new QCheckBox(tr("Automático (Otsu)"), this);
@@ -112,6 +112,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     // El aviso va JUSTO ENCIMA del selector de metodo, no al final de la
     // pestaña: un consejo lejos del control que hay que tocar obliga a buscarlo.
     sceneHint_ = new QLabel(this);
+    sceneHint_->setObjectName(QStringLiteral("sceneHint"));
     sceneHint_->setWordWrap(true);
     sceneHint_->setVisible(false);
     separateForm->addRow(sceneHint_);
@@ -128,11 +129,13 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     // silueta que sale no es la que se ve, y el operador no puede adivinar por
     // qué.
     colourHint_ = new QLabel(this);
+    colourHint_->setObjectName(QStringLiteral("colourHint"));
     colourHint_->setWordWrap(true);
     colourHint_->setVisible(false);
     separateForm->addRow(colourHint_);
 
-    useColourButton_ = new QPushButton(tr("Separar por el color del fondo"), this);
+    useColourButton_ = new QPushButton(tr("Usar el color"), this);
+    useColourButton_->setObjectName(QStringLiteral("useColourButton"));
     useColourButton_->setToolTip(
         tr("Enciende la clave de color de fondo con el color que la aplicación\n"
            "acaba de medir en tu mesa.\n"
@@ -143,7 +146,8 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     useColourButton_->setVisible(false);
     useColourButton_->setAutoDefault(false);
     separateForm->addRow(useColourButton_);
-    useEdgesButton_ = new QPushButton(tr("Cambiar a «por el canto»"), this);
+    useEdgesButton_ = new QPushButton(tr("Usar el canto"), this);
+    useEdgesButton_->setObjectName(QStringLiteral("useEdgesButton"));
     useEdgesButton_->setToolTip(
         tr("Pasa a separar la pieza por su CANTO en vez de por el nivel de gris.\n\n"
            "Aparece solo cuando el programa ha mirado la imagen y ha visto que\n"
@@ -165,7 +169,8 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     // Va a petición y no continuo porque cuesta dos análisis completos: 60 ms
     // con cien piezas. Hacerlo por fotograma para responder casi siempre «no
     // pasa nada» sería pagar mucho por poco.
-    clipCheckButton_ = new QPushButton(tr("¿Está el umbral cortando la pieza?"), this);
+    clipCheckButton_ = new QPushButton(tr("Comprobar el corte"), this);
+    clipCheckButton_->setObjectName(QStringLiteral("clipCheckButton"));
     clipCheckButton_->setToolTip(
         tr("Afloja el umbral unos niveles y mira cuánta pieza aparece.\n\n"
            "Si aparece mucha, es que el corte cae DENTRO de la pieza y no en su\n"
@@ -193,7 +198,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     // en el mosaico.
     //
     // Nace apagado y está medido por qué: no gana siempre.
-    splitTouching_ = new QCheckBox(tr("Separar las piezas que se tocan"), this);
+    splitTouching_ = new QCheckBox(tr("Separar piezas que se tocan"), this);
     splitTouching_->setToolTip(
         tr("Cuando dos piezas se rozan, el contorno exterior las devuelve como\n"
            "UNA. Con esto, cada mancha se mira por dentro: se busca el «corazón»\n"
@@ -217,7 +222,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     // afecta a la medición y la forma en que toma los bordes». Va justo debajo
     // de la otra corrección de contorno porque las dos responden a lo mismo —la
     // silueta no es la que se ve— y separarlas obligaría a buscar en dos sitios.
-    recoverGlare_ = new QCheckBox(tr("Recuperar lo que el brillo se lleva"), this);
+    recoverGlare_ = new QCheckBox(tr("Recuperar zonas con brillo"), this);
     recoverGlare_->setToolTip(
         tr("El reflejo de una pieza metálica sube hasta el nivel del fondo, el\n"
            "corte de gris lo deja fuera, y la pieza sale MORDIDA o partida en\n"
@@ -248,9 +253,10 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     // Va aquí, junto a las otras dos correcciones de contorno, porque las tres
     // responden a lo mismo: la silueta que sale no es la que se ve.
     backgroundKey_ = new QComboBox(this);
-    backgroundKey_->addItem(tr("No: separar por claridad (lo habitual)"));
-    backgroundKey_->addItem(tr("Sí, y el color del fondo lo busca solo"));
-    backgroundKey_->addItem(tr("Sí, y el color del fondo lo digo yo"));
+    backgroundKey_->setObjectName(QStringLiteral("backgroundKey"));
+    backgroundKey_->addItem(tr("Claridad (lo habitual)"));
+    backgroundKey_->addItem(tr("Color, detectado solo"));
+    backgroundKey_->addItem(tr("Color, lo elijo yo"));
     backgroundKey_->setToolTip(
         tr("Separa la pieza por lo distinto que es su COLOR del color del fondo,\n"
            "en vez de por lo claro u oscuro que sea.\n"
@@ -274,7 +280,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "quieres que no dependa de lo que haya en la escena.\n"
            "\n"
            "Nace apagado porque cambia lo que se mide."));
-    separateForm->addRow(tr("Clave de color de fondo"), backgroundKey_);
+    separateForm->addRow(tr("Distinguir por:"), backgroundKey_);
 
     backgroundColour_ = new QPushButton(this);
     backgroundColour_->setToolTip(
@@ -306,8 +312,8 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
                                   vision::SegmentationOptions::BackgroundKey::Fixed);
 
     method_ = new QComboBox(this);
-    method_->addItem(tr("Por nivel de gris (lo habitual)"));
-    method_->addItem(tr("Por el canto de la pieza"));
+    method_->addItem(tr("Nivel de gris (lo habitual)"));
+    method_->addItem(tr("Canto de la pieza"));
     method_->setCurrentIndex(static_cast<int>(current.method));
     splitTouching_->setChecked(current.splitTouchingPieces);
     recoverGlare_->setChecked(current.recoverHighlightsBy > 0);
@@ -334,10 +340,10 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "piezas, con tres fundidas por puentes de sombra; por el canto salen\n"
            "las siete enteras. En una pieza oscura sobre fondo claro es al revés,\n"
            "así que no es «mejor»: es para otra escena."));
-    separateForm->addRow(tr("Cómo separar la pieza:"), method_);
+    separateForm->addRow(tr("Método:"), method_);
 
     polarity_ = new QComboBox(this);
-    polarity_->addItem(tr("Automática (el fondo domina el borde)"));
+    polarity_->addItem(tr("Automática"));
     polarity_->addItem(tr("Pieza oscura sobre fondo claro"));
     polarity_->addItem(tr("Pieza clara sobre fondo oscuro"));
     polarity_->setCurrentIndex(static_cast<int>(current.polarity));
@@ -381,7 +387,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
         tr("Por debajo de esta fracción de la imagen, una mancha no es una pieza.\n"
            "Por defecto 0,50 %. Bájalo si tus piezas son pequeñas y no se detectan;\n"
            "súbelo si se cuela ruido."));
-    pieceForm->addRow(tr("Área mínima de pieza:"), minArea_);
+    pieceForm->addRow(tr("Área mínima:"), minArea_);
 
     maxArea_ = new QDoubleSpinBox(this);
     maxArea_->setRange(10.0, 100.0);
@@ -393,7 +399,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
         tr("Por encima de esta fracción se considera que la segmentación falló\n"
            "(la luz marcó toda la imagen) en vez de que la pieza sea enorme.\n"
            "Por defecto 90 %."));
-    pieceForm->addRow(tr("Área máxima de pieza:"), maxArea_);
+    pieceForm->addRow(tr("Área máxima:"), maxArea_);
 
     // Afinado subpíxel del borde.
     //

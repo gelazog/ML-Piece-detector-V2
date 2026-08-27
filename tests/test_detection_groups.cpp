@@ -75,16 +75,14 @@ TEST(DetectionGroups, TheColourAdviceSitsWithTheControlItTalksAbout) {
     QGroupBox* withAdvice = nullptr;
     QGroupBox* withControl = nullptr;
     for (auto* box : page->findChildren<QGroupBox*>()) {
-        for (auto* button : box->findChildren<QPushButton*>()) {
-            if (button->text().contains(QStringLiteral("color del fondo"))) {
-                withAdvice = box;
-            }
+        // Por NOMBRE de objeto y no por texto: buscar por lo que dicen ataba
+        // esta prueba a la redacción exacta, y se rompió al acortar las
+        // etiquetas — que era precisamente lo que se había pedido.
+        if (box->findChild<QPushButton*>(QStringLiteral("useColourButton")) != nullptr) {
+            withAdvice = box;
         }
-        for (auto* combo : box->findChildren<QComboBox*>()) {
-            if (combo->count() == 3 &&
-                combo->itemText(0).contains(QStringLiteral("claridad"))) {
-                withControl = box;
-            }
+        if (box->findChild<QComboBox*>(QStringLiteral("backgroundKey")) != nullptr) {
+            withControl = box;
         }
     }
     ASSERT_NE(withAdvice, nullptr) << "no se encuentra el botón de la sugerencia de color";

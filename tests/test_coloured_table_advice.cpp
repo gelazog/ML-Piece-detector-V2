@@ -22,24 +22,16 @@ using namespace pci;
 
 namespace {
 
-// El aviso y su botón, buscados por lo que dicen y no por su nombre de
-// variable: lo que se comprueba es lo que el operador ve.
+// Por NOMBRE y no por texto. Buscarlos por lo que dicen ataba estas pruebas a
+// la redacción exacta de la etiqueta, y al acortarlas —que era lo que se
+// pedía— se rompieron. Una prueba que se rompe al reescribir una etiqueta
+// desanima a reescribir etiquetas.
 QLabel* colourHintOf(const ui::DetectionPage& page) {
-    for (auto* label : page.findChildren<QLabel*>()) {
-        if (label->text().contains(QStringLiteral("Tu mesa tiene color"))) {
-            return label;
-        }
-    }
-    return nullptr;
+    return page.findChild<QLabel*>(QStringLiteral("colourHint"));
 }
 
 QPushButton* colourButtonOf(const ui::DetectionPage& page) {
-    for (auto* button : page.findChildren<QPushButton*>()) {
-        if (button->text().contains(QStringLiteral("color del fondo"))) {
-            return button;
-        }
-    }
-    return nullptr;
+    return page.findChild<QPushButton*>(QStringLiteral("useColourButton"));
 }
 
 }  // namespace
@@ -76,7 +68,8 @@ TEST(ColouredTableAdvice, AWhiteTableIsLeftAlone) {
     page.setBackgroundColour(cv::Vec3b(248, 244, 243));
 
     auto* hint = colourHintOf(page);
-    const bool showing = hint != nullptr && hint->isVisibleTo(&page);
+    const bool showing = hint != nullptr && !hint->text().isEmpty() &&
+                         hint->isVisibleTo(&page);
     std::printf("  [mesa] blanca -> %s\n", showing ? "AVISA (mal)" : "se calla");
     EXPECT_FALSE(showing)
         << "sobre una mesa blanca sale el aviso de color. Un aviso que aparece en todas "
@@ -92,7 +85,8 @@ TEST(ColouredTableAdvice, ItStopsNaggingOnceTheKeyIsOn) {
     page.setBackgroundColour(cv::Vec3b(77, 63, 238));
 
     auto* hint = colourHintOf(page);
-    const bool showing = hint != nullptr && hint->isVisibleTo(&page);
+    const bool showing = hint != nullptr && !hint->text().isEmpty() &&
+                         hint->isVisibleTo(&page);
     std::printf("  [mesa] roja con la clave YA encendida -> %s\n",
                 showing ? "sigue avisando (mal)" : "se calla");
     EXPECT_FALSE(showing) << "sigue aconsejando encender algo que ya está encendido";
