@@ -57,6 +57,7 @@
 #include "ui/camera_image_page.h"
 #include "ui/configure_dialog.h"
 #include "ui/delete_scope.h"
+#include "ui/background_patch_dialog.h"
 #include "ui/detection_page.h"
 #include "ui/inspection_result_dialog.h"
 #include "ui/history_dialog.h"
@@ -6420,6 +6421,24 @@ void MainWindow::onConfigureClicked() {
             }
             detection->setClippingCheck(
                 vision::checkThresholdClipping(camera::qImageToMat(frame)));
+        });
+        // SEÑALAR EL FONDO EN LA IMAGEN, por lo mismo: la imagen está aquí.
+        //
+        // Y si no hay ninguna se cae a la rueda de colores en vez de no hacer
+        // nada. Un botón que a veces no responde y no dice por qué se lee como
+        // que el programa está roto.
+        connect(detection, &DetectionPage::backgroundPatchRequested, this, [this, detection] {
+            const QImage frame = frameOrFile();
+            if (frame.isNull()) {
+                statusBar()->showMessage(
+                    tr("Sin imagen no se puede señalar el fondo: se elige el color a mano."));
+                detection->pickBackgroundByWheel();
+                return;
+            }
+            BackgroundPatchDialog picker(camera::qImageToMat(frame), detection->options(), this);
+            if (picker.exec() == QDialog::Accepted && picker.sample().valid) {
+                detection->setChosenBackground(picker.sample().colour);
+            }
         });
     }
     connect(dialog, &ConfigureDialog::scaleWizardRequested, this,

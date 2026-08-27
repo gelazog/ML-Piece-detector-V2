@@ -2503,8 +2503,59 @@ El color del fondo se estima con la **mediana** del marco, no con la media ni co
 un percentil: en la bandeja de cien tuercas las piezas tocan el borde, y la
 mediana sale (248,244,243) —blanco, correcto— mientras cualquier estadístico que
 mire la cola se contamina. Aguanta mientras menos de la mitad del borde sea
-pieza. Y se puede **declarar** desde la pestaña *Detección*, que es lo sensato en
+pieza. Y se puede **señalar** desde la pestaña *Detección*, que es lo sensato en
 un puesto fijo.
+
+#### Señalar el fondo en la imagen
+
+`ui/background_patch_dialog.h`. El operador arrastra un recuadro sobre un trozo
+de mesa vacío y `vision::sampleBackground` devuelve la **mediana** del parche.
+
+Sustituye a la rueda de colores de Qt, que era la única forma de «decírselo tú» y
+no servía: pedía un RGB que nadie sabe de su propia mesa. Medido sobre el cartón
+rojo, señalar la mesa da **12 piezas / 23,9 %** frente a **11 / 22,9 %** con la
+mediana del marco.
+
+**La vista previa corre la segmentación de verdad**, con los ajustes que están
+puestos, y pinta encima lo que saldría. Podría enseñarse «lo que se parece al
+color elegido» con un umbral inventado en la ventana —más rápido y más bonito—,
+pero entonces la ventana enseñaría una cosa y el programa haría otra, que es
+exactamente el fallo que la ventana viene a evitar. Hay una prueba que compara
+los dos números.
+
+**Por qué hace falta enseñarlo.** Un recuadro que cae encima de una arandela en
+vez de sobre la mesa deja la escena **del revés**: cero piezas y el 87,8 % del
+cuadro marcado. No da ningún error — da detecciones peores durante meses.
+
+`BackgroundSample` trae también la **dispersión** del parche: el p95 de la
+distancia Lab de sus píxeles a su propia mediana. Barriendo el banco de fotos
+entero con recuadros de 64x64:
+
+| parche | dispersión |
+|---|---|
+| mesa de estudio, blanca y plana | 0 |
+| cartón rojo real, con su veta | 4 |
+| cualquiera que pilla pieza | 45 en adelante |
+| bandeja de cien tuercas, **el mejor de todos** | 143 |
+
+El corte en 25 no es delicado: hay un factor de diez entre los dos grupos. La
+última fila es la que hay que enseñar — en esa foto las piezas llegan a los
+cuatro bordes y **no existe ningún parche de fondo**, así que lo honrado es
+decirlo y no dejar señalar tuercas creyendo que se señala mesa.
+
+**Lo que se probó con la dispersión y se descartó.** La idea era restarla de la
+distancia al fondo, para que la veta de la mesa colapsara a cero. Medido sobre
+`arandelas-1` con cinco parches distintos y el pipeline entero: cuando el parche
+es fondo de verdad la dispersión es pequeña y no cambia nada (23,9 % → 23,7 %);
+cuando no lo es, restarla borra la escena (23,8 % → **2,2 %**). Una pieza de
+maquinaria que en el mejor caso no hace nada y en el peor apaga la detección no
+se queda «por si acaso». Si algún día aparece una mesa con veta de verdad
+—madera, un tapete impreso— se mide entonces.
+
+La dispersión se calcula con `distanceToBackground` sobre el propio parche, y no
+con una fórmula parecida escrita al lado: dos definiciones de «lo lejos que está
+esto del fondo» acabarían discrepando, y la que avisa dejaría de hablar de lo que
+va a pasar.
 
 Nace apagada, como todo lo que mueve una medida. Hay una prueba que comprueba que
 con la clave apagada pasar la foto en color y en gris da exactamente la misma

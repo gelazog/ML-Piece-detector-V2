@@ -283,21 +283,27 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     separateForm->addRow(tr("Distinguir por:"), backgroundKey_);
 
     backgroundColour_ = new QPushButton(this);
+    backgroundColour_->setObjectName(QStringLiteral("backgroundColour"));
     backgroundColour_->setToolTip(
-        tr("El color exacto del fondo del puesto. Solo se usa con «lo digo yo»."));
+        tr("Abre la imagen para que señales un trozo de mesa vacío y tome de ahí el\n"
+           "color del fondo. Solo se usa con «lo elijo yo».\n"
+           "\n"
+           "Antes esto abría la rueda de colores, y ahí hay que ADIVINAR el color de\n"
+           "la propia mesa: nadie sabe de memoria el rojo de su cartón. El color está\n"
+           "delante, en la foto — lo que faltaba era poder apuntarlo.\n"
+           "\n"
+           "La ventana enseña, con cada recuadro, qué piezas saldrían. Elegir mal no\n"
+           "da un error: da una detección peor, y meses después."));
     separateForm->addRow(QString(), backgroundColour_);
     connect(backgroundKey_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this](int index) {
                 backgroundColour_->setEnabled(index == 2);
             });
-    connect(backgroundColour_, &QPushButton::clicked, this, [this] {
-        const QColor chosen = QColorDialog::getColor(background_, this,
-                                                     tr("Color del fondo del puesto"));
-        if (chosen.isValid()) {
-            background_ = chosen;
-            paintBackgroundSwatch();
-        }
-    });
+    // La imagen la tiene la ventana, no el formulario — igual que la
+    // comprobación de corte. Si no hay ninguna, la ventana llama de vuelta a
+    // `pickBackgroundByWheel()` y se cae a la rueda de colores de siempre.
+    connect(backgroundColour_, &QPushButton::clicked, this,
+            &DetectionPage::backgroundPatchRequested);
     // Y SE PARTE DE LO QUE ENTRA, no de un blanco fijo.
     //
     // La primera versión ponía aquí blanco y «no» a pelo, sin mirar los ajustes
@@ -738,6 +744,27 @@ vision::SegmentationOptions DetectionPage::options() const {
 
 bool DetectionPage::subpixelEdges() const {
     return subpixel_ != nullptr && subpixel_->isChecked();
+}
+
+void DetectionPage::setChosenBackground(const cv::Vec3b& background) {
+    background_ = QColor(background[2], background[1], background[0]);
+    paintBackgroundSwatch();
+    // Y SE ENCIENDE LA CLAVE, porque señalar un fondo es pedirla.
+    //
+    // Sin esto, el operador señala su mesa roja, ve la vista previa con sus
+    // arandelas en verde, acepta — y no cambia nada, porque el desplegable
+    // seguía en «Claridad». El color se habría guardado para no usarse.
+    backgroundKey_->setCurrentIndex(
+        static_cast<int>(vision::SegmentationOptions::BackgroundKey::Fixed));
+}
+
+void DetectionPage::pickBackgroundByWheel() {
+    const QColor chosen =
+        QColorDialog::getColor(background_, this, tr("Color del fondo del puesto"));
+    if (chosen.isValid()) {
+        background_ = chosen;
+        paintBackgroundSwatch();
+    }
 }
 
 }  // namespace pci::ui

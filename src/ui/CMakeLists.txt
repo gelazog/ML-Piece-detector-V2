@@ -4,6 +4,7 @@ add_library(pci_ui STATIC
   camera_image_page.cpp
   capture_tray.cpp
   configure_dialog.cpp
+  background_patch_dialog.cpp
   detection_page.cpp
   dialog_geometry.cpp
   history_dialog.cpp

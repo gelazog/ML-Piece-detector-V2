@@ -23,6 +23,7 @@ add_executable(pci_tests
   test_detection_profiles.cpp
   test_calibration_trace.cpp
   test_auto_zone_hides_pieces.cpp
+  test_background_patch.cpp
   test_domain.cpp
   test_units.cpp
   test_synthetic_measures.cpp
@@ -95,6 +96,7 @@ gtest_discover_tests(pci_tests DISCOVERY_MODE PRE_TEST)
 add_executable(pci_gui_tests
   test_canvas_gestures.cpp
   test_default_buttons.cpp
+  test_background_patch_window.cpp
   test_coloured_table_advice.cpp
   test_detection_groups.cpp
   test_same_detection_everywhere.cpp

@@ -127,11 +127,31 @@ public:
     // control que hay que tocar obliga a buscarlo.
     void setClippingCheck(const vision::ClippingCheck& check);
 
+    // EL COLOR DEL FONDO, YA ELEGIDO SEÑALÁNDOLO EN LA IMAGEN.
+    //
+    // Lo llama la ventana cuando el operador acepta la ventana de señalar. La
+    // página no ve la imagen; solo recibe el color y lo enseña.
+    void setChosenBackground(const cv::Vec3b& background);
+
+    // LA RUEDA DE COLORES, QUE AHORA ES EL PLAN B.
+    //
+    // Señalar el fondo en la imagen necesita una imagen. Mientras se monta la
+    // estación —cámara aún sin llegar, o un puesto que se configura desde otro
+    // PC— no la hay, y sin esto no habría forma ninguna de decir el color.
+    //
+    // La llama la ventana, que es quien sabe si hay imagen. Vive aquí porque
+    // aquí vive el color.
+    void pickBackgroundByWheel();
+
 signals:
     // El operador pide la comprobación. La ventana la hace, porque cuesta dos
     // análisis completos —60 ms con cien piezas— y esta página no tiene la
     // imagen.
     void clippingCheckRequested();
+
+    // El operador quiere señalar el fondo en la imagen. Igual que arriba: la
+    // imagen la tiene la ventana, no el formulario.
+    void backgroundPatchRequested();
 
 public:
     QSpinBox* blur_ = nullptr;

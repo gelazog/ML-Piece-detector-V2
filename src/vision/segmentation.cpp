@@ -174,6 +174,71 @@ cv::Mat distanceToBackground(const cv::Mat& bgr, const cv::Vec3b& background) {
     return distance;
 }
 
+BackgroundSample sampleBackground(const cv::Mat& image, const cv::Rect& patch) {
+    BackgroundSample sample;
+    if (image.empty()) {
+        return sample;
+    }
+    cv::Mat bgr;
+    if (image.channels() == 1) {
+        cv::cvtColor(image, bgr, cv::COLOR_GRAY2BGR);
+    } else if (image.channels() == 3) {
+        bgr = image;
+    } else {
+        return sample;
+    }
+    // El parche se RECORTA a la imagen en vez de rechazarse. Quien arrastra un
+    // rectángulo hasta el borde se pasa siempre, y perder la selección entera
+    // por eso sería castigar el gesto normal.
+    const cv::Rect inside = patch & cv::Rect(0, 0, bgr.cols, bgr.rows);
+    // Menos de esto no es una muestra de nada: un p95 sobre veinte píxeles es
+    // el segundo más alto de veinte, y con eso no se habla de una mesa entera.
+    constexpr int kEnoughPixels = 64;
+    if (inside.area() < kEnoughPixels) {
+        return sample;
+    }
+
+    const cv::Mat region = bgr(inside);
+    std::array<std::vector<unsigned char>, 3> channels;
+    for (auto& channel : channels) {
+        channel.reserve(static_cast<std::size_t>(region.total()));
+    }
+    for (int y = 0; y < region.rows; ++y) {
+        const auto* row = region.ptr<cv::Vec3b>(y);
+        for (int x = 0; x < region.cols; ++x) {
+            for (int c = 0; c < 3; ++c) {
+                channels[static_cast<std::size_t>(c)].push_back(row[x][c]);
+            }
+        }
+    }
+    for (int c = 0; c < 3; ++c) {
+        auto& values = channels[static_cast<std::size_t>(c)];
+        const auto middle = values.begin() + static_cast<std::ptrdiff_t>(values.size() / 2);
+        std::nth_element(values.begin(), middle, values.end());
+        sample.colour[c] = *middle;
+    }
+
+    // Y la dispersión se mide con la MISMA distancia que usa la segmentación
+    // —`distanceToBackground` sobre el propio parche—, no con una fórmula
+    // parecida escrita aquí al lado. Dos definiciones de «lo lejos que está
+    // esto del fondo» acabarían discrepando el día que se toque una, y la que
+    // avisa dejaría de hablar de lo que de verdad va a pasar.
+    const cv::Mat distance = distanceToBackground(region, sample.colour);
+    std::vector<unsigned char> spread;
+    spread.reserve(static_cast<std::size_t>(distance.total()));
+    for (int y = 0; y < distance.rows; ++y) {
+        const auto* row = distance.ptr<unsigned char>(y);
+        spread.insert(spread.end(), row, row + distance.cols);
+    }
+    const auto at95 =
+        spread.begin() + static_cast<std::ptrdiff_t>(spread.size() * 95 / 100);
+    std::nth_element(spread.begin(), at95, spread.end());
+    sample.spread = static_cast<double>(*at95);
+    sample.looksUniform = sample.spread <= kBackgroundPatchIsUniform;
+    sample.valid = true;
+    return sample;
+}
+
 core::Result<cv::Mat> segmentPiece(const cv::Mat& image, const SegmentationOptions& options) {
     if (image.empty()) {
         return core::Result<cv::Mat>::err("Imagen vacía");

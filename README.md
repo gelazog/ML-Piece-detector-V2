@@ -873,8 +873,33 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
 
    El color del fondo puede **buscarlo solo** (toma la mediana del marco de la
    imagen, que es fondo casi siempre — aguanta aunque haya piezas tocando el
-   borde) o puedes **decírselo tú** con un selector de color, que es lo sensato
-   si el puesto siempre tiene la misma mesa.
+   borde) o puedes **señalarlo tú en la imagen**, que es lo sensato si el puesto
+   siempre tiene la misma mesa.
+
+   **Señalar el fondo.** Con «Color, lo elijo yo» el botón de debajo abre la
+   imagen: arrastras un recuadro sobre un trozo de mesa **vacío** y de ahí sale
+   el color. Antes esto abría la rueda de colores de Windows, y ahí hay que
+   *adivinar* el rojo del propio cartón — que no se sabe de memoria. El color
+   está delante, en la foto.
+
+   Sobre la foto del cartón rojo, señalar la mesa da **12 piezas y el 23,9 %**
+   del cuadro, frente a **11 y el 22,9 %** con la mediana del marco.
+
+   La ventana enseña, con cada recuadro, **qué piezas saldrían** — corriendo la
+   segmentación de verdad, no una aproximación bonita. Hace falta: si el
+   recuadro cae encima de una arandela en vez de sobre la mesa, la escena sale
+   **del revés** —cero piezas y el 87,8 % del cuadro marcado— y no da ningún
+   error, solo detecciones peores durante meses. Por eso además avisa antes de
+   aceptar, con la cifra: una mesa vacía **varía menos de 25** sobre sí misma; el
+   cartón rojo real da 4, y un recuadro que ha cogido pieza da 75.
+
+   Y hay escenas donde **no hay mesa que señalar**: en la bandeja de cien
+   tuercas las piezas llegan a los cuatro bordes, y el recuadro más limpio de
+   toda la imagen da 143. Ahí lo dice en vez de dejarte señalar tuercas creyendo
+   que señalas mesa.
+
+   Si no hay imagen —cámara aún sin llegar, puesto que se configura desde otro
+   PC— el botón cae a la rueda de colores de siempre.
 
    **Sobre fondo blanco no cambia nada** y eso está comprobado: el engranaje, el
    cáncamo y la bandeja de cien tuercas dan las mismas piezas por los dos

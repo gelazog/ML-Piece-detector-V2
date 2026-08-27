@@ -175,6 +175,68 @@ struct SegmentationOptions {
 // cuánto más lejos esté.
 [[nodiscard]] cv::Mat distanceToBackground(const cv::Mat& bgr, const cv::Vec3b& background);
 
+// LO QUE UN PARCHE DE FONDO DICE DE SÍ MISMO.
+//
+// Petición del taller: «lo del color de fondo, al momento de seleccionarlo, el
+// usuario debería poder recortar o seleccionar un área del fondo por la
+// textura, y la descarte, para poder tomar las piezas correctamente».
+//
+// Las dos formas que había de decir cuál es el fondo fallan por sitios
+// distintos, y las dos fallan:
+//
+//     la mediana del marco   se contamina cuando la pieza llega al borde
+//     el selector de color   pide un RGB que nadie sabe de su propia mesa
+//
+// Señalar un trozo de mesa es lo único que un operador puede hacer sin saber
+// nada de ninguna de las dos cosas.
+//
+// Devuelve el color —la mediana del parche— y CUÁNTO VARÍA ese parche consigo
+// mismo: el p95 de la distancia Lab de sus píxeles a esa mediana. El p95 y no
+// el máximo porque una mota de suciedad no puede hablar por toda la mesa.
+//
+// LA DISPERSIÓN NO SE RESTA DE NADA, y esto se probó antes de decidirlo.
+//
+// La idea era descontarla de la distancia al fondo para que la veta de la mesa
+// colapsara a cero. Medido sobre `arandelas-1` con el pipeline entero, cinco
+// parches distintos:
+//
+//     parche             tolerancia   restando 0        restando la tolerancia
+//     cuadro limpio          5        12 piezas 23,9 %   12 piezas 23,7 %
+//     franja izquierda      13        11 piezas 22,5 %   11 piezas 22,1 %
+//     franja de abajo        9        11 piezas 21,8 %   11 piezas 21,7 %
+//     franja de arriba     110        12 piezas 23,8 %    1 pieza    2,2 %
+//     el marco entero      104        11 piezas 22,9 %    1 pieza    4,5 %
+//
+// Cuando el parche es fondo de verdad la tolerancia es pequeña y no cambia
+// nada; cuando no lo es, restarla borra la escena. Una pieza de maquinaria que
+// en el mejor caso no hace nada y en el peor apaga la detección no se queda
+// «por si acaso»: si algún día aparece una mesa con veta de verdad —madera, un
+// tapete impreso—, se mide entonces y se decide con números.
+//
+// LO QUE SÍ HACE LA DISPERSIÓN ES AVISAR, que es donde estaba el valor.
+// `looksUniform` dice si lo señalado parece fondo. Barriendo el banco de fotos
+// entero con parches de 64x64:
+//
+//     mesa de estudio, blanca y plana       0,0
+//     cartón rojo real, con su veta         4,2   <- el más bajo de esa foto
+//     cualquier parche que pilla pieza     45 en adelante
+//     bandeja de cien tuercas             143 EL MEJOR — no hay mesa que ver
+//
+// El hueco entre 4 y 45 es de diez veces, así que el corte en 25 no es una
+// elección delicada. Y la última línea es la que hace falta enseñar: hay
+// escenas donde no existe ningún parche de fondo, y entonces lo honrado es
+// decirlo y no dejar que el operador señale tuercas creyendo que señala mesa.
+inline constexpr double kBackgroundPatchIsUniform = 25.0;
+
+struct BackgroundSample {
+    cv::Vec3b colour{0, 0, 0};
+    double spread = 0.0;        // p95 de la distancia Lab del parche a su mediana
+    bool looksUniform = false;  // spread <= kBackgroundPatchIsUniform
+    bool valid = false;         // había parche que mirar
+};
+
+[[nodiscard]] BackgroundSample sampleBackground(const cv::Mat& image, const cv::Rect& patch);
+
 // Segmenta la pieza del fondo por umbral + morfología. Devuelve máscara
 // binaria CV_8UC1 con pieza = 255.
 core::Result<cv::Mat> segmentPiece(const cv::Mat& image,
