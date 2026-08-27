@@ -116,6 +116,45 @@ inline constexpr const char* kSurfaceSunken = "#f5f6f7";
 // Una pastilla de veredicto entera: fondo saturado, texto claro y esquinas
 // redondeadas. Existe por lo mismo que `noticeStyle`: es donde se escribían a
 // mano las parejas fondo/texto, y donde se colaban las que no contrastaban.
+// --- PASTILLAS DE ESTADO DE LA VENTANA --------------------------------------
+//
+// Distintas de las de veredicto: aquellas dicen OK/NG sobre una pieza, estas
+// dicen en qué estado está la ventana —qué pieza se mide, en qué modo, si el
+// borde lleva una corrección a mano—. Tienen dos posiciones: EN REPOSO, que es
+// lo que la aplicación hace por su cuenta, y ELEGIDA, que es cuando el operador
+// ha tocado algo. La segunda destaca porque destacar significa «esto lo has
+// decidido tú».
+//
+// Salen de recoger una deriva pillada en el acto. Tres pastillas escritas en
+// tres sitios usaban DOS azules casi iguales para el mismo significado —#7fd1ff
+// y #7fd6ff— y DOS tintas oscuras casi iguales encima —#08243a y #0b2a35—.
+// Nadie eligió tener dos: se copió el estilo, se tecleó de memoria, y la copia
+// salió una cifra distinta.
+//
+// Aquí el problema no era el contraste —los dos pares pasan de sobra, 8,4:1 el
+// de reposo y 9,3:1 el elegido— sino que un significado tuviera dos colores. Es
+// el mismo desorden que motivó la paleta entera, en pequeño.
+inline constexpr const char* kChipRest = "#3a3a3a";
+inline constexpr const char* kInkOnChipRest = "#dddddd";  // 8,37:1 sobre kChipRest
+inline constexpr const char* kChipChosen = "#7fd6ff";
+inline constexpr const char* kInkOnChipChosen = "#0b2a35";  // 9,28:1 sobre kChipChosen
+// Y el verde, que NO es otra pastilla elegida: dice que hay una corrección a
+// mano encima del borde. Es un estado distinto y por eso lleva otro color.
+inline constexpr const char* kChipEdited = "#8ce99a";
+
+// La pastilla en reposo: la aplicación decide, y no llama la atención.
+[[nodiscard]] inline QString chipRestStyle() {
+    return QStringLiteral("color:%1; background:%2; border-radius:8px; padding:1px 6px;")
+        .arg(QString(kInkOnChipRest), QString(kChipRest));
+}
+
+// La pastilla elegida: lo ha decidido el operador, y se ve.
+[[nodiscard]] inline QString chipChosenStyle(const char* background = kChipChosen) {
+    return QStringLiteral("color:%1; background:%2; border-radius:8px; padding:1px 6px;"
+                          " font-weight:bold;")
+        .arg(QString(kInkOnChipChosen), QString(background));
+}
+
 // EL HUECO DE «AQUÍ TODAVÍA NO HAY IMAGEN».
 //
 // Estaba escrito TRES veces, idéntico, en el informe de inspección, la ventana

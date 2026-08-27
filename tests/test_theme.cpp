@@ -156,6 +156,43 @@ TEST(Theme, EveryVerdictChipCanBeReadAgainstItsOwnText) {
     }
 }
 
+TEST(Theme, TheWindowStateChipsAreReadableToo) {
+    // Las pastillas de ESTADO DE LA VENTANA —qué pieza se mide, en qué modo, si
+    // el borde lleva corrección— no son las de veredicto y llevan su propia
+    // tinta encima, así que necesitan su propia medida. La paleta promete que
+    // «todos están medidos» y un token sin comprobar es una promesa a medias.
+    struct Pair {
+        const char* name;
+        const char* background;
+        const char* ink;
+    };
+    const Pair pairs[] = {
+        {"en reposo", theme::kChipRest, theme::kInkOnChipRest},
+        {"elegida", theme::kChipChosen, theme::kInkOnChipChosen},
+        {"borde corregido", theme::kChipEdited, theme::kInkOnChipChosen},
+    };
+    for (const auto& pair : pairs) {
+        const double ratio = contrast(pair.background, pair.ink);
+        std::printf("  [pastilla] %-16s %s sobre %s  %5.2f:1\n", pair.name, pair.ink,
+                    pair.background, ratio);
+        EXPECT_GE(ratio, 4.5)
+            << "la pastilla «" << pair.name
+            << "» no llega al contraste mínimo contra su propio texto. Lo único que "
+               "lleva dentro es esa palabra, y es la que dice en qué estado está la "
+               "ventana.";
+    }
+
+    // Y que «en reposo» y «elegida» se distingan SIN color: la segunda existe
+    // para decir «esto lo has decidido tú», y si las dos se ven igual en una
+    // pantalla mala o para un daltónico, no dice nada.
+    const double separation = std::abs(relativeLuminance(theme::kChipRest) -
+                                       relativeLuminance(theme::kChipChosen));
+    std::printf("  [pastilla] reposo contra elegida: %.2f de luminancia\n", separation);
+    EXPECT_GT(separation, 0.30)
+        << "la pastilla en reposo y la elegida tienen casi la misma luminancia, así que "
+           "sin color no se distinguen — y destacar era todo su trabajo";
+}
+
 TEST(Theme, TheChipsAreTellableApartWithoutColourToo) {
     // El mismo criterio que ya se aplica a los tres colores de veredicto: si un
     // daltónico deutan no distingue el verde del rojo, tienen que separarse por

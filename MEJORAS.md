@@ -253,7 +253,7 @@ Todo esto salió de una auditoría anterior y está verificado.
   suelta fuera de un grupo, y que **la sugerencia y su control vivan en el mismo
   grupo**.
 - [~] **C5 · Colores escritos a mano fuera de `ui/theme.h`.** El trinquete de
-  `tests/test_palette_guard.cpp` impide que suban; van **56 -> 49 -> 41 -> 36**.
+  `tests/test_palette_guard.cpp` impide que suban; van **56 -> 49 -> 41 -> 36 -> 31**.
 
   Los cinco de esta vuelta salieron de dos grupos, no sueltos:
 
@@ -266,6 +266,11 @@ Todo esto salió de una auditoría anterior y está verificado.
     «aceptada» ya usaba `theme::kGood` y los otros dos llevaban `#ff5555` y
     `#ff9944` a mano. Un estado con token y dos sin él es como se acaba teniendo
     tres rojos distintos para «mal».
+  - Las tres pastillas de estado de la ventana —qué pieza se mide, en qué modo,
+    si el borde lleva corrección— usaban **dos azules casi iguales** para el
+    mismo significado (`#7fd1ff` y `#7fd6ff`) y **dos tintas oscuras casi
+    iguales** encima (`#08243a` y `#0b2a35`). La deriva pillada en el acto:
+    nadie eligió tener dos, se copió el estilo y la copia salió con otra cifra.
 - [~] **C8 · 36 pruebas localizan un control por su TEXTO.** Trinquete puesto en
   `tests/test_lookups_by_name.cpp`; hay que ir bajándolo.
 

@@ -5395,12 +5395,12 @@ void MainWindow::updatePieceNavigator() {
     pieceNavLabel_->setText(focusedPiece_ == 0
                                 ? tr(" pieza %1/%2 (la mayor) ").arg(shown).arg(lastPieceCount_)
                                 : tr(" pieza %1/%2 ").arg(shown).arg(lastPieceCount_));
-    pieceNavLabel_->setStyleSheet(
-        focusedPiece_ == 0
-            ? QStringLiteral("color:#ddd; background:#3a3a3a; border-radius:8px;"
-                             " padding:1px 6px;")
-            : QStringLiteral("color:#08243a; background:#7fd1ff; border-radius:8px;"
-                             " padding:1px 6px; font-weight:bold;"));
+    // En reposo mide la mayor —lo decide la aplicación— y elegida la señaló el
+    // operador. El azul de «elegida» era aquí #7fd1ff y en el indicador de modo
+    // #7fd6ff: dos azules para lo mismo, que es exactamente lo que la paleta
+    // viene a impedir.
+    pieceNavLabel_->setStyleSheet(focusedPiece_ == 0 ? theme::chipRestStyle()
+                                                     : theme::chipChosenStyle());
     const QString tip =
         tr("Qué pieza del encuadre están midiendo las herramientas.\n\n"
            "Numeradas en orden de lectura: por filas de arriba abajo, y dentro de\n"
@@ -5468,9 +5468,7 @@ void MainWindow::updateEdgeCorrectionChip() {
     }
     edgeChip_->setVisible(true);
     edgeChip_->setText(tr(" Borde corregido "));
-    edgeChip_->setStyleSheet(QStringLiteral("color:#0b2a35; background:#8ce99a;"
-                                            " border-radius:8px; padding:1px 6px;"
-                                            " font-weight:bold;"));
+    edgeChip_->setStyleSheet(theme::chipChosenStyle(theme::kChipEdited));
     edgeChip_->setToolTip(tr("%1 px del borde están puestos a mano.\n\n"
                              "El trazo ya no se pinta: lo que ves es el contorno que sale de "
                              "la corrección, no la pincelada. Con el pincel activo, Ctrl+Z deshace "
@@ -5492,11 +5490,8 @@ void MainWindow::updateModeChip() {
     }
     const bool special = measurementMode_ == domain::MeasurementMode::Special;
     modeChip_->setText(special ? tr(" Especial (tablero) ") : tr(" Posición real "));
-    modeChip_->setStyleSheet(
-        special ? QStringLiteral("color:#0b2a35; background:#7fd6ff; border-radius:8px;"
-                                 " padding:1px 6px; font-weight:bold;")
-                : QStringLiteral("color:#ddd; background:#3a3a3a; border-radius:8px;"
-                                 " padding:1px 6px;"));
+    modeChip_->setStyleSheet(special ? theme::chipChosenStyle()
+                                     : theme::chipRestStyle());
     modeChip_->setToolTip(QString::fromUtf8(domain::modeDescription(measurementMode_)) +
                           tr("\n\nSe cambia en Pieza ▸ Modo de medición…"));
 }
