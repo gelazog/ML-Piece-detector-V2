@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 
 #include <QApplication>
+#include <QKeyEvent>
 #include <QWheelEvent>
 
 #include <cstdio>
@@ -39,19 +40,67 @@ void turnTheWheel(inspection::EditorCanvas& canvas, int notches,
 
 }  // namespace
 
-TEST(BrushComfort, WithTheBrushOnTheWheelStillSizesIt) {
-    // Lo de siempre no cambia: la rueda sola sigue siendo el tamaño, que es lo
-    // que se ajusta a cada momento mientras se corrige.
+TEST(BrushComfort, WithTheBrushOnTheWheelZoomsAndLeavesTheBrushAlone) {
+    // ESTA PRUEBA DECÍA LO CONTRARIO, y se cambió a petición del taller:
+    // «quiero hacerle zoom a la imagen, pero se agranda o se achica el cursor, y
+    // me arruina la experiencia».
+    //
+    // El comentario que sostenía lo anterior afirmaba que dimensionar con la
+    // rueda «es lo que hace cualquier editor». Es falso: Krita, GIMP y Photoshop
+    // ponen el ZOOM en la rueda y el tamaño del pincel en las teclas [ y ].
+    inspection::EditorCanvas canvas;
+    canvas.setFrame(aFlatImage());
+    canvas.resize(400, 300);
+    canvas.setEdgeBrush(inspection::EditorCanvas::EdgeBrush::AddPiece);
+    canvas.setBrushRadius(20);
+    const double before = canvas.zoomFactor();
+
+    turnTheWheel(canvas, 3, Qt::NoModifier);
+    std::printf("  [pincel] rueda sola: zoom %.2f -> %.2f, radio %d\n", before,
+                canvas.zoomFactor(), canvas.brushRadius());
+    EXPECT_GT(canvas.zoomFactor(), before)
+        << "la rueda no acerca con el pincel puesto, que es exactamente la queja";
+    EXPECT_EQ(canvas.brushRadius(), 20)
+        << "la rueda sigue cambiando el tamaño del pincel a espaldas de quien solo "
+           "quería acercarse";
+}
+
+TEST(BrushComfort, AltWheelSizesTheBrushForWhoDoesNotWantToLetGoOfTheMouse) {
+    inspection::EditorCanvas canvas;
+    canvas.setFrame(aFlatImage());
+    canvas.resize(400, 300);
+    canvas.setEdgeBrush(inspection::EditorCanvas::EdgeBrush::AddPiece);
+    canvas.setBrushRadius(20);
+    const double zoomBefore = canvas.zoomFactor();
+
+    turnTheWheel(canvas, 3, Qt::AltModifier);
+    std::printf("  [pincel] Alt+rueda: radio 20 -> %d (zoom sin tocar: %.2f)\n",
+                canvas.brushRadius(), canvas.zoomFactor());
+    EXPECT_GT(canvas.brushRadius(), 20) << "Alt+rueda no dimensiona el pincel";
+    EXPECT_DOUBLE_EQ(canvas.zoomFactor(), zoomBefore)
+        << "Alt+rueda además acerca: entonces hace dos cosas a la vez y ninguna bien";
+}
+
+TEST(BrushComfort, TheBracketKeysSizeTheBrushLikeInEveryEditor) {
+    // [ y ] es donde las busca cualquiera que venga de Krita, GIMP o Photoshop.
+    // Antes no había ninguna tecla: el tamaño solo se cambiaba con la rueda, que
+    // es justo lo que estorbaba.
     inspection::EditorCanvas canvas;
     canvas.setFrame(aFlatImage());
     canvas.resize(400, 300);
     canvas.setEdgeBrush(inspection::EditorCanvas::EdgeBrush::AddPiece);
     canvas.setBrushRadius(20);
 
-    turnTheWheel(canvas, 3, Qt::NoModifier);
-    std::printf("  [pincel] rueda sola: radio 20 -> %d\n", canvas.brushRadius());
-    EXPECT_GT(canvas.brushRadius(), 20)
-        << "la rueda sola ha dejado de cambiar el tamaño del pincel";
+    QKeyEvent bigger(QEvent::KeyPress, Qt::Key_BracketRight, Qt::NoModifier);
+    QApplication::sendEvent(&canvas, &bigger);
+    const int grown = canvas.brushRadius();
+    std::printf("  [pincel] ]: radio 20 -> %d\n", grown);
+    EXPECT_GT(grown, 20) << "la tecla ] no agranda el pincel";
+
+    QKeyEvent smaller(QEvent::KeyPress, Qt::Key_BracketLeft, Qt::NoModifier);
+    QApplication::sendEvent(&canvas, &smaller);
+    std::printf("  [pincel] [: radio %d -> %d\n", grown, canvas.brushRadius());
+    EXPECT_LT(canvas.brushRadius(), grown) << "la tecla [ no encoge el pincel";
 }
 
 TEST(BrushComfort, CtrlWheelZoomsWithoutTurningTheBrushOff) {

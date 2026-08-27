@@ -11,6 +11,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPolygonF>
+#include <QKeyEvent>
 #include <QWheelEvent>
 
 #include <algorithm>
@@ -292,6 +293,37 @@ void EditorCanvas::setEdgeBrush(EdgeBrush mode) {
     // seleccionar.
     restoreCursor();
     update();
+}
+
+void EditorCanvas::stepBrushRadius(int steps) {
+    if (steps == 0) {
+        return;
+    }
+    // Paso PROPORCIONAL: subir de 2 a 3 px y de 60 a 61 no son el mismo gesto, y
+    // con paso fijo llegar a un pincel grande cuesta veinte pulsaciones.
+    const double factor = std::pow(1.2, static_cast<double>(steps));
+    const int scaled = static_cast<int>(std::lround(brushRadius_ * factor));
+    // Un paso MÍNIMO de un píxel: con radios pequeños el factor 1,2 redondea al
+    // mismo número y el gesto no hace nada, que es peor que hacer poco.
+    const int wanted = scaled == brushRadius_ ? brushRadius_ + (steps > 0 ? 1 : -1) : scaled;
+    setBrushRadius(wanted);
+    emit brushRadiusChanged(brushRadius_);
+}
+
+void EditorCanvas::keyPressEvent(QKeyEvent* event) {
+    // [ y ] DIMENSIONAN EL PINCEL.
+    //
+    // Es donde las busca cualquiera que venga de Krita, de GIMP o de Photoshop:
+    // los tres las usan para esto. Antes no había ninguna tecla y el tamaño solo
+    // se cambiaba con la rueda, que es justo lo que estorbaba al querer hacer
+    // zoom.
+    if (brush_ != EdgeBrush::Off &&
+        (event->key() == Qt::Key_BracketLeft || event->key() == Qt::Key_BracketRight)) {
+        stepBrushRadius(event->key() == Qt::Key_BracketRight ? 1 : -1);
+        event->accept();
+        return;
+    }
+    QWidget::keyPressEvent(event);
 }
 
 void EditorCanvas::setBrushRadius(int radiusPx) {
@@ -820,37 +852,26 @@ void EditorCanvas::wheelEvent(QWheelEvent* event) {
     if (std::abs(steps) < 1e-6) {
         return;
     }
-    // Con el pincel encendido, la rueda cambia SU tamaño y no el zoom. Es lo
-    // que hace cualquier editor, y es lo que se necesita: el grosor se ajusta
-    // constantemente mientras se corrige —grueso para rellenar, fino para
-    // perfilar— y tener que ir a un menú por cada cambio haría que nadie lo
-    // cambiara.
-    // CON CTRL, LA RUEDA ACERCA AUNQUE EL PINCEL ESTE ENCENDIDO.
+    // LA RUEDA HACE ZOOM. SIEMPRE.
     //
-    // Queja de uso: «hay algo que se siente incomodo al momento de usar los
-    // pinceles». Esto era una parte medible de ese algo: con el pincel puesto,
-    // la rueda solo cambiaba el tamano y NO habia forma de hacer zoom. Perfilar
-    // un borde es justo cuando mas falta hace acercarse, y para acercarse habia
-    // que apagar el pincel, mover la rueda y volver a encenderlo.
+    // Antes, con el pincel encendido, la rueda cambiaba SU TAMAÑO, y el zoom
+    // había que pedirlo con Ctrl. La queja fue directa: «quiero hacerle zoom a
+    // la imagen, pero se agranda o se achica el cursor, y me arruina la
+    // experiencia».
     //
-    // Ctrl+rueda es el gesto que ya llevan Krita, GIMP y Photoshop para lo
-    // mismo, asi que no hay nada que aprender. Y sigue funcionando con el
-    // pincel apagado —donde la rueda sola ya acerca—, para que el gesto no
-    // dependa del modo: uno que solo vale a veces se acaba no usando.
-    const bool zoomAnyway = (event->modifiers() & Qt::ControlModifier) != 0;
-    if (brush_ != EdgeBrush::Off && !zoomAnyway) {
-        // Paso proporcional: subir de 2 a 3 px y de 60 a 61 no son el mismo
-        // gesto, y con paso fijo llegar a un pincel grande cuesta veinte
-        // muescas.
-        const double factor = std::pow(1.2, steps);
-        // Un paso MINIMO de un pixel: con radios pequeños el factor 1,2
-        // redondeaba al mismo numero y la rueda no hacia nada.
-        const int scaled = static_cast<int>(std::lround(brushRadius_ * factor));
-        const int wanted = scaled == brushRadius_
-                               ? brushRadius_ + (steps > 0 ? 1 : -1)
-                               : scaled;
-        setBrushRadius(wanted);
-        emit brushRadiusChanged(brushRadius_);
+    // Y el comentario que justificaba aquello decía que cambiar el tamaño con la
+    // rueda «es lo que hace cualquier editor». Es FALSO, y conviene dejarlo
+    // escrito porque la decisión se tomó sobre eso: Krita, GIMP y Photoshop
+    // ponen el ZOOM en la rueda y el tamaño del pincel en las teclas [ y ].
+    //
+    // Así que la rueda vuelve a hacer lo único que un ratón sobre una imagen
+    // debería hacer, y el pincel se dimensiona por teclado —donde ya lo busca
+    // quien viene de cualquiera de esos tres programas— o con Alt+rueda, que es
+    // el gesto para quien no quiere soltar el ratón mientras perfila.
+    const bool sizingTheBrush =
+        brush_ != EdgeBrush::Off && (event->modifiers() & Qt::AltModifier) != 0;
+    if (sizingTheBrush) {
+        stepBrushRadius(static_cast<int>(std::lround(steps)));
         event->accept();
         return;
     }

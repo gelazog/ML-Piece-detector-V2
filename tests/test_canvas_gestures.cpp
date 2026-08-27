@@ -2487,7 +2487,7 @@ TEST(EdgeBrush, WithTheBrushOffAClickDoesNotPaint) {
     EXPECT_EQ(emissions, 0) << "pintó con el pincel apagado";
 }
 
-TEST(EdgeBrush, TheWheelResizesTheBrushInsteadOfZooming) {
+TEST(EdgeBrush, TheWheelZoomsAlwaysAndAltSizesTheBrush) {
     // Es lo que hace cualquier editor, y es lo que se necesita: el grosor se
     // ajusta constantemente mientras se corrige —grueso para rellenar, fino
     // para perfilar— y tener que ir a un menú por cada cambio haría que nadie
@@ -2503,31 +2503,52 @@ TEST(EdgeBrush, TheWheelResizesTheBrushInsteadOfZooming) {
     QApplication::sendEvent(&canvas, &zoomIn);
     EXPECT_GT(canvas.zoomFactor(), zoomBefore) << "sin pincel, la rueda dejó de hacer zoom";
 
-    // Con el pincel encendido, cambia SU tamaño y el zoom no se mueve.
+    // CON EL PINCEL ENCENDIDO, LA RUEDA SIGUE HACIENDO ZOOM.
+    //
+    // Esta prueba comprobaba lo contrario, y se cambió a petición del taller:
+    // «quiero hacerle zoom a la imagen, pero se agranda o se achica el cursor, y
+    // me arruina la experiencia». El gesto ya no depende del modo — uno que solo
+    // vale a veces se acaba no usando.
     canvas.setEdgeBrush(EditorCanvas::EdgeBrush::AddPiece);
     canvas.setBrushRadius(12);
+    const double zoomWithBrush = canvas.zoomFactor();
+    const int radiusKept = canvas.brushRadius();
+    QWheelEvent zoomAgain(QPointF(400, 300), canvas.mapToGlobal(QPointF(400, 300)), QPoint(),
+                          QPoint(0, 120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase,
+                          false);
+    QApplication::sendEvent(&canvas, &zoomAgain);
+    std::printf("  [pincel] con el pincel puesto, la rueda: zoom %.2f -> %.2f, radio %d\n",
+                zoomWithBrush, canvas.zoomFactor(), canvas.brushRadius());
+    EXPECT_GT(canvas.zoomFactor(), zoomWithBrush)
+        << "con el pincel puesto la rueda no acerca, que es exactamente la queja";
+    EXPECT_EQ(canvas.brushRadius(), radiusKept)
+        << "la rueda sigue cambiando el pincel a espaldas de quien solo quería acercarse";
+
+    // Y ALT+RUEDA dimensiona, para quien no quiere soltar el ratón mientras
+    // perfila un borde.
     const double zoomKept = canvas.zoomFactor();
     const int before = canvas.brushRadius();
     QWheelEvent bigger(QPointF(400, 300), canvas.mapToGlobal(QPointF(400, 300)), QPoint(),
-                       QPoint(0, 120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+                       QPoint(0, 120), Qt::NoButton, Qt::AltModifier, Qt::NoScrollPhase,
+                       false);
     QApplication::sendEvent(&canvas, &bigger);
-    std::printf("  [pincel] radio %d -> %d con una muesca; zoom sin tocar\n", before,
+    std::printf("  [pincel] Alt+rueda: radio %d -> %d; zoom sin tocar\n", before,
                 canvas.brushRadius());
-    EXPECT_GT(canvas.brushRadius(), before) << "la rueda no agrandó el pincel";
+    EXPECT_GT(canvas.brushRadius(), before) << "Alt+rueda no agrandó el pincel";
     EXPECT_DOUBLE_EQ(canvas.zoomFactor(), zoomKept) << "el pincel cambió Y encima hizo zoom";
 
     // Y hacia el otro lado.
     const int grown = canvas.brushRadius();
     QWheelEvent smaller(QPointF(400, 300), canvas.mapToGlobal(QPointF(400, 300)), QPoint(),
-                        QPoint(0, -120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase,
+                        QPoint(0, -120), Qt::NoButton, Qt::AltModifier, Qt::NoScrollPhase,
                         false);
     QApplication::sendEvent(&canvas, &smaller);
-    EXPECT_LT(canvas.brushRadius(), grown) << "la rueda no encogió el pincel";
+    EXPECT_LT(canvas.brushRadius(), grown) << "Alt+rueda no encogió el pincel";
 
     // Con topes: por abajo no puntea, por arriba no borra media pieza.
     for (int i = 0; i < 40; ++i) {
         QWheelEvent tiny(QPointF(400, 300), canvas.mapToGlobal(QPointF(400, 300)), QPoint(),
-                         QPoint(0, -120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase,
+                         QPoint(0, -120), Qt::NoButton, Qt::AltModifier, Qt::NoScrollPhase,
                          false);
         QApplication::sendEvent(&canvas, &tiny);
     }
