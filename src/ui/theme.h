@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QColor>
+#include <QPainter>
+#include <QPen>
 #include <QString>
 
 namespace pci::ui::theme {
@@ -136,7 +138,45 @@ inline constexpr int kDrawAxis[3] = {0, 200, 255};     // el eje de la pieza
 inline constexpr int kDrawOrigin[3] = {255, 60, 60};   // el punto de origen
 inline constexpr int kDrawMissing[3] = {255, 120, 120};  // no hay pieza que medir
 inline constexpr int kDrawBoard[3] = {255, 200, 0};    // las esquinas del tablero
+inline constexpr int kDrawToolBad[3] = {255, 120, 0};  // una cota que no cumple
 inline constexpr int kDrawVeilAlpha = 160;             // el velo bajo un rótulo
+
+// EL HALO BAJO EL CONTORNO, y no es adorno.
+//
+// Una línea de color sobre una FOTO no tiene contraste garantizado: depende de
+// lo que haya debajo, que puede ser cualquier cosa. Medido sobre el banco, el
+// contraste del rojo del contorno contra los píxeles por los que pasa:
+//
+//     foto            rojo p05   rojo mediana   con halo p05   mediana
+//     arandelas-1        1,02        1,22          5,57         7,27
+//     engranaje-1        1,90        2,32         11,33        13,83
+//     tornillos-1        2,15        2,64         12,84        15,74
+//
+// El color solo no llega ni al 3:1 que necesita un elemento gráfico; con el
+// halo negro debajo pasa de 5 a 15. O sea que lo que hace visible el contorno
+// NO es su color: es el borde oscuro que lleva pegado.
+//
+// Se probó a cambiar el rojo por el de veredicto (`kBadOnDark`, más claro) y
+// sale PEOR en las siete fotos —mediana 1,17 contra 1,22 en la peor— porque es
+// más claro y las piezas son claras. El color no era el problema.
+inline constexpr double kDrawHaloWidth = 3.0;
+inline constexpr double kDrawLineWidth = 2.0;
+inline constexpr int kDrawHaloAlpha = 150;
+
+// Dibuja `shape` con su halo debajo. `draw` recibe el pincel ya puesto.
+template <typename Draw>
+void withHalo(QPainter& painter, const QColor& colour, Draw&& draw) {
+    QPen halo(QColor(0, 0, 0, kDrawHaloAlpha));
+    halo.setWidthF(kDrawHaloWidth);
+    halo.setCosmetic(true);
+    painter.setPen(halo);
+    draw();
+    QPen line(colour);
+    line.setWidthF(kDrawLineWidth);
+    line.setCosmetic(true);
+    painter.setPen(line);
+    draw();
+}
 
 [[nodiscard]] inline QColor drawColor(const int (&rgb)[3], int alpha = 255) {
     return QColor(rgb[0], rgb[1], rgb[2], alpha);

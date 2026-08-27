@@ -126,6 +126,7 @@ add_executable(pci_gui_tests
   test_theme.cpp
   test_palette_guard.cpp
   test_overlay_verdict.cpp
+  test_overlay_halo.cpp
   test_two_pieces_ui.cpp
   test_report_tabs.cpp
   test_tools_by_family.cpp

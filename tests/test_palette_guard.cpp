@@ -103,7 +103,7 @@ TEST(PaletteGuard, NoHandWrittenColoursOutsideTheTheme) {
     //   56 al escribir la guardia
     //   49 tras unificar los veredictos y los cinco que no contrastaban
     //   41 tras las pastillas de veredicto y la luz de estación
-    constexpr std::size_t kColoursStillHandWritten = 25;
+    constexpr std::size_t kColoursStillHandWritten = 23;
     EXPECT_LE(offences.size(), kColoursStillHandWritten)
         << "han aparecido colores a mano nuevos fuera de ui/theme.h. Así se llegó a "
            "tener cuatro rojos distintos para «no cumple» y cinco colores por debajo "

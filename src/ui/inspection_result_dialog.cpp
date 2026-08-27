@@ -286,20 +286,24 @@ QImage InspectionResultDialog::annotatedFrame(const QImage& frame) const {
     for (const auto& p : outcome_.analysis.contour.points) {
         contour << QPointF(p.x, p.y);
     }
-    QPen contourPen(outcome_.verdict.ok ? QColor(0, 220, 0) : QColor(255, 60, 60));
-    contourPen.setWidthF(2.0);
-    painter.setPen(contourPen);
-    painter.drawPolygon(contour);
+    // Con halo, por lo mismo que el vídeo: sobre la foto de la pieza el color
+    // solo da 1,2-2,6 de contraste y con el borde oscuro debajo, 5-15.
+    theme::withHalo(painter,
+                    outcome_.verdict.ok ? theme::drawColor(theme::kDrawFound)
+                                        : theme::drawColor(theme::kDrawOrigin),
+                    [&] { painter.drawPolygon(contour); });
 
     // Overlays de cada herramienta, coloreados por su propio resultado.
     for (const auto& result : outcome_.toolResults) {
-        QPen pen(result.ok ? QColor(0, 200, 255) : QColor(255, 120, 0));
-        pen.setWidthF(2.0);
-        painter.setPen(pen);
-        for (const auto& segment : result.overlaySegments) {
-            painter.drawLine(QPointF(segment[0].x, segment[0].y),
-                             QPointF(segment[1].x, segment[1].y));
-        }
+        theme::withHalo(painter,
+                        result.ok ? theme::drawColor(theme::kDrawAxis)
+                                  : theme::drawColor(theme::kDrawToolBad),
+                        [&] {
+                            for (const auto& segment : result.overlaySegments) {
+                                painter.drawLine(QPointF(segment[0].x, segment[0].y),
+                                                 QPointF(segment[1].x, segment[1].y));
+                            }
+                        });
         for (const auto& point : result.overlayPoints) {
             const QPointF p(point.x, point.y);
             painter.drawLine(p + QPointF(-5, 0), p + QPointF(5, 0));

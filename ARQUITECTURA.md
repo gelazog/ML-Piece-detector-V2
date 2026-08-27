@@ -2460,6 +2460,39 @@ Dos salvaguardas que se ganaron probando:
   operador aprende a ignorar, así que ahora hay un test que exige que **no**
   salte con una rueda normalizada.
 
+### Lo que se dibuja encima de la foto
+
+Un contorno de color sobre una FOTO no tiene contraste garantizado: depende de
+lo que haya debajo, y debajo puede haber cualquier cosa. Medido sobre el banco,
+el contraste del rojo del contorno contra los píxeles por los que pasa:
+
+| foto | rojo p05 | rojo mediana | con halo p05 | mediana |
+|---|---|---|---|---|
+| arandelas-1 | 1,02 | 1,22 | 5,57 | 7,27 |
+| arandelas-5 | 1,07 | 1,67 | 2,55 | 9,17 |
+| engranaje-1 | 1,90 | 2,32 | 11,33 | 13,83 |
+| tornillo-1 | 1,59 | 2,13 | 9,46 | 12,67 |
+| tornillos-1 | 2,15 | 2,64 | 12,84 | 15,74 |
+
+El color solo no llega ni al **3:1** que necesita un elemento gráfico. Con el
+borde oscuro debajo pasa de 5 a 15. **Lo que hace visible el contorno no es su
+color: es el halo.**
+
+El lienzo del editor ya lo dibujaba. No lo hacían el vídeo en vivo —donde el
+operador mira todo el día— ni el informe de inspección, donde se decide si una
+pieza se rechaza. Ahora los tres usan `theme::withHalo`.
+
+**Y no era cuestión de elegir mejor color.** Se probó cambiar el rojo por el de
+veredicto (`kBadOnDark`, más claro y con su contraste medido sobre superficie
+oscura) y sale PEOR en las siete fotos —1,17 contra 1,22 de mediana en la peor—
+porque es más claro y las piezas son claras.
+
+`tests/test_overlay_halo.cpp` lo fija con una sola cifra: lo más oscuro que
+aparece dibujado encima de la imagen. Con halo baja a **101**; sin él, lo más
+oscuro sería la propia línea —220 el verde, 255 el rojo— y sin nada dibujado,
+el fondo, **245**. Entre 101 y 220 hay sitio de sobra para un tope que no sea
+delicado.
+
 ### De una silueta a rasgos medibles
 
 `vision/geometry_features.*` convierte "una lista de puntos" en "cuatro lados y

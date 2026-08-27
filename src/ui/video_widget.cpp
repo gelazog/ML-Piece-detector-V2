@@ -71,20 +71,20 @@ void VideoWidget::paintEvent(QPaintEvent* event) {
         painter.scale(static_cast<double>(target.width()) / frame_.width(),
                       static_cast<double>(target.height()) / frame_.height());
 
-        QPen contourPen(theme::drawColor(theme::kDrawFound));
-        contourPen.setWidthF(2.0);
-        contourPen.setCosmetic(true);
-        painter.setPen(contourPen);
-        painter.drawPolygon(overlay_.contour);
+        // CON HALO. El color solo no basta sobre una foto: medido, el contorno
+        // contra los píxeles por los que pasa da 1,2-2,6 de contraste, y con el
+        // borde oscuro debajo pasa a 5-15. Lo hacía ya el lienzo del editor y
+        // no lo hacía el vídeo en vivo, que es donde el operador mira todo el
+        // día.
+        theme::withHalo(painter, theme::drawColor(theme::kDrawFound),
+                        [&] { painter.drawPolygon(overlay_.contour); });
 
-        QPen axisPen(theme::drawColor(theme::kDrawAxis));
-        axisPen.setWidthF(2.0);
-        axisPen.setCosmetic(true);
-        painter.setPen(axisPen);
         const double rad = overlay_.angleDeg * kPi / 180.0;
         const double len = frame_.width() * 0.12;
-        painter.drawLine(overlay_.centroid,
-                         overlay_.centroid + QPointF(std::cos(rad) * len, std::sin(rad) * len));
+        const QPointF axisEnd =
+            overlay_.centroid + QPointF(std::cos(rad) * len, std::sin(rad) * len);
+        theme::withHalo(painter, theme::drawColor(theme::kDrawAxis),
+                        [&] { painter.drawLine(overlay_.centroid, axisEnd); });
 
         painter.setPen(Qt::NoPen);
         painter.setBrush(theme::drawColor(theme::kDrawOrigin));
