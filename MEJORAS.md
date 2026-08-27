@@ -308,7 +308,70 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
 
   Siguiente paso: mirar `decomposeContour` sobre un plano corto y ligeramente
   arqueado —50 px de lado en esta foto— y ver por qué prefiere un arco de radio
-  enorme a una recta.
+  enorme a una recta. **Hecho: ver E9.**
+
+- [!] **E9 · Dos guardas de `makePrimitive` se comprueban antes del número que
+  vigilan.** Encontrado persiguiendo E8. **Se intentó arreglar y se revirtió**,
+  y esto último es lo que hay que leer antes de volver a intentarlo.
+
+  El orden en `vision/geometry_features.cpp` es:
+
+  1. `fitSegment` acepta el arco si `barrido >= minArcSweepDeg` (15°) y si
+     `residuo <= maxResidual` (0,8), con el ajuste **voraz**.
+  2. `makePrimitive` **reajusta** el círculo de forma robusta —para eso está: el
+     voraz se pasa hacia el tramo tangente y dejaba el radio hasta un 40 %
+     desviado— y **republica radio, barrido y residuo**.
+  3. Nadie vuelve a comprobar ninguna de las dos condiciones.
+
+  Lo que eso publica, medido sobre los **1288 arcos del banco de fotos entero**:
+
+  | | valor publicado | lo que la opción admite |
+  |---|---|---|
+  | barrido mínimo | **0,4°** | 15° |
+  | radio máximo / radio de la pieza | **31×** | — |
+  | residuo de los arcos del dodecágono | **0,83-0,87 px** | 0,80 |
+
+  Un arco de radio 31 veces su propia pieza no es una curva: es un lado recto con
+  un número inventado encima.
+
+  **Y sin embargo no se puede arreglar de una en una.** Se probó:
+
+  - Reaplicando solo la guarda del **barrido**: el banco mejora mucho (barrido
+    mínimo 15,1°, radio máximo 3,8×) y el rectángulo redondeado sigue dando 4
+    rectas y 4 arcos. Pero **rompe** `ShapeClassProbe.Escala`: un dodecágono de
+    radio 100 pasa a «redondeado de 3 lados». Antes acertaba porque sus lados
+    salían como arcos de barrido ridículo y eso impedía que se disparase la rama
+    de «redondeado» — acertaba por culpa del fallo.
+  - Reaplicando **además** la del residuo: el dodecágono se arregla (9 rectas, 0
+    arcos) y los rectángulos redondeados salen idénticos. Pero **rompe**
+    `ShapeClassBasics.ManySidedContoursAreMeasuredAsRoundAndSayWhy`: un polígono
+    de 16 lados, que debe medirse como círculo, sale «redondeado».
+
+  **La conclusión, que es lo que vale de todo esto:** el punto frágil no son las
+  guardas, es la rama de «polígono redondeado». Se pregunta la PRIMERA, y se
+  dispara con una condición débil —`straight >= 3 && arcs >= 1 && curva >= 10 %`—
+  así que cualquier cambio en la mezcla de rectas y arcos hace que se dispare o
+  no en casos donde no toca. Mientras eso siga así, cada arreglo de las guardas
+  cambia qué caso acierta, y el banco solo dice cuál se movió esta vez.
+
+  **Y no hay atajo por el porcentaje de curva.** Se midió la familia entera
+  buscando un techo:
+
+  | pieza | rectas | arcos | en curva |
+  |---|---|---|---|
+  | 300x200 redondeo 20 | 4 | 4 | 12,7 % |
+  | 300x200 redondeo 40 | 4 | 4 | 28,3 % |
+  | 300x200 redondeo 60 | 4 | 4 | 44,9 % |
+  | 300x200 redondeo 80 | 2 | 4 | **70,7 %** |
+  | 12 lados radio 100 (mal leído) | 5 | 4 | **77,0 %** |
+
+  Un rectángulo con redondeos grandes es legítimamente casi todo curva, así que
+  no hay techo que separe. El recuento de rectas contra arcos tampoco: 4/4 en el
+  bueno, 5/4 en el malo.
+
+  Lo que haría falta antes de tocar nada: que la rama de «redondeado» se decida
+  con una condición que signifique algo geométrico —los arcos son las ESQUINAS,
+  o sea cortos y tantos como lados— en vez de con tres umbrales sueltos.
 
 ## F. Ya está hecho — no volver a investigarlo
 
