@@ -141,7 +141,38 @@ Todo esto salió de una auditoría anterior y está verificado.
   Queda pendiente lo contrario: **entradas de menú útiles que no tienen atajo y
   podrían tenerlo**. Eso es añadir teclas, no arreglar un fallo, y toca decidir
   cuáles merecen una.
-- [ ] **C2 · Ningún botón tiene acelerador `Alt+letra`.** 0 de unos 40.
+- [~] **C2 · Ningún botón tenía acelerador `Alt+letra`.** Cierto, y **contado en
+  el sitio equivocado**: la nota los contaba sobre la ventana principal, y ahí
+  la falta no es un defecto.
+
+  Los botones que se usan a diario ya tienen **tecla suelta** —`I` inspecciona,
+  `C` calibra, `P` abre el editor, `F1` la guía— y una tecla suelta es mejor que
+  `Alt+letra`: se pulsa con una mano y no compite con la barra de menús, que ya
+  se ha quedado con A, F, I, M, P, V e Y. Añadirlos allí sería una segunda forma
+  de hacer lo mismo, peleándose por las letras que quedan.
+
+  **Donde sí hacen falta es en los diálogos**, y por una razón concreta: allí hay
+  campos de texto, así que una tecla suelta es imposible —se la come el campo— y
+  `Alt+letra` es el único mecanismo que queda. Medido:
+
+  | diálogo | botones | con Alt+letra | campos de texto |
+  |---|---|---|---|
+  | Modo de medición | 9 | 0 | 4 |
+  | Plantillas | 8 | **6** | 0 |
+  | Piezas | 4 | **4** | 1 |
+  | Historial | 2 | 0 | 1 |
+  | Calibración de lente | 4 | 0 | 3 |
+
+  Hechos los dos gestores, que son donde más se teclea y además los que borran
+  cosas. Faltan los otros tres.
+
+  `tests/test_mnemonics.cpp` vigila lo que de verdad puede romperse: **dos
+  mnemónicos iguales no dan un error, dan un ciclo**. Alt+E deja de activar y
+  pasa a saltar entre los dos candidatos, que desde fuera se vive como «a veces
+  hace otra cosa» — la misma familia que `ambiguousActivate` con los atajos, que
+  este proyecto ya se comió con Ctrl+1 y Ctrl+2. Se comprueba dentro de cada
+  diálogo y en la ventana principal por separado, porque un diálogo modal
+  bloquea lo de detrás y sus letras solo compiten entre ellas.
 - [~] **C3 · Diálogos donde Enter dispara el botón equivocado.** Hecho el
   peligroso, y **medido en vez de razonado**: una prueba pregunta a los botones
   quién se lleva el Enter, y en la guía de atajos la respuesta era «Restaurar por

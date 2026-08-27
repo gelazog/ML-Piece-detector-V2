@@ -35,10 +35,10 @@ TemplateManagerDialog::TemplateManagerDialog(repositories::ToolRepository* repo,
     root->addWidget(list_, 1);
 
     auto* actions = new QHBoxLayout();
-    auto* newBtn = new QPushButton(tr("Nueva…"), this);
-    auto* renameBtn = new QPushButton(tr("Renombrar…"), this);
-    auto* duplicateBtn = new QPushButton(tr("Duplicar…"), this);
-    auto* deleteBtn = new QPushButton(tr("Eliminar"), this);
+    auto* newBtn = new QPushButton(tr("&Nueva…"), this);
+    auto* renameBtn = new QPushButton(tr("&Renombrar…"), this);
+    auto* duplicateBtn = new QPushButton(tr("&Duplicar…"), this);
+    auto* deleteBtn = new QPushButton(tr("&Eliminar"), this);
     // FUERA DEL CAMINO DEL ENTER.
     //
     // Con `autoDefault` puesto —que es lo que trae un QPushButton dentro de un
@@ -57,9 +57,12 @@ TemplateManagerDialog::TemplateManagerDialog(repositories::ToolRepository* repo,
     root->addLayout(actions);
 
     auto* fileActions = new QHBoxLayout();
-    auto* exportBtn = new QPushButton(tr("Exportar…"), this);
+    // La X y no la E: «Eliminar» ya se lleva la E, y en un diálogo que borra
+    // plantillas la E tiene que ser esa. «E&xportar» es además lo que usa
+    // Windows en español para lo mismo.
+    auto* exportBtn = new QPushButton(tr("E&xportar…"), this);
     exportBtn->setToolTip(tr("Guardar la plantilla seleccionada en un archivo .json"));
-    auto* importBtn = new QPushButton(tr("Importar…"), this);
+    auto* importBtn = new QPushButton(tr("&Importar…"), this);
     importBtn->setToolTip(tr("Cargar una plantilla desde un archivo .json a esta pieza"));
     fileActions->addWidget(exportBtn);
     fileActions->addWidget(importBtn);

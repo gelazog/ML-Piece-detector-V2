@@ -40,9 +40,9 @@ PieceManagerDialog::PieceManagerDialog(repositories::PieceRepository* pieces,
     infoLabel_->setWordWrap(true);
     sideLayout->addWidget(infoLabel_);
 
-    renameButton_ = new QPushButton(tr("Renombrar…"), this);
+    renameButton_ = new QPushButton(tr("&Renombrar…"), this);
     sideLayout->addWidget(renameButton_);
-    deleteButton_ = new QPushButton(tr("Eliminar…"), this);
+    deleteButton_ = new QPushButton(tr("&Eliminar…"), this);
     deleteButton_->setToolTip(
         tr("Elimina la pieza con sus referencias, herramientas e historial."));
     // FUERA DEL CAMINO DEL ENTER, y aquí es lo más caro que se puede perder
@@ -64,11 +64,11 @@ PieceManagerDialog::PieceManagerDialog(repositories::PieceRepository* pieces,
            "orientación las desplaza con el nuevo eje."));
     form->addRow(tr("Orientación:"), offsetSpin_);
     sideLayout->addLayout(form);
-    rotateButton_ = new QPushButton(tr("Girar +90°"), this);
+    rotateButton_ = new QPushButton(tr("&Girar +90°"), this);
     sideLayout->addWidget(rotateButton_);
 
     sideLayout->addStretch(1);
-    auto* closeButton = new QPushButton(tr("Cerrar"), this);
+    auto* closeButton = new QPushButton(tr("&Cerrar"), this);
     sideLayout->addWidget(closeButton);
     rootLayout->addLayout(sideLayout);
 
