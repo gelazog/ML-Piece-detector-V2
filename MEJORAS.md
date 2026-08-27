@@ -143,8 +143,31 @@ Todo esto salió de una auditoría anterior y está verificado.
   comprobación. Las dos hacen falta y no son redundantes: una fija quién se lleva
   el Enter, la otra impide llegar al botón destructivo tabulando.
 
-  Faltan los otros nueve diálogos. Construirlos en una prueba cuesta distinto en
-  cada uno, así que van de uno en uno.
+  **Barridos otros seis** (`tests/test_enter_key_in_dialogs.cpp`), y aparecieron
+  los dos peores que quedaban:
+
+  | diálogo | se lleva el Enter | destructivo con `autoDefault` |
+  |---|---|---|
+  | Modo de medición | Aceptar | — |
+  | Plantillas | Nueva… | **Eliminar** |
+  | Piezas | Renombrar… | **Eliminar…** |
+  | Historial | Exportar CSV… | — |
+  | Calibración de lente | Guardar esta toma | — |
+  | Señalar el fondo | Usar este fondo | — |
+
+  Los dos «Eliminar» no se llevaban el Enter, pero conservaban `autoDefault`:
+  basta **tabular hasta ellos** para que el Enter siguiente borre una plantilla
+  con todas sus herramientas, o una pieza con TODAS sus referencias,
+  herramientas e historial. Arreglados los dos.
+
+  Anotado sin cambiar: en Plantillas el Enter abre «Nueva…» y en Piezas
+  «Renombrar…». No destruyen, así que la prueba los da por buenos; que sea la
+  respuesta más natural en un diálogo de gestión es otra discusión, y sin una
+  medida que diga que estorba no se toca.
+
+  Faltan tres diálogos, los que necesitan una inspección hecha o repositorios
+  vivos para construirse: informe de pieza, resultado de inspección y el
+  asistente de registro.
 - [x] **C4 · `detection_page.cpp` apilaba las filas sin agrupar.** Hecho, y para
   cuando llegué eran **diecinueve**, porque el aviso de mesa de color le añadió
   tres. Ahora son cuatro grupos —cómo se separa la pieza (8 filas), dónde va el

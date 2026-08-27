@@ -45,6 +45,11 @@ PieceManagerDialog::PieceManagerDialog(repositories::PieceRepository* pieces,
     deleteButton_ = new QPushButton(tr("Eliminar…"), this);
     deleteButton_->setToolTip(
         tr("Elimina la pieza con sus referencias, herramientas e historial."));
+    // FUERA DEL CAMINO DEL ENTER, y aquí es lo más caro que se puede perder
+    // de un tecleo: la pieza con TODAS sus referencias, herramientas e
+    // historial. Con `autoDefault` —que es lo que trae un QPushButton dentro
+    // de un QDialog— basta tabular hasta aquí y pulsar Enter.
+    deleteButton_->setAutoDefault(false);
     sideLayout->addWidget(deleteButton_);
 
     auto* form = new QFormLayout();

@@ -39,6 +39,17 @@ TemplateManagerDialog::TemplateManagerDialog(repositories::ToolRepository* repo,
     auto* renameBtn = new QPushButton(tr("Renombrar…"), this);
     auto* duplicateBtn = new QPushButton(tr("Duplicar…"), this);
     auto* deleteBtn = new QPushButton(tr("Eliminar"), this);
+    // FUERA DEL CAMINO DEL ENTER.
+    //
+    // Con `autoDefault` puesto —que es lo que trae un QPushButton dentro de un
+    // QDialog— basta con tabular hasta aquí para que el Enter siguiente borre
+    // la plantilla con todas sus herramientas dentro. No hace falta ningún
+    // error de programación para perder el trabajo: basta con teclear.
+    //
+    // Es la misma clase de fallo que ya mordió en la guía de atajos y en el
+    // calibrador, y por eso hay una prueba que la vigila entera en vez de un
+    // arreglo por diálogo.
+    deleteBtn->setAutoDefault(false);
     actions->addWidget(newBtn);
     actions->addWidget(renameBtn);
     actions->addWidget(duplicateBtn);
