@@ -211,8 +211,37 @@ Todo esto salió de una auditoría anterior y está verificado.
 - [ ] **C5 · Quedan 49 colores escritos a mano** fuera de `ui/theme.h`. Hay un
   trinquete en `tests/test_palette_guard.cpp` que impide que suban; hay que ir
   bajándolos y bajando el tope.
-- [ ] **C6 · `main_window.cpp:692-779` pone 10 entradas antes del único
-  separador** del menú.
+- [x] **C6 · «10 entradas antes del único separador».** Medido hoy, y **ya no es
+  cierto**. Los números de línea que citaba —692-779— apuntan ahora al combo de
+  pieza y al indicador de modo, o sea que el fichero se reorganizó y la nota se
+  quedó describiendo algo que no existe.
+
+  La racha más larga de entradas seguidas sin separador es **5**, y las tres que
+  llegan a esa cifra están bien así:
+
+  | menú | entradas | separadores | racha |
+  |---|---|---|---|
+  | Archivo | 3 | 1 | 2 |
+  | Fuente | 2 | 1 | 1 |
+  | Medida | 7 | 3 | 2 |
+  | Medida ▸ Unidad de medida | 5 | 0 | **5** |
+  | Pieza | 5 | 1 | 3 |
+  | Inspección | 4 | 1 | 2 |
+  | Ver | 9 | 1 | **5** |
+  | Ver ▸ Origen del tablero | 5 | 0 | **5** |
+  | Ayuda | 1 | 0 | 1 |
+
+  Las dos de los submenús son grupos de opciones **excluyentes** —cinco
+  unidades, cinco orígenes de tablero— donde un separador partiría en dos algo
+  que es una sola pregunta. Y la de *Ver* son cinco cosas del mismo tipo: qué
+  dibujar encima del vídeo.
+
+  Se deja `tests/test_menu_grouping.cpp` como **trinquete**, igual que el de los
+  colores escritos a mano: fija el tope en 8 —lo más largo que se aceptó en la
+  pestaña Detección, que es el mismo problema resuelto antes— y no deja que
+  suba. Hay hueco para una sexta unidad sin que salte, y no lo hay para volver a
+  diez. Bajar una racha es trabajo, subirla es descuido, y sin trinquete solo
+  pasa lo segundo.
 - [x] **C7 · `inspectButton_->setDefault(true)` sobre un `QMainWindow`.** Era
   cierto que promete un Enter que no puede cumplir —Qt: «the default button
   behavior is provided only in dialogs»— y la conclusión que parecía seguir
