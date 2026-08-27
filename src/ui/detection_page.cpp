@@ -3,6 +3,7 @@
 
 #include "vision/pipeline.h"
 
+#include <QColor>
 #include <QCheckBox>
 #include <QColorDialog>
 #include <QComboBox>
@@ -91,6 +92,34 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     sceneHint_->setWordWrap(true);
     sceneHint_->setVisible(false);
     form->addRow(sceneHint_);
+
+    // AVISAR DE QUE LA MESA TIENE COLOR.
+    //
+    // La clave de color nace apagada porque cambia lo que se mide, y eso está
+    // bien. Lo que no está bien es que quien la necesita no se entere de que
+    // existe: está viendo que «no detecta bien» y no tiene por qué sospechar del
+    // color de su mesa.
+    //
+    // Va con el mismo patrón que el aviso del método por canto —una frase con la
+    // cifra dentro y un botón que lo aplica— porque responde a lo mismo: la
+    // silueta que sale no es la que se ve, y el operador no puede adivinar por
+    // qué.
+    colourHint_ = new QLabel(this);
+    colourHint_->setWordWrap(true);
+    colourHint_->setVisible(false);
+    form->addRow(colourHint_);
+
+    useColourButton_ = new QPushButton(tr("Separar por el color del fondo"), this);
+    useColourButton_->setToolTip(
+        tr("Enciende la clave de color de fondo con el color que la aplicación\n"
+           "acaba de medir en tu mesa.\n"
+           "\n"
+           "Es lo mismo que elegir «Sí, y el color del fondo lo busca solo» en el\n"
+           "desplegable de arriba: el botón está aquí para no tener que buscarlo\n"
+           "después de leer el aviso."));
+    useColourButton_->setVisible(false);
+    useColourButton_->setAutoDefault(false);
+    form->addRow(useColourButton_);
     useEdgesButton_ = new QPushButton(tr("Cambiar a «por el canto»"), this);
     useEdgesButton_->setToolTip(
         tr("Pasa a separar la pieza por su CANTO en vez de por el nivel de gris.\n\n"
@@ -261,6 +290,13 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     recoverGlare_->setChecked(current.recoverHighlightsBy > 0);
     connect(useEdgesButton_, &QPushButton::clicked, this, [this] {
         method_->setCurrentIndex(static_cast<int>(vision::SegmentationMethod::Edges));
+    });
+    connect(useColourButton_, &QPushButton::clicked, this, [this] {
+        // A «lo busca solo»: el operador que llega aquí desde el aviso no sabe
+        // todavía de qué color es su mesa en números, y hacérselo teclear para
+        // probar sería ponerle un peaje a la sugerencia.
+        backgroundKey_->setCurrentIndex(
+            static_cast<int>(vision::SegmentationOptions::BackgroundKey::Auto));
     });
     method_->setToolTip(
         tr("«Por nivel» busca un corte de gris que deje la pieza a un lado y el\n"
@@ -542,6 +578,38 @@ void DetectionPage::setClippingCheck(const vision::ClippingCheck& check) {
             ? QStringLiteral("color:#3a1010; background:#ffd9d9; border:1px solid #c04040;"
                              " border-radius:4px; padding:6px; font-weight:bold;")
             : QStringLiteral("color:#8a8a8a; padding:6px;"));
+}
+
+void DetectionPage::setBackgroundColour(const cv::Vec3b& background) {
+    if (colourHint_ == nullptr || backgroundKey_ == nullptr) {
+        return;
+    }
+    const double colour = vision::backgroundColourfulness(background);
+    // 0,15 no es una elección delicada: el cartón rojo del banco da 0,735 y las
+    // siete mesas blancas van de 0,000 a 0,020. Un factor de treinta y siete
+    // entre los dos grupos deja el umbral en tierra de nadie.
+    constexpr double kColouredEnough = 0.15;
+    const bool alreadyOn =
+        backgroundKey_->currentIndex() !=
+        static_cast<int>(vision::SegmentationOptions::BackgroundKey::Off);
+    const bool worthSaying = colour >= kColouredEnough && !alreadyOn;
+
+    colourHint_->setVisible(worthSaying);
+    useColourButton_->setVisible(worthSaying);
+    if (!worthSaying) {
+        return;
+    }
+    // Con la cifra y con el color, para que el operador pueda comprobarlo
+    // mirando su propia mesa en vez de creerse una corazonada.
+    colourHint_->setText(
+        tr("Tu mesa tiene color (%1, saturación %2). Ahora mismo la pieza se separa por lo "
+           "CLARA que es, y ahí se pierde lo que de verdad la distingue del fondo: el "
+           "tono. Sobre un cartón rojo, una arandela de latón tiene casi la misma "
+           "claridad que la mesa — medido sobre una foto de veinte arandelas surtidas, "
+           "por claridad salen 7 y por color 20.")
+            .arg(QColor(background[2], background[1], background[0]).name().toUpper())
+            .arg(colour, 0, 'f', 2));
+    colourHint_->setStyleSheet(theme::textStyle(theme::kWarn));
 }
 
 void DetectionPage::setSceneReading(const vision::SceneReading& reading) {

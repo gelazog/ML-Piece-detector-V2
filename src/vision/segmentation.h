@@ -151,6 +151,23 @@ struct SegmentationOptions {
 // repetido, que es lo coherente.
 [[nodiscard]] cv::Vec3b estimateBackgroundColour(const cv::Mat& image);
 
+// CUÁNTO COLOR TIENE EL FONDO, de 0 (gris puro) a 1.
+//
+// Existe para poder AVISAR. La clave de color nace apagada porque cambia lo que
+// se mide, y eso está bien; el problema es que una opción apagada que nadie sabe
+// que existe es una opción que no existe. Y quien la necesita es justo el que no
+// va a ir a buscarla: está viendo que «no detecta bien» y no tiene por qué
+// sospechar del color de su mesa.
+//
+// Es la saturación de HSV, calculada sobre UN píxel —el color del fondo ya
+// estimado— y no convirtiendo la imagen entera: mirar un millón de píxeles para
+// leer uno sería pagar de más en el camino que corre con el vídeo.
+//
+// Medido sobre el banco de fotos: el cartón rojo da 0,735 y las siete mesas
+// blancas van de 0,000 a 0,020. Un factor de treinta y siete entre los dos
+// grupos, así que el umbral no es una elección delicada.
+[[nodiscard]] double backgroundColourfulness(const cv::Vec3b& background);
+
 // Distancia de cada píxel al color del fondo, en Lab, como imagen de un canal.
 //
 // Lab y no BGR porque lo que hace falta es «cuánto se PARECE», y en BGR la

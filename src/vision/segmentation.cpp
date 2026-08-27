@@ -139,6 +139,15 @@ cv::Vec3b estimateBackgroundColour(const cv::Mat& image) {
     return median;
 }
 
+double backgroundColourfulness(const cv::Vec3b& background) {
+    const int high = std::max({background[0], background[1], background[2]});
+    const int low = std::min({background[0], background[1], background[2]});
+    if (high == 0) {
+        return 0.0;  // negro: no hay tono del que hablar
+    }
+    return static_cast<double>(high - low) / high;
+}
+
 cv::Mat distanceToBackground(const cv::Mat& bgr, const cv::Vec3b& background) {
     if (bgr.empty() || bgr.channels() != 3) {
         return {};

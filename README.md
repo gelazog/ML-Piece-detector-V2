@@ -864,6 +864,13 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
 
    Las trece que aparecen son exactamente las que no son cromadas.
 
+   **Y no hace falta que sepas que existe: la aplicación te lo dice.** Si mide
+   que tu mesa tiene color, la pestaña *Detección* lo avisa con la cifra dentro
+   —«tu mesa tiene color (#EE3F4D, saturación 0,74)»— y pone un botón que lo
+   enciende. Sobre mesa blanca **se calla**, y con la clave ya encendida
+   también: un aviso que sale en todas las escenas se aprende a ignorar, y
+   entonces tampoco sirve donde hacía falta.
+
    El color del fondo puede **buscarlo solo** (toma la mediana del marco de la
    imagen, que es fondo casi siempre — aguanta aunque haya piezas tocando el
    borde) o puedes **decírselo tú** con un selector de color, que es lo sensato

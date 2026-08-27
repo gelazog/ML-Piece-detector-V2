@@ -4397,7 +4397,9 @@ void MainWindow::onAnalysisFinished() {
             (!sceneReadingClock_.isValid() ||
              sceneReadingClock_.elapsed() >= kSceneReadingEveryMs)) {
             sceneReadingClock_.restart();
-            detection->setSceneReading(vision::readScene(camera::qImageToMat(lastFrame_)));
+            const cv::Mat frame = camera::qImageToMat(lastFrame_);
+            detection->setSceneReading(vision::readScene(frame));
+            detection->setBackgroundColour(vision::estimateBackgroundColour(frame));
         }
     }
     if (streaming_) {

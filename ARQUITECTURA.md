@@ -2510,6 +2510,21 @@ Nace apagada, como todo lo que mueve una medida. Hay una prueba que comprueba qu
 con la clave apagada pasar la foto en color y en gris da exactamente la misma
 máscara.
 
+**Y por eso hay que avisar.** Una opción apagada que nadie sabe que existe es una
+opción que no existe, y quien la necesita es justo el que no va a ir a buscarla:
+está viendo que «no detecta bien» y no tiene por qué sospechar del color de su
+mesa. La pestaña *Detección* mide la saturación del color de fondo que ya estima
+y lo dice con la cifra, con un botón que lo enciende.
+
+El umbral no es una elección delicada: medido sobre el banco, el cartón rojo da
+**0,735** y las siete mesas blancas van de **0,000 a 0,020**. Un factor de
+treinta y siete, así que el 0,15 cae en tierra de nadie.
+
+Se calla en los dos casos en que estorbaría —mesa gris, y clave ya encendida— y
+las dos mitades tienen prueba. La segunda importa tanto como la primera: un aviso
+que aparece en todas las escenas se aprende a ignorar en dos días, y entonces
+tampoco sirve donde sí hacía falta.
+
 Un límite conocido: una arandela de **plástico traslúcido** sigue sin salir,
 porque a través de ella se ve el fondo y no hay color que la separe.
 

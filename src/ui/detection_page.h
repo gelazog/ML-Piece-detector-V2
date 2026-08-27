@@ -80,6 +80,9 @@ private:
     void reloadProfiles(std::int64_t selectId);
     void applyOptions(const vision::SegmentationOptions& options);
 
+    QLabel* colourHint_ = nullptr;
+    QPushButton* useColourButton_ = nullptr;
+
     repositories::DetectionProfileRepository* profiles_ = nullptr;
     QComboBox* profileCombo_ = nullptr;
     QCheckBox* autoThreshold_ = nullptr;
@@ -109,6 +112,13 @@ public:
     // ningun umbral por nivel puede servir (`vision/edge_segmentation.h`), y ese
     // es el momento de decirlo, no despues.
     void setSceneReading(const vision::SceneReading& reading);
+
+    // AVISA DE QUE LA MESA TIENE COLOR, si lo tiene y la clave está apagada.
+    //
+    // La opción existe desde antes; lo que faltaba era que alguien se enterase.
+    // Quien la necesita está viendo que «no detecta bien» y no tiene por qué
+    // sospechar del color de su mesa.
+    void setBackgroundColour(const cv::Vec3b& background);
 
     // EL RESULTADO DE «¿ESTÁ CORTANDO LA PIEZA?».
     //

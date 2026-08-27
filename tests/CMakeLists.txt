@@ -13,6 +13,7 @@ add_executable(pci_tests
   test_gray.cpp
   test_tool_for_the_piece.cpp
   test_background_colour.cpp
+  test_coloured_table.cpp
   test_brush_snap.cpp
   test_camera_profile.cpp
   test_calibration_images.cpp
@@ -92,6 +93,7 @@ gtest_discover_tests(pci_tests DISCOVERY_MODE PRE_TEST)
 add_executable(pci_gui_tests
   test_canvas_gestures.cpp
   test_default_buttons.cpp
+  test_coloured_table_advice.cpp
   test_lens_wizard.cpp
   test_readme_paths.cpp
   test_variant_wizard.cpp
