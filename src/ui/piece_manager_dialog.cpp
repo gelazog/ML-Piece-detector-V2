@@ -1,5 +1,7 @@
 #include "ui/piece_manager_dialog.h"
 
+#include "ui/theme.h"
+
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -33,7 +35,7 @@ PieceManagerDialog::PieceManagerDialog(repositories::PieceRepository* pieces,
     thumbLabel_->setFixedSize(160, 160);
     thumbLabel_->setAlignment(Qt::AlignCenter);
     thumbLabel_->setStyleSheet(
-        QStringLiteral("background:#1a1a1a; color:#888; border:1px solid #444;"));
+        theme::placeholderStyle());
     thumbLabel_->setText(QStringLiteral("—"));
     sideLayout->addWidget(thumbLabel_, 0, Qt::AlignHCenter);
     infoLabel_ = new QLabel(this);

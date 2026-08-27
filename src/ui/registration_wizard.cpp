@@ -176,7 +176,11 @@ void RegistrationWizard::onCaptureProcessed() {
     captureButton_->setEnabled(true);
     const auto result = watcher_.result();
     if (!result.isOk()) {
-        feedbackLabel_->setStyleSheet(QStringLiteral("color: #ff5555;"));
+        // Del MISMO sitio que el «aceptada» de tres líneas más abajo, que ya
+        // usaba la paleta. Tener un estado con token y los otros dos con un
+        // color a mano es como se acaba teniendo tres rojos distintos para
+        // «mal», y entonces el rojo deja de querer decir nada.
+        feedbackLabel_->setStyleSheet(theme::textStyle(theme::kBad));
         feedbackLabel_->setText(QString::fromStdString(result.error().message));
         return;
     }
@@ -185,7 +189,7 @@ void RegistrationWizard::onCaptureProcessed() {
         feedbackLabel_->setStyleSheet(theme::textStyle(theme::kGood));
         feedbackLabel_->setText(tr("Captura %1 aceptada").arg(feedback.count));
     } else {
-        feedbackLabel_->setStyleSheet(QStringLiteral("color: #ff9944;"));
+        feedbackLabel_->setStyleSheet(theme::textStyle(theme::kWarn));
         feedbackLabel_->setText(tr("Rechazada: %1")
                                     .arg(QString::fromStdString(feedback.reason)));
     }

@@ -94,7 +94,7 @@ InspectionResultDialog::InspectionResultDialog(
         thumb->setFixedSize(130, 130);
         thumb->setAlignment(Qt::AlignCenter);
         thumb->setStyleSheet(
-            QStringLiteral("background:#1a1a1a; color:#888; border:1px solid #444;"));
+            theme::placeholderStyle());
         if (image.isNull()) {
             thumb->setText(QStringLiteral("—"));
         } else {

@@ -116,6 +116,26 @@ inline constexpr const char* kSurfaceSunken = "#f5f6f7";
 // Una pastilla de veredicto entera: fondo saturado, texto claro y esquinas
 // redondeadas. Existe por lo mismo que `noticeStyle`: es donde se escribían a
 // mano las parejas fondo/texto, y donde se colaban las que no contrastaban.
+// EL HUECO DE «AQUÍ TODAVÍA NO HAY IMAGEN».
+//
+// Estaba escrito TRES veces, idéntico, en el informe de inspección, la ventana
+// principal y el gestor de piezas:
+//
+//     "background:#1a1a1a; color:#888; border:1px solid #444;"
+//
+// Tres copias de la misma decisión son tres sitios que se pueden cambiar por
+// separado, y es como se llegó a tener tres verdes distintos para «bien».
+//
+// De paso se arregla el borde. El `#444` sobre el `#1a1a1a` del fondo da
+// **1,8:1**, o sea que casi no se ve: WCAG pide 3:1 para el contorno de un
+// control, que es lo que hace que el hueco se lea como una caja y no como un
+// agujero. Con `kInkMutedOnDark` el marco queda tan visible como su propio
+// texto, que para un hueco vacío es exactamente lo que hace falta.
+[[nodiscard]] inline QString placeholderStyle() {
+    return QStringLiteral("background:%1; color:%2; border:1px solid %2;")
+        .arg(QString(kSurfaceDark), QString(kInkMutedOnDark));
+}
+
 [[nodiscard]] inline QString chipStyle(const char* background, const QString& extra = {}) {
     return QStringLiteral("background:%1; color:%2; border-radius:8px; padding:3px;%3")
         .arg(QString(background), QString(kInkOnChip), extra);

@@ -252,9 +252,20 @@ Todo esto salió de una auditoría anterior y está verificado.
   `tests/test_detection_groups.cpp` fija las dos cosas: que ninguna fila quede
   suelta fuera de un grupo, y que **la sugerencia y su control vivan en el mismo
   grupo**.
-- [ ] **C5 · Quedan 49 colores escritos a mano** fuera de `ui/theme.h`. Hay un
-  trinquete en `tests/test_palette_guard.cpp` que impide que suban; hay que ir
-  bajándolos y bajando el tope.
+- [~] **C5 · Colores escritos a mano fuera de `ui/theme.h`.** El trinquete de
+  `tests/test_palette_guard.cpp` impide que suban; van **56 -> 49 -> 41 -> 36**.
+
+  Los cinco de esta vuelta salieron de dos grupos, no sueltos:
+
+  - El hueco de «aquí todavía no hay imagen» estaba escrito **tres veces
+    idéntico** —informe de inspección, ventana principal, gestor de piezas—.
+    Ahora es `theme::placeholderStyle()`. De paso se arregló su borde: el `#444`
+    sobre el fondo `#1a1a1a` da **1,8:1**, o sea que casi no se ve, cuando WCAG
+    pide 3:1 para el contorno de un control.
+  - Los tres estados del asistente de registro, en seis líneas seguidas: el
+    «aceptada» ya usaba `theme::kGood` y los otros dos llevaban `#ff5555` y
+    `#ff9944` a mano. Un estado con token y dos sin él es como se acaba teniendo
+    tres rojos distintos para «mal».
 - [~] **C8 · 36 pruebas localizan un control por su TEXTO.** Trinquete puesto en
   `tests/test_lookups_by_name.cpp`; hay que ir bajándolo.
 

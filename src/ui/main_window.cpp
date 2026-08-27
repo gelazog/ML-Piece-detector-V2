@@ -1040,7 +1040,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         label->setFixedSize(170, 170);
         label->setAlignment(Qt::AlignCenter);
         label->setStyleSheet(
-            QStringLiteral("background:#1a1a1a; color:#888; border:1px solid #444;"));
+            theme::placeholderStyle());
         label->setText(QStringLiteral("—"));
         return label;
     };
