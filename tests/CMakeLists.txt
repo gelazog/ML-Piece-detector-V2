@@ -21,6 +21,7 @@ add_executable(pci_tests
   test_crash_guard.cpp
   test_database.cpp
   test_detection_profiles.cpp
+  test_calibration_trace.cpp
   test_domain.cpp
   test_units.cpp
   test_synthetic_measures.cpp

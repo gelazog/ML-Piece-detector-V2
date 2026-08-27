@@ -11,14 +11,14 @@ namespace pci::repositories {
 core::Result<std::int64_t> InspectionRepository::saveInspection(
     std::int64_t pieceId, int referenceVersion, const domain::InspectionVerdict& verdict,
     const std::vector<inspection::ToolRunResult>& toolResults,
-    const std::vector<unsigned char>& thumbnailJpeg) {
+    const std::vector<unsigned char>& thumbnailJpeg, std::int64_t calibrationId) {
     using ResultT = core::Result<std::int64_t>;
 
     std::int64_t historyId = -1;
     const auto result = db_.transaction([&]() -> core::Result<void> {
         auto insert = db_.prepare(
             "INSERT INTO InspectionHistory (piece_id, reference_version, verdict, "
-            "similarity, thumbnail) VALUES (?, ?, ?, ?, ?);");
+            "similarity, thumbnail, calibration_id) VALUES (?, ?, ?, ?, ?, ?);");
         if (!insert.isOk()) {
             return core::Result<void>::err(insert.error().message);
         }
@@ -28,6 +28,7 @@ core::Result<std::int64_t> InspectionRepository::saveInspection(
         if (auto b = h.bindText(3, verdict.ok ? "OK" : "NG"); !b.isOk()) return b;
         if (auto b = h.bindDouble(4, verdict.embedding.similarity); !b.isOk()) return b;
         if (auto b = h.bindBlob(5, thumbnailJpeg); !b.isOk()) return b;
+        if (auto b = h.bindInt(6, calibrationId); !b.isOk()) return b;
         if (auto step = h.step(); !step.isOk()) {
             return core::Result<void>::err(step.error().message);
         }

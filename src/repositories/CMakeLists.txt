@@ -1,5 +1,6 @@
 add_library(pci_repositories STATIC
   config_io.cpp
+  calibration_repository.cpp
   detection_profile_repository.cpp
   inspection_repository.cpp
   piece_repository.cpp

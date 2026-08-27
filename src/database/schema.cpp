@@ -264,6 +264,46 @@ ALTER TABLE DetectionProfiles ADD COLUMN background_g INTEGER NOT NULL DEFAULT 2
 ALTER TABLE DetectionProfiles ADD COLUMN background_r INTEGER NOT NULL DEFAULT 255;
 )sql";
 
+// v14: LA CALIBRACIÓN, CON FECHA Y CON QUIÉN LA USÓ.
+//
+// Hasta aquí el factor px→mm vivía suelto en `Settings`, como una clave más:
+// un solo número, sin fecha, sin decir cómo se obtuvo ni contra qué patrón, y
+// **sin que ningún resultado de inspección lo referenciara**.
+//
+// La consecuencia práctica es la que importa. El día que se descubre que la
+// calibración estaba mal —alguien movió la cámara, se cambió el objetivo, se
+// calibró contra una regla de plástico deformada— no hay forma de saber QUÉ
+// VEREDICTOS hay que revisar. Todos los milímetros que ha dado el programa
+// salieron de ese número, y ninguna medida guardada dice de cuál.
+//
+// Es lo primero que mira un auditor y lo que exige ISO 9001 7.1.5.2: si el
+// equipo aparece fuera de calibración, hay que evaluar la validez de las
+// medidas ANTERIORES. Sin esto, la respuesta honesta es «no lo sé».
+//
+// La tabla es un REGISTRO y no un ajuste: cada calibración que se aplica añade
+// una fila y la anterior se queda. Guardar solo la vigente sería el mismo
+// problema con otra forma.
+//
+// `calibration_id = 0` significa «esta inspección es anterior a que se llevara
+// registro», que es distinto de «sin calibrar» y hay que poder distinguirlo:
+// una base que ya existe no puede inventarse a cuál pertenecían sus medidas.
+const char* const kMigrationV14 = R"sql(
+CREATE TABLE IF NOT EXISTS Calibrations (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    mm_per_pixel      REAL NOT NULL,
+    camera_dist_mm    REAL NOT NULL DEFAULT 0,
+    fov_deg           REAL NOT NULL DEFAULT 0,
+    calibrated_width  INTEGER NOT NULL DEFAULT 0,
+    calibrated_height INTEGER NOT NULL DEFAULT 0,
+    camera            TEXT NOT NULL DEFAULT '',
+    method            TEXT NOT NULL DEFAULT '',
+    reference         TEXT NOT NULL DEFAULT '',
+    notes             TEXT NOT NULL DEFAULT ''
+);
+ALTER TABLE InspectionHistory ADD COLUMN calibration_id INTEGER NOT NULL DEFAULT 0;
+)sql";
+
 const char* migrationFor(int targetVersion) {
     switch (targetVersion) {
         case 1: return kSchemaV1;
@@ -279,6 +319,7 @@ const char* migrationFor(int targetVersion) {
         case 11: return kMigrationV11;
         case 12: return kMigrationV12;
         case 13: return kMigrationV13;
+        case 14: return kMigrationV14;
     }
     return nullptr;
 }

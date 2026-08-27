@@ -19,10 +19,20 @@ public:
 
     // Persiste una inspección completa en una transacción. Devuelve el id del
     // registro de historial.
+    //
+    // `calibrationId` es CON QUÉ CALIBRACIÓN se midió esto, y es la mitad del
+    // valor de guardarlo. Todos los milímetros de una inspección salen de un
+    // único factor px→mm; si más tarde se descubre que ese factor estaba mal
+    // —alguien movió la cámara, se cambió el objetivo—, sin este dato no hay
+    // forma de saber qué veredictos hay que revisar.
+    //
+    // 0 significa «no se llevaba registro cuando se hizo», que es distinto de
+    // «sin calibrar» y hay que poder distinguirlo: las inspecciones anteriores
+    // a la tabla de calibraciones no pueden inventarse a cuál pertenecían.
     core::Result<std::int64_t> saveInspection(
         std::int64_t pieceId, int referenceVersion, const domain::InspectionVerdict& verdict,
         const std::vector<inspection::ToolRunResult>& toolResults,
-        const std::vector<unsigned char>& thumbnailJpeg);
+        const std::vector<unsigned char>& thumbnailJpeg, std::int64_t calibrationId = 0);
 
     struct HistoryEntry {
         std::int64_t id = 0;
