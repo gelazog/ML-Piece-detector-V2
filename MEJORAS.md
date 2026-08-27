@@ -269,6 +269,46 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
 - [ ] **E7 · `runRegion` no coincide en área con la silueta de la aplicación.**
   Usa su propio Otsu local y la diferencia llega al 52 % en cotas ya guardadas.
   **Decisión del dueño del proyecto, aparcada a propósito.**
+- [ ] **E8 · Cien tuercas iguales, ocho formas distintas.** Verificado midiendo
+  `producto-tuercas-prueba.jpg` pieza por pieza. Son cien tuercas hexagonales
+  del mismo lote y **el área varía solo un 0,9 %** entre la mayor y la menor, así
+  que la detección es repetible. El clasificador no:
+
+  | lados que ve | 3 | 4 | 6 | 7 | 8 | 9 | 10 | 11 |
+  |---|---|---|---|---|---|---|---|---|
+  | tuercas | 4 | 2 | **11** | 9 | 12 | 2 | 9 | **51** |
+
+  Once de cien aciertan, y la respuesta más frecuente —once lados— es falsa. Es
+  un fallo de REPETIBILIDAD: la misma pieza, dos veces, dos formas. Y como «qué
+  medir depende de la forma», cada tuerca de la bandeja recibe un juego de cotas
+  distinto.
+
+  **Dos hipótesis mías, las dos falsadas midiendo.** Van escritas para que nadie
+  las vuelva a gastar:
+
+  1. *«Es un punto atípico, una rebaba»* — NO. El ajuste de seis lados se separa
+     p50 1,0 px, p90 5,4 px, p95 5,8 px, máx 6,2 px: la cola está poblada, entre
+     2 y 10 puntos por encima del tope. Es el chaflán de la tuerca repartido por
+     sus seis esquinas, no un pico. Un percentil robusto en vez del máximo movería
+     la moneda al aire de sitio, no la quitaría.
+  2. *«Subir `maxDeviationPx`»* — NO. La meseta de seis lados sale en 17 de 30
+     epsilon barridos, contra 1-3 de todas las demás, y se descarta **por 0,24 px**
+     (6,24 contra el tope de 6,00). Pero el hueco que ese 6,00 protege está medido
+     y es real: un rectángulo con redondeos de 40 px se separa 16,6 px. Subirlo lo
+     suficiente para la tuerca rompería esa distinción.
+
+  **Dónde está de verdad, y esto sí está medido:** la tuerca debería salir por la
+  rama de «polígono redondeado», que es exactamente lo que es —un hexágono con
+  las esquinas achaflanadas— y esa rama pide `straight >= 3`. Pero
+  `decomposeContour` ve en cada tuerca **6 arcos y 0-1 rectas, con el 85-91 % del
+  contorno en curva**. Los seis planos de una tuerca hexagonal se están
+  descomponiendo como arcos. Ahí está el fallo, y no en ningún umbral del
+  clasificador: sobre una pieza de lados rectos, la descomposición dice que
+  nueve décimas partes son curva.
+
+  Siguiente paso: mirar `decomposeContour` sobre un plano corto y ligeramente
+  arqueado —50 px de lado en esta foto— y ver por qué prefiere un arco de radio
+  enorme a una recta.
 
 ## F. Ya está hecho — no volver a investigarlo
 
