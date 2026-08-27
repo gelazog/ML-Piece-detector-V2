@@ -1474,6 +1474,18 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     updateBoardReadout();
 
     buildCaptureDock();  // antes de restaurar la disposición, o no se colocaría
+    // LOS ATAJOS, ANTES QUE LOS MENÚS, y el orden es el arreglo entero.
+    //
+    // Los atajos son `QAction` colgadas de la ventana. Para que una entrada de
+    // menú ENSEÑE su tecla tiene que ser esa misma acción, no una gemela: dos
+    // acciones con la misma secuencia en la misma ventana es
+    // `ambiguousActivate`, y Qt no dispara ninguna de forma fiable. Este
+    // proyecto ya se comió ese fallo con Ctrl+1 y Ctrl+2.
+    //
+    // Construir el menú primero obligaba a que la entrada se creara sola, y por
+    // eso ninguna de las 58 enseñaba nada. `buildShortcuts` no depende de nada
+    // de lo que hay debajo: solo crea acciones y lee las teclas guardadas.
+    buildShortcuts();
     buildMenuBar();  // crea las acciones de menú (incluidas unidad y contorno)
     // El menú se construye DESPUÉS de la primera actualización de estado, así
     // que su acción de auto-inspección se quedaba sin el motivo que sí tenía el
@@ -1495,8 +1507,6 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         }
     }
     video_->setLengthUnit(currentUnit());
-
-    buildShortcuts();
 
     // Restaurar tamaño, posición, pantalla, maximizada y disposición de
     // paneles: la ventana se abre donde el operador la dejó (S3).
@@ -1720,8 +1730,13 @@ void MainWindow::buildMenuBar() {
     // Lo que las une es la pregunta que contestan: con qué se mide. Quien busca
     // cualquiera de las dos va al mismo sitio.
     auto* measureMenu = menuBar()->addMenu(tr("&Medida"));
-    measureMenu->addAction(tr("Calibrar escala (mm)…"), this,
-                                             &MainWindow::onCalibrateClicked);
+    if (auto* calibrate = shortcutAction(QStringLiteral("calibrate"),
+                                        tr("Calibrar escala (mm)…"))) {
+        measureMenu->addAction(calibrate);
+    } else {
+        measureMenu->addAction(tr("Calibrar escala (mm)…"), this,
+                               &MainWindow::onCalibrateClicked);
+    }
     measureMenu->addSeparator();
     measureMenu->addAction(tr("Calibrar la lente…"), this,
                            &MainWindow::onCalibrateLensClicked);
@@ -1826,11 +1841,21 @@ void MainWindow::buildMenuBar() {
     // en la barra.
     pieceMenu->addAction(tr("Gestionar plantillas…"), this,
                          &MainWindow::onManageTemplatesClicked);
-    pieceMenu->addAction(tr("Guardar plantilla"), this,
-                         &MainWindow::onSaveTemplateClicked);
+    if (auto* save = shortcutAction(QStringLiteral("save_template"),
+                                    tr("Guardar plantilla"))) {
+        pieceMenu->addAction(save);
+    } else {
+        pieceMenu->addAction(tr("Guardar plantilla"), this,
+                             &MainWindow::onSaveTemplateClicked);
+    }
 
     auto* inspectionMenu = menuBar()->addMenu(tr("&Inspección"));
-    inspectionMenu->addAction(tr("Inspeccionar"), this, &MainWindow::onInspectClicked);
+    if (auto* inspect = shortcutAction(QStringLiteral("inspect_once"),
+                                       tr("Inspeccionar"))) {
+        inspectionMenu->addAction(inspect);
+    } else {
+        inspectionMenu->addAction(tr("Inspeccionar"), this, &MainWindow::onInspectClicked);
+    }
     autoInspectAction_ = inspectionMenu->addAction(tr("Auto-inspección"));
     autoInspectAction_->setCheckable(true);
     // Espejo del botón de la barra, en los dos sentidos: si el menú dijera una
@@ -1841,8 +1866,13 @@ void MainWindow::buildMenuBar() {
         }
     });
     inspectionMenu->addSeparator();
-    inspectionMenu->addAction(tr("Editor de plantilla…"), this,
-                                              &MainWindow::onOpenEditorClicked);
+    if (auto* editor = shortcutAction(QStringLiteral("template_editor"),
+                                      tr("Editor de plantilla…"))) {
+        inspectionMenu->addAction(editor);
+    } else {
+        inspectionMenu->addAction(tr("Editor de plantilla…"), this,
+                                  &MainWindow::onOpenEditorClicked);
+    }
     inspectionMenu->addAction(tr("Ver historial…"), this,
                               &MainWindow::onShowHistoryClicked);
 
@@ -2042,7 +2072,12 @@ void MainWindow::buildMenuBar() {
     connect(unitGroup_, &QActionGroup::triggered, this, &MainWindow::onUnitChanged);
 
     auto* helpMenu = menuBar()->addMenu(tr("A&yuda"));
-    helpMenu->addAction(tr("Atajos de teclado…"), this, &MainWindow::onShowShortcuts);
+    if (auto* guide = shortcutAction(QStringLiteral("shortcuts_help"),
+                                     tr("Atajos de teclado…"))) {
+        helpMenu->addAction(guide);
+    } else {
+        helpMenu->addAction(tr("Atajos de teclado…"), this, &MainWindow::onShowShortcuts);
+    }
     // Lo último: las explicaciones se ponen cuando ya existen todas las
     // entradas, y así vale con un solo sitio en vez de veinticinco.
     explainMenus();
@@ -2828,6 +2863,37 @@ void MainWindow::onFreeZoneCancelled() {
 
 // Acciones con atajo configurable: el valor por defecto puede sobreescribirse
 // desde la guía (F1) y persiste en Settings ("key_<id>").
+QAction* MainWindow::shortcutAction(const QString& id, const QString& menuText) {
+    // LA MISMA ACCIÓN, NO UNA GEMELA.
+    //
+    // Ninguna de las 58 entradas de menú enseñaba su atajo, y el arreglo obvio
+    // —`setShortcut` en la entrada— es el equivocado: los atajos ya son
+    // `QAction` invisibles colgadas de la ventana, así que poner la misma tecla
+    // en la entrada del menú da DOS acciones con la misma secuencia en la misma
+    // ventana. Eso es `ambiguousActivate`: Qt no dispara ninguna de forma
+    // fiable. Este proyecto ya se comió ese fallo con Ctrl+1 y Ctrl+2.
+    //
+    // Así que la entrada del menú no se crea: se cuelga la que ya existe. Una
+    // sola acción, un solo atajo, y el menú lo enseña solo porque Qt pinta la
+    // secuencia de la acción que le den.
+    //
+    // Se le cambia el texto al del menú —«Calibrar escala (mm)…» en vez de
+    // «Calibrar mm…»— y eso no toca la guía de atajos, que enseña
+    // `ShortcutSpec::description` y no el texto de la acción. Son dos sitios
+    // con dos públicos: el menú se lee de pasada, la guía se lee buscando.
+    for (const auto& spec : shortcuts_) {
+        if (spec.id == id && spec.action != nullptr) {
+            if (!menuText.isEmpty()) {
+                spec.action->setText(menuText);
+            }
+            return spec.action;
+        }
+    }
+    // Sin la acción no se deja el menú cojo: el llamante pone la entrada de
+    // siempre. Devolver nulo y que alguien lo cuelgue sería una entrada vacía.
+    return nullptr;
+}
+
 void MainWindow::buildShortcuts() {
     auto addShortcut = [this](const QString& id, const QString& description,
                               const QKeySequence& defaultKey, auto slot) {

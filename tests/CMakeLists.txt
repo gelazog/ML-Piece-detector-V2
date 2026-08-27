@@ -102,6 +102,7 @@ add_executable(pci_gui_tests
   test_canvas_gestures.cpp
   test_default_buttons.cpp
   test_enter_key_in_dialogs.cpp
+  test_menus_show_shortcuts.cpp
   test_background_patch_window.cpp
   test_coloured_table_advice.cpp
   test_detection_groups.cpp

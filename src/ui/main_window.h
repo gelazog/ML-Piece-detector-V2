@@ -288,6 +288,13 @@ private:
     // hay dos caminos: es el mismo con una pregunta más.
     [[nodiscard]] core::Result<vision::PieceAnalysis> analyseMeasuredPiece(
         const cv::Mat& image) const;
+    // La acción que YA tiene el atajo, retitulada para el menú. Nula si no
+    // existe ese id — el llamante pone entonces la entrada de siempre.
+    //
+    // Existe para que el menú ENSEÑE la tecla sin crear una acción gemela:
+    // dos acciones con la misma secuencia en la misma ventana es
+    // `ambiguousActivate`, y Qt no dispara ninguna de forma fiable.
+    QAction* shortcutAction(const QString& id, const QString& menuText = {});
     void applyPreferencesPage(PreferencesPage* page);
     void wireCameraPage(CameraImagePage* page);
     void updateRoiButton();

@@ -99,7 +99,7 @@ grande.
 
 Todo esto salió de una auditoría anterior y está verificado.
 
-- [ ] **C1 · Ningún menú enseña su atajo.** 0 de 58 entradas. El operador no
+- [~] **C1 · Ningún menú enseñaba su atajo.** Eran 0 de 58 entradas. El operador no
   puede descubrir un atajo sin abrir la ayuda.
 
   **Ojo, el arreglo NO es poner `setShortcut` en las entradas de menú.**
@@ -114,6 +114,33 @@ Todo esto salió de una auditoría anterior y está verificado.
   tiene el atajo, en vez de crear una gemela. Eso obliga a construir los atajos
   antes que los menús, o a casarlos después, y `shortcuts_` tendría que apuntar a
   la acción superviviente para que la guía de atajos siga pudiendo editarla.
+
+  **[~] Hechas las cinco entradas que duplicaban un atajo**, que eran todas las
+  que había: el resto de las 58 no tiene tecla y no puede enseñar ninguna.
+
+  | entrada | tecla |
+  |---|---|
+  | Calibrar escala (mm)… | `C` |
+  | Guardar plantilla | `Ctrl+S` |
+  | Inspeccionar | `I` |
+  | Editor de plantilla… | `P` |
+  | Atajos de teclado… | `F1` |
+
+  El arreglo entero fue **el orden**: `buildMenuBar()` corría en la línea 1477 y
+  `buildShortcuts()` en la 1499, así que cuando el menú se construía no existía
+  todavía ninguna acción con tecla y la entrada tenía que crearse sola.
+  Invertidos, `shortcutAction(id, texto)` cuelga la que ya existe y le pone el
+  título del menú — la guía sigue enseñando `ShortcutSpec::description`, que es
+  otro texto para otro público.
+
+  `tests/test_menus_show_shortcuts.cpp` fija las dos mitades. La segunda es la
+  que impide el arreglo malo: si alguien «mejora» esto duplicando acciones, la
+  primera seguiría pasando —el menú enseñaría la tecla— y la segunda cazaría
+  las dos acciones reclamando la misma secuencia.
+
+  Queda pendiente lo contrario: **entradas de menú útiles que no tienen atajo y
+  podrían tenerlo**. Eso es añadir teclas, no arreglar un fallo, y toca decidir
+  cuáles merecen una.
 - [ ] **C2 · Ningún botón tiene acelerador `Alt+letra`.** 0 de unos 40.
 - [~] **C3 · Diálogos donde Enter dispara el botón equivocado.** Hecho el
   peligroso, y **medido en vez de razonado**: una prueba pregunta a los botones
