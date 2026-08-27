@@ -26,6 +26,7 @@ add_executable(pci_tests
   test_background_patch.cpp
   test_smoke_flag.cpp
   test_measured_piece.cpp
+  test_proposals_are_checkable.cpp
   test_same_piece_everywhere.cpp
   test_option_labels.cpp
   test_csv_for_excel.cpp
