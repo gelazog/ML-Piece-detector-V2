@@ -144,4 +144,27 @@ void orderPiecesForReading(std::vector<PieceContour>& pieces);
 // de la otra.
 [[nodiscard]] std::size_t largestPieceIndex(const std::vector<PieceAnalysis>& pieces);
 
+// CUÁL ES «LA PIEZA QUE SE MIDE», con el navegador de piezas de por medio.
+//
+// `wanted` va en ORDEN DE LECTURA empezando por 1. El cero es un estado con
+// nombre —«la que decidas tú»— y significa la mayor, que es lo que la
+// aplicación ha hecho siempre.
+//
+// Existe por el mismo motivo que `largestPieceIndex` y un escalón más arriba.
+// Aquella nació porque dos sitios habían copiado el bucle de «la mayor», y su
+// comentario avisa de que qué pieza se mide no puede divergir en silencio
+// porque «en vivo se vería una y el informe traería la de la otra».
+//
+// Era literalmente lo que pasaba. El navegador solo lo entendía el camino del
+// vídeo; «Medir pieza» y la medición automática llamaban a `analyzeFrame`, que
+// devuelve la mayor y no sabe nada de navegadores. Así que el operador ponía el
+// selector en la pieza 3, veía sus cotas dibujadas encima de ella, pulsaba
+// «Medir pieza» — y recibía el informe de otra, sin que nada lo dijera.
+//
+// Si el número señalado se sale —las piezas cambiaron de sitio, desapareció
+// una— se vuelve a la mayor en vez de no medir nada. Un encuadre que deja de
+// dar cotas porque falta la pieza 5 es peor que uno que mide la que hay.
+[[nodiscard]] std::size_t measuredPieceIndex(const std::vector<PieceAnalysis>& pieces,
+                                             int wanted);
+
 }  // namespace pci::vision

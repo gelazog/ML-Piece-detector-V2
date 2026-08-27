@@ -277,6 +277,17 @@ private:
     // su modo está activo: una guardada de otro día, con el modo apagado, no
     // puede seguir tapando media imagen sin que nadie lo haya pedido.
     [[nodiscard]] vision::PipelineConfig inspectionConfig() const;
+    // LA PIEZA QUE SE ESTÁ MIDIENDO, ya analizada.
+    //
+    // Todo lo que el operador pide sobre «la pieza» tiene que salir de aquí, no
+    // de `vision::analyzeFrame` —que devuelve siempre la mayor y no sabe nada
+    // del navegador—. Con las flechas puestas en la 3, el vídeo dibujaba las
+    // cotas sobre la 3 y el informe llegaba de otra.
+    //
+    // Con el navegador en cero se comporta exactamente como antes, y por eso no
+    // hay dos caminos: es el mismo con una pregunta más.
+    [[nodiscard]] core::Result<vision::PieceAnalysis> analyseMeasuredPiece(
+        const cv::Mat& image) const;
     void applyPreferencesPage(PreferencesPage* page);
     void wireCameraPage(CameraImagePage* page);
     void updateRoiButton();

@@ -309,6 +309,14 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    elección es tuya — si la pieza le ha tocado por ser la mayor, destacarla
    afirmaría una decisión que nadie tomó.
 
+   **Y la elección vale para todo**, no solo para el vídeo. *Medir pieza*, la
+   medición automática del editor y el propio editor miden **la pieza que has
+   señalado**. Durante un tiempo no fue así: el navegador solo lo entendía el
+   vídeo, y esos tres caminos analizaban siempre **la mayor del encuadre**. En
+   una foto de diez arandelas surtidas donde la mayor es la octava, señalar la
+   primera y pedir el informe devolvía «Arandela, 274 px» cuando la pieza
+   señalada es un «Polígono redondeado de 3 lados» de 95 px — sin ningún aviso.
+
 
    **Orientación**: por defecto la pieza se muestra **vertical** (tal como la
    ve la cámara) — más estable y sin la inclinación arbitraria que daba el eje

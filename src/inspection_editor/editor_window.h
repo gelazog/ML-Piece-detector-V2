@@ -93,6 +93,15 @@ private:
     // (y lo dice en el estado) si no hay pieza que describir. Se calcula una vez
     // y se reutiliza: ver y exportar tienen que enseñar el MISMO contorno.
     bool ensureContourReport();
+    // LA PIEZA QUE ESTE EDITOR EDITA, reconocida por dónde está.
+    //
+    // El editor se abre sobre UNA pieza y guarda sus herramientas en las
+    // coordenadas de esa. Cada vez que volvía a mirar la imagen llamaba a
+    // `vision::analyzeFrame`, que devuelve la MAYOR del encuadre: con varias
+    // piezas, la medición automática proponía las cotas de la mayor y las
+    // anclaba al fixture de la que se estaba editando.
+    [[nodiscard]] core::Result<vision::PieceAnalysis> analyseEditedPiece(
+        const cv::Mat& image) const;
     // Deja el contorno por recalcular: la imagen de referencia ha cambiado y el
     // que había describe una foto que ya no está en pantalla.
     void invalidateContourReport();

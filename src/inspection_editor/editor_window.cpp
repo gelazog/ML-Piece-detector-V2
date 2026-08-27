@@ -18,11 +18,15 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include <cmath>
 #include <functional>
 #include <initializer_list>
+#include <limits>
 #include <optional>
 #include <type_traits>
 #include <utility>
+
+#include "vision/contour_analysis.h"
 #include <variant>
 
 #include "camera/camera_controller.h"
@@ -617,9 +621,57 @@ void EditorWindow::applyConstructionPanel(EditedTool& tool) {
     }
 }
 
+// LA PIEZA QUE ESTE EDITOR EDITA, y no la mayor del encuadre.
+//
+// El editor se abre SOBRE UNA PIEZA: recibe su fixture y guarda las
+// herramientas en sus coordenadas. Pero cada vez que necesitaba volver a mirar
+// la imagen llamaba a `analyzeFrame`, que devuelve la mayor y no sabe nada de
+// eso. Con varias piezas en la mesa, la medición automática proponía las cotas
+// de la MAYOR y las anclaba al fixture de la que se está editando: cotas de una
+// pieza dibujadas sobre otra.
+//
+// Es la queja del taller: «si hay más de una pieza y se usa la automedición,
+// esta toma una medición para todas las piezas, en lugar de una medición
+// independiente por pieza».
+//
+// Se reconoce por CERCANÍA del origen del fixture, no por índice. El índice
+// cambia en cuanto una pieza entra o sale del encuadre, y el editor puede estar
+// abierto mientras la cámara sigue dando frames; el sitio, no. Si no hay
+// ninguna cerca —la pieza salió de cuadro— se vuelve a la mayor en vez de no
+// dar nada.
+core::Result<vision::PieceAnalysis> EditorWindow::analyseEditedPiece(
+    const cv::Mat& image) const {
+    auto all = vision::analyzeFrames(image, pipeline_);
+    if (!all.isOk()) {
+        return core::Result<vision::PieceAnalysis>::err(all.error().message);
+    }
+    if (all.value().empty()) {
+        return core::Result<vision::PieceAnalysis>::err("No se detectó ninguna pieza");
+    }
+    std::size_t nearest = vision::largestPieceIndex(all.value());
+    double best = std::numeric_limits<double>::max();
+    for (std::size_t i = 0; i < all.value().size(); ++i) {
+        const cv::Point2f delta = all.value()[i].fixture.origin - fixture_.origin;
+        const double distance = std::hypot(delta.x, delta.y);
+        if (distance < best) {
+            best = distance;
+            nearest = i;
+        }
+    }
+    // Un tope, para que «la más cercana» no acabe siendo una pieza del otro
+    // extremo de la mesa cuando la del editor ya no está: la diagonal del
+    // encuadre partida por cuatro. Más allá de eso no se está reconociendo
+    // nada, se está cogiendo lo que queda.
+    const double tooFar = std::hypot(image.cols, image.rows) / 4.0;
+    if (best > tooFar) {
+        nearest = vision::largestPieceIndex(all.value());
+    }
+    return core::Result<vision::PieceAnalysis>::ok(std::move(all.value()[nearest]));
+}
+
 void EditorWindow::onAutoMeasureClicked() {
     const cv::Mat image = camera::qImageToMat(reference_);
-    const auto analysis = vision::analyzeFrame(image, pipeline_);
+    const auto analysis = analyseEditedPiece(image);
     if (!analysis.isOk()) {
         statusLabel_->setText(tr("No se puede medir sola: no se detecta la pieza (%1)")
                                   .arg(QString::fromStdString(analysis.error().message)));
@@ -964,7 +1016,7 @@ void EditorWindow::onRefreshFromCamera() {
         return;
     }
     const QImage frame = latestLiveFrame_;
-    const auto analysis = vision::analyzeFrame(camera::qImageToMat(frame), pipeline_);
+    const auto analysis = analyseEditedPiece(camera::qImageToMat(frame));
     if (!analysis.isOk()) {
         statusLabel_->setText(tr("No se pudo detectar la pieza en la imagen nueva: %1")
                                   .arg(QString::fromStdString(analysis.error().message)));
@@ -986,8 +1038,7 @@ bool EditorWindow::ensureContourReport() {
     if (contour_.valid) {
         return true;
     }
-    const auto analysis =
-        vision::analyzeFrame(camera::qImageToMat(reference_), pipeline_);
+    const auto analysis = analyseEditedPiece(camera::qImageToMat(reference_));
     if (!analysis.isOk()) {
         statusLabel_->setText(tr("No se ve el contorno: no se detecta la pieza (%1)")
                                   .arg(QString::fromStdString(analysis.error().message)));

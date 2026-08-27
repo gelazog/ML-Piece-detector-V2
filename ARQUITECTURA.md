@@ -1292,6 +1292,42 @@ Limitación anotada: el **rasgo distintivo** solo se aplica a la pieza principal
 Es un punto concreto de *una* pieza y no significa nada en las demás; con
 `autoOrient` activo, las piezas 2..N usan su propio eje principal.
 
+#### Qué pieza se mide
+
+`vision::measuredPieceIndex(pieces, wanted)`. `wanted` va en **orden de lectura
+empezando por 1**; el cero es un estado con nombre —«la que decidas tú»— y
+significa la mayor, que es lo que la aplicación hizo siempre.
+
+Existe un escalón por encima de `largestPieceIndex`, y por el mismo motivo. El
+comentario de aquella avisa de que qué pieza se mide «no se puede permitir
+divergir en silencio: en vivo se vería una y el informe traería la de la otra».
+Era literalmente lo que pasaba. El navegador de piezas **solo lo entendía el
+camino del vídeo**; cuatro gestos más llamaban a `analyzeFrame`, que devuelve la
+mayor y no sabe nada de navegadores:
+
+| gesto | lo que daba |
+|---|---|
+| `onMeasurePieceClicked` | el informe de *Medir pieza*, de otra pieza |
+| `onOpenEditorClicked` | el editor se abría sobre la mayor |
+| `onAutoMeasureClicked` | proponía las cotas de la mayor, ancladas al fixture de la editada |
+| `ensureContourReport` | el contorno que se ve y se exporta, de la mayor |
+
+Medido sobre `arandelas-5`, donde la mayor es la **#8** en orden de lectura:
+señalar la 1 y pedir el informe devolvía «Arandela» de 274 px cuando la pieza
+señalada es un «Polígono redondeado de 3 lados» de 95 px. Ninguno falla ni
+avisa — dan el informe de otra pieza.
+
+La ventana enruta por `MainWindow::analyseMeasuredPiece`; el editor, que no ve
+el navegador, reconoce **su** pieza por cercanía del origen del fixture
+(`EditorWindow::analyseEditedPiece`), con la mayor como respaldo si la suya se
+fue de cuadro. Por índice no valdría: el índice cambia en cuanto una pieza entra
+o sale del encuadre, y el editor puede estar abierto mientras la cámara sigue
+dando frames.
+
+`tests/test_same_piece_everywhere.cpp` vigila el patrón, no el caso: lee el
+cuerpo de esos cuatro gestos y exige que ninguno vuelva a llamar a
+`vision::analyzeFrame`.
+
 ### La zona de trabajo automática
 
 **Es el modo de fábrica**, y también al que se vuelve cuando se borra una zona

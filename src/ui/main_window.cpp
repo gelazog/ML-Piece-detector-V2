@@ -270,20 +270,15 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                 // la de arriba a la izquierda. Cambiar en silencio QUÉ pieza se
                 // mide es el tipo de fallo que nadie ve hasta que compara dos
                 // informes de la misma bandeja.
-                std::size_t chosen = vision::largestPieceIndex(all.value());
-                // Y si el operador ha señalado una en concreto, esa. El cero
-                // significa «la que decidas tú», que es lo de siempre: así,
-                // quien no toque el navegador sigue midiendo exactamente lo que
-                // medía antes.
+                // La regla vive en `vision::measuredPieceIndex` y no aquí.
                 //
-                // Si el número señalado se sale —las piezas cambiaron de sitio o
-                // desapareció una— se vuelve a la mayor en vez de no medir nada.
-                // Un encuadre que deja de dar cotas porque falta la pieza 5 es
-                // peor que uno que mide la que hay y dice cuál es.
-                if (wantedPiece >= 1 &&
-                    wantedPiece <= static_cast<int>(all.value().size())) {
-                    chosen = static_cast<std::size_t>(wantedPiece - 1);
-                }
+                // Aquí estaba escrita a mano, y era el ÚNICO sitio que la
+                // conocía: «Medir pieza» y el editor llamaban a `analyzeFrame`,
+                // que devuelve la mayor y no sabe de navegadores. El operador
+                // señalaba la pieza 3, la veía medida en pantalla, y el informe
+                // le llegaba de otra.
+                const std::size_t chosen =
+                    vision::measuredPieceIndex(all.value(), wantedPiece);
                 overlay.measuredPiece = static_cast<int>(chosen) + 1;
                 // El contorno de TODAS, para poder dibujarlas y numerarlas. Se
                 // copian antes de mover la elegida fuera de la lista.
@@ -2237,6 +2232,26 @@ vision::PipelineConfig MainWindow::inspectionConfig() const {
     return config;
 }
 
+core::Result<vision::PieceAnalysis> MainWindow::analyseMeasuredPiece(
+    const cv::Mat& image) const {
+    // Con el navegador en cero se toma el camino de UNA pieza, que es el mismo
+    // de siempre. No es una optimización de adorno: `analyzeFrames` analiza
+    // TODAS las manchas que pasan el filtro de área, y este camino corre
+    // también cuando solo hay una pieza en la mesa.
+    if (focusedPiece_ < 1) {
+        return vision::analyzeFrame(image, inspectionConfig());
+    }
+    auto all = vision::analyzeFrames(image, inspectionConfig());
+    if (!all.isOk()) {
+        return core::Result<vision::PieceAnalysis>::err(all.error().message);
+    }
+    if (all.value().empty()) {
+        return core::Result<vision::PieceAnalysis>::err("No se detectó ninguna pieza");
+    }
+    const std::size_t chosen = vision::measuredPieceIndex(all.value(), focusedPiece_);
+    return core::Result<vision::PieceAnalysis>::ok(std::move(all.value()[chosen]));
+}
+
 void MainWindow::setWorkingZoneMode(vision::WorkingZoneMode mode) {
     if (mode == zoneMode_) {
         return;
@@ -2565,7 +2580,18 @@ void MainWindow::onMeasurePieceClicked() {
     // midiera el frame entero mientras la detección trabaja dentro de una zona,
     // los dos números serían de piezas distintas.
     const cv::Mat image = camera::qImageToMat(frame);
-    const auto analysis = vision::analyzeFrame(image, inspectionConfig());
+    // LA PIEZA QUE EL OPERADOR ESTÁ MIRANDO, no la mayor del encuadre.
+    //
+    // Esto llamaba a `analyzeFrame`, que devuelve siempre la mayor. Con el
+    // navegador puesto en la pieza 3, el vídeo dibujaba las cotas sobre la 3, el
+    // rótulo decía «Midiendo la pieza 3 de 5» — y este botón abría el informe de
+    // otra pieza. Dos partes de la misma pantalla hablando de cosas distintas, y
+    // ninguna de las dos avisando.
+    //
+    // Es también la queja literal: con varias piezas «toma una medición para
+    // todas las piezas, en lugar de una medición independiente por pieza». Aquí
+    // no había forma de pedir la de una en concreto.
+    const auto analysis = analyseMeasuredPiece(image);
     if (!analysis.isOk()) {
         statusBar()->showMessage(tr("No se puede medir: %1")
                                      .arg(QString::fromStdString(analysis.error().message)));
@@ -7618,8 +7644,11 @@ void MainWindow::onOpenEditorClicked() {
     //
     // El editor sí recibía la configuración buena y volvía a analizar con ella;
     // el que se quedaba fuera era este primer análisis, el que decide si se abre.
-    const auto analysis =
-        vision::analyzeFrame(camera::qImageToMat(reference), inspectionConfig());
+    //
+    // Y sobre LA PIEZA SEÑALADA: el editor se abre con este fixture, así que
+    // abrirlo siempre sobre la mayor dejaba al operador dibujando cotas encima
+    // de una pieza distinta de la que acababa de elegir con las flechas.
+    const auto analysis = analyseMeasuredPiece(camera::qImageToMat(reference));
     if (!analysis.isOk()) {
         QMessageBox::warning(this, tr("Sin pieza detectada"),
                              tr("No se pudo analizar la imagen: %1")

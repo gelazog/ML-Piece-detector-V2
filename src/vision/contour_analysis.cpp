@@ -239,6 +239,16 @@ std::size_t largestPieceIndex(const std::vector<PieceAnalysis>& pieces) {
     return biggest;
 }
 
+std::size_t measuredPieceIndex(const std::vector<PieceAnalysis>& pieces, int wanted) {
+    if (pieces.empty()) {
+        return 0;
+    }
+    if (wanted >= 1 && wanted <= static_cast<int>(pieces.size())) {
+        return static_cast<std::size_t>(wanted - 1);
+    }
+    return largestPieceIndex(pieces);
+}
+
 const PieceContour* largestPiece(const std::vector<PieceContour>& pieces) {
     const PieceContour* best = nullptr;
     for (const auto& piece : pieces) {

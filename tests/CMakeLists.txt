@@ -25,6 +25,8 @@ add_executable(pci_tests
   test_auto_zone_hides_pieces.cpp
   test_background_patch.cpp
   test_smoke_flag.cpp
+  test_measured_piece.cpp
+  test_same_piece_everywhere.cpp
   test_domain.cpp
   test_units.cpp
   test_synthetic_measures.cpp
