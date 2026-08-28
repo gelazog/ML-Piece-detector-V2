@@ -75,6 +75,18 @@ struct ShapeClass {
     std::string reason;
 };
 
+// CUÁNDO UN ARCO ES UNA ESQUINA Y NO UN LADO MAL LEÍDO.
+//
+// En un polígono redondeado los arcos son las esquinas, y una esquina es más
+// corta que el lado al que pertenece. Si el arco mide más que el lado, la
+// descomposición ha leído curvo algo que es recto.
+//
+// Medido: los rectángulos redondeados de verdad dan un cociente arco/lado de
+// 0,07 a 0,60 —y eso incluye un redondeo de 60 px sobre un lado de 200—
+// mientras que un polígono de doce lados mal leído da 3,57 y las tuercas de la
+// bandeja 0,97. El corte en 0,75 cae en un hueco ancho.
+inline constexpr double kArcIsACornerBelow = 0.75;
+
 struct ClassifyOptions {
     // Un contorno se acepta como recto/circular si NINGÚN punto se separa del
     // modelo más de esto. Va en píxeles y no en fracción del perímetro porque

@@ -581,6 +581,36 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   con una condición que signifique algo geométrico —los arcos son las ESQUINAS,
   o sea cortos y tantos como lados— en vez de con tres umbrales sueltos.
 
+  **[~] Hecha esa condición, y no basta.** Se añadió `kArcIsACornerBelow`: en un
+  polígono redondeado los arcos son las esquinas, y una esquina es más corta que
+  el lado al que pertenece. Entra sola, sin romper nada, y es correcta por
+  geometría y no por ajuste.
+
+  | pieza | rectas (mediana) | arcos (mediana) | arco/lado |
+  |---|---|---|---|
+  | 300x200 redondeo 20 | 245,7 | 34,4 | 0,14 |
+  | 300x200 redondeo 60 | 168,0 | 100,3 | **0,60** |
+  | 800x600 redondeo 30 | 733,7 | 52,3 | 0,07 |
+  | 12 lados radio 100 (mal leído) | 33,6 | 120,0 | 3,57 |
+  | tuerca de la bandeja | 41,3 | 40,3 | 0,97 |
+
+  Con ella puesta, reaplicar las dos guardas de arriba deja de romper el
+  dodecágono: de los dos casos que caían, ahora solo cae uno.
+
+  **Y ese uno cierra la vía.** El polígono de 16 lados de radio 160 con
+  antialiasing —el que usa `ManySidedContoursAreMeasuredAsRoundAndSayWhy`— da
+  **0,62**, y los rectángulos redondeados legítimos llegan a **0,60**. Se
+  solapan. Ningún umbral sobre este cociente puede separarlos, así que el
+  criterio de esquina es necesario y no suficiente, y las guardas siguen sin
+  poder entrar.
+
+  Lo que queda por probar, y por ese orden: que los arcos sean tantos como los
+  lados (4/4 en el rectángulo redondeado, 4 arcos y 5 rectas en el dodecágono
+  mal leído), o que la rama de «redondeado» deje de preguntarse la primera y se
+  decida comparando su residuo con el del ajuste de polígono y el de
+  circunferencia — es decir, eligiendo el modelo que mejor explica el contorno
+  en vez de por orden de llegada.
+
 ## F. Ya está hecho — no volver a investigarlo
 
 Aquí para que nadie gaste otra vez el tiempo que ya se gastó.

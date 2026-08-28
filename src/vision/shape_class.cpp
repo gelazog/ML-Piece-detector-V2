@@ -383,6 +383,10 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
     int arcs = 0;
     double arcLength = 0.0;
     double totalLength = 0.0;
+    // Y LO LARGOS QUE SON, que es lo que distingue una esquina de un lado mal
+    // leído. Ver el comentario de la condición, más abajo.
+    std::vector<double> lineLengths;
+    std::vector<double> arcLengths;
     // El PEOR residuo de las primitivas, que es el que se va a publicar como
     // desviación si esto resulta ser un polígono redondeado.
     double worstResidual = 0.0;
@@ -391,13 +395,48 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
         worstResidual = std::max(worstResidual, primitive.rmsResidual);
         if (primitive.kind == PrimitiveKind::Line) {
             ++straight;
+            lineLengths.push_back(primitive.length);
         } else {
             ++arcs;
             arcLength += primitive.length;
+            arcLengths.push_back(primitive.length);
         }
     }
     const double curvedFraction = totalLength > 0.0 ? arcLength / totalLength : 0.0;
-    if (straight >= 3 && straight <= scaled.maxSides && arcs >= 1 && curvedFraction >= 0.10) {
+
+    // LOS ARCOS DE UN POLÍGONO REDONDEADO SON SUS ESQUINAS, y una esquina es
+    // más corta que el lado al que pertenece. Si el arco mide más que el lado,
+    // no es una esquina: es un lado que la descomposición ha leído curvo.
+    //
+    // Esta condición faltaba y es la que separa de verdad. Medido:
+    //
+    //     rectángulo 300x200 redondeo 20    4 rectas 245,7   4 arcos  34,4   0,14
+    //     rectángulo 300x200 redondeo 60    4 rectas 168,0   4 arcos 100,3   0,60
+    //     rectángulo 800x600 redondeo 30    4 rectas 733,7   4 arcos  52,3   0,07
+    //     ---------------------------------------------------------------------
+    //     polígono de 12 lados, radio 100   5 rectas  33,6   4 arcos 120,0   3,57
+    //     polígono de 16 lados, radio 200  12 rectas  75,3   3 arcos 182,2   2,42
+    //     tuerca de la bandeja              1 recta   41,3   6 arcos  40,3   0,97
+    //
+    // Los redondeados de verdad van de 0,07 a 0,60 y los mal leídos de 0,97 a
+    // 3,57. El corte en 0,75 cae en un hueco ancho.
+    //
+    // Se compara con MEDIANAS y no con medias: un solo tramo raro —la costura
+    // del contorno, un trozo de ruido— arrastraría la media y decidiría por
+    // toda la pieza.
+    const auto medianOf = [](std::vector<double> values) {
+        if (values.empty()) {
+            return 0.0;
+        }
+        std::sort(values.begin(), values.end());
+        return values[values.size() / 2];
+    };
+    const double medianLine = medianOf(lineLengths);
+    const double medianArc = medianOf(arcLengths);
+    const bool arcsAreCorners =
+        medianLine > 0.0 && medianArc < kArcIsACornerBelow * medianLine;
+    if (straight >= 3 && straight <= scaled.maxSides && arcs >= 1 &&
+        curvedFraction >= 0.10 && arcsAreCorners) {
         shape.kind = ShapeKind::Rounded;
         shape.sides = straight;
         // EL RESIDUO DE VERDAD, no un cero puesto a mano.
