@@ -620,9 +620,33 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   sea un ajuste que no explica nada pero cabe. Eso propone doce cotas de lado y
   doce ángulos que son ruido: peor que dejarlas en irregular.
 
-  Quedan **15 tuercas de 100** con otra forma. El siguiente sitio donde mirar
-  sigue siendo el que apunta el taller: el borde en sombra ensucia el contorno, y
-  eso es segmentación, no clasificación.
+  Quedan **15 tuercas de 100** con otra forma, y persiguiéndolas se midió el
+  borde en sombra a fondo. Lo que se sabe ahora:
+
+  Recorriendo la NORMAL de cada punto del contorno y buscando el pico de
+  gradiente, repartido por hacia dónde mira esa normal (31 tuercas):
+
+  | lado | pico de gradiente | contorno respecto al pico |
+  |---|---|---|
+  | arriba / izquierda (iluminado) | 64-75 | **0,5 px** |
+  | abajo / derecha (en sombra) | 68-96 | **2,5-3,5 px** |
+
+  **El gradiente NO es más blando en la sombra** —al revés, abajo-izquierda es el
+  más nítido de los ocho sectores, 96 contra 64 arriba—. Lo que cambia es dónde
+  aterriza el contorno respecto a él.
+
+  Y con signo, el desplazamiento mediano es solo **±0,5 px**, y la anchura de la
+  pieza al reengancharla se mueve entre **0,1 % y 1,4 %**. O sea: la sombra
+  produce DISPERSIÓN de 2-3 px, no sesgo. Contesta a la pregunta del taller —«¿la
+  sombra me está haciendo medir mal?»— con un número: el tamaño no se va
+  sistemáticamente, lo que se mueve es la lectura de la FORMA.
+
+  5. *«Enganchar cada punto del contorno al pico de gradiente de su normal»* — NO,
+     y de largo. Medido sobre las cien tuercas: de 85 hexágonos se pasa a
+     **36 piezas irregulares** y ninguna con 6 lados. Coger el máximo local de la
+     pendiente en un borde ruidoso salta con el ruido en vez de quitarlo; haría
+     falta ajustar el flanco entero, no buscar su pico. Está probado y revertido:
+     no volver por aquí sin cambiar el método.
 
 - [x] **E9 · Dos guardas de `makePrimitive` se comprueban antes del número que
   vigilan.** RESUELTO. Encontrado persiguiendo E8. **Se intentó arreglar y se revirtió**,
