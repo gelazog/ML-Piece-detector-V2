@@ -254,7 +254,7 @@ Todo esto salió de una auditoría anterior y está verificado.
   grupo**.
 - [~] **C5 · Colores escritos a mano fuera de `ui/theme.h`.** El trinquete de
   `tests/test_palette_guard.cpp` impide que suban; van
-  **56 -> 49 -> 41 -> 36 -> 31 -> 25 -> 23 -> 19 -> 14**.
+  **56 -> 49 -> 41 -> 36 -> 31 -> 25 -> 23 -> 19 -> 14 -> 9**.
 
   Los cuatro de esta vuelta eran **el mismo papel escrito cuatro veces** —texto
   secundario— y los cuatro **suspendían WCAG** sobre el gris de ventana de
@@ -298,7 +298,30 @@ Todo esto salió de una auditoría anterior y está verificado.
   verdes. Contraste medido al ponerle nombre: 6,95:1 la tinta sobre su chapa y
   4,53:1 el marco elegido contra el de reposo.
 
-  **Decisiones de color pendientes de tener la pantalla delante** (las dos son
+  **Las bandas que van sobre el vídeo** (aviso de puesta en marcha, lectura del
+  tablero y su alarma) eran tres estilos a mano, con el de la lectura **tecleado
+  dos veces palabra por palabra** —donde se crea y donde se restaura al salir de
+  la alarma— y **tres azules de fondo** que resultaron ser uno solo:
+
+  | contra el fondo que ha quedado | separación |
+  |---|---|
+  | `#1b2b38` (aviso) | 1,13:1 |
+  | `#22333a` (calibrador) | 1,25:1 |
+
+  Los dos por debajo del 1,26 que la propia paleta considera distinguible, así
+  que unificarlos no cambia lo que se ve. De paso el aviso gana contraste, de
+  11,96:1 a 13,48:1, por caer sobre el más oscuro de los tres.
+
+  **Y una sospecha que se midió antes de tocar y resultó falsa.** Se comprobó si
+  el estado de alarma se distinguía solo por TONO —el error que esta paleta lleva
+  escrito en su cabecera: dos veredictos con la misma luminancia son el mismo
+  gris para un daltónico deutan, y en una alarma es lo más caro que puede
+  pasar—. No lo era: los dos fondos se separan **1,59:1**, por encima del 1,26
+  que la paleta ya acepta entre «no cumple» y «aviso». Así que no se cambió el
+  aspecto, y `test_video_bands.cpp` guarda la medida para que quien retoque esos
+  fondos se entere si los acerca.
+
+    **Decisiones de color pendientes de tener la pantalla delante** (las dos son
   cambios de aspecto, no de código):
 
   1. `QColor(255, 60, 60)` es el punto de origen en el vídeo **y** el contorno de

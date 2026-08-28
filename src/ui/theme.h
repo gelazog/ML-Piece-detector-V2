@@ -208,6 +208,41 @@ inline constexpr const char* kInkOnChipChosen = "#0b2a35";  // 9,28:1 sobre kChi
 // mano encima del borde. Es un estado distinto y por eso lleva otro color.
 inline constexpr const char* kChipEdited = "#8ce99a";
 
+// --- LAS BANDAS QUE SE PINTAN SOBRE EL VÍDEO -------------------------------
+//
+// Son tres: el aviso de puesta en marcha, la lectura continua del tablero y su
+// estado de fuera de tolerancia. Van sobre la imagen, así que llevan fondo
+// propio y oscuro; los tokens de superficie clara no sirven aquí.
+//
+// Estaban escritas a mano, y con el desorden de siempre. El estilo de la lectura
+// —`color:#7fd6ff; background:#10222b; padding:3px; border-radius:3px;`— estaba
+// tecleado DOS VECES palabra por palabra, en el sitio donde se crea la banda y
+// en el sitio donde se restaura al salir de la alarma. Y había dos azules de
+// fondo, `#1b2b38` y `#10222b`, que se distinguen **1,13:1**: es decir, el mismo
+// color. Nadie eligió tener dos.
+//
+// AQUÍ SE NOMBRA Y SE UNIFICA EL FONDO, NO SE CAMBIA EL ASPECTO. Se comprobó
+// antes de tocar nada, porque la sospecha era otra: que el estado de alarma se
+// distinguiera solo por TONO, que es el error que esta paleta lleva escrito
+// arriba —dos veredictos con la misma luminancia son el mismo gris para un
+// daltónico deutan—. Medido, los dos fondos se separan **1,59:1**, por encima
+// del 1,26 que la propia paleta ya acepta entre «no cumple» y «aviso». Así que
+// no era un defecto y no se cambia: la alarma además va en negrita, que es la
+// señal que no depende del color.
+inline constexpr const char* kBandField = "#10222b";       // el fondo de las tres
+inline constexpr const char* kInkOnBand = "#7fd6ff";       // 10,08:1 — la lectura en vivo
+inline constexpr const char* kProseOnBand = "#d7ecff";     // 12,74:1 — un aviso con frases
+inline constexpr const char* kBandAlarm = "#7a1f1f";       // 1,59:1 contra kBandField
+inline constexpr const char* kInkOnBandAlarm = "#ffdede";  // 8,20:1
+
+// Una banda de una pieza, para que el estilo no se vuelva a teclear dos veces.
+[[nodiscard]] inline QString bandStyle(const char* ink, const char* field,
+                                       bool bold = false) {
+    return QStringLiteral("color:%1; background:%2; padding:3px; border-radius:3px;%3")
+        .arg(QString(ink), QString(field),
+             bold ? QStringLiteral(" font-weight:bold;") : QString());
+}
+
 // --- LA BALDOSA DEL MOSAICO QUE SE ESTÁ MIDIENDO ---------------------------
 //
 // El mosaico marca con verde la pieza que se mide, y la pastilla de estado de la

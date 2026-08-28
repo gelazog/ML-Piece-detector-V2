@@ -1,3 +1,4 @@
+#include "ui/theme.h"
 #include "ui/calibration_dialog.h"
 
 #include <iterator>
@@ -61,8 +62,11 @@ CalibrationDialog::CalibrationDialog(const QImage& snapshot,
     // Estado actual bien visible: esta es la sección dedicada a la escala.
     auto* stateLabel = new QLabel(this);
     stateLabel->setWordWrap(true);
-    stateLabel->setStyleSheet(
-        QStringLiteral("font-weight:bold; padding:6px; background:#22333a; color:#cfe;"));
+    // La misma banda oscura que las de la ventana: era un TERCER azul oscuro
+    // —#22333a— a un pelo de los otros dos, y el `#cfe` de tres cifras hacía
+    // aún más fácil que la siguiente copia saliera con otro número.
+    stateLabel->setStyleSheet(theme::bandStyle(theme::kProseOnBand, theme::kBandField) +
+                              QStringLiteral(" font-weight:bold; padding:6px;"));
     // EN LA UNIDAD QUE TIENE ELEGIDA, no siempre en milímetros.
     //
     // Sale de una queja directa: «si está relacionado la opción de ver las

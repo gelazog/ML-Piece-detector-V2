@@ -2499,6 +2499,29 @@ detección usa `kInkMuted` aunque `kInkOff` fuera el token que su nombre sugerí
 Un token medido contra un fondo y usado contra otro deja la pantalla igual de
 ilegible — por eso la prueba mide **el widget**, no el token.
 
+### Las bandas que van sobre el vídeo eran tres estilos y un solo color
+
+El aviso de puesta en marcha, la lectura continua del tablero y su estado de
+alarma van encima de la imagen, así que llevan fondo propio y oscuro. Estaban
+escritas a mano, y el estilo de la lectura estaba **tecleado dos veces palabra
+por palabra**: donde se crea la banda y donde se restaura al salir de la alarma.
+Es la forma exacta en que una copia acaba con otra cifra.
+
+Y los tres fondos oscuros eran **uno solo**: contra el que ha quedado, `#1b2b38`
+se separa 1,13:1 y `#22333a` 1,25:1, los dos por debajo del 1,26 que la propia
+paleta considera distinguible. Unificarlos no cambia lo que el operador ve, y de
+paso el aviso gana contraste (11,96:1 → 13,48:1) por caer sobre el más oscuro.
+
+**Lo que sí se comprobó antes de tocar nada, y resultó falso.** La sospecha era
+que el estado de alarma se distinguiera solo por TONO — el error que la cabecera
+de la paleta lleva documentado: dos veredictos con la misma luminancia son el
+mismo gris para un daltónico deutan, y en una alarma es lo más caro que puede
+pasar. Medido, los dos fondos se separan **1,59:1**, por encima del 1,26 que la
+paleta ya acepta entre «no cumple» y «aviso», y la alarma va además en negrita,
+que es la señal que no depende del color. Así que no se cambió el aspecto: se le
+puso nombre y se guardó la medida en `test_video_bands.cpp`, que falla el día que
+alguien acerque esos dos fondos.
+
 ### Lo que se dibuja encima de la foto
 
 Un contorno de color sobre una FOTO no tiene contraste garantizado: depende de

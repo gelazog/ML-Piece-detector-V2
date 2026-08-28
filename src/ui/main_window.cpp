@@ -900,8 +900,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         row->addWidget(dismiss);
         connect(dismiss, &QPushButton::clicked, this, &MainWindow::dismissSetupGuide);
     }
-    setupBanner_->setStyleSheet(
-        QStringLiteral("background:#1b2b38; color:#d7ecff; border-radius:4px;"));
+    setupBanner_->setStyleSheet(theme::bandStyle(theme::kProseOnBand, theme::kBandField));
     setupBanner_->setVisible(false);
     rootLayout->addWidget(setupBanner_);
 
@@ -917,7 +916,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     boardReadoutLabel_ = new QLabel(central);
     boardReadoutLabel_->setAlignment(Qt::AlignCenter);
     boardReadoutLabel_->setStyleSheet(
-        QStringLiteral("color:#7fd6ff; background:#10222b; padding:3px; border-radius:3px;"));
+        theme::bandStyle(theme::kInkOnBand, theme::kBandField));
     boardReadoutLabel_->setVisible(false);
     rootLayout->addWidget(boardReadoutLabel_);
 
@@ -5312,12 +5311,12 @@ void MainWindow::updateBoardReadout() {
     // banda. Solo se cambia cuando cambia de estado.
     if (outOfTolerance != boardReadoutAlarm_) {
         boardReadoutAlarm_ = outOfTolerance;
+        // El mismo estilo que al crearla, y de la misma fuente: estaba tecleado
+        // dos veces, y así es como una copia acaba con otra cifra.
         boardReadoutLabel_->setStyleSheet(
             outOfTolerance
-                ? QStringLiteral("color:#ffdede; background:#7a1f1f; padding:3px;"
-                                 " border-radius:3px; font-weight:bold;")
-                : QStringLiteral("color:#7fd6ff; background:#10222b; padding:3px;"
-                                 " border-radius:3px;"));
+                ? theme::bandStyle(theme::kInkOnBandAlarm, theme::kBandAlarm, true)
+                : theme::bandStyle(theme::kInkOnBand, theme::kBandField));
     }
 
     const bool zeroOnPiece = boardConfig_.origin == vision::BoardOrigin::PieceCenter ||
