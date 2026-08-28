@@ -7647,8 +7647,18 @@ void MainWindow::onAutoToggled(bool enabled) {
         toolPalette_->showSelection(std::nullopt);
         toolPalette_->setEnabled(false);
         calibrateFromToolButton_->setEnabled(false);
+        // EL BANNER TIENE CUATRO ESTADOS Y DOS IBAN POR SU CUENTA.
+        //
+        // «Cumple» y «no cumple» ya salían de la familia de pastillas de
+        // veredicto; «en marcha» y «falló la inspección» llevaban un gris `#444`
+        // y un ámbar `#ffb066` tecleados aquí — un CUARTO gris y un CUARTO
+        // ámbar, que es exactamente como se llegó a tener tres de cada.
+        //
+        // `kChipRest` es literalmente el papel que hace este estado: la
+        // aplicación está trabajando y no tiene nada que decir todavía.
         verdictBanner_->setStyleSheet(
-            QStringLiteral("background:#444; color:white; font-size:16px; font-weight:bold;"));
+            theme::chipStyle(theme::kChipRest,
+                             QStringLiteral(" font-size:16px; font-weight:bold;")));
         verdictBanner_->setText(tr("Auto-inspección en marcha…"));
         verdictBanner_->setVisible(true);
         autoTimer_.start();
@@ -7983,8 +7993,13 @@ void MainWindow::onInspectionFinished() {
 
     if (!result.isOk()) {
         if (autoMode) {
-            verdictBanner_->setStyleSheet(QStringLiteral(
-                "background:#444; color:#ffb066; font-size:16px; font-weight:bold;"));
+            // Una inspección que no llega a dar veredicto es un AVISO, no un
+            // «no cumple»: la pieza no ha suspendido, es que no se ha podido
+            // medir. Con `kBadChip` se leería como rechazo y con el gris de «en
+            // marcha» no se distinguiría de estar esperando.
+            verdictBanner_->setStyleSheet(
+                theme::chipStyle(theme::kWarnChip,
+                                 QStringLiteral(" font-size:16px; font-weight:bold;")));
             verdictBanner_->setText(QString::fromStdString(result.error().message));
         } else {
             statusBar()->showMessage(tr("Inspección fallida"));

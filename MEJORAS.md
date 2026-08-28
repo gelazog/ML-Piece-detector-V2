@@ -254,7 +254,8 @@ Todo esto salió de una auditoría anterior y está verificado.
   grupo**.
 - [~] **C5 · Colores escritos a mano fuera de `ui/theme.h`.** El trinquete de
   `tests/test_palette_guard.cpp` impide que suban; van
-  **56 -> 49 -> 41 -> 36 -> 31 -> 25 -> 23 -> 19 -> 14 -> 9 -> 5**.
+  **56 -> 49 -> 41 -> 36 -> 31 -> 25 -> 23 -> 19 -> 14 -> 9 -> 5 -> 1**, y ese 1
+  es el SUELO: una excepción medida, no trabajo pendiente.
 
   Los cuatro de esta vuelta eran **el mismo papel escrito cuatro veces** —texto
   secundario— y los cuatro **suspendían WCAG** sobre el gris de ventana de
@@ -348,6 +349,25 @@ Todo esto salió de una auditoría anterior y está verificado.
   Y el borde de la vista previa era **literalmente el mismo par** que esa
   cabecera documenta haber arreglado en otro sitio —«el `#444` sobre `#1a1a1a` da
   1,8:1»— sobreviviendo aquí.
+
+    **El banner de veredicto tenía cuatro estados y dos iban por su cuenta.**
+  «Cumple» y «no cumple» ya salían de la familia de pastillas; «en marcha» y
+  «falló la inspección» llevaban un `#444` y un `#ffb066` tecleados —un cuarto
+  gris y un cuarto ámbar—. Ahora son `kChipRest` y `kWarnChip`, que además dicen
+  lo que son: una inspección que no llega a dar veredicto es un AVISO, no un
+  rechazo; la pieza no ha suspendido, es que no se ha podido medir.
+
+  **Y dos de los que quedaban eran falsos positivos de la propia guardia**, que
+  es peor que un color a mano: quien viene a bajar el trinquete se encuentra con
+  que no puede y deja de creérselo.
+
+  - El indicador de estado pinta su punto con la entidad HTML `&#9679;` dentro
+    de un rich text cuyo color SÍ sale de un token. La expresión veía `#9679` y
+    lo contaba como hexadecimal de cuatro cifras. Ahora se quitan las entidades
+    antes de mirar.
+  - El velo bajo los rótulos sobre la imagen tenía el ALFA con nombre
+    (`kDrawVeilAlpha`) y el negro sin él. Media cosa con nombre es como se acaba
+    con dos velos de distinta opacidad; ahora es `theme::veil()`.
 
     **Decisiones de color pendientes de tener la pantalla delante** (las dos son
   cambios de aspecto, no de código):

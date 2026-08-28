@@ -98,7 +98,7 @@ void VideoWidget::paintEvent(QPaintEvent* event) {
                                  ? tr("Pieza: %1°").arg(overlay_.angleDeg, 0, 'f', 1)
                                  : overlay_.error;
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(0, 0, 0, theme::kDrawVeilAlpha));
+        painter.setBrush(theme::veil());
         const QRect textRect(targetRect.left() + 8, targetRect.top() + 8, 260, 24);
         painter.drawRect(textRect);
         painter.setPen(overlay_.valid ? theme::drawColor(theme::kDrawFound)

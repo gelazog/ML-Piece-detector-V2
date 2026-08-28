@@ -297,6 +297,13 @@ inline constexpr int kTileBadgeRestAlpha = 170;  // la de las demás
         .arg(QString(kSurfaceDark), QString(kInkMutedOnDark));
 }
 
+// El velo que va bajo un rótulo dibujado sobre la imagen.
+//
+// El alfa ya tenía nombre (`kDrawVeilAlpha`) y el color no, así que el negro
+// seguía tecleado en cada sitio. Media cosa con nombre es como se acaba con dos
+// velos de distinta opacidad.
+[[nodiscard]] inline QColor veil() { return QColor(0, 0, 0, kDrawVeilAlpha); }
+
 [[nodiscard]] inline QString chipStyle(const char* background, const QString& extra = {}) {
     return QStringLiteral("background:%1; color:%2; border-radius:8px; padding:3px;%3")
         .arg(QString(background), QString(kInkOnChip), extra);

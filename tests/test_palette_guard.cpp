@@ -76,7 +76,19 @@ TEST(PaletteGuard, NoHandWrittenColoursOutsideTheTheme) {
             // Los comentarios pueden citar un color al explicar por qué se
             // cambió; lo que importa es el código.
             const auto comment = line.find("//");
-            const std::string code = comment == std::string::npos ? line : line.substr(0, comment);
+            std::string code = comment == std::string::npos ? line : line.substr(0, comment);
+            // UNA ENTIDAD HTML NO ES UN COLOR, y esta guardia decía que sí.
+            //
+            // El indicador de estado pinta su punto con `&#9679;` —el carácter
+            // «círculo negro»— dentro de un rich text cuyo color SÍ sale de un
+            // token: `<span style='color:%1'>`. La expresión veía `#9679` y lo
+            // contaba como un hexadecimal de cuatro cifras.
+            //
+            // Un trinquete con un falso positivo permanente es peor que uno más
+            // flojo: quien venga a bajarlo se encuentra con que no puede, y deja
+            // de creérselo.
+            static const std::regex htmlEntity(R"(&#\d+;)");
+            code = std::regex_replace(code, htmlEntity, "");
             if (std::regex_search(code, hexColour) || std::regex_search(code, numericColour)) {
                 offences.push_back({name, number, code.substr(0, 90)});
             }
@@ -103,7 +115,22 @@ TEST(PaletteGuard, NoHandWrittenColoursOutsideTheTheme) {
     //   56 al escribir la guardia
     //   49 tras unificar los veredictos y los cinco que no contrastaban
     //   41 tras las pastillas de veredicto y la luz de estación
-    constexpr std::size_t kColoursStillHandWritten = 5;
+    //   ...
+    //    9 tras las bandas que van sobre el vídeo (tres azules que eran uno)
+    //    5 tras la rejilla del calibrador de lente
+    //    1 tras el banner de veredicto y dos falsos positivos de esta guardia
+    //
+    // Y AQUÍ ESTÁ EL SUELO: el que queda es una excepción MEDIDA, no trabajo
+    // pendiente. El aviso rojo de «el corte sí toca la pieza» está en #3a1010
+    // sobre #ffd9d9, que da 12,83:1, mientras el par de tokens (kBad sobre
+    // kBadField) da 5,55:1. Pasarlo a tokens BAJARÍA el contraste.
+    //
+    // La regla es que el color venga del tema, no que el tema gane siempre.
+    // `test_secondary_text_contrast.cpp` guarda esa excepción con su número y
+    // falla el día que los tokens midan mejor, para que se cierre entonces.
+    //
+    // Así que no bajes esto a 0 sin mirar allí primero.
+    constexpr std::size_t kColoursStillHandWritten = 1;
     EXPECT_LE(offences.size(), kColoursStillHandWritten)
         << "han aparecido colores a mano nuevos fuera de ui/theme.h. Así se llegó a "
            "tener cuatro rojos distintos para «no cumple» y cinco colores por debajo "
