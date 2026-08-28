@@ -283,8 +283,16 @@ Todo esto salió de una auditoría anterior y está verificado.
     cumple» usara el rojo de veredicto que ya existe (`kBad`/`kBadOnDark`, con
     su contraste medido), pero eso cambia lo que el operador ve y se decide con
     la pantalla delante, no de paso.
-- [~] **C8 · 36 pruebas localizan un control por su TEXTO.** Trinquete puesto en
-  `tests/test_lookups_by_name.cpp`; hay que ir bajándolo.
+- [~] **C8 · 29 pruebas localizan un control por su TEXTO** (eran 36). Trinquete
+  en `tests/test_lookups_by_name.cpp`; hay que ir bajándolo.
+
+  Los siete de esta vuelta eran **todas las acciones de menú** que se buscaban
+  por su rótulo, que son las que más duelen: el taller pide a menudo que una
+  entrada de menú diga mejor lo que hace, y cada rótulo mejorado tiraba pruebas
+  de otra cosa. Ahora tienen nombre y se buscan por él —`configureAction`,
+  `brushSteadyAction`, `brushStraightAction`, `brushSnapAction`,
+  `brushTuneAction`, `showContourAction`, `viewEnhanceAction`— y el rótulo queda
+  libre para mejorarse.
 
   Ha costado **cuatro** roturas, siempre igual: el taller pide que un rótulo diga
   mejor lo que hace, se reescribe, y se caen pruebas que no tienen nada que ver

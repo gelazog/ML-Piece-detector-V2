@@ -23,8 +23,17 @@
 // quieto mientras el texto mejora.
 //
 // Esto es un TRINQUETE, como el de los colores escritos a mano: no exige
-// arreglar los 36 que hay, exige que no salga el 37. Se van bajando cuando una
+// arreglar los que hay, exige que no salga uno más. Se van bajando cuando una
 // etiqueta se toca, que es cuando duelen.
+//
+// Van 36 -> 29. Los siete de esta vuelta eran todas las ACCIONES DE MENÚ que se
+// buscaban por su rótulo, y son las que más duelen: el taller pide a menudo que
+// una entrada de menú diga mejor lo que hace —lleva pedido varias veces esta
+// misma semana— y cada rótulo que se mejoraba tiraba pruebas de otra cosa. Ahora
+// las siete tienen `setObjectName` y se buscan por ahí:
+//
+//     configureAction · brushSteadyAction · brushStraightAction ·
+//     brushSnapAction · brushTuneAction · showContourAction · viewEnhanceAction
 
 #include <gtest/gtest.h>
 
@@ -115,7 +124,7 @@ TEST(LookupsByName, NoNewTestFindsAWidgetByTheWordsPrintedOnIt) {
                                    "mirando donde cree";
 
     // EL TOPE ES EL DE HOY. Baja cuando se arregla uno; no sube nunca.
-    constexpr int kToday = 36;
+    constexpr int kToday = 29;
     EXPECT_LE(found, kToday)
         << "hay " << found << " controles localizados por su texto y el tope es " << kToday
         << ". Cada uno es una prueba que se caerá el día que alguien mejore ese "

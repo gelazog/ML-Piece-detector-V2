@@ -192,12 +192,7 @@ TEST(ConfigureRoundTrip, AcceptingWithoutTouchingAnythingChangesNothingOnDisk) {
         before = snapshot();
 
         // Abrir Configurar y aplicar, sin tocar un solo control.
-        QAction* configure = nullptr;
-        for (auto* action : window.findChildren<QAction*>()) {
-            if (action->text().startsWith(QStringLiteral("Configurar"))) {
-                configure = action;
-            }
-        }
+        auto* configure = window.findChild<QAction*>(QStringLiteral("configureAction"));
         ASSERT_NE(configure, nullptr) << "no está la acción de Configurar";
         configure->trigger();
 
@@ -281,12 +276,7 @@ TEST(ConfigureRoundTrip, ChangingPieceWithConfigureOpenDoesNotCopySettingsAcross
         ASSERT_GE(trayIndex, 0);
         combo->setCurrentIndex(trayIndex);
 
-        QAction* configure = nullptr;
-        for (auto* action : window.findChildren<QAction*>()) {
-            if (action->text().startsWith(QStringLiteral("Configurar"))) {
-                configure = action;
-            }
-        }
+        auto* configure = window.findChild<QAction*>(QStringLiteral("configureAction"));
         ASSERT_NE(configure, nullptr);
         configure->trigger();
         auto* dialog = window.findChild<pci::ui::ConfigureDialog*>();
@@ -377,12 +367,7 @@ TEST(ConfigureRoundTrip, ChangingPieceRefreshesTheDetectionPageToo) {
 
     combo->setCurrentIndex(withIndex);
 
-    QAction* configure = nullptr;
-    for (auto* action : window.findChildren<QAction*>()) {
-        if (action->text().startsWith(QStringLiteral("Configurar"))) {
-            configure = action;
-        }
-    }
+    auto* configure = window.findChild<QAction*>(QStringLiteral("configureAction"));
     ASSERT_NE(configure, nullptr);
     configure->trigger();
     auto* dialog = window.findChild<pci::ui::ConfigureDialog*>();

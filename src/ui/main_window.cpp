@@ -604,12 +604,14 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     auto* assistTitle = brushMenu->addAction(tr("Ayuda del pincel"));
     assistTitle->setEnabled(false);
     brushSteadyAction_ = brushMenu->addAction(tr("   Pulso estable"));
+    brushSteadyAction_->setObjectName(QStringLiteral("brushSteadyAction"));
     brushSteadyAction_->setCheckable(true);
     brushSteadyAction_->setToolTip(
         tr("El pincel persigue al ratón en vez de seguirlo al píxel.\n"
            "Filtra el temblor de la mano; la intención llega igual.\n"
            "Medido sobre un trazo con temblor: de 3,6 px de desviación a 1,4."));
     brushStraightAction_ = brushMenu->addAction(tr("   Trazo recto"));
+    brushStraightAction_->setObjectName(QStringLiteral("brushStraightAction"));
     brushStraightAction_->setCheckable(true);
     brushStraightAction_->setToolTip(
         tr("La pincelada va en línea recta del principio al final, y el rodeo\n"
@@ -617,6 +619,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
            "Mantener Mayús mientras se pinta hace lo CONTRARIO de lo que diga\n"
            "este interruptor, para no tener que venir a cambiarlo por un trazo."));
     brushSnapAction_ = brushMenu->addAction(tr("   Ceñir al borde"));
+    brushSnapAction_->setObjectName(QStringLiteral("brushSnapAction"));
     brushSnapAction_->setCheckable(true);
     brushSnapAction_->setToolTip(
         tr("El resultado sigue el contraste real de la imagen en vez de tener\n"
@@ -646,6 +649,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // La segunda mitad de corregir el borde: la corrección no sólo arregla ESTA
     // imagen, también dice dónde se equivoca la detección y con qué signo.
     brushTuneAction_ = brushMenu->addAction(tr("Afinar la detección con esta corrección…"));
+    brushTuneAction_->setObjectName(QStringLiteral("brushTuneAction"));
     brushTuneAction_->setEnabled(false);  // hasta que haya algo que aprender
     brushClearAction_ = brushMenu->addAction(tr("Quitar las correcciones"));
     edgeBrushButton_->setMenu(brushMenu);
@@ -1734,6 +1738,7 @@ void MainWindow::buildMenuBar() {
     // cambiar el enfoque y el umbral había que saber en cuál vivía cada uno.
     configureAction_ = cameraMenu->addAction(tr("Configurar…"), this,
                                              &MainWindow::onConfigureClicked);
+    configureAction_->setObjectName(QStringLiteral("configureAction"));
     configureAction_->setToolTip(
         tr("Cámara e imagen, detección, escala, preferencias y atajos, todo en el\n"
            "mismo sitio. Se abre sin bloquear el vídeo: lo que ajustes se ve al\n"
@@ -1904,6 +1909,7 @@ void MainWindow::buildMenuBar() {
 
     auto* viewMenu = menuBar()->addMenu(tr("&Ver"));
     showContourAction_ = viewMenu->addAction(tr("Mostrar contorno"));
+    showContourAction_->setObjectName(QStringLiteral("showContourAction"));
     showContourAction_->setCheckable(true);
     // Era la ÚNICA capa del menú Ver que no se recordaba: el tablero, la regla
     // y el resto sí. Quien lo apagaba para inspeccionar con la pieza congelada
@@ -2020,6 +2026,7 @@ void MainWindow::buildMenuBar() {
     // primero que encuentre, y conviene que lo primero que encuentre sea lo que
     // no le mueve las medidas.
     viewEnhanceAction_ = viewMenu->addAction(tr("Realzar la imagen para verla"));
+    viewEnhanceAction_->setObjectName(QStringLiteral("viewEnhanceAction"));
     viewEnhanceAction_->setCheckable(true);
     viewEnhanceAction_->setToolTip(
         tr("Estira el contraste de lo que se ve en pantalla: una pieza oscura\n"

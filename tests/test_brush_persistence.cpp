@@ -32,15 +32,15 @@
 
 namespace {
 
-// La acción del menú por su rótulo. Los nombres llevan sangría a propósito
-// —cuelgan del modo de pincel— así que se busca por contenido.
-QAction* assistAction(const pci::ui::MainWindow& window, const QString& label) {
-    for (auto* action : window.findChildren<QAction*>()) {
-        if (action->text().contains(label)) {
-            return action;
-        }
-    }
-    return nullptr;
+// La acción del menú POR SU NOMBRE, no por lo que lleva escrito encima.
+//
+// Antes se buscaba por el rótulo, y eso ataba estas pruebas —que van de que el
+// ajuste se recuerde entre sesiones— a unas palabras que no tienen nada que ver
+// con lo que comprueban. En este proyecto esa forma de buscar ha tirado pruebas
+// cuatro veces al mejorar un rótulo, y lo peor no era el rato: era que enseñaba
+// a no mejorarlos.
+QAction* assistAction(const pci::ui::MainWindow& window, const char* name) {
+    return window.findChild<QAction*>(QString::fromLatin1(name));
 }
 
 }  // namespace
@@ -64,7 +64,7 @@ TEST(BrushPersistence, TurningAnAssistOffKeepsItOffAfterRestarting) {
         window.resize(1200, 800);
         auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
         ASSERT_NE(canvas, nullptr);
-        auto* steady = assistAction(window, QStringLiteral("Pulso estable"));
+        auto* steady = assistAction(window, "brushSteadyAction");
         ASSERT_NE(steady, nullptr) << "no está la ayuda de pulso estable";
 
         // De fábrica viene encendido: si esto cambiara, el test dejaría de
@@ -82,7 +82,7 @@ TEST(BrushPersistence, TurningAnAssistOffKeepsItOffAfterRestarting) {
         window.resize(1200, 800);
         auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
         ASSERT_NE(canvas, nullptr);
-        auto* steady = assistAction(window, QStringLiteral("Pulso estable"));
+        auto* steady = assistAction(window, "brushSteadyAction");
         ASSERT_NE(steady, nullptr);
 
         EXPECT_FALSE(steady->isChecked()) << "el menú se olvidó de que estaba apagado";
@@ -113,7 +113,7 @@ TEST(BrushPersistence, TurningAnAssistOnAlsoSurvivesARestart) {
     {
         pci::ui::MainWindow window(repos);
         window.resize(1200, 800);
-        auto* straight = assistAction(window, QStringLiteral("Trazo recto"));
+        auto* straight = assistAction(window, "brushStraightAction");
         ASSERT_NE(straight, nullptr);
         ASSERT_FALSE(straight->isChecked());
         straight->setChecked(true);
@@ -123,7 +123,7 @@ TEST(BrushPersistence, TurningAnAssistOnAlsoSurvivesARestart) {
         window.resize(1200, 800);
         auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
         ASSERT_NE(canvas, nullptr);
-        auto* straight = assistAction(window, QStringLiteral("Trazo recto"));
+        auto* straight = assistAction(window, "brushStraightAction");
         ASSERT_NE(straight, nullptr);
         EXPECT_TRUE(straight->isChecked());
         EXPECT_TRUE(canvas->brushStraight());
@@ -164,7 +164,7 @@ TEST(BrushPersistence, HidingTheLiveContourAlsoSurvivesARestart) {
         window.resize(1200, 800);
         auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
         ASSERT_NE(canvas, nullptr);
-        auto* contour = assistAction(window, QStringLiteral("contorno"));
+        auto* contour = assistAction(window, "showContourAction");
         ASSERT_NE(contour, nullptr) << "no está la acción de mostrar contorno";
         ASSERT_TRUE(contour->isChecked()) << "el contorno ya no viene visible de fábrica";
         ASSERT_TRUE(canvas->liveContourVisible());
@@ -177,7 +177,7 @@ TEST(BrushPersistence, HidingTheLiveContourAlsoSurvivesARestart) {
         window.resize(1200, 800);
         auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
         ASSERT_NE(canvas, nullptr);
-        auto* contour = assistAction(window, QStringLiteral("contorno"));
+        auto* contour = assistAction(window, "showContourAction");
         ASSERT_NE(contour, nullptr);
 
         EXPECT_FALSE(contour->isChecked()) << "el menú se olvidó de que estaba apagado";

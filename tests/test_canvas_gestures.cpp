@@ -2916,12 +2916,7 @@ TEST(EdgeBrush, CorrectingTheEdgeUnlocksTuningTheDetection) {
     auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
     ASSERT_NE(canvas, nullptr);
 
-    QAction* tune = nullptr;
-    for (auto* action : window.findChildren<QAction*>()) {
-        if (action->text().startsWith(QStringLiteral("Afinar"))) {
-            tune = action;
-        }
-    }
+    auto* tune = window.findChild<QAction*>(QStringLiteral("brushTuneAction"));
     ASSERT_NE(tune, nullptr) << "no está la acción de afinar la detección";
     EXPECT_FALSE(tune->isEnabled())
         << "encendida sin ninguna corrección: afinar con la nada devolvería los "
@@ -4685,12 +4680,7 @@ TEST(DarkOnDark, EnhancingTheViewDoesNotMoveASingleMeasurement) {
     const QImage plain = shot();
 
     // El operador enciende el realce desde el menú Ver.
-    QAction* enhance = nullptr;
-    for (auto* action : window.findChildren<QAction*>()) {
-        if (action->text().startsWith(QStringLiteral("Realzar"))) {
-            enhance = action;
-        }
-    }
+    auto* enhance = window.findChild<QAction*>(QStringLiteral("viewEnhanceAction"));
     ASSERT_NE(enhance, nullptr) << "no hay forma de realzar la vista desde el menú";
     ASSERT_TRUE(enhance->isCheckable());
     enhance->setChecked(true);

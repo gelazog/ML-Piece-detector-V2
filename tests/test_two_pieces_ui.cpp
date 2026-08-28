@@ -162,12 +162,7 @@ TEST(TwoPiecesUi, TheButtonUsesTheSameNumberTheNoticeReports) {
 
     // Se abre Configurar y se declaran DOS: entonces «vistas» son 3 y «usadas»
     // 2, que es justo el desacuerdo que sufría el operador.
-    QAction* configure = nullptr;
-    for (auto* action : window.findChildren<QAction*>()) {
-        if (action->text().startsWith(QStringLiteral("Configurar"))) {
-            configure = action;
-        }
-    }
+    auto* configure = window.findChild<QAction*>(QStringLiteral("configureAction"));
     ASSERT_NE(configure, nullptr);
     configure->trigger();
     auto* dialog = window.findChild<pci::ui::ConfigureDialog*>();
