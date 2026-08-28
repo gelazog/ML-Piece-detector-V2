@@ -521,8 +521,59 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   **Y E9 quedó resuelto sin mover esto.** Con las dos guardas puestas, el barrido
   mínimo del banco pasa de 0,4° a 15,1° y el radio máximo de 31× a 3,8×; las cien
   tuercas siguen dando **11 aciertos de 100** y las mismas seis respuestas. Eran
-  dos fallos, no uno: los arcos publicados sin comprobar ya no existen, pero los
-  seis planos de la tuerca se siguen descomponiendo como arcos. Ahí sigue E8.
+  dos fallos, no uno.
+
+  **Y mirando la pieza se cae la tercera hipótesis, que era mía.** Escrito arriba
+  quedó que «los seis planos de la tuerca se descomponen como arcos». Se dibujó
+  el contorno punto a punto sobre la foto y **no es eso**: los cortes de la
+  descomposición caen en los vértices, uno por esquina, y los arcos que salen
+  tienen el largo de un plano. La descomposición está haciendo su trabajo.
+
+  Lo que sí se ve en el dibujo: **el contorno va dentado por abajo**, en el borde
+  que queda en sombra, mientras el de arriba —iluminado— es limpio. Y el recuento
+  de lados no sale de `decomposeContour` sino de `approxPolyDP`, que en ese
+  dentado encuentra vértices que no existen. Es el mismo problema que reportó el
+  taller: «la manera en que toma los contornos suele variar mucho por su sombra».
+
+  **Dos hipótesis más, medidas y falsadas:**
+
+  3. *«La pieza es demasiado pequeña, 90 px de ancho»* — NO, y va al revés.
+     Reescalando el recorte de cada tuerca:
+
+     | escala | ancho | qué sale |
+     |---|---|---|
+     | ×1 | 90 px | 19 de 25 con 11 lados, todas «polígono» |
+     | ×2 | 180 px | 13 con 11 lados, 9 pasan a «redondeado» |
+     | ×3 | 270 px | **23 de 25 pasan a «irregular»** |
+     | ×4 | 360 px | 24 de 25 «irregular» |
+
+     Ampliar no añade información, así que esto no dice que una foto de más
+     resolución no ayudara; dice que **la respuesta se mueve muchísimo con el
+     remuestreo**, que ya es un fallo de repetibilidad por sí solo, y que se
+     mueve hacia «irregular» y no hacia el hexágono.
+
+  4. *«Suavizar el contorno lo arregla»* — a medias, y con un número mágico.
+     Media móvil circular sobre los puntos del contorno, cien tuercas:
+
+     | ventana | tuercas con 6 lados |
+     |---|---|
+     | 0 (hoy) | 11 |
+     | ±1 | 9 |
+     | ±2 | **50** |
+     | ±3 | 23 |
+     | ±5 | 5 |
+
+     El salto a 50 confirma el diagnóstico —el dentado es la causa— pero el pico
+     es agudo y la ventana está en PUNTOS, o sea un número absoluto en un mundo
+     que escala, que es la forma de fallo que este proyecto ya ha pagado cuatro
+     veces. Ajustar la ventana a esta foto sería ajustar el banco.
+
+  **Siguiente paso, con eso en la mano:** que el suavizado sea relativo —una
+  fracción del perímetro, o el mismo paso de remuestreo que ya usa la
+  descomposición— y medirlo sobre el banco entero y no sobre una foto. Y por
+  delante de eso, la pregunta que hace el taller: si el borde en sombra es el que
+  ensucia el contorno, el arreglo de verdad está en la segmentación, no en
+  suavizar después lo que salió mal.
 
 - [x] **E9 · Dos guardas de `makePrimitive` se comprueban antes del número que
   vigilan.** RESUELTO. Encontrado persiguiendo E8. **Se intentó arreglar y se revirtió**,
