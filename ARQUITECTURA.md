@@ -2499,6 +2499,36 @@ detección usa `kInkMuted` aunque `kInkOff` fuera el token que su nombre sugerí
 Un token medido contra un fondo y usado contra otro deja la pantalla igual de
 ilegible — por eso la prueba mide **el widget**, no el token.
 
+### El aviso del calibrador se apagaba justo cuando ibas a comprobarlo
+
+La rejilla del calibrador de lente marca con borde ámbar las cuatro **esquinas**,
+porque son las que no se pueden dejar sin cubrir: una calibración sin esquinas no
+corrige la distorsión, que es para lo que se hace. Ese ámbar era `kWarn`, pensado
+para fondo claro, y sobre la celda verde de «ya cubierta» daba **1,01:1**.
+
+La marca se veía mientras la zona estaba sin cubrir y **desaparecía al cubrirla**,
+que es exactamente cuando el operador repasa si están las cuatro.
+
+No era el único: el borde de las celdas daba 1,53:1, el de la vista previa 1,79:1
+—literalmente el mismo par que la cabecera de la paleta ya documenta haber
+arreglado en otro sitio— y el texto de la celda cubierta 3,77:1 contra los 4,5
+que pide WCAG.
+
+Lo difícil del caso es que este diálogo tiene **tres fondos** y el borde tiene que
+verse en los tres. Se barrieron candidatos y solo dos los pasan, y los dos ya
+existían:
+
+| | celda vacía | celda cubierta | vista previa |
+|---|---|---|---|
+| `kOutline` (borde) | 6,87 | **3,76** | 10,51 |
+| `kWarnOnDark` (esquina) | 6,11 | **3,35** | 9,35 |
+
+El verde pasa de `#2e7d32` a `kGoodChip`: era el tercero de los tres verdes que la
+cabecera de la paleta identificó y el único sin unificar. `LensGridContrast` fija
+cada pareja **tal y como se usa aquí**, no los tokens sueltos — un token correcto
+sobre el fondo equivocado deja la pantalla igual de ilegible, y las cuatro de
+arriba eran justo eso.
+
 ### Las bandas que van sobre el vídeo eran tres estilos y un solo color
 
 El aviso de puesta en marcha, la lectura continua del tablero y su estado de

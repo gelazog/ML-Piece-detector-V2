@@ -132,6 +132,7 @@ add_executable(pci_gui_tests
   test_context_menu.cpp
   test_theme.cpp
   test_video_bands.cpp
+  test_lens_grid_contrast.cpp
   test_secondary_text_contrast.cpp
   test_shape_and_proposals_agree.cpp
   test_polygon_count_is_checkable.cpp

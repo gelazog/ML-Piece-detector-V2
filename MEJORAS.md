@@ -254,7 +254,7 @@ Todo esto salió de una auditoría anterior y está verificado.
   grupo**.
 - [~] **C5 · Colores escritos a mano fuera de `ui/theme.h`.** El trinquete de
   `tests/test_palette_guard.cpp` impide que suban; van
-  **56 -> 49 -> 41 -> 36 -> 31 -> 25 -> 23 -> 19 -> 14 -> 9**.
+  **56 -> 49 -> 41 -> 36 -> 31 -> 25 -> 23 -> 19 -> 14 -> 9 -> 5**.
 
   Los cuatro de esta vuelta eran **el mismo papel escrito cuatro veces** —texto
   secundario— y los cuatro **suspendían WCAG** sobre el gris de ventana de
@@ -320,6 +320,34 @@ Todo esto salió de una auditoría anterior y está verificado.
   que la paleta ya acepta entre «no cumple» y «aviso». Así que no se cambió el
   aspecto, y `test_video_bands.cpp` guarda la medida para que quien retoque esos
   fondos se entere si los acerca.
+
+    **La rejilla del calibrador de lente: tres de sus cuatro colores no se veían**,
+  y el peor era un fallo funcional. Las cuatro esquinas llevan borde ámbar porque
+  son las que no se pueden dejar sin cubrir —una calibración sin esquinas no
+  corrige la distorsión, que es para lo que se hace— y ese ámbar era `kWarn`,
+  pensado para fondo claro:
+
+  | | contraste | pide |
+  |---|---|---|
+  | **marcador de esquina sobre la celda cubierta** | **1,01:1** | 3,0 |
+  | borde de la celda | 1,53:1 | 3,0 |
+  | borde de la vista previa | 1,79:1 | 3,0 |
+  | texto de la celda cubierta | 3,77:1 | 4,5 |
+
+  O sea: la esquina se marcaba mientras estaba sin cubrir y **la marca
+  desaparecía al cubrirla**, que es justo cuando el operador repasa si están las
+  cuatro. Un aviso que se apaga al mirarlo no es un aviso.
+
+  Lo difícil era que hay TRES fondos —celda vacía, celda cubierta y la vista
+  previa negra— y el borde tiene que verse en los tres. Se barrieron candidatos y
+  solo dos los pasan, los dos **ya existentes**: `kOutline` (6,87 / 3,76 / 10,51)
+  y `kWarnOnDark` (6,11 / 3,35 / 9,35). El verde pasa a `kGoodChip`: era el
+  tercero de los tres verdes que la cabecera de la paleta identificó hace tiempo
+  y el único que quedaba sin unificar.
+
+  Y el borde de la vista previa era **literalmente el mismo par** que esa
+  cabecera documenta haber arreglado en otro sitio —«el `#444` sobre `#1a1a1a` da
+  1,8:1»— sobreviviendo aquí.
 
     **Decisiones de color pendientes de tener la pantalla delante** (las dos son
   cambios de aspecto, no de código):

@@ -26,12 +26,38 @@ namespace {
 
 // Verde cuando la zona ya tiene una toma, gris cuando falta. Las esquinas se
 // dibujan con borde porque son las que no se pueden dejar sin cubrir.
+//
+// TODO ESTO ESTABA ESCRITO A MANO Y TRES DE LAS CUATRO COSAS NO SE VEÍAN.
+// Medido, y el peor es el que más importa:
+//
+//     texto de la celda cubierta   #ddd sobre #2e7d32   3,77:1  (WCAG pide 4,5)
+//     borde de la celda            #555 sobre #3a3a3a   1,53:1  (pide 3,0)
+//     MARCADOR DE ESQUINA          kWarn sobre el verde 1,20:1  (pide 3,0)
+//
+// El de la esquina es un fallo funcional, no estético: la esquina se marca
+// porque es la que no se puede dejar sin cubrir, y al cubrirla la marca
+// desaparecía. O sea que el aviso se apagaba justo cuando se iba a comprobar.
+//
+// Los cuatro colores salen ahora de tokens que YA EXISTÍAN, y se eligieron
+// midiendo cuál llega a 3:1 sobre los tres fondos de este diálogo —celda vacía,
+// celda cubierta y la vista previa negra—, que es lo que hace difícil el caso:
+//
+//     borde     kOutline      6,87 / 3,76 / 10,51   el único que pasa los tres
+//     esquina   kWarnOnDark   6,11 / 3,35 /  9,35   ídem, y es el ámbar de fondo oscuro
+//     cubierta  kGoodChip + kInkOnChip      6,23:1
+//     vacía     kChipRest + kInkOnChipRest  8,37:1
+//
+// El verde pasa de `#2e7d32` a `kGoodChip`: era el tercero de los tres verdes
+// que la cabecera de la paleta identificó hace tiempo y el único que quedaba sin
+// unificar.
 QString cellStyle(bool touched, bool corner) {
-    const QString background = touched ? QStringLiteral("#2e7d32") : QStringLiteral("#3a3a3a");
-    const QString border = corner ? QStringLiteral("2px solid ") + theme::kWarn
-                                  : QStringLiteral("1px solid #555");
-    return QStringLiteral("background:%1; border:%2; border-radius:4px; color:#ddd;")
-        .arg(background, border);
+    const char* background = touched ? theme::kGoodChip : theme::kChipRest;
+    const char* ink = touched ? theme::kInkOnChip : theme::kInkOnChipRest;
+    const QString border = corner
+                               ? QStringLiteral("2px solid ") + theme::kWarnOnDark
+                               : QStringLiteral("1px solid ") + theme::kOutline;
+    return QStringLiteral("background:%1; border:%2; border-radius:4px; color:%3;")
+        .arg(QString(background), border, QString(ink));
 }
 
 }  // namespace
@@ -57,7 +83,11 @@ LensCalibrationDialog::LensCalibrationDialog(QWidget* parent) : QDialog(parent) 
     preview_ = new QLabel(this);
     preview_->setMinimumSize(420, 320);
     preview_->setAlignment(Qt::AlignCenter);
-    preview_->setStyleSheet(QStringLiteral("background:#1a1a1a; border:1px solid #444;"));
+    // El `#444` sobre `#1a1a1a` da 1,79:1: casi invisible, y es el marco que dice
+    // dónde va a salir la imagen. Es el MISMO fallo que ya se arregló en el hueco
+    // de «aquí todavía no hay imagen», sobreviviendo aquí.
+    preview_->setStyleSheet(QStringLiteral("background:%1; border:1px solid %2;")
+                                .arg(QString(theme::kSurfaceDark), QString(theme::kOutline)));
     preview_->setText(tr("Sin señal"));
     columns->addWidget(preview_, 3);
 
