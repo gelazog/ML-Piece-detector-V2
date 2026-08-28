@@ -477,7 +477,7 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
 - [ ] **E7 · `runRegion` no coincide en área con la silueta de la aplicación.**
   Usa su propio Otsu local y la diferencia llega al 52 % en cotas ya guardadas.
   **Decisión del dueño del proyecto, aparcada a propósito.**
-- [ ] **E8 · Cien tuercas iguales, ocho formas distintas.** Verificado midiendo
+- [x] **E8 · Cien tuercas iguales, ocho formas distintas.** RESUELTO: 85 de 100. Verificado midiendo
   `producto-tuercas-prueba.jpg` pieza por pieza. Son cien tuercas hexagonales
   del mismo lote y **el área varía solo un 0,9 %** entre la mayor y la menor, así
   que la detección es repetible. El clasificador no:
@@ -568,12 +568,61 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
      que escala, que es la forma de fallo que este proyecto ya ha pagado cuatro
      veces. Ajustar la ventana a esta foto sería ajustar el banco.
 
-  **Siguiente paso, con eso en la mano:** que el suavizado sea relativo —una
-  fracción del perímetro, o el mismo paso de remuestreo que ya usa la
-  descomposición— y medirlo sobre el banco entero y no sobre una foto. Y por
-  delante de eso, la pregunta que hace el taller: si el borde en sombra es el que
-  ensucia el contorno, el arreglo de verdad está en la segmentación, no en
-  suavizar después lo que salió mal.
+  **[x] RESUELTO, y no por el suavizado.** Siguiéndole la pista al dentado se
+  llegó al sitio de verdad: el barrido de epsilon responde a DOS preguntas y el
+  código solo usaba una.
+
+  - La **tolerancia** responde «¿este polígono explica el contorno?».
+  - La **anchura de la meseta** responde «¿son estos los lados que tiene la pieza?».
+
+  `widestThatFits` descartaba por la primera cualquier ajuste, y después elegía
+  el más ancho de los que sobrevivían — aunque el superviviente hubiera aparecido
+  **una sola vez en treinta barridos**. La meseta se usaba para desempatar y
+  nunca como evidencia.
+
+  En la tuerca, el ajuste de 6 lados aguanta **17 de 30** barridos, la siguiente
+  explicación aguanta 3, y se descartaba por **0,24 px**. El suelo de 6 px supone
+  que el borde viene dentado como lo deja el rasterizado (~1 px); el borde en
+  sombra viene dentado 2-3 px, y sobre una pieza de 90 px eso basta.
+
+  Así que una meseta que ocupa media barrida manda sobre la tolerancia, con una
+  holgura acotada (`kPlateauRulesAbove`, `kNoisyEdgeAllowance`). **Las dos
+  condiciones hacen falta**, y eso está medido:
+
+  | pieza | meseta | desviación / tope | qué debe pasar |
+  |---|---|---|---|
+  | tuerca real | 17/30 | **1,04×** | admitirla |
+  | arandela, ajuste de 4 lados | 14/30 | 2,13× | tirarla — la tira la holgura |
+  | polígono de 16, ajuste de 8 | 16/30 | 2,08× | tirarla — la tira la holgura |
+  | redondeo 40, ajuste de 4 | 21/30 | 2,90× | tirarla — la tira la holgura |
+  | cáncamo | 3/30 | — | tirarla — la tira la meseta |
+  | tornillo | 1/30 | — | tirarla — la tira la meseta |
+
+  Ninguna sostiene sola el resultado, y por eso `PlateauRules` tiene tres pruebas
+  y no una.
+
+  **Comparación controlada** (misma compilación, solo cambia la holgura):
+
+  | | holgura anulada | con holgura |
+  |---|---|---|
+  | cien tuercas con 6 lados | 11 | **85** |
+  | banco, irregular | 21 | 20 |
+  | banco, polígono de 4 | 0 | 1 |
+  | todo lo demás del banco | idéntico | idéntico |
+
+  Una sola pieza del banco de 48 se mueve: la varilla roscada de `rosca-1`, de
+  «irregular» a «polígono de 4», que es lo que es su silueta — y de paso deja de
+  ser una de las piezas sin ninguna cota comprobable.
+
+  **Lo que NO era, y estaba escrito arriba como si lo fuera:** subir la
+  tolerancia. Se probó, y a 10 px las cinco piezas de `tornillo-ojo-5` y el
+  tornillo de `tornillos-1` pasan a «polígono de 12 lados» — el tope de lados, o
+  sea un ajuste que no explica nada pero cabe. Eso propone doce cotas de lado y
+  doce ángulos que son ruido: peor que dejarlas en irregular.
+
+  Quedan **15 tuercas de 100** con otra forma. El siguiente sitio donde mirar
+  sigue siendo el que apunta el taller: el borde en sombra ensucia el contorno, y
+  eso es segmentación, no clasificación.
 
 - [x] **E9 · Dos guardas de `makePrimitive` se comprueban antes del número que
   vigilan.** RESUELTO. Encontrado persiguiendo E8. **Se intentó arreglar y se revirtió**,

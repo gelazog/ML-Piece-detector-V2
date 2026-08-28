@@ -33,6 +33,7 @@ add_executable(pci_tests
   test_brush_reaches_the_contour.cpp
   test_whole_piece_dimensions.cpp
   test_arc_guards.cpp
+  test_plateau_rules.cpp
   test_same_piece_everywhere.cpp
   test_option_labels.cpp
   test_csv_for_excel.cpp

@@ -216,12 +216,14 @@ PolygonFit fitPolygon(const std::vector<cv::Point>& contour, const ClassifyOptio
     // ningún resultado pasaba la tolerancia. El síntoma era peor que el fallo
     // —salía «irregular», ni lados ni diámetro—, y la causa no se ve mirando el
     // resultado, solo barriendo.
+    int swept = 0;
     for (double fraction = 0.001; fraction <= 0.06; fraction += 0.002) {
         std::vector<cv::Point> approx;
         cv::approxPolyDP(contour, approx, fraction * perimeter, true);
         if (approx.size() < 3) {
             break;  // más epsilon solo puede simplificar aún más
         }
+        ++swept;
         Tally& tally = tallies[static_cast<int>(approx.size())];
         ++tally.seen;
         const double deviation = worstDistanceToPolygon(contour, approx);
@@ -242,13 +244,24 @@ PolygonFit fitPolygon(const std::vector<cv::Point>& contour, const ClassifyOptio
     //
     // A igualdad de anchura mandan los menos lados, que es la navaja de Occam:
     // entre dos explicaciones igual de estables, la más simple.
-    const auto widestThatFits = [&tallies, &options](int maxSides) -> const Tally* {
+    //
+    // Y UNA MESETA ABRUMADORA MANDA SOBRE LA TOLERANCIA, con holgura acotada.
+    // El porqué y los números están en `kPlateauRulesAbove`: la tolerancia dice
+    // si el polígono explica el contorno y la meseta dice cuántos lados tiene la
+    // pieza, son evidencias distintas, y descartar por la primera tiraba
+    // respuestas que la segunda daba por seguras — cien tuercas hexagonales
+    // salían con 7, 8, 10 y 11 lados por 0,24 px.
+    const auto widestThatFits = [&tallies, &options, swept](int maxSides) -> const Tally* {
         const Tally* winner = nullptr;
         for (const auto& [sides, tally] : tallies) {
             if (sides < 3 || (maxSides > 0 && sides > maxSides)) {
                 continue;
             }
-            if (tally.bestDeviation > options.maxDeviationPx) {
+            const bool countIsBeyondDoubt =
+                swept > 0 && tally.seen >= kPlateauRulesAbove * swept;
+            const double admissible =
+                options.maxDeviationPx * (countIsBeyondDoubt ? kNoisyEdgeAllowance : 1.0);
+            if (tally.bestDeviation > admissible) {
                 continue;
             }
             if (winner == nullptr || tally.seen > winner->seen) {

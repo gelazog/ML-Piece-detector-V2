@@ -75,6 +75,41 @@ struct ShapeClass {
     std::string reason;
 };
 
+// CUÁNDO UNA MESETA ES TAN ANCHA QUE MANDA SOBRE LA TOLERANCIA.
+//
+// El barrido de epsilon responde a DOS preguntas distintas y el código solo
+// usaba una. La tolerancia responde «¿este polígono explica el contorno?»; la
+// anchura de la meseta responde «¿son estos los lados que tiene la pieza?». Son
+// evidencias independientes, y descartar por la primera tiraba respuestas que la
+// segunda daba por seguras.
+//
+// El caso que lo destapó: cien tuercas hexagonales fotografiadas juntas. El
+// ajuste de 6 lados aguanta 17 de los 30 epsilon barridos —la siguiente
+// explicación aguanta 3— y se descartaba por 0,24 px (6,24 contra el suelo de
+// 6,00). Salían con 7, 8, 10 y 11 lados: once aciertos de cien.
+//
+// Ese suelo de 6 px supone que el dentado del borde es el del rasterizado, ~1 px.
+// En una foto real el borde en sombra viene dentado 2-3 px, y sobre una pieza de
+// 90 px eso basta para pasarse. Cuando el recuento está fuera de duda, un borde
+// sucio no puede convertir un hexágono en «una cosa de once lados».
+//
+// Las dos constantes salen de un hueco MEDIDO, no de ajustar hasta que pase:
+//
+//   | pieza                       | meseta | desviación / tope |
+//   |-----------------------------|--------|-------------------|
+//   | tuerca real (sí es hexágono)| 17/30  | 1,04x  <- la que hay que admitir
+//   | arandela, ajuste de 4 lados | 14/30  | 2,13x  <- hay que seguir tirándola
+//   | polígono de 16, ajuste de 8 | 16/30  | 2,08x  <- ídem
+//   | redondeo 40, ajuste de 4    | 21/30  | 2,90x  <- ídem
+//   | cáncamo / tornillo          | 1-3/30 | —      <- ni se acercan
+//
+// Entre 1,04 y 2,08 hay sitio de sobra, y la mitad del barrido cae entre el 14/30
+// que hay que tirar y el 17/30 que hay que admitir. Ninguna de las dos
+// condiciones sostiene sola el resultado: la arandela tiene meseta ancha y la
+// tira la holgura; el cáncamo cabe en la holgura y lo tira la meseta.
+inline constexpr double kPlateauRulesAbove = 0.5;
+inline constexpr double kNoisyEdgeAllowance = 1.5;
+
 // CUÁNDO UN ARCO ES UNA ESQUINA Y NO UN LADO MAL LEÍDO.
 //
 // En un polígono redondeado los arcos son las esquinas, y una esquina es más

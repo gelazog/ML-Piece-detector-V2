@@ -2897,9 +2897,62 @@ esquinas y 4 lados. Sin ella, la prueba pasaría el día que la guarda se llevar
 por delante los arcos de verdad — no tener nada que comprobar es la forma más
 fácil de fingir que todo va bien.
 
-**No arregla E8.** Las cien tuercas de la bandeja siguen dando 11 aciertos de
-100: eran dos fallos, y los seis planos de una tuerca hexagonal se siguen
-descomponiendo como arcos.
+#### La meseta era evidencia y se usaba solo para desempatar
+
+El barrido de epsilon responde a **dos preguntas distintas** y el código usaba
+una. La tolerancia responde «¿este polígono explica el contorno?»; la anchura de
+la meseta responde «¿son estos los lados que tiene la pieza?». `widestThatFits`
+descartaba por la primera y después elegía el más ancho de los supervivientes,
+aunque el superviviente hubiera aparecido **una sola vez en treinta barridos**.
+
+Lo que eso costaba: cien tuercas hexagonales del mismo lote salían con 6, 7, 8,
+9, 10 y 11 lados —**once aciertos de cien**— y como «qué medir depende de la
+forma», cada tuerca de la bandeja recibía un juego de cotas distinto. El ajuste
+de 6 lados aguanta **17 de los 30** barridos, la siguiente explicación aguanta 3,
+y se descartaba por **0,24 px**: 6,24 contra el suelo de 6,00.
+
+Ese suelo supone que el borde viene dentado como lo deja el rasterizado, ~1 px.
+Dibujando el contorno sobre la foto se ve que no: el borde iluminado sale limpio
+y **el que queda en sombra viene serrado 2-3 px**, y sobre una pieza de 90 px eso
+basta para pasarse. Es el mismo problema que reporta el taller —«la manera en que
+toma los contornos varía mucho por su sombra»— llegando por otro camino.
+
+Cuando el recuento está fuera de duda, un borde sucio no puede convertir un
+hexágono en «una cosa de once lados». Así que **una meseta que ocupa media
+barrida manda sobre la tolerancia**, con una holgura acotada. Las dos condiciones
+hacen falta y ninguna sostiene sola el resultado:
+
+| pieza | meseta | desviación / tope | quién la tira |
+|---|---|---|---|
+| tuerca real (sí es hexágono) | 17/30 | **1,04×** | nadie: se admite |
+| arandela, ajuste de 4 lados | 14/30 | 2,13× | la holgura |
+| polígono de 16, ajuste de 8 | 16/30 | 2,08× | la holgura |
+| redondeo 40, ajuste de 4 | 21/30 | 2,90× | la holgura |
+| cáncamo | 3/30 | — | la meseta |
+| tornillo | 1/30 | — | la meseta |
+
+Entre 1,04 y 2,08 hay sitio de sobra, así que los dos números salen de un hueco
+medido y no de ajustar hasta que pase.
+
+**Lo que NO se hizo, y por qué.** Subir la tolerancia a secas arregla las tuercas
+—a 10 px salen las cien— y estropea el banco: las cinco piezas de
+`tornillo-ojo-5` y el tornillo de `tornillos-1` pasan de «irregular» a «polígono
+de 12 lados», que es el tope de lados, o sea un ajuste que no explica nada pero
+cabe. Eso propone doce cotas de lado y doce ángulos que son ruido — peor que
+dejarlas irregulares. Por eso `PlateauRules` son tres pruebas: una por cada mitad
+del criterio y una por el resultado.
+
+Comparación controlada, misma compilación y solo cambia la holgura: las tuercas
+con 6 lados pasan de **11 a 85**, y del banco de 48 piezas se mueve **una**, la
+varilla roscada de `rosca-1`, de irregular a polígono de 4 — que es lo que es su
+silueta.
+
+**Y esto no lo arreglaron las guardas de E9.** Con ellas puestas las tuercas
+seguían dando 11 de 100: eran dos fallos distintos. También quedó falsada una
+tercera hipótesis que estaba escrita como si fuera un hecho —«los seis planos de
+la tuerca se descomponen como arcos»—: dibujando el contorno se ve que los cortes
+de la descomposición caen en los vértices, uno por esquina. La descomposición
+hacía su trabajo; el recuento de lados no sale de ahí sino de `approxPolyDP`.
 
 Cuatro cosas que costaron una medida cada una, y las cuatro tenían la misma
 forma: **un número absoluto en un mundo que escala**.

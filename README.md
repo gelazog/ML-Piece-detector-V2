@@ -474,6 +474,14 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
 
    **Primero mira qué FIGURA es tu pieza**, y de ahí sale qué te propone:
 
+   Y esa lectura tiene que dar lo mismo en piezas iguales, o la bandeja entera se
+   vuelve irrevisable. Sobre una foto de cien tuercas hexagonales del mismo lote,
+   antes salían con 6, 7, 8, 9, 10 y 11 lados —once aciertos de cien— porque el
+   borde que queda **en sombra** llega dentado dos o tres píxeles y eso basta,
+   sobre una pieza pequeña, para que aparezcan vértices que no existen. Ahora
+   salen **85 de 100** como hexágonos.
+
+
    | Si la pieza es… | Te propone |
    |---|---|
    | **Redonda** | el **diámetro** (con su perímetro en el porqué) y la **redondez** |
