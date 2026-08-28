@@ -3295,6 +3295,29 @@ Los 21 que siguen sin coincidir tienen algún lado más corto que
 20 px no se mide con repetibilidad. Por eso el trinquete de
 `ShapeAndProposalsAgree` va sobre el número medido y no sobre el 100 %.
 
+#### Y al mudarse a los vértices, el filtro de esquinas se quedó atrás
+
+`ProposeOptions` dice desde que existe que «un ángulo entre caras solo se propone
+si está lejos de 0° y de 180°», y `minCornerAngleDeg` (20°) es ese suelo. Estaba
+aplicado en la rama de las primitivas — la que acaba de dejar de recorrerse para
+los polígonos. La rama nueva, la de los vértices, sólo comprobaba que los dos
+lados de la esquina fueran más largos que `minFeatureLength`.
+
+Una opción documentada, con su valor por defecto, que no gobernaba el camino por
+el que salen las cotas. Sobre el banco: **5 de 597** ángulos propuestos por
+encima de 160°, el peor a **163,8°**, en dos piezas; ahora **0 de 592**, y el más
+plano que queda mide 158,1°.
+
+El daño es el mismo que el de los radios inventados, y por la misma razón: un
+«Ángulo 4 = 164°» va presentado como *una de las 9 esquinas con las que se
+reconoció la pieza*, así que se acepta y se le pone banda — y la pieza buena de
+al lado, donde el ajuste parte esa misma curva un punto más allá, da otro número.
+
+La prueba que lo fija comprueba tres cosas, y la tercera es la que importa: que
+subir `minCornerAngleDeg` por encima de los 30° que gira un dodecágono en cada
+esquina lo deje **sin ángulos**. Sin ella, el filtro se podría volver a escribir
+en el camino que no se recorre y las otras dos seguirían en verde.
+
 #### Y el recuento de lados se rechazaba a sí mismo siempre
 
 La propuesta «Lados (n)» —el recuento como cota con tolerancia, que vigila que no

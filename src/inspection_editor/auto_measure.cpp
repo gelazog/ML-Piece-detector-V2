@@ -43,6 +43,28 @@ double angleBetweenDeg(const cv::Point2f& a, const cv::Point2f& b) {
     return std::acos(std::abs(dot)) * kRadToDeg;
 }
 
+// El ángulo INTERIOR de una esquina, 0-180°, que es el número que da la
+// herramienta de Ángulo y por tanto el que ve el operador.
+//
+// No sirve `angleBetweenDeg`: aquella compara DIRECCIONES —toma el valor
+// absoluto del producto escalar, así que devuelve 0-90 y no distingue una
+// esquina de 170° de una de 10°—. Aquí hacen falta los dos extremos, porque lo
+// que se descarta es justo lo que está cerca de cualquiera de ellos.
+double interiorAngleDeg(const cv::Point2f& previous, const cv::Point2f& corner,
+                        const cv::Point2f& next) {
+    const cv::Point2f a = previous - corner;
+    const cv::Point2f b = next - corner;
+    const double na = cv::norm(a);
+    const double nb = cv::norm(b);
+    if (na < 1e-6 || nb < 1e-6) {
+        return 180.0;  // sin dos lados no hay esquina que medir
+    }
+    const double cosine = std::clamp(
+        (static_cast<double>(a.x) * b.x + static_cast<double>(a.y) * b.y) / (na * nb), -1.0,
+        1.0);
+    return std::acos(cosine) * kRadToDeg;
+}
+
 // Punto medio de una geometría de longitud, para comparar dos propuestas.
 cv::Point2f measurementAnchor(const ToolGeometry& geometry) {
     if (const auto* ruler = std::get_if<RulerGeometry>(&geometry)) {
@@ -783,6 +805,24 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
             const cv::Point2f next(v[(i + 1) % v.size()]);
             if (cv::norm(corner - previous) < options.minFeatureLength ||
                 cv::norm(next - corner) < options.minFeatureLength) {
+                continue;
+            }
+            // Y QUE SEA UNA ESQUINA, no una junta entre dos tramos casi
+            // alineados. `minCornerAngleDeg` existe para esto —«un ángulo entre
+            // caras solo se propone si está lejos de 0° y de 180°»— y esta rama,
+            // que es la que da hoy casi todos los ángulos, no lo miraba: el
+            // filtro se quedó en la rama de las primitivas, que es la que ya
+            // casi no se usa desde que los polígonos miden por sus vértices.
+            //
+            // Medido sobre el banco: 5 de 597 ángulos propuestos salían a más de
+            // 160°, el peor a 163,8°, en dos piezas. Un «Ángulo 4 = 164°»
+            // presentado como «una de las 9 esquinas con las que se reconoció la
+            // pieza» es una cota sobre algo que no es una esquina: el operador le
+            // pone banda, y la pieza buena de al lado —donde el ajuste parte esa
+            // misma curva un punto más allá— da otro número.
+            const double interior = interiorAngleDeg(previous, corner, next);
+            if (interior > 180.0 - options.minCornerAngleDeg ||
+                interior < options.minCornerAngleDeg) {
                 continue;
             }
             ++cornerIndex;

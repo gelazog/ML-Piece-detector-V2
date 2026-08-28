@@ -1011,6 +1011,34 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   funcione en las tres tuercas probadas. E7 está aparcado por decisión del dueño
   del proyecto, así que aquí se deja medido y no se toca.
 
+- [x] **E11 · Un ángulo de 164° ofrecido como «una de las esquinas de la
+  pieza».** `ProposeOptions` lo dice desde que existe —«un ángulo entre caras
+  solo se propone si está lejos de 0° y de 180°», y para eso está
+  `minCornerAngleDeg`— pero el filtro estaba escrito **en la rama que ya casi no
+  se recorre**: la que descompone el contorno en primitivas. Desde que un
+  polígono mide por los vértices con los que se le reconoció, la rama de los
+  vértices es la que da hoy casi todos los ángulos, y no miraba la opción.
+
+  O sea: una opción documentada, con su valor por defecto, que no gobernaba el
+  camino por el que salen las cotas.
+
+  Medido sobre el banco antes de tocar nada: **5 de 597** ángulos propuestos por
+  encima de 160°, el peor a **163,8°**, en dos piezas. Después: **0 de 592**, y
+  el más plano que queda es de 158,1°. Los cinco que se van son exactamente los
+  cinco que sobraban.
+
+  El daño no está en el número. Un «Ángulo 4 = 164°» presentado como «una de las
+  9 esquinas con las que se reconoció la pieza» es una cota sobre algo que no es
+  una esquina: se acepta, se le pone banda, y la pieza buena de al lado —donde
+  el mismo ajuste parte esa curva un punto más allá— da otro número y sale NG.
+  Es el mismo fallo que los «Radio» inventados sobre una tuerca hexagonal.
+
+  `test_angle_proposals_are_corners.cpp` comprueba las dos mitades y, sobre
+  todo, **que la opción gobierne este camino**: subir `minCornerAngleDeg` por
+  encima de los 30° que gira un dodecágono en cada esquina tiene que dejarlo sin
+  ángulos. Sin esa tercera prueba, el filtro se podría volver a escribir donde
+  no se recorre y las otras dos seguirían en verde.
+
 ## F. Ya está hecho — no volver a investigarlo
 
 Aquí para que nadie gaste otra vez el tiempo que ya se gastó.
