@@ -413,12 +413,65 @@ TEST(RealPhotoTools, NoProposedToolPublishesAnImpossibleNumber) {
             }
             // Un ángulo va en grados y un área en px2, así que la cota de
             // "no puede pasar de la diagonal" sólo aplica a las longitudes.
-            if (run.value().kind == pci::inspection::MeasuredKind::Length &&
+            //
+            // Y NI SIQUIERA A TODAS. La diagonal acota una DISTANCIA EN LÍNEA
+            // RECTA —dos puntos de la foto no pueden estar más lejos— y un
+            // perímetro no es eso: es un RECORRIDO, y un recorrido no tiene cota
+            // superior. Un rectángulo de 2000x1000 en una foto de 2000x1000 tiene
+            // 2236 px de diagonal y 6000 de perímetro, sin que nada vaya mal.
+            //
+            // Se descubrió al proponer el perímetro de la silueta: sobre
+            // `bola_oscura_sobre_claro_10mm` medía 19 110 px con una diagonal de
+            // 2308, y no era un absurdo del ajuste sino una medida fiel de un
+            // contorno dentado —la propia figura sale con solidez 0,14—. Aplicarle
+            // esta cota habría marcado como imposible un número correcto, que es
+            // la forma más cara de equivocarse: se persigue un fallo que no
+            // existe.
+            //
+            // Lo que SÍ acota un perímetro es por abajo, y la cota tiene nombre:
+            // la desigualdad isoperimétrica. De todas las figuras con la misma
+            // área, la que menos perímetro gasta es el círculo, así que
+            //
+            //     perímetro >= 2 * raíz(pi * área)
+            //
+            // para cualquier figura, con igualdad sólo si es un círculo perfecto.
+            //
+            // (El recuadro envolvente NO sirve de cota: un círculo mide pi/4 del
+            // perímetro de su propio recuadro —0,785— y la comprobación fallaba
+            // sobre las bolas. Una cota inventada que suena razonable acusa a
+            // números correctos, que es la forma más cara de equivocarse.)
+            const bool isAPath = proposal.config.name == "Perímetro";
+            if (run.value().kind == pci::inspection::MeasuredKind::Length && !isAPath &&
                 std::abs(value) > diagonal) {
                 ++suspicious;
                 ADD_FAILURE() << entry.path().filename().string() << " / "
                               << proposal.config.name << ": mide " << value
                               << " px en una foto cuya diagonal son " << diagonal << " px";
+            }
+            if (isAPath) {
+                // Contra LA MISMA FIGURA que se midió, que es la mayor de la
+                // máscara. Con la envolvente de la máscara entera, una foto de
+                // tres bolas comparaba el contorno de una contra el recuadro de
+                // las tres y fallaba sin que nada fuera mal.
+                std::vector<std::vector<cv::Point>> blobs;
+                cv::findContours(mask, blobs, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+                if (blobs.empty()) {
+                    continue;
+                }
+                const auto& biggest = *std::max_element(
+                    blobs.begin(), blobs.end(), [](const auto& a, const auto& b) {
+                        return cv::contourArea(a) < cv::contourArea(b);
+                    });
+                const double area = cv::contourArea(biggest);
+                const double roundest = 2.0 * std::sqrt(CV_PI * area);
+                if (value < roundest * 0.9) {
+                    ++suspicious;
+                    ADD_FAILURE()
+                        << entry.path().filename().string() << " / " << proposal.config.name
+                        << ": rodea en " << value << " px una figura de " << area
+                        << " px², y ni un círculo perfecto bajaría de " << roundest
+                        << ". No está midiendo el contorno";
+                }
             }
         }
     }

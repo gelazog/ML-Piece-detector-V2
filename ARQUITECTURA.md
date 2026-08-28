@@ -3011,6 +3011,76 @@ pequeño de cada clase y ninguna desaparece. Medido sobre el hexágono con las
 opciones reales: 6 longitudes, 5 ángulos y el recuento de lados, con 3
 descartadas.
 
+#### Y dentro de cada clase se lo llevaba de un solo lado
+
+El mismo error, un nivel más abajo, y salió al añadir el área y el perímetro:
+dos cotas más significan dos fuera. Dentro de cada `MeasuredKind` se ordenaba
+solo por tamaño, y una placa de 340 px con dos agujeros da ocho longitudes:
+
+    Perímetro 1328 · Largo 339 · Lado 337 · Lado 337 · Lado 336 · Lado 336 ·
+    Ø agujero 100 · Ø agujero 70
+
+Por tamaño, el recorte se llevaba **los dos agujeros**: cuatro lados que repiten
+el mismo número echaban fuera las dos únicas cotas del interior de la pieza.
+
+Poner delante lo que comprueba tampoco vale — se probó y **desaparecía el lado
+más largo**, la primera medida que busca cualquiera. Las dos ordenaciones son la
+misma trampa vista desde cada extremo, así que se reparte igual que entre
+clases: una de las que comprueban, una de las de referencia, y vuelta a
+empezar. Quién es cuál lo decide `remeasuresThePiece`, **la misma pregunta que
+decide el descargo que lee el operador**, para que el orden y el texto no puedan
+discrepar.
+
+`WholePieceDimensions.TheCutDoesNotEmptyOneFamilyToFillAnother` fija las dos
+mitades a la vez, que es lo único que impide arreglar una rompiendo la otra.
+
+#### Área y perímetro: las dos únicas cotas que miran la pieza entera
+
+Todo lo demás mide un rasgo —este diámetro, aquel lado, esta esquina— y una
+pieza puede pasar las doce cotas y estar mellada justo donde ninguna caía. En
+dos piezas del banco (`rosca-1` pieza 1, `tornillo-ojo-4` pieza 2) la lista
+entera llevaba además el descargo de «vale como cota de referencia, no como
+comprobación»: el operador aceptaba cinco propuestas y se quedaba con una
+plantilla **incapaz de rechazar nada**.
+
+Se proponen las dos, con una `Region` sobre los ejes de la pieza y un 15 % de
+holgura —ceñida al contorno, su umbralización se queda sin fondo con el que
+contrastar—. Y son comprobación y no referencia porque la Región vuelve a
+umbralizar y a recorrer el contorno en cada inspección; la diferencia no está en
+el valor sino en si el rasgo se puede volver a encontrar en la **siguiente**
+pieza: «Lado 4» es el cuarto tramo en que la descomposición cortó *este*
+contorno.
+
+Las dos, y no solo el área, porque no se estropean igual. Medido sobre una placa
+de 200×160:
+
+| defecto | área | perímetro | largo de la envolvente |
+|---|---|---|---|
+| mella de 60×20 en mitad de un lado | **3,8 %** | — | 0,0 % |
+| borde dentado | 4,6 % | **82,5 %** | — |
+
+La envolvente no se entera de la mella y el área sí; el área apenas se entera
+del dentado y el perímetro sí. `WholePieceDimensions` comprueba las tres
+afirmaciones que el motivo le hace al operador, porque un motivo que afirma algo
+falso es peor que no dar motivo.
+
+**Y destapó una cota inventada en las pruebas.**
+`RealPhotoTools.NoProposedToolPublishesAnImpossibleNumber` daba por imposible
+cualquier longitud mayor que la diagonal de la foto. Vale para una distancia en
+línea recta —dos puntos no pueden estar más lejos— y **no vale para un
+recorrido**: un rectángulo de 2000×1000 en una foto de 2000×1000 tiene 2236 px
+de diagonal y 6000 de perímetro. Sobre `bola_oscura_sobre_claro_10mm` el
+perímetro medía 19 110 px con 2308 de diagonal, y no era un absurdo del ajuste
+sino la medida fiel de un contorno dentado: la propia figura sale con solidez
+0,14.
+
+La cota que sí acota un perímetro es por abajo y tiene nombre —la **desigualdad
+isoperimétrica**, `perímetro ≥ 2·√(π·área)`, con igualdad sólo en el círculo—.
+Se intentó primero con el rectángulo envolvente y era **falsa**: un círculo mide
+π/4 = 0,785 del perímetro de su propio recuadro, así que acusaba a las bolas. Una
+cota inventada que suena razonable persigue fallos que no existen, que es la
+forma más cara de equivocarse.
+
 Y **lo que queda fuera se dice**. Descartar cotas en silencio deja al operador
 creyendo que la pieza no tenía más, que es exactamente lo contrario de lo que
 pasó.

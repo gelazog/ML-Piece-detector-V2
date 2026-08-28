@@ -485,6 +485,23 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    | **Una rueda dentada** | **cuántos dientes**, Ø de cabeza, Ø de raíz y la excentricidad |
    | **Una rosca de perfil** | el **paso**, el Ø exterior y el Ø de fondo |
 
+   **Y a todas, el área y el perímetro de la silueta.** Son las dos únicas
+   cotas que miran la pieza **entera**: todo lo demás mide un rasgo —este
+   diámetro, aquel lado, esta esquina— y una pieza puede pasar las doce y estar
+   mellada justo donde ninguna caía. Sobre una placa de 200×160, una mella de
+   60×20 en mitad de un lado mueve el área un 3,8 % mientras el largo no se
+   entera (0,0 %).
+
+   Se proponen **las dos** porque no se estropean igual: un borde dentado alarga
+   el perímetro un 82,5 % y apenas toca el área (4,6 %). Juntas cogen defectos
+   que por separado se escapan.
+
+   Y son **comprobación, no referencia**: se vuelven a medir en cada
+   inspección, así que no llevan el aviso de «vale como cota de referencia».
+   Antes había piezas —una varilla roscada, un cáncamo— a las que la lista
+   entera salía con ese aviso: aceptabas las cinco propuestas y te quedabas con
+   una plantilla que no podía rechazar nada.
+
    **Rosca y engranaje son nuevos, y antes faltaban del todo.** La medición
    automática conocía siete de las treinta y dos herramientas, y ninguna de esas
    dos estaba: a un tornillo roscado te ofrecía nueve «Radio» y tres reglas, y a

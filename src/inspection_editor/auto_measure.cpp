@@ -137,7 +137,7 @@ const std::vector<ToolType>& proposableTypes() {
     static const std::vector<ToolType> kTypes = {
         ToolType::Caliper, ToolType::Ruler,     ToolType::Circle,  ToolType::Arc,
         ToolType::Angle,   ToolType::Roundness, ToolType::Polygon, ToolType::Thread,
-        ToolType::Gear};
+        ToolType::Gear,    ToolType::Region};
     return kTypes;
 }
 
@@ -276,6 +276,68 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
         p.reason = "Dimensión general de la pieza (rectángulo mínimo que la contiene).";
         if (measureProposal(gray, fixture, mmPerPixel, p) && !alreadyCovered(proposals, p)) {
             proposals.push_back(std::move(p));
+        }
+    }
+
+    // --- Área y perímetro de la silueta -----------------------------------
+    //
+    // LAS DOS ÚNICAS COTAS QUE MIRAN LA PIEZA ENTERA, y faltaban.
+    //
+    // Todo lo de arriba mide un rasgo: este diámetro, aquel lado, esta esquina.
+    // Una pieza puede pasar las doce y estar mellada en un sitio que ninguna
+    // cota tocaba. El área y el perímetro no dejan ese hueco: cualquier trozo
+    // que sobre o que falte, esté donde esté, mueve los dos números.
+    //
+    // Y son COMPROBACIÓN, no referencia, que es lo que las distingue del «Largo
+    // total» de aquí arriba. La diferencia no está en el valor sino en si el
+    // rasgo se puede volver a encontrar en la SIGUIENTE pieza: «Lado 4» es el
+    // cuarto tramo en que la descomposición cortó ESTE contorno, y en la pieza
+    // de al lado el cuarto tramo es otra cosa. El área de la silueta es la
+    // misma pregunta en todas: la Región vuelve a umbralizar y a recorrer el
+    // contorno en cada inspección, y por eso `remeasuresThePiece` no le pone el
+    // descargo.
+    //
+    // El recuadro se traza sobre los ejes de la PIEZA con un 15 % de holgura:
+    // ceñido al contorno, la umbralización de la Región se queda sin fondo con
+    // el que contrastar y el área sale disparada.
+    {
+        const bool darkPiece = pieceIsDarkerThanBackground(gray, mask);
+        const float margin = 1.15F;
+        const cv::Point2f centre = toPiece(fixture, box.center);
+        const float wide = box.size.width * margin;
+        const float tall = box.size.height * margin;
+
+        struct WholePieceMeasure {
+            RegionMeasure measure;
+            const char* name;
+            const char* reason;
+        };
+        static const WholePieceMeasure kWholePiece[] = {
+            {RegionMeasure::Area, "Área",
+             "Superficie de la silueta, con los agujeros descontados. Es la cota que "
+             "vigila la pieza ENTERA: una mella, una rebaba o una pieza cambiada la "
+             "mueven, aunque caigan donde no llega ninguna otra cota."},
+            {RegionMeasure::Perimeter, "Perímetro",
+             "Longitud del contorno exterior. Acompaña al área porque no se estropean "
+             "igual: un borde dentado alarga mucho el perímetro y apenas toca el área, "
+             "así que juntas cogen defectos que por separado se escapan."},
+        };
+
+        for (const auto& whole : kWholePiece) {
+            AutoProposal p;
+            p.config.type = ToolType::Region;
+            p.config.name = whole.name;
+            RegionGeometry g;
+            g.center = centre;
+            g.width = wide;
+            g.height = tall;
+            g.measure = whole.measure;
+            g.darkPiece = darkPiece;
+            p.geometry = g;
+            p.reason = whole.reason;
+            if (measureProposal(gray, fixture, mmPerPixel, p)) {
+                proposals.push_back(std::move(p));
+            }
         }
     }
 
@@ -719,10 +781,51 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
         byKind[static_cast<std::size_t>(proposal.kind)].push_back(std::move(proposal));
     }
     for (auto& group : byKind) {
-        std::stable_sort(group.begin(), group.end(),
-                         [](const AutoProposal& a, const AutoProposal& b) {
-                             return a.measured > b.measured;
-                         });
+        // Y DENTRO DE CADA CLASE, EL RECORTE TAMPOCO SE LO LLEVA TODO DE UN
+        // LADO.
+        //
+        // Ordenar solo por tamaño repetía en pequeño el error que el comentario
+        // de aquí arriba arregló en grande: no recortaba lo menos valioso,
+        // recortaba lo más corto. Medido sobre una placa de 340 px con dos
+        // agujeros, el grupo de longitudes salía
+        //
+        //     Perímetro 1328 · Largo 339 · Lado 337 · Lado 337 · Lado 336 ·
+        //     Lado 336 · Ø agujero 100 · Ø agujero 70
+        //
+        // y con el tope de doce el recorte se llevaba LOS DOS AGUJEROS: cuatro
+        // lados que repiten el mismo número echaban fuera las dos únicas cotas
+        // del interior de la pieza.
+        //
+        // Poner delante lo que comprueba tampoco vale: entonces desaparecía el
+        // lado más largo, que es la primera medida que cualquiera busca. Las
+        // dos ordenaciones son la misma trampa vista desde cada extremo.
+        //
+        // Así que se reparte, igual que entre clases: una de las que comprueban,
+        // una de las de referencia, y vuelta a empezar. Al cortar caen las
+        // últimas de las dos listas y no una lista entera.
+        std::vector<AutoProposal> checks;
+        std::vector<AutoProposal> references;
+        for (auto& proposal : group) {
+            // La misma pregunta que decide el descargo que lee el operador,
+            // para que el orden y el texto no puedan discrepar.
+            (remeasuresThePiece(proposal.config.type) ? checks : references)
+                .push_back(std::move(proposal));
+        }
+        const auto biggestFirst = [](const AutoProposal& a, const AutoProposal& b) {
+            return a.measured > b.measured;
+        };
+        std::stable_sort(checks.begin(), checks.end(), biggestFirst);
+        std::stable_sort(references.begin(), references.end(), biggestFirst);
+
+        group.clear();
+        for (std::size_t i = 0; i < std::max(checks.size(), references.size()); ++i) {
+            if (i < checks.size()) {
+                group.push_back(std::move(checks[i]));
+            }
+            if (i < references.size()) {
+                group.push_back(std::move(references[i]));
+            }
+        }
     }
 
     const std::size_t total = proposals.size();
