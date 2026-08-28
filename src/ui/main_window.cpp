@@ -4246,11 +4246,28 @@ void MainWindow::onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& force
     if (!lastFrame_.isNull() && !pipelineConfig_.forcePiece.empty() &&
         (pipelineConfig_.forcePiece.cols != lastFrame_.width() ||
          pipelineConfig_.forcePiece.rows != lastFrame_.height())) {
+        const int hadCols = pipelineConfig_.forcePiece.cols;
+        const int hadRows = pipelineConfig_.forcePiece.rows;
+        // Y NO SE GUARDA, que es lo que faltaba.
+        //
+        // Estas dos líneas se asignaban ARRIBA, antes de comprobar si la
+        // corrección sirve, así que al salir por aquí quedaba una máscara del
+        // tamaño equivocado. `applyMaskCorrection` la ignora —hace bien,
+        // aplicarla desplazada borraría un trozo cualquiera de la pieza— pero la
+        // ignora EN SILENCIO.
+        //
+        // El resultado era el peor de los tres posibles: el operador veía la
+        // pastilla «Borde corregido» encendida, el contorno sin moverse, y la
+        // única explicación en un mensaje de la barra de estado que se va solo.
+        // Desde fuera eso es «pasé el pincel y sigue remarcando la zona».
+        pipelineConfig_.forcePiece = cv::Mat();
+        pipelineConfig_.forceBackground = cv::Mat();
+        updateEdgeCorrectionChip();
         statusBar()->showMessage(
             tr("La corrección es de una imagen de %1×%2 y ahora se ve una de %3×%4: no se "
                "puede aplicar. Vuelve a corregir sobre esta.")
-                .arg(pipelineConfig_.forcePiece.cols)
-                .arg(pipelineConfig_.forcePiece.rows)
+                .arg(hadCols)
+                .arg(hadRows)
                 .arg(lastFrame_.width())
                 .arg(lastFrame_.height()));
         return;
@@ -5564,7 +5581,38 @@ void MainWindow::updateEdgeCorrectionChip() {
         }
         return;
     }
+    // ¿SE ESTÁ APLICANDO DE VERDAD?
+    //
+    // La pastilla miraba solo lo que tiene el LIENZO pintado, y eso no es lo
+    // mismo que lo que usa el análisis. Con una corrección que no encaja con el
+    // frame actual, la pastilla decía «Borde corregido» mientras el contorno
+    // salía sin corregir — y el operador no tenía forma de saber cuál de las dos
+    // cosas creerse.
+    //
+    // Una etiqueta que afirma algo que no está pasando es peor que no tener
+    // etiqueta: la primera se cree.
+    const bool applied = !pipelineConfig_.forcePiece.empty() &&
+                         (lastFrame_.isNull() ||
+                          (pipelineConfig_.forcePiece.cols == lastFrame_.width() &&
+                           pipelineConfig_.forcePiece.rows == lastFrame_.height()));
     edgeChip_->setVisible(true);
+    if (!applied) {
+        edgeChip_->setText(tr(" Borde corregido — sin aplicar "));
+        edgeChip_->setStyleSheet(theme::noticeStyle(theme::kWarn, theme::kWarnField) +
+                                 QStringLiteral(" border-radius:8px; padding:1px 6px;"));
+        edgeChip_->setToolTip(
+            tr("Hay %1 px pintados a mano, pero no se están aplicando: la corrección "
+               "es de una imagen de otro tamaño.\n\n"
+               "Vuelve a corregir sobre la imagen que tienes delante.")
+                .arg(corrected));
+        if (brushUndoAction_ != nullptr) {
+            brushUndoAction_->setEnabled(video_->canUndoEdgeCorrection());
+        }
+        if (brushRedoAction_ != nullptr) {
+            brushRedoAction_->setEnabled(video_->canRedoEdgeCorrection());
+        }
+        return;
+    }
     edgeChip_->setText(tr(" Borde corregido "));
     edgeChip_->setStyleSheet(theme::chipChosenStyle(theme::kChipEdited));
     edgeChip_->setToolTip(tr("%1 px del borde están puestos a mano.\n\n"
