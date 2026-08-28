@@ -55,6 +55,23 @@ struct ShapeClass {
     // Solo con sentido en Polygon y Rounded.
     int sides = 0;
 
+    // LOS VÉRTICES CON LOS QUE SE DECIDIÓ, en coordenadas de imagen. Se rellenan
+    // para Polygon.
+    //
+    // Se exponen porque sin ellos, quien quiera proponer una cota por lado no
+    // tiene de dónde sacarlos y acaba usando la descomposición en rectas y
+    // arcos, que es OTRO algoritmo y da otra respuesta. Eso pasaba: el
+    // clasificador decía «hexágono de 6 lados» —contando con `approxPolyDP`— y
+    // la medición automática ofrecía «2 lados y 3 redondeos», sacados de la
+    // descomposición. Medido sobre el banco: de 106 piezas que salen polígono,
+    // en UNA coincidía el número.
+    //
+    // Un aviso a quien venga: el comentario que había en el proponedor afirmaba
+    // que los dos miraban lo mismo porque compartían `decomposeOptionsFor`.
+    // Compartir las opciones del remuestreo no es mirar lo mismo cuando uno
+    // cuenta vértices y el otro parte en primitivas.
+    std::vector<cv::Point2f> vertices;
+
     // Solo con sentido en Circle y Ring. En píxeles, como todo lo que sale de
     // `vision`: los milímetros los pone quien tiene la calibración.
     cv::Point2f center{0.0F, 0.0F};
@@ -160,6 +177,28 @@ struct ClassifyOptions {
 // Nulo o de otro tamaño = se mide como siempre. Que el afinado sea opcional aquí
 // no es indecisión: es lo que permite encenderlo sin mover las cotas de nadie
 // hasta que su dueño lo decida.
+// Los vértices de un polígono, AFINADOS contra el contorno.
+//
+// `approxPolyDP` elige como vértice un PUNTO DEL CONTORNO, y ese punto casi
+// nunca es la esquina: en un borde rasterizado cae uno o dos píxeles hacia
+// fuera. Medido sobre un hexágono sintético de lado 100 px, tomar los vértices
+// tal cual da lados de 103,6 — un **3,6 % de más**, y el error crece con la
+// pieza porque un vértice mal puesto inclina el lado entero.
+//
+// Así que cada cara se ajusta por mínimos cuadrados totales a los puntos del
+// contorno que le pertenecen —descartando un margen junto a las esquinas, que
+// es donde el rasterizado y el chaflán ensucian— y la esquina sale de CORTAR
+// las dos rectas vecinas. Ahí sí está el vértice, aunque no haya ningún píxel.
+//
+// Es la misma idea que ya usa la herramienta Chaflán para construir su «esquina
+// virtual»: el plano acota desde donde se cortarían las dos caras si no hubiera
+// redondeo, y ahí no hay ningún punto de la pieza.
+//
+// Devuelve los de entrada sin tocar si no consigue afinarlos, que es lo honesto:
+// un vértice afinado a medias es peor que el original.
+[[nodiscard]] std::vector<cv::Point2f> refinePolygonVertices(
+    const std::vector<cv::Point>& contour, const std::vector<cv::Point>& vertices);
+
 [[nodiscard]] ShapeClass classifyShape(const std::vector<cv::Point>& contour,
                                        const cv::Mat& mask = cv::Mat(),
                                        const ClassifyOptions& options = {},

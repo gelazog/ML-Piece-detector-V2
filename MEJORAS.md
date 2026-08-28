@@ -825,6 +825,22 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   un fallo real y otro fallo: los seis planos de la tuerca se siguen
   descomponiendo como arcos, y esa es la pieza que le falta a E8.
 
+- [ ] **E10 · «Lados (n)» no sobrevive en ninguna foto real.** Medido: de 106
+  piezas del banco que el clasificador llama polígono, **106** se quedan sin la
+  propuesta del recuento de lados. La herramienta Polígono se autocomprueba
+  exigiendo que el recuento no cambie al mitad y al doble de epsilon, y sobre una
+  foto real nunca lo cumple, así que `measureProposal` la descarta — bien
+  descartada, porque nacería muerta.
+
+  El efecto en pantalla: la aplicación reconoce «hexágono de 6 lados» y no ofrece
+  ninguna forma de comprobar que la pieza siga teniendo seis caras, que es
+  justamente la avería que ese recuento vigila.
+
+  Dónde mirar: la autocomprobación usa el mismo epsilon a la mitad y al doble,
+  que es un salto de 4× en un barrido donde la meseta de la respuesta correcta
+  ocupa media barrida. Probar con la **anchura de meseta** —que ya se calcula en
+  `fitPolygon` y es lo que arregló E8— en vez de con dos epsilon sueltos.
+
 ## F. Ya está hecho — no volver a investigarlo
 
 Aquí para que nadie gaste otra vez el tiempo que ya se gastó.

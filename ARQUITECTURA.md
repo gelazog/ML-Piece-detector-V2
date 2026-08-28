@@ -3164,6 +3164,59 @@ discrepar.
 `WholePieceDimensions.TheCutDoesNotEmptyOneFamilyToFillAnother` fija las dos
 mitades a la vez, que es lo único que impide arreglar una rompiendo la otra.
 
+#### La figura decía un número de lados y las propuestas decían otro
+
+Dos partes leían el mismo contorno con dos algoritmos distintos: el clasificador
+cuenta lados con `approxPolyDP` sobre una meseta de epsilon, y la medición
+automática partía el contorno en rectas y arcos (`decomposeContour`) y proponía
+una cota por tramo.
+
+El comentario del proponedor afirmaba que los dos miraban lo mismo **porque
+comparten `decomposeOptionsFor`**. Compartir el paso del remuestreo no es mirar
+lo mismo cuando uno cuenta vértices y el otro parte en primitivas, y esa frase es
+la razón de que nadie lo comprobara en mucho tiempo.
+
+Medido sobre el banco: de **106** piezas que el clasificador llama polígono, en
+**una** coincidía el número de lados propuestos. A una tuerca hexagonal la
+aplicación le decía «6 lados» y le ofrecía dos lados y **tres «Radio»** —de 28,
+22 y 20 px— que eran sus propias caras planas leídas como arco.
+
+Lo caro no es la cota que falta, es la que sobra: un radio sobre una pieza sin
+ningún redondeo es una cota que el operador acepta, guarda en la plantilla y
+luego no cuadra con el plano, sin que nada le diga de dónde salió.
+
+`ShapeClass` expone ahora los **vértices con los que decidió**, y cuando la clase
+es polígono los lados y los ángulos salen de ahí; los redondeos no se proponen,
+porque un polígono no tiene ninguno —si los tuviera, la clase sería «polígono
+redondeado», que sí los recibe—. **De 1 a 85 de 106**, y de muchos radios
+inventados a **cero**.
+
+**Y los lados son más exactos, no solo más.** `approxPolyDP` elige como vértice
+un punto del contorno, y ese punto casi nunca es la esquina: en un borde
+rasterizado cae uno o dos píxeles hacia fuera, y un vértice mal puesto inclina el
+lado entero. Medido sobre un hexágono sintético de lado 100 px, los vértices tal
+cual dan **103,6**. Así que cada cara se ajusta por mínimos cuadrados totales a
+los puntos que le pertenecen —descartando un quinto junto a cada esquina, que es
+donde el rasterizado ensucia— y la esquina sale de **cortar las dos rectas
+vecinas**, aunque ahí no haya ningún píxel. Es la misma idea que la «esquina
+virtual» del Chaflán.
+
+| | vértices tal cual | afinados |
+|---|---|---|
+| error del lado de un hexágono | 3,59 % | **0,70 %** |
+| dispersión entre cuatro resoluciones | 2,80 % | **0,51 %** |
+
+Los 21 que siguen sin coincidir tienen algún lado más corto que
+`minFeatureLength`, y ahí saltárselo es lo correcto: una cota sobre un tramo de
+20 px no se mide con repetibilidad. Por eso el trinquete de
+`ShapeAndProposalsAgree` va sobre el número medido y no sobre el 100 %.
+
+**Queda abierto, y es de la misma familia:** la propuesta «Lados (n)» —el
+recuento como cota con tolerancia— **no sobrevive en ninguna de las 106**. La
+herramienta se autocomprueba exigiendo que el recuento no cambie a la mitad y al
+doble de epsilon, y en una foto real nunca lo cumple. Así que la aplicación
+reconoce un hexágono y no ofrece comprobar que siga teniendo seis caras.
+
 #### Área y perímetro: las dos únicas cotas que miran la pieza entera
 
 Todo lo demás mide un rasgo —este diámetro, aquel lado, esta esquina— y una

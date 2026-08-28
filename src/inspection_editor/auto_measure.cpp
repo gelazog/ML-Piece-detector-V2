@@ -535,9 +535,21 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
     }
 
     // --- Descomposición del contorno --------------------------------------
-    // Con las MISMAS opciones que usó el clasificador, ajustadas al tamaño de
-    // la pieza. Si cada uno mirara el contorno con un paso distinto, el
-    // clasificador podría decir «hexágono» y esta parte proponer cuatro lados.
+    // Con las mismas opciones de remuestreo que usó el clasificador, ajustadas
+    // al tamaño de la pieza.
+    //
+    // OJO: compartir las opciones NO basta para que las dos partes digan lo
+    // mismo, y aquí ponía que sí. El clasificador cuenta lados con
+    // `approxPolyDP` y esto parte el contorno en rectas y arcos: son dos
+    // algoritmos, y daban dos respuestas. Medido sobre el banco, de 106 piezas
+    // que el clasificador llama polígono, en UNA coincidía el número de lados
+    // propuestos — a una tuerca hexagonal la aplicación le decía «6 lados» y le
+    // ofrecía «2 lados y 3 redondeos».
+    //
+    // Por eso, cuando el clasificador ha decidido POLÍGONO, los lados y los
+    // ángulos salen de sus vértices (más abajo) y no de aquí. Esta
+    // descomposición sigue sirviendo para todo lo demás: los redondeados, el
+    // contorno libre, los calibres de caras enfrentadas.
     const auto primitives =
         vision::decomposeContour(contour, vision::decomposeOptionsFor(contour));
 
@@ -579,7 +591,32 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
     // corresponde: en «z=20 dientes, Ø cabeza, Ø raíz, excentricidad» y en
     // «paso, Ø exterior, Ø de fondo». Volver a ofrecerlos de uno en uno no
     // añade una cota, añade ruido.
-    if (!isRound && !rimRepeatsItself) {
+    // SI ES UN POLÍGONO, SUS LADOS SON LOS DEL POLÍGONO CON EL QUE SE DECIDIÓ.
+    //
+    // No los tramos rectos que encuentre la descomposición: esos son otra
+    // lectura del mismo contorno y daban otro número. Una tuerca hexagonal
+    // recibía dos lados, y los cuatro que faltaban aparecían como «redondeos».
+    const bool fromTheFit =
+        shape.kind == vision::ShapeKind::Polygon && shape.vertices.size() >= 3;
+    if (fromTheFit && !rimRepeatsItself) {
+        const auto& v = shape.vertices;
+        for (std::size_t i = 0; i < v.size(); ++i) {
+            const cv::Point2f a(v[i]);
+            const cv::Point2f b(v[(i + 1) % v.size()]);
+            if (cv::norm(b - a) < options.minFeatureLength) {
+                continue;
+            }
+            AutoProposal p;
+            p.config.type = ToolType::Ruler;
+            p.config.name = "Lado " + std::to_string(i + 1);
+            p.geometry = RulerGeometry{toPiece(fixture, a), toPiece(fixture, b)};
+            p.reason = "Uno de los " + std::to_string(shape.sides) +
+                       " lados con los que se reconoció la pieza, de vértice a vértice.";
+            if (measureProposal(gray, fixture, mmPerPixel, p) && !alreadyCovered(proposals, p)) {
+                proposals.push_back(std::move(p));
+            }
+        }
+    } else if (!isRound && !rimRepeatsItself) {
         int sideIndex = 0;
         for (const auto& primitive : primitives) {
             if (primitive.kind != vision::PrimitiveKind::Line ||
@@ -608,9 +645,18 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
     // Ya se midió arriba, para acotar la corona de dientes.
     const float pieceRadius = rimRadius;
 
+    // Y EN UN POLÍGONO NO HAY NINGUNO, por definición: si tuviera las esquinas
+    // redondeadas, el clasificador habría dicho «polígono redondeado».
+    //
+    // Sin esta condición, a una tuerca hexagonal se le ofrecían TRES «Radio» —de
+    // 28, 22 y 20 px— que son sus propias caras planas leídas como arco por la
+    // descomposición. Un redondeo que no existe no es una cota de más: es una
+    // cota que el operador acepta, guarda en la plantilla y luego no cuadra con
+    // el plano.
     int arcIndex = 0;
     for (const auto& primitive : primitives) {
-        if (isRound || rimRepeatsItself || primitive.kind != vision::PrimitiveKind::Arc ||
+        if (isRound || rimRepeatsItself || fromTheFit ||
+            primitive.kind != vision::PrimitiveKind::Arc ||
             primitive.length < options.minFeatureLength) {
             continue;
         }
@@ -724,8 +770,35 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
     // cinco ángulos de seis y a un triángulo dos de tres. Un contador que
     // siempre se queda uno corto es peor que no tenerlo, porque cuadra con la
     // pieza casi siempre y falla justo cuando cuentas.
+    // Y en un polígono, sus esquinas son las de sus vértices — por lo mismo que
+    // los lados. Con las primitivas, a una tuerca hexagonal le salía UN ángulo
+    // de seis, porque cuatro de sus caras se habían leído como arcos y un
+    // ángulo necesita dos rectas consecutivas.
     int cornerIndex = 0;
-    for (std::size_t i = 0; !rimRepeatsItself && i < primitives.size(); ++i) {
+    if (fromTheFit && !rimRepeatsItself) {
+        const auto& v = shape.vertices;
+        for (std::size_t i = 0; i < v.size(); ++i) {
+            const cv::Point2f previous(v[(i + v.size() - 1) % v.size()]);
+            const cv::Point2f corner(v[i]);
+            const cv::Point2f next(v[(i + 1) % v.size()]);
+            if (cv::norm(corner - previous) < options.minFeatureLength ||
+                cv::norm(next - corner) < options.minFeatureLength) {
+                continue;
+            }
+            ++cornerIndex;
+            AutoProposal p;
+            p.config.type = ToolType::Angle;
+            p.config.name = "Ángulo " + std::to_string(cornerIndex);
+            p.geometry = AngleGeometry{toPiece(fixture, corner), toPiece(fixture, previous),
+                                       toPiece(fixture, next)};
+            p.reason = "Una de las " + std::to_string(shape.sides) +
+                       " esquinas con las que se reconoció la pieza.";
+            if (measureProposal(gray, fixture, mmPerPixel, p) && !alreadyCovered(proposals, p)) {
+                proposals.push_back(std::move(p));
+            }
+        }
+    }
+    for (std::size_t i = 0; !fromTheFit && !rimRepeatsItself && i < primitives.size(); ++i) {
         const auto& a = primitives[i];
         const auto& b = primitives[(i + 1) % primitives.size()];
         if (primitives.size() < 2) {

@@ -486,7 +486,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    |---|---|
    | **Redonda** | el **diámetro** (con su perímetro en el porqué) y la **redondez** |
    | **Una arandela** | **Ø exterior**, **Ø interior** y la redondez |
-   | **Un polígono** | **cada lado** con su propia cota, el **recuento de lados** y **cada ángulo** |
+   | **Un polígono** | **cada lado** con su propia cota y **cada ángulo**, sacados de los mismos vértices con los que se reconoció la pieza |
    | **Un polígono redondeado** | cada tramo recto, el **radio de cada redondeo** y el largo/ancho |
    | Cualquier otra | **cada cara recta** que tenga, largo y ancho, un círculo por agujero, un espesor por cada par de caras paralelas y un ángulo por esquina |
 

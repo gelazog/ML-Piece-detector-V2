@@ -336,6 +336,92 @@ const char* shapeKindName(ShapeKind kind) {
     return "irregular";
 }
 
+std::vector<cv::Point2f> refinePolygonVertices(const std::vector<cv::Point>& contour,
+                                               const std::vector<cv::Point>& vertices) {
+    std::vector<cv::Point2f> asIs;
+    asIs.reserve(vertices.size());
+    for (const auto& v : vertices) {
+        asIs.emplace_back(static_cast<float>(v.x), static_cast<float>(v.y));
+    }
+    if (vertices.size() < 3 || contour.size() < vertices.size() * 4) {
+        return asIs;
+    }
+
+    // Dónde cae cada vértice a lo largo del contorno. `approxPolyDP` devuelve
+    // puntos DEL contorno, así que se pueden localizar por igualdad; si alguno
+    // no se encuentra, se busca el más cercano y ya está.
+    std::vector<std::size_t> at;
+    at.reserve(vertices.size());
+    for (const auto& v : vertices) {
+        std::size_t best = 0;
+        double bestDistance = std::numeric_limits<double>::infinity();
+        for (std::size_t i = 0; i < contour.size(); ++i) {
+            const double d = cv::norm(contour[i] - v);
+            if (d < bestDistance) {
+                bestDistance = d;
+                best = i;
+            }
+        }
+        at.push_back(best);
+    }
+
+    // Una recta por cara, con los puntos que van de un vértice al siguiente.
+    //
+    // Se recorta un MARGEN en los dos extremos: junto a la esquina, el contorno
+    // ya está doblando —por el rasterizado, por el chaflán de la pieza— y esos
+    // puntos tiran de la recta. Un quinto de la cara a cada lado deja la parte
+    // que sí es plana, y nunca menos de dos puntos ni tan poco que quede la cara
+    // sin puntos suficientes.
+    std::vector<LineFit> faces(vertices.size());
+    for (std::size_t i = 0; i < vertices.size(); ++i) {
+        const std::size_t from = at[i];
+        const std::size_t to = at[(i + 1) % vertices.size()];
+        std::size_t span = to >= from ? to - from : contour.size() - from + to;
+        if (span < 6) {
+            return asIs;  // una cara sin puntos que ajustar: no se afina nada
+        }
+        const std::size_t margin = std::max<std::size_t>(2, span / 5);
+        std::vector<cv::Point2f> face;
+        face.reserve(span);
+        for (std::size_t k = margin; k + margin < span; ++k) {
+            const cv::Point& p = contour[(from + k) % contour.size()];
+            face.emplace_back(static_cast<float>(p.x), static_cast<float>(p.y));
+        }
+        if (face.size() < 3) {
+            return asIs;
+        }
+        faces[i] = fitLineTotal(face);
+        if (!faces[i].valid) {
+            return asIs;
+        }
+    }
+
+    // Y la esquina es el CORTE de las dos caras que llegan a ella.
+    std::vector<cv::Point2f> refined;
+    refined.reserve(vertices.size());
+    for (std::size_t i = 0; i < vertices.size(); ++i) {
+        const LineFit& before = faces[(i + vertices.size() - 1) % vertices.size()];
+        const LineFit& after = faces[i];
+        const double cross = static_cast<double>(before.direction.x) * after.direction.y -
+                             static_cast<double>(before.direction.y) * after.direction.x;
+        if (std::abs(cross) < 1e-6) {
+            return asIs;  // dos caras casi paralelas: su corte no significa nada
+        }
+        const cv::Point2f delta = after.point - before.point;
+        const double t = (static_cast<double>(delta.x) * after.direction.y -
+                          static_cast<double>(delta.y) * after.direction.x) /
+                         cross;
+        const cv::Point2f corner = before.point + before.direction * static_cast<float>(t);
+        // Si el corte se va lejos del vértice de partida, el ajuste no ha
+        // encontrado la misma esquina: mejor el original que un punto inventado.
+        if (cv::norm(corner - asIs[i]) > 0.25 * cv::norm(asIs[(i + 1) % vertices.size()] - asIs[i])) {
+            return asIs;
+        }
+        refined.push_back(corner);
+    }
+    return refined;
+}
+
 ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& mask,
                          const ClassifyOptions& options,
                          const std::vector<cv::Point2f>* subpixel) {
@@ -556,6 +642,7 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
     if (polygonFits && (!circleFits || polygon.deviation <= circleDeviation)) {
         shape.kind = ShapeKind::Polygon;
         shape.sides = static_cast<int>(polygon.vertices.size());
+        shape.vertices = refinePolygonVertices(dense, polygon.vertices);
         shape.deviation = polygon.deviation;
         shape.reason = "contorno de " + std::to_string(shape.sides) +
                        " lados rectos (el punto peor se separa " +
