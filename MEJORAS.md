@@ -825,21 +825,54 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   un fallo real y otro fallo: los seis planos de la tuerca se siguen
   descomponiendo como arcos, y esa es la pieza que le falta a E8.
 
-- [ ] **E10 · «Lados (n)» no sobrevive en ninguna foto real.** Medido: de 106
-  piezas del banco que el clasificador llama polígono, **106** se quedan sin la
-  propuesta del recuento de lados. La herramienta Polígono se autocomprueba
-  exigiendo que el recuento no cambie al mitad y al doble de epsilon, y sobre una
-  foto real nunca lo cumple, así que `measureProposal` la descarta — bien
-  descartada, porque nacería muerta.
+- [~] **E10 · «Lados (n)» no sobrevivía en ninguna foto real.** Medido: de 106
+  piezas del banco que el clasificador llama polígono, **106** se quedaban sin la
+  propuesta del recuento de lados.
 
-  El efecto en pantalla: la aplicación reconoce «hexágono de 6 lados» y no ofrece
-  ninguna forma de comprobar que la pieza siga teniendo seis caras, que es
-  justamente la avería que ese recuento vigila.
+  **La causa:** la herramienta Polígono se autocomprobaba mirando TRES epsilon
+  —el elegido, su mitad y su doble— y exigiendo que los tres dieran el mismo
+  recuento. Un salto de 4× es enorme al lado de la meseta real, y en el borde de
+  una foto siempre hay algún epsilon del camino que mete o quita un vértice.
 
-  Dónde mirar: la autocomprobación usa el mismo epsilon a la mitad y al doble,
-  que es un salto de 4× en un barrido donde la meseta de la respuesta correcta
-  ocupa media barrida. Probar con la **anchura de meseta** —que ya se calcula en
-  `fitPolygon` y es lo que arregló E8— en vez de con dos epsilon sueltos.
+  **[x] Arreglada la autocomprobación**, con el mismo criterio que decide la
+  clase (`vision::stableSideCountOf`, en `vision` justamente para que las dos
+  partes no puedan discrepar). Sobre el contorno de la aplicación: de **0 a 102
+  de 105**.
+
+  El epsilon **sigue decidiendo el recuento** —es el control del operador y tiene
+  sus pruebas— y la meseta solo dice si ese recuento se sostiene, y cuál se
+  sostiene si no. El mensaje pasa de «no es un polígono claro» a «con este
+  epsilon salen 5, pero el que aguanta es 6», que se puede accionar.
+
+  Hacen falta **las dos mitades**, como en E8. Con la meseta sola, un disco
+  pasaba como «octógono»: `approxPolyDP` le da 8 vértices a lo largo de medio
+  barrido, tan estable como los de un octógono de verdad, y lo que los separa es
+  que se apartan 13,4 px del contorno contra ~1 px. Y el orden importa: filtrar
+  por desviación va ANTES de elegir la meseta más ancha — mirándolo al revés, un
+  dodecágono limpio salía «4 lados». Ese error está escrito en `fitPolygon` desde
+  hace tiempo y aun así se repitió al escribir esto.
+
+  El umbral `kCountIsTrustworthyAbove = 0,15` sale de un hueco medido, no de
+  `kPlateauRulesAbove`: media barrida deja fuera a los polígonos de muchos lados,
+  porque cuantos más lados más estrecha es la ventana donde sobreviven todos.
+
+  | pieza | meseta del ganador |
+  |---|---|
+  | polígonos limpios de 3 a 8 | 22-29/30 |
+  | dodecágono | 10/30 |
+  | polígonos de 14 y 16 | **6/30** |
+  | disco | **3/30** |
+  | cáncamo | 3/30 |
+  | tornillo | 1/30 |
+
+  **[ ] Y aun así la propuesta automática sigue sin llegar: 1 de 106.** Bloqueada
+  por **E7**. La herramienta se saca su PROPIO contorno con un Otsu local dentro
+  de su recuadro en vez de usar la silueta que la aplicación ya tiene, y sobre la
+  misma tuerca ese contorno da 6 lados aguantando 7 de 30, contra 17 de 30 del
+  contorno de la aplicación. Se probó a darle más fondo con el que contrastar
+  —holguras 1,0 / 1,1 / 1,3 / 1,6 / 2,0— y **ninguna sirve**: no hay una que
+  funcione en las tres tuercas probadas. E7 está aparcado por decisión del dueño
+  del proyecto, así que aquí se deja medido y no se toca.
 
 ## F. Ya está hecho — no volver a investigarlo
 

@@ -133,6 +133,7 @@ add_executable(pci_gui_tests
   test_theme.cpp
   test_secondary_text_contrast.cpp
   test_shape_and_proposals_agree.cpp
+  test_polygon_count_is_checkable.cpp
   test_palette_guard.cpp
   test_overlay_verdict.cpp
   test_overlay_halo.cpp

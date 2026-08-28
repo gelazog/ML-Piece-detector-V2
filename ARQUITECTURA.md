@@ -3211,11 +3211,47 @@ Los 21 que siguen sin coincidir tienen algún lado más corto que
 20 px no se mide con repetibilidad. Por eso el trinquete de
 `ShapeAndProposalsAgree` va sobre el número medido y no sobre el 100 %.
 
-**Queda abierto, y es de la misma familia:** la propuesta «Lados (n)» —el
-recuento como cota con tolerancia— **no sobrevive en ninguna de las 106**. La
-herramienta se autocomprueba exigiendo que el recuento no cambie a la mitad y al
-doble de epsilon, y en una foto real nunca lo cumple. Así que la aplicación
-reconoce un hexágono y no ofrece comprobar que siga teniendo seis caras.
+#### Y el recuento de lados se rechazaba a sí mismo siempre
+
+La propuesta «Lados (n)» —el recuento como cota con tolerancia, que vigila que no
+aparezca ni falte una cara— **no sobrevivía en ninguna de las 106**. La
+herramienta se autocomprobaba mirando tres epsilon (el elegido, su mitad y su
+doble) y exigiendo que los tres dieran lo mismo. Un salto de 4× es enorme al lado
+de la meseta real, y en el borde de una foto siempre hay algún epsilon del camino
+que mete o quita un vértice.
+
+Ahora lo juzga el mismo criterio que decide la clase, `vision::stableSideCountOf`
+—que vive en `vision` justamente para que las dos partes no puedan discrepar—.
+Sobre el contorno de la aplicación: **de 0 a 102 de 105**.
+
+El epsilon **sigue decidiendo el recuento**: es el control del operador, tiene sus
+pruebas, y quitárselo fue el primer intento y lo cazó la suite. La meseta solo
+dice si ese recuento se sostiene, y **cuál se sostiene cuando no** — el mensaje
+pasa de «no es un polígono claro» a «con este epsilon salen 5, pero el que aguanta
+es 6, que aguanta 17 de los 30 del barrido».
+
+Y hacen falta **las dos mitades**, igual que en E8: con la meseta sola un disco
+pasaba como «octógono», porque `approxPolyDP` le da 8 vértices a lo largo de medio
+barrido. Lo que los separa es que esos ocho lados se apartan 13,4 px del contorno
+contra ~1 px en un octógono de verdad. El orden también importa —filtrar por
+desviación ANTES de elegir la meseta más ancha—, y mirarlo al revés hacía que un
+dodecágono limpio saliera «4 lados»: ese error ya estaba escrito en `fitPolygon`
+y aun así se repitió al escribir esto.
+
+El umbral es propio (`kCountIsTrustworthyAbove = 0,15`) y no reusa
+`kPlateauRulesAbove`: media barrida deja fuera a los polígonos de muchos lados,
+porque cuantos más lados, más estrecha es la ventana de epsilon donde sobreviven
+todos. Los limpios de 14 y 16 aguantan 6/30; un disco, un cáncamo y un tornillo,
+3, 3 y 1. El corte cae en medio de ese hueco.
+
+**Lo que sigue sin llegar, y por qué.** La PROPUESTA automática del recuento
+aparece en 1 de 106, y el bloqueo está en otro sitio: la herramienta se saca su
+propio contorno con un Otsu local dentro de su recuadro en vez de usar la silueta
+que la aplicación ya tiene. Sobre la misma tuerca, ese contorno da 6 lados
+aguantando 7 de 30 y el de la aplicación 17 de 30. Es **E7**, aparcado por
+decisión del dueño del proyecto. Se probó el atajo de darle más fondo con el que
+contrastar —cinco holguras entre 1,0 y 2,0— y ninguna funciona en las tres tuercas
+probadas.
 
 #### Área y perímetro: las dos únicas cotas que miran la pieza entera
 

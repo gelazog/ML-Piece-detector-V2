@@ -177,6 +177,69 @@ struct ClassifyOptions {
 // Nulo o de otro tamaño = se mide como siempre. Que el afinado sea opcional aquí
 // no es indecisión: es lo que permite encenderlo sin mover las cotas de nadie
 // hasta que su dueño lo decida.
+// EL RECUENTO DE LADOS QUE AGUANTA UN BARRIDO DE EPSILON.
+//
+// Existe para que la herramienta Polígono y el clasificador respondan lo mismo.
+// No es un detalle de estilo: la última vez que dos partes leyeron el mismo
+// contorno con dos criterios distintos, la aplicación decía «hexágono de 6
+// lados» y proponía dos lados y tres redondeos.
+//
+// La herramienta se autocomprobaba mirando TRES epsilon —el elegido, su mitad y
+// su doble— y exigiendo que los tres dieran el mismo recuento. Sobre el banco de
+// fotos eso pasa en **0 de 106** piezas: un salto de 4× es enorme al lado de la
+// meseta real, y en un borde de foto siempre hay algún epsilon del camino que
+// mete o quita un vértice. Consecuencia: la propuesta «Lados (n)» —el recuento
+// como cota con tolerancia— no llegaba NUNCA, así que la aplicación reconocía un
+// hexágono y no ofrecía comprobar que siguiera teniendo seis caras, que es
+// justamente la avería que ese recuento vigila.
+//
+// Con el criterio de meseta —el mismo que decide la clase— pasan **88 de 106**,
+// y **86** con el mismo recuento que la clase ya enseña en pantalla.
+// CUÁNTO TIENE QUE AGUANTAR UN RECUENTO PARA FIARSE DE ÉL.
+//
+// No vale reusar `kPlateauRulesAbove`: esa media barrida responde a otra
+// pregunta —cuándo un recuento está tan claro que se le perdona un borde
+// sucio— y aplicada aquí deja fuera a los polígonos de muchos lados. No es un
+// defecto suyo: cuantos más lados, más estrecha es la ventana de epsilon donde
+// sobreviven todos. Un dodecágono limpio aguanta 10 de 30 y un polígono de 16,
+// 6 de 30, mientras un hexágono aguanta 29.
+//
+// El corte sale de un hueco MEDIDO, mirando solo los recuentos que además
+// explican el contorno:
+//
+//   | pieza                      | meseta del ganador |
+//   |----------------------------|--------------------|
+//   | polígonos limpios de 3 a 8 |      22-29 / 30    |
+//   | dodecágono limpio          |         10 / 30    |
+//   | polígonos de 14 y 16       |          6 / 30    |
+//   |----------------------------|--------------------|
+//   | disco                      |          3 / 30    |
+//   | cáncamo                    |          3 / 30    |
+//   | tornillo                   |          1 / 30    |
+//
+// Entre 3 y 6 hay hueco, y 0,15 (4,5 de 30) cae en medio. Se deja ahí y no en
+// 0,20 a propósito: 6/30 es exactamente 0,20 y sentarse sobre el borde de lo
+// medido es como se acaba con un umbral que falla en la foto siguiente.
+inline constexpr double kCountIsTrustworthyAbove = 0.15;
+
+struct StableSideCount {
+    int sides = 0;              // el recuento que gana el barrido
+    int plateau = 0;            // en cuántos epsilon aguanta
+    int swept = 0;              // cuántos epsilon se barrieron
+    // Las DOS mitades del criterio, por separado. Juntarlas en un solo `stable`
+    // hacía que el mensaje de error nombrara la causa equivocada: un disco se
+    // rechazaba por no explicar el contorno y el texto decía que la meseta era
+    // corta, mandando al operador a tocar el epsilon, que no era el problema.
+    bool plateauIsWide = false;   // el recuento aguanta al menos media barrida
+    bool explainsContour = false;  // y ese polígono se ciñe al contorno
+    bool stable = false;           // las dos cosas
+    double deviation = 0.0;     // lo que se separa el contorno de ese polígono
+    double admissible = 0.0;    // hasta cuánto se le admite, para poder decirlo
+    std::vector<cv::Point> vertices;  // el mejor ajuste con ese recuento
+};
+
+[[nodiscard]] StableSideCount stableSideCountOf(const std::vector<cv::Point>& contour);
+
 // Los vértices de un polígono, AFINADOS contra el contorno.
 //
 // `approxPolyDP` elige como vértice un PUNTO DEL CONTORNO, y ese punto casi

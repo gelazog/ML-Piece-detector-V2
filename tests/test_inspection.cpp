@@ -3701,16 +3701,35 @@ TEST(Polygon, TheSideCountDoesNotChangeWhenTheImageIsScaled) {
 }
 
 TEST(Polygon, ACircleIsNotReportedAsAPolygon) {
-    // No hace falta ningún umbral de curvatura: sobre una curva, el recuento
-    // cambia al cambiar la tolerancia, y eso es lo que se comprueba.
+    // Un disco no tiene lados, y darle un recuento sería inventar una cota a la
+    // que el operador le pondría una tolerancia.
+    //
+    // Y no lo salva la estabilidad: `approxPolyDP` le da OCHO vértices a lo
+    // largo de medio barrido de epsilon, tan estable como los de un octógono de
+    // verdad. Se comprobó al cambiar la autocomprobación por el criterio de
+    // meseta — con la meseta sola, este disco pasaba como «octógono». Lo que los
+    // separa es cuánto se aparta el contorno de esos ocho lados: 13,4 px aquí,
+    // ~1 px en un octógono.
     cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(230));
     cv::circle(gray, {200, 200}, 140, cv::Scalar(30), cv::FILLED);
     const auto result = runTool(gray, kIdentity, polygonOver(0.02F));
     ASSERT_TRUE(result.isOk());
     std::printf("  círculo -> %s\n", result.value().detail.c_str());
     EXPECT_FALSE(result.value().ok);
-    EXPECT_NE(result.value().detail.find("No es un polígono claro"), std::string::npos)
-        << result.value().detail;
+    // Se comprueba que EXPLIQUE, no la redacción exacta: hay dos motivos de
+    // rechazo —el recuento baila, o los lados no siguen el contorno— y llevan a
+    // hacer cosas distintas, así que el texto tiene que poder decir cuál es.
+    // Atarlo a una frase concreta impide mejorarlo, que es como se acaba con un
+    // mensaje que nombra la causa equivocada.
+    const std::string& why = result.value().detail;
+    EXPECT_TRUE(why.find("no siguen el contorno") != std::string::npos ||
+                why.find("No es un polígono claro") != std::string::npos)
+        << "rechaza el disco sin decir por qué: " << why;
+    // Con un NÚMERO, sea en píxeles o en epsilon del barrido: son dos causas y
+    // cada una se cuantifica en lo suyo. Lo que no vale es un motivo sin cifra,
+    // porque entonces no se puede ni comprobar ni discutir.
+    EXPECT_NE(why.find_first_of("0123456789"), std::string::npos)
+        << "el motivo no lleva ningún número: " << why;
 }
 
 TEST(Polygon, TheSidesAndAnglesOfARegularHexagonAreTheOnesItHas) {

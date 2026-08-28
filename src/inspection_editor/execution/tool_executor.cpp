@@ -17,6 +17,7 @@
 #include "vision/periodicity.h"
 #include "vision/plane_scale.h"
 #include "vision/position_fixture.h"
+#include "vision/shape_class.h"
 
 namespace pci::inspection {
 
@@ -3800,30 +3801,66 @@ ToolRunResult runPolygon(const cv::Mat& gray, const Fixture& fixture,
 
     const double perimeter = vision::digitalPerimeter(outer);
     const double epsilon = std::max(1.0, static_cast<double>(g.epsilonFraction) * perimeter);
-    const auto sidesAt = [&outer](double eps) {
-        std::vector<cv::Point> approx;
-        cv::approxPolyDP(outer, approx, eps, true);
-        return approx;
-    };
-
-    const std::vector<cv::Point> approx = sidesAt(epsilon);
+    std::vector<cv::Point> approx;
+    cv::approxPolyDP(outer, approx, epsilon, true);
     const int sides = static_cast<int>(approx.size());
     if (sides < 3) {
         result.detail = "Con este epsilon la figura se queda en " + std::to_string(sides) +
                         " vértices: bájalo";
         return result;
     }
-
-    // La comprobación de estabilidad: mitad y doble del epsilon elegido.
-    const int sidesHalf = static_cast<int>(sidesAt(epsilon * 0.5).size());
-    const int sidesDouble = static_cast<int>(sidesAt(epsilon * 2.0).size());
     result.measured = sides;
     result.kind = MeasuredKind::Count;
-    if (sidesHalf != sides || sidesDouble != sides) {
-        result.detail = "No es un polígono claro: " + std::to_string(sides) + " lados con " +
-                        "este epsilon, " + std::to_string(sidesHalf) + " con la mitad y " +
-                        std::to_string(sidesDouble) + " con el doble. Un recuento que " +
-                        "cambia con la tolerancia no dice nada de la pieza";
+
+    // LA ESTABILIDAD SE MIDE CON UNA MESETA, no con tres epsilon sueltos.
+    //
+    // Antes se miraba el elegido, su mitad y su doble, y se exigía que los tres
+    // dieran lo mismo. Sobre el banco de fotos eso pasa en **0 de 106** piezas:
+    // un salto de 4× es enorme al lado de la meseta real, y en el borde de una
+    // foto siempre hay algún epsilon del camino que mete o quita un vértice. La
+    // herramienta se rechazaba a sí misma siempre, así que la propuesta «Lados
+    // (n)» no llegaba nunca y la aplicación reconocía un hexágono sin ofrecer
+    // comprobar que siguiera teniendo seis caras.
+    //
+    // El barrido es el MISMO con el que se decide la clase de la pieza
+    // (`vision::stableSideCountOf`), y eso importa: la última vez que dos partes
+    // leyeron el contorno con dos criterios distintos, la aplicación decía «6
+    // lados» y proponía dos lados y tres redondeos.
+    //
+    // El epsilon sigue decidiendo el recuento —es el control del operador y no
+    // se le quita—; lo que hace la meseta es decir si ese recuento se sostiene,
+    // y CUÁL se sostiene cuando no. Un mensaje que dice «con este epsilon salen
+    // 5 y el que aguanta es 6» se puede accionar; «no es un polígono claro», no.
+    const vision::StableSideCount stable = vision::stableSideCountOf(outer);
+    // Y CUANDO SE RECHAZA, POR QUÉ. Son dos causas distintas y llevan a hacer
+    // cosas distintas: un recuento que baila pide otro encuadre o menos ruido en
+    // el borde; un ajuste que no se ciñe quiere decir que la pieza no es un
+    // polígono, y ahí no hay epsilon que valga.
+    if (!stable.plateauIsWide) {
+        result.detail = "No es un polígono claro: ni siquiera el recuento más estable (" +
+                        std::to_string(stable.sides) + " lados) aguanta más que " +
+                        std::to_string(stable.plateau) + " de los " +
+                        std::to_string(stable.swept) +
+                        " epsilon del barrido. Un recuento que cambia con la tolerancia no "
+                        "dice nada de la pieza";
+        return result;
+    }
+    if (!stable.explainsContour) {
+        result.detail = "El recuento de " + std::to_string(stable.sides) +
+                        " lados es estable, pero esos lados no siguen el contorno: se "
+                        "separa " + fmtLen(stable.deviation, fmt) + " y se admite hasta " +
+                        fmtLen(stable.admissible, fmt) +
+                        ". La pieza no tiene caras rectas — mírala como redonda";
+        return result;
+    }
+    if (stable.sides != sides) {
+        result.detail = "Con este epsilon salen " + std::to_string(sides) +
+                        " lados, pero el recuento que se sostiene es " +
+                        std::to_string(stable.sides) + " (aguanta " +
+                        std::to_string(stable.plateau) + " de los " +
+                        std::to_string(stable.swept) + " epsilon del barrido). Ajusta el "
+                        "epsilon hasta que salgan " +
+                        std::to_string(stable.sides);
         return result;
     }
 

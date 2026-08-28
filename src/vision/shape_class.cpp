@@ -336,6 +336,96 @@ const char* shapeKindName(ShapeKind kind) {
     return "irregular";
 }
 
+StableSideCount stableSideCountOf(const std::vector<cv::Point>& contour) {
+    StableSideCount out;
+    const double perimeter = cv::arcLength(contour, true);
+    if (contour.size() < 8 || perimeter <= 0.0) {
+        return out;
+    }
+    // EL MISMO BARRIDO que usa `fitPolygon`, a propósito: si aquí se barriera
+    // otro rango, la herramienta volvería a poder contradecir a la clase.
+    struct Seen {
+        int times = 0;
+        double bestDeviation = std::numeric_limits<double>::infinity();
+        std::vector<cv::Point> vertices;
+    };
+    std::map<int, Seen> tallies;
+    for (double fraction = 0.001; fraction <= 0.06; fraction += 0.002) {
+        std::vector<cv::Point> approx;
+        cv::approxPolyDP(contour, approx, fraction * perimeter, true);
+        if (approx.size() < 3) {
+            break;
+        }
+        ++out.swept;
+        Seen& seen = tallies[static_cast<int>(approx.size())];
+        ++seen.times;
+        const double deviation = worstDistanceToPolygon(contour, approx);
+        if (deviation < seen.bestDeviation) {
+            seen.bestDeviation = deviation;
+            seen.vertices = approx;
+        }
+    }
+    // EL ORDEN IMPORTA, y aquí ya costó un fallo una vez —está escrito en
+    // `fitPolygon`, y aun así se repitió al escribir esto—.
+    //
+    // Mirando primero la anchura y descartando después por desviación, un
+    // polígono limpio de 12 lados salía «4 lados con meseta 10/30»: a epsilon
+    // grande `approxPolyDP` sigue devolviendo cuatro vértices, malísimos, y esa
+    // meseta gana. Al descartarla se iba también el ajuste de 12, que sí era
+    // bueno.
+    //
+    // Una meseta que no explica el contorno no es una candidata peor: NO es una
+    // candidata. Así que primero se filtra por desviación y entre las que quedan
+    // gana la más ancha.
+    cv::Point2f centre;
+    float radius = 0.0F;
+    cv::minEnclosingCircle(contour, centre, radius);
+    const ClassifyOptions options;
+    out.admissible =
+        std::max(options.maxDeviationPx, 0.025 * static_cast<double>(radius)) *
+        kNoisyEdgeAllowance;
+
+    for (const auto& [sides, seen] : tallies) {
+        if (seen.bestDeviation > out.admissible) {
+            continue;
+        }
+        if (seen.times > out.plateau) {
+            out.plateau = seen.times;
+            out.sides = sides;
+            out.deviation = seen.bestDeviation;
+            out.vertices = seen.vertices;
+        }
+    }
+    // Si NINGUNA explica el contorno, se guarda la más ancha igualmente para
+    // poder decir por qué se rechaza: «8 lados estables que se separan 13 px» es
+    // accionable, y «no hay polígono» no.
+    if (out.sides == 0) {
+        for (const auto& [sides, seen] : tallies) {
+            if (seen.times > out.plateau) {
+                out.plateau = seen.times;
+                out.sides = sides;
+                out.deviation = seen.bestDeviation;
+                out.vertices = seen.vertices;
+            }
+        }
+    }
+    // LA MESETA SOLA NO BASTA, que es la lección de E8 aplicada aquí: dice
+    // cuántos lados tiene la pieza, no si esos lados son los del contorno. Sin
+    // la segunda mitad, un disco de radio 140 pasaba como «octógono» —
+    // `approxPolyDP` le da 8 vértices a lo largo de medio barrido, tan estable
+    // como los de un octógono de verdad— y lo que los separa es cuánto se aparta
+    // el contorno: 13,4 px en el disco contra ~1 px en el octógono.
+    //
+    // La vara es la MISMA que la del clasificador, con su suelo, su término
+    // relativo y su holgura por meseta ancha. Si aquí se midiera con otra, la
+    // herramienta podría volver a contradecir a la clase.
+    out.plateauIsWide =
+        out.swept > 0 && out.plateau >= kCountIsTrustworthyAbove * out.swept;
+    out.explainsContour = out.deviation <= out.admissible;
+    out.stable = out.plateauIsWide && out.explainsContour;
+    return out;
+}
+
 std::vector<cv::Point2f> refinePolygonVertices(const std::vector<cv::Point>& contour,
                                                const std::vector<cv::Point>& vertices) {
     std::vector<cv::Point2f> asIs;
