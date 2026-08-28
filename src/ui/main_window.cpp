@@ -558,6 +558,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
 
     // Pincel para corregir el borde detectado.
     edgeBrushButton_ = new QToolButton(central);
+    edgeBrushButton_->setObjectName(QStringLiteral("edgeBrushButton"));
     edgeBrushButton_->setText(tr("Corregir borde"));
     edgeBrushButton_->setToolButtonStyle(Qt::ToolButtonTextOnly);
     edgeBrushButton_->setPopupMode(QToolButton::InstantPopup);
@@ -703,6 +704,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // Indicador del modo de medición (M3): junto al combo de pieza, que es
     // donde se decide. El operador nunca debe dudar en qué modo está.
     modeChip_ = new QLabel(central);
+    modeChip_->setObjectName(QStringLiteral("modeChip"));
     modeChip_->setAlignment(Qt::AlignCenter);
     pieceLayout->addWidget(modeChip_);
 
@@ -725,6 +727,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     navLayout->setContentsMargins(0, 0, 0, 0);
     navLayout->setSpacing(2);
     piecePrevButton_ = new QToolButton(pieceNav_);
+    piecePrevButton_->setObjectName(QStringLiteral("piecePrevButton"));
     piecePrevButton_->setText(QStringLiteral("\u2039"));
     // Una ayuda de partida: la de verdad la escribe `updatePieceNavigator`
     // cuando ya sabe cuántas piezas hay, y hasta entonces estas flechas eran
@@ -738,6 +741,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     pieceNavLabel_->setAlignment(Qt::AlignCenter);
     navLayout->addWidget(pieceNavLabel_);
     pieceNextButton_ = new QToolButton(pieceNav_);
+    pieceNextButton_->setObjectName(QStringLiteral("pieceNextButton"));
     pieceNextButton_->setText(QStringLiteral("\u203a"));
     pieceNextButton_->setToolTip(tr("Pieza siguiente del encuadre, en orden de lectura."));
     pieceNextButton_->setAutoRaise(true);
@@ -754,6 +758,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // activa seria estado invisible, y el operador podria estar mirando un
     // contorno que no sale de la deteccion sin tener forma de saberlo.
     edgeChip_ = new QLabel(central);
+    edgeChip_->setObjectName(QStringLiteral("edgeChip"));
     edgeChip_->setAlignment(Qt::AlignCenter);
     edgeChip_->setVisible(false);
     pieceLayout->addWidget(edgeChip_);
@@ -789,6 +794,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     pieceLayout->addWidget(registerLiveButton_);
 
     autoInspectButton_ = new QPushButton(tr("Auto-inspección"), central);
+    autoInspectButton_->setObjectName(QStringLiteral("autoInspectButton"));
     autoInspectButton_->setCheckable(true);
     autoInspectButton_->setToolTip(
         tr("Inspecciona continuamente el video contra la pieza seleccionada"));
@@ -3863,6 +3869,7 @@ void MainWindow::buildCaptureDock() {
     // recién corrida: las fotos que uno guarda durante la puesta a punto —que
     // son precisamente las buenas, elegidas a mano— no servían para nada.
     learnFromCaptureButton_ = new QPushButton(tr("Aprender de esta foto"), panel);
+    learnFromCaptureButton_->setObjectName(QStringLiteral("learnFromCaptureButton"));
     learnFromCaptureButton_->setEnabled(false);
     column->addWidget(learnFromCaptureButton_);
     connect(learnFromCaptureButton_, &QPushButton::clicked, this,

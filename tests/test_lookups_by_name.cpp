@@ -26,14 +26,24 @@
 // arreglar los que hay, exige que no salga uno más. Se van bajando cuando una
 // etiqueta se toca, que es cuando duelen.
 //
-// Van 36 -> 29. Los siete de esta vuelta eran todas las ACCIONES DE MENÚ que se
-// buscaban por su rótulo, y son las que más duelen: el taller pide a menudo que
-// una entrada de menú diga mejor lo que hace —lleva pedido varias veces esta
-// misma semana— y cada rótulo que se mejoraba tiraba pruebas de otra cosa. Ahora
-// las siete tienen `setObjectName` y se buscan por ahí:
+// Van 36 -> 29 -> 16. Los siete de la primera vuelta eran todas las ACCIONES DE
+// MENÚ que se buscaban por su rótulo, y son las que más duelen: el taller pide a
+// menudo que una entrada de menú diga mejor lo que hace y cada rótulo mejorado
+// tiraba pruebas de otra cosa. Los trece de la segunda son las pastillas de
+// estado y los botones de la ventana. Todos tienen `setObjectName` y se buscan
+// por ahí.
 //
-//     configureAction · brushSteadyAction · brushStraightAction ·
-//     brushSnapAction · brushTuneAction · showContourAction · viewEnhanceAction
+// Y LA SEGUNDA VUELTA ENSEÑÓ POR QUÉ IMPORTA, en el acto. Al convertir la
+// pastilla que dice cuántas piezas se ven, se apuntó a `modeChip`... que es la
+// que dice el modo de medición. Las dos llevan la palabra «pieza», así que la
+// búsqueda por texto se quedaba con la que llegara última — y eso ya estaba
+// AVISADO en `main_window.cpp`, donde se le puso nombre a `piecesChip`
+// precisamente porque «en cuanto apareció otra etiqueta que también dice pieza
+// empezaron a leer la equivocada».
+//
+// O sea que estas pruebas no solo se rompen al mejorar un rótulo: pueden estar
+// mirando el control equivocado sin que nadie se entere, porque el que leen
+// también contiene la palabra.
 
 #include <gtest/gtest.h>
 
@@ -124,7 +134,7 @@ TEST(LookupsByName, NoNewTestFindsAWidgetByTheWordsPrintedOnIt) {
                                    "mirando donde cree";
 
     // EL TOPE ES EL DE HOY. Baja cuando se arregla uno; no sube nunca.
-    constexpr int kToday = 29;
+    constexpr int kToday = 16;
     EXPECT_LE(found, kToday)
         << "hay " << found << " controles localizados por su texto y el tope es " << kToday
         << ". Cada uno es una prueba que se caerá el día que alguien mejore ese "

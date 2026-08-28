@@ -2213,11 +2213,7 @@ TEST(MainMenus, TheAutoInspectionSaysWhyItCannotStartInsteadOfOpeningAModal) {
     window.resize(1400, 800);
 
     QPushButton* button = nullptr;
-    for (auto* candidate : window.findChildren<QPushButton*>()) {
-        if (candidate->text().startsWith(QStringLiteral("Auto-inspección"))) {
-            button = candidate;
-        }
-    }
+    button = window.findChild<QPushButton*>(QStringLiteral("autoInspectButton"));
     ASSERT_NE(button, nullptr);
     // Recién abierta no hay fuente ni pieza: no se puede empezar.
     EXPECT_FALSE(button->isEnabled()) << "se ofrece empezar algo que no puede empezar";
@@ -2268,11 +2264,7 @@ TEST(MainMenus, TheAutoInspectionMenuAndButtonStartInAgreement) {
     EXPECT_TRUE(menuAction->isCheckable()) << "en el menú tiene que verse encendida o apagada";
 
     QPushButton* button = nullptr;
-    for (auto* candidate : window.findChildren<QPushButton*>()) {
-        if (candidate->text().startsWith(QStringLiteral("Auto-inspección"))) {
-            button = candidate;
-        }
-    }
+    button = window.findChild<QPushButton*>(QStringLiteral("autoInspectButton"));
     ASSERT_NE(button, nullptr);
     EXPECT_EQ(menuAction->isChecked(), button->isChecked())
         << "el menú y el botón arrancan diciendo cosas distintas";
@@ -2682,11 +2674,7 @@ TEST(EdgeBrush, TheButtonTurnsOnOnceThereIsAnImageToPaintOn) {
     window.resize(1400, 800);
 
     QToolButton* brush = nullptr;
-    for (auto* button : window.findChildren<QToolButton*>()) {
-        if (button->text().startsWith(QStringLiteral("Corregir"))) {
-            brush = button;
-        }
-    }
+    brush = window.findChild<QToolButton*>(QStringLiteral("edgeBrushButton"));
     ASSERT_NE(brush, nullptr) << "no está el botón de corregir el borde";
 
     // Recién abierta no hay imagen: apagado, y con su motivo.
@@ -2792,11 +2780,7 @@ TEST(EdgeBrush, PaintingOnARealOpenedImageMovesTheGreenLine) {
     // Ahora se pinta la muesca como PIEZA, que es lo que el operador haría al
     // ver que una sombra se le come una esquina.
     QToolButton* brush = nullptr;
-    for (auto* button : window.findChildren<QToolButton*>()) {
-        if (button->text().startsWith(QStringLiteral("Corregir"))) {
-            brush = button;
-        }
-    }
+    brush = window.findChild<QToolButton*>(QStringLiteral("edgeBrushButton"));
     ASSERT_NE(brush, nullptr);
     EXPECT_TRUE(brush->isEnabled())
         << "con una imagen abierta el pincel tiene que dejarse usar. Dice: "
@@ -3081,13 +3065,11 @@ TEST(MultiPieceEndToEnd, WithSixPiecesInViewTheWindowSaysSix) {
     // hay que saber abrir.
     QLabel* chip = nullptr;
     const auto findChip = [&] {
-        for (auto* label : window.findChildren<QLabel*>()) {
-            if (label->isVisible() && label->text().contains(QStringLiteral("pieza"))) {
-                chip = label;
-                return true;
-            }
-        }
-        return false;
+        // `piecesChip` y NO `modeChip`: las dos dicen «pieza» y por eso la
+        // búsqueda por texto leía la que llegara última. Está avisado en el
+        // propio `main_window.cpp`, donde se le puso el nombre.
+        chip = window.findChild<QLabel*>(QStringLiteral("piecesChip"));
+        return chip != nullptr && chip->isVisible();
     };
     ASSERT_TRUE(waitFor(findChip))
         << "con seis piezas delante, la ventana principal no dice cuántas ve";
@@ -3124,10 +3106,9 @@ TEST(MultiPieceEndToEnd, WithASinglePieceItDoesNotShout) {
     QLabel* chip = nullptr;
     while (timer.elapsed() < 3000) {
         QApplication::processEvents(QEventLoop::AllEvents, 20);
-        for (auto* label : window.findChildren<QLabel*>()) {
-            if (label->isVisible() && label->text().contains(QStringLiteral("pieza"))) {
-                chip = label;
-            }
+        chip = window.findChild<QLabel*>(QStringLiteral("piecesChip"));
+        if (chip != nullptr && !chip->isVisible()) {
+            chip = nullptr;
         }
         if (chip != nullptr) {
             break;
@@ -3210,10 +3191,9 @@ TEST(EdgeBrush, TheStrokeIsRemovedOnceItHasDoneItsWorkButTheCorrectionStays) {
 
     // Y que la corrección sigue puesta se DICE, porque ya no se ve.
     QLabel* chip = nullptr;
-    for (auto* label : window.findChildren<QLabel*>()) {
-        if (label->isVisible() && label->text().contains(QStringLiteral("corregido"))) {
-            chip = label;
-        }
+    chip = window.findChild<QLabel*>(QStringLiteral("edgeChip"));
+    if (chip != nullptr && !chip->isVisible()) {
+        chip = nullptr;
     }
     ASSERT_NE(chip, nullptr)
         << "la corrección ni se ve ni se anuncia: es estado invisible";
@@ -3551,12 +3531,8 @@ TEST(EdgeBrush, OpeningAnotherFileLeavesNoCorrectionBehind) {
     ASSERT_TRUE(waitFor([&] { return canvas->correctedPixelCount() > 0; }));
 
     const auto correctionChip = [&]() -> QLabel* {
-        for (auto* label : window.findChildren<QLabel*>()) {
-            if (label->isVisible() && label->text().contains(QStringLiteral("corregido"))) {
-                return label;
-            }
-        }
-        return nullptr;
+        auto* found = window.findChild<QLabel*>(QStringLiteral("edgeChip"));
+        return found != nullptr && found->isVisible() ? found : nullptr;
     };
     ASSERT_TRUE(waitFor([&] { return correctionChip() != nullptr; }))
         << "no se anuncia la corrección sobre la primera imagen";
@@ -3668,11 +3644,7 @@ TEST(VideoTransportEndToEnd, PausingStopsItAndSeekingLandsWhereItWasAsked) {
 
     // 2) Y pausado, el pincel se deja usar: es justo el frame que uno buscó.
     QToolButton* brush = nullptr;
-    for (auto* button : window.findChildren<QToolButton*>()) {
-        if (button->text().startsWith(QStringLiteral("Corregir"))) {
-            brush = button;
-        }
-    }
+    brush = window.findChild<QToolButton*>(QStringLiteral("edgeBrushButton"));
     ASSERT_NE(brush, nullptr);
     EXPECT_TRUE(brush->isEnabled())
         << "vídeo en pausa y el pincel apagado. Dice: " << brush->toolTip().toStdString();
@@ -3934,11 +3906,7 @@ TEST(CaptureTrayLearning, LearningIsNeverAvailableByAccident) {
     ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
 
     QPushButton* learn = nullptr;
-    for (auto* button : window.findChildren<QPushButton*>()) {
-        if (button->text().startsWith(QStringLiteral("Aprender"))) {
-            learn = button;
-        }
-    }
+    learn = window.findChild<QPushButton*>(QStringLiteral("learnFromCaptureButton"));
     ASSERT_NE(learn, nullptr) << "no está el botón de aprender de una captura";
 
     // Sin foto elegida no se puede, y se dice.
@@ -3994,11 +3962,7 @@ TEST(CaptureTrayLearning, TheReasonIsRecomputedAndNotFrozen) {
     ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
 
     QPushButton* learn = nullptr;
-    for (auto* button : window.findChildren<QPushButton*>()) {
-        if (button->text().startsWith(QStringLiteral("Aprender"))) {
-            learn = button;
-        }
-    }
+    learn = window.findChild<QPushButton*>(QStringLiteral("learnFromCaptureButton"));
     ASSERT_NE(learn, nullptr);
     const QString before = learn->toolTip();
 
@@ -4832,10 +4796,10 @@ TEST(PieceNavigator, TheArrowsChangeWhichPieceIsMeasured) {
 
     // Y el navegador aparece, porque hay más de una.
     QLabel* nav = nullptr;
-    for (auto* label : window.findChildren<QLabel*>()) {
-        if (label->isVisible() && label->text().contains(QStringLiteral("pieza 2/3"))) {
-            nav = label;
-        }
+    nav = window.findChild<QLabel*>(QStringLiteral("pieceNavLabel"));
+    if (nav != nullptr && (!nav->isVisible() ||
+                           !nav->text().contains(QStringLiteral("pieza 2/3")))) {
+        nav = nullptr;
     }
     ASSERT_NE(nav, nullptr) << "con tres piezas no aparece el selector, o no dice cuál "
                                "de las tres se está midiendo";
@@ -4844,10 +4808,9 @@ TEST(PieceNavigator, TheArrowsChangeWhichPieceIsMeasured) {
         << nav->text().toStdString();
 
     QToolButton* next = nullptr;
-    for (auto* button : window.findChildren<QToolButton*>()) {
-        if (button->isVisible() && button->text() == QStringLiteral("›")) {
-            next = button;
-        }
+    next = window.findChild<QToolButton*>(QStringLiteral("pieceNextButton"));
+    if (next != nullptr && !next->isVisible()) {
+        next = nullptr;
     }
     ASSERT_NE(next, nullptr) << "no hay flecha para pasar a la siguiente pieza";
 

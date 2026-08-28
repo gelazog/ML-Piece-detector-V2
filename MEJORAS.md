@@ -405,10 +405,25 @@ Todo esto salió de una auditoría anterior y está verificado.
     cumple» usara el rojo de veredicto que ya existe (`kBad`/`kBadOnDark`, con
     su contraste medido), pero eso cambia lo que el operador ve y se decide con
     la pantalla delante, no de paso.
-- [~] **C8 · 29 pruebas localizan un control por su TEXTO** (eran 36). Trinquete
+- [~] **C8 · 16 pruebas localizan un control por su TEXTO** (eran 36). Trinquete
   en `tests/test_lookups_by_name.cpp`; hay que ir bajándolo.
 
-  Los siete de esta vuelta eran **todas las acciones de menú** que se buscaban
+  **Los trece de la segunda vuelta** son las pastillas de estado y los botones de
+  la ventana: `piecesChip`, `edgeChip`, `pieceNavLabel`, `pieceNextButton`,
+  `edgeBrushButton`, `autoInspectButton`, `learnFromCaptureButton`.
+
+  Y la vuelta enseñó por qué importa, en el acto: al convertir la pastilla que
+  dice cuántas piezas se ven, apunté a `modeChip`, que es la que dice el modo de
+  medición. **Las dos llevan la palabra «pieza»**, así que la búsqueda por texto
+  se quedaba con la que llegara última — y eso ya estaba avisado en
+  `main_window.cpp`, donde se le puso nombre a `piecesChip` precisamente porque
+  «en cuanto apareció otra etiqueta que también dice pieza empezaron a leer la
+  equivocada».
+
+  O sea que estas pruebas no solo se rompen al mejorar un rótulo: **pueden estar
+  mirando el control equivocado** sin que nadie se entere.
+
+    Los siete de esta vuelta eran **todas las acciones de menú** que se buscaban
   por su rótulo, que son las que más duelen: el taller pide a menudo que una
   entrada de menú diga mejor lo que hace, y cada rótulo mejorado tiraba pruebas
   de otra cosa. Ahora tienen nombre y se buscan por él —`configureAction`,
