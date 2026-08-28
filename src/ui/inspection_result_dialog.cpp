@@ -87,9 +87,16 @@ InspectionResultDialog::InspectionResultDialog(
 
     // Comparación visual: pieza registrada vs recorte de la pieza actual.
     auto* compareLayout = new QHBoxLayout();
-    auto addThumb = [this, compareLayout](const QString& caption, const QImage& image) {
+    // El nombre de la miniatura viaja aparte del rótulo. La tercera —«Dónde
+    // difiere»— sólo existe cuando hay algo que señalar, y comprobar que
+    // aparece o no es media prueba del diálogo; atarla al rótulo la rompe cada
+    // vez que se reescribe.
+    auto addThumb = [this, compareLayout](const char* name, const QString& caption,
+                                          const QImage& image) {
         auto* column = new QVBoxLayout();
-        column->addWidget(new QLabel(caption, this));
+        auto* captionLabel = new QLabel(caption, this);
+        captionLabel->setObjectName(QString::fromLatin1(name));
+        column->addWidget(captionLabel);
         auto* thumb = new QLabel(this);
         thumb->setFixedSize(130, 130);
         thumb->setAlignment(Qt::AlignCenter);
@@ -104,8 +111,9 @@ InspectionResultDialog::InspectionResultDialog(
         column->addWidget(thumb);
         compareLayout->addLayout(column);
     };
-    addThumb(tr("Registrada"), referenceThumb);
-    addThumb(tr("Actual"), camera::matToQImage(outcome_.analysis.normalized));
+    addThumb("thumbRegistered", tr("Registrada"), referenceThumb);
+    addThumb("thumbCurrent", tr("Actual"),
+             camera::matToQImage(outcome_.analysis.normalized));
 
     // DÓNDE se diferencia, y no sólo cuánto.
     //
@@ -124,7 +132,8 @@ InspectionResultDialog::InspectionResultDialog(
         if (map.ok && map.worstValue >= 0.05) {
             const cv::Mat painted =
                 vision::paintDifference(outcome_.analysis.normalized, map);
-            addThumb(tr("Dónde difiere"), camera::matToQImage(painted).copy());
+            addThumb("thumbDifference", tr("Dónde difiere"),
+                     camera::matToQImage(painted).copy());
             differenceNote =
                 tr("Lo más distinto está %1 de la pieza, y ocupa el %2 % de su superficie.")
                     .arg(describeSpot(map.worst, outcome_.analysis.normalized.size()))
@@ -137,6 +146,7 @@ InspectionResultDialog::InspectionResultDialog(
 
     if (!differenceNote.isEmpty()) {
         auto* where = new QLabel(differenceNote, this);
+        where->setObjectName(QStringLiteral("differenceNote"));
         where->setWordWrap(true);
         sideLayout->addWidget(where);
     }

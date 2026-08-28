@@ -26,12 +26,29 @@
 // arreglar los que hay, exige que no salga uno más. Se van bajando cuando una
 // etiqueta se toca, que es cuando duelen.
 //
-// Van 36 -> 29 -> 16. Los siete de la primera vuelta eran todas las ACCIONES DE
-// MENÚ que se buscaban por su rótulo, y son las que más duelen: el taller pide a
-// menudo que una entrada de menú diga mejor lo que hace y cada rótulo mejorado
-// tiraba pruebas de otra cosa. Los trece de la segunda son las pastillas de
-// estado y los botones de la ventana. Todos tienen `setObjectName` y se buscan
-// por ahí.
+// Van 36 -> 29 -> 16 -> 0. Los siete de la primera vuelta eran todas las
+// ACCIONES DE MENÚ que se buscaban por su rótulo, y son las que más duelen: el
+// taller pide a menudo que una entrada de menú diga mejor lo que hace y cada
+// rótulo mejorado tiraba pruebas de otra cosa. Los trece de la segunda son las
+// pastillas de estado y los botones de la ventana. Los dieciséis de la tercera
+// son los que quedaban repartidos por los diálogos: Mover/Elegir en la paleta,
+// la pausa del vídeo, «Vigilar estas cotas», la casilla del subpíxel, el par de
+// radios del contador, el mapa de diferencias y el asistente de acabados.
+//
+// Y AL CONVERTIR EL ÚLTIMO TERCIO APARECIÓ EL OTRO DAÑO, que no es la
+// fragilidad. Media docena de estas búsquedas comprobaba con el texto la cosa
+// que había venido a comprobar:
+//
+//   - «existe una etiqueta que empieza por *Dónde difiere*» era como se
+//     comprobaba que el mapa de diferencias APARECE — o sea que un rótulo
+//     reescrito se leía como «con un defecto no sale el mapa».
+//   - «hay un botón que dice *Zona* y tiene menú» daba por buena la mitad que
+//     el test afirmaba: que la zona es UN control con su menú.
+//   - «hay una etiqueta que dice *ya tienes*» comprobaba a la vez que el
+//     diálogo no cierra en silencio y que explica por qué.
+//
+// Separadas —el control por su nombre, el texto por una aserción aparte— el
+// fallo dice cuál de las dos cosas se rompió, y de paso enseña lo que decía.
 //
 // Y LA SEGUNDA VUELTA ENSEÑÓ POR QUÉ IMPORTA, en el acto. Al convertir la
 // pastilla que dice cuántas piezas se ven, se apuntó a `modeChip`... que es la
@@ -133,8 +150,9 @@ TEST(LookupsByName, NoNewTestFindsAWidgetByTheWordsPrintedOnIt) {
     ASSERT_GT(filesScanned, 40) << "apenas se leen ficheros de prueba: el barrido no está "
                                    "mirando donde cree";
 
-    // EL TOPE ES EL DE HOY. Baja cuando se arregla uno; no sube nunca.
-    constexpr int kToday = 16;
+    // EL TOPE ES EL DE HOY. Baja cuando se arregla uno; no sube nunca. Está en
+    // cero: ya no queda ninguno, así que lo que vigila ahora es que no vuelva.
+    constexpr int kToday = 0;
     EXPECT_LE(found, kToday)
         << "hay " << found << " controles localizados por su texto y el tope es " << kToday
         << ". Cada uno es una prueba que se caerá el día que alguien mejore ese "

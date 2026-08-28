@@ -34,12 +34,16 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
     // QUÉ. Puesto al lado del campo del número, el nombre tiene que decir por
     // sí solo qué hace la casilla — que es contar.
     automatic_ = new QRadioButton(tr("Contador automático de piezas"), this);
+    // Con nombre los dos, porque este par YA se renombró una vez y dejó una
+    // prueba buscando la palabra «Manual», que había desaparecido.
+    automatic_->setObjectName(QStringLiteral("automaticCountRadio"));
     automatic_->setToolTip(
         tr("El programa cuenta las que haya y NO se queja del número: mide\n"
            "todas, y ninguna cantidad da NG por sí sola.\n\n"
            "Para cuando la cantidad cambia de una bandeja a otra."));
     root->addWidget(automatic_);
     manual_ = new QRadioButton(tr("Número exacto:"), this);
+    manual_->setObjectName(QStringLiteral("manualCountRadio"));
     manual_->setToolTip(
         tr("Tú dices cuántas tiene que haber. Si aparecen más o menos, es NG\n"
            "diciendo cuántas esperaba y cuántas ve.\n\n"
@@ -113,6 +117,7 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
     root->addWidget(mosaic_);
 
     status_ = new QLabel(this);
+    status_->setObjectName(QStringLiteral("countStatus"));
     status_->setWordWrap(true);
     root->addWidget(status_);
     root->addStretch(1);

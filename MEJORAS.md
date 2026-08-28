@@ -95,6 +95,26 @@ grande.
   líneas de prueba para 48 673 de código. Buscar tests redundantes, tests sin
   aserto útil, y módulos sin cobertura.
 
+- [x] **B6 · Dos pruebas fallaban con la máquina cargada, y ninguna señalaba un
+  fallo.** Salieron al correr la batería entera con `ctest -j4`, una en cada
+  pasada, y las dos pasaban en seco. Un rojo que depende de qué más esté
+  corriendo enseña a volver a lanzar la batería en vez de leerla, que es
+  exactamente lo contrario de para qué está.
+
+  - `SourceRemembers.ClosingAnImageLeavesTheSourceOnOpenImage` esperaba a que
+    el desplegable de fuente trajera «Abrir imagen…» contando **doscientas
+    vueltas** de `processEvents(AllEvents, 20)`, dando por hecho que eran cuatro
+    segundos. Ese 20 es un **máximo**: sin nada en la cola, `processEvents`
+    vuelve en el acto y las doscientas vueltas se gastan en milisegundos. Ahora
+    espera por reloj (`QElapsedTimer`, 8 s).
+  - `SiblingMeasures.OpeningAToolCostsWhatSixReadingsCost` compara lo que
+    cuestan seis medidas contra una y exige que no pase de 12×. Promediaba
+    sesenta vueltas, y la media incluye lo que le quita el planificador: dio
+    **15,4×** bajo carga y 4× en seco. Ahora se queda con la **mejor** de las
+    sesenta — el ruido sólo puede sumar tiempo, nunca restarlo, así que el
+    mínimo es la estimación honrada del coste y la invariante se sigue viendo
+    igual.
+
 ## C. Interfaz
 
 Todo esto salió de una auditoría anterior y está verificado.
@@ -405,8 +425,39 @@ Todo esto salió de una auditoría anterior y está verificado.
     cumple» usara el rojo de veredicto que ya existe (`kBad`/`kBadOnDark`, con
     su contraste medido), pero eso cambia lo que el operador ve y se decide con
     la pantalla delante, no de paso.
-- [~] **C8 · 16 pruebas localizan un control por su TEXTO** (eran 36). Trinquete
-  en `tests/test_lookups_by_name.cpp`; hay que ir bajándolo.
+- [x] **C8 · Ninguna prueba localiza ya un control por su TEXTO** (eran 36; luego
+  29, luego 16). Trinquete en `tests/test_lookups_by_name.cpp`, ahora en **cero**:
+  ya no vigila que bajen, vigila que no vuelvan.
+
+  **Los dieciséis de la tercera vuelta** eran los que quedaban repartidos por
+  los diálogos: Mover/Elegir en la paleta (`selectTool`), la pausa y la barra
+  del vídeo (`playPauseButton`, `videoSlider`), el control de zona
+  (`zoneButton`), «Vigilar estas cotas» y su línea de estado (`watchButton`,
+  `watchStatus`), los avisos del informe (`reportWarning`), la casilla del
+  subpíxel (`subpixelCheck`), el botón de separar por el canto
+  (`useEdgesButton`), el par de radios del contador (`automaticCountRadio`,
+  `manualCountRadio`) con su línea de estado (`countStatus`), las miniaturas del
+  diálogo de resultado (`thumbCurrent`, `thumbDifference`, `differenceNote`) y
+  el asistente de acabados (`nameCaption`, `variantIntro`).
+
+  **Y esta vuelta enseñó el otro daño, que no es la fragilidad.** Media docena
+  de estas búsquedas comprobaba con el texto la cosa misma que había venido a
+  comprobar:
+
+  - «existe una etiqueta que empieza por *Dónde difiere*» era como se comprobaba
+    que el mapa de diferencias **aparece** — o sea que un rótulo reescrito se
+    habría leído como «con un defecto no sale el mapa».
+  - «hay un botón que dice *Zona* **y tiene menú**» daba por buena la mitad que
+    el test afirma: que la zona es un solo control con su menú desplegado.
+  - «hay una etiqueta que dice *ya tienes*» comprobaba a la vez que el diálogo
+    no cierra en silencio y que explica por qué.
+
+  Separadas —el control por su nombre, el texto por una aserción aparte— el
+  fallo dice cuál de las dos cosas se rompió, y de paso imprime lo que decía.
+
+  El caso más silencioso estaba en el contador de piezas: la prueba se rompió
+  una vez buscando «Manual», se arregló buscando «el que NO dice automático», y
+  seguía atada al mismo rótulo, sólo que negada.
 
   **Los trece de la segunda vuelta** son las pastillas de estado y los botones de
   la ventana: `piecesChip`, `edgeChip`, `pieceNavLabel`, `pieceNextButton`,

@@ -418,6 +418,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     // borde de antes tiene que volver a mirarlas — si no, una pieza buena
     // empieza a salir NG por un cambio de definición y no por un defecto.
     subpixel_ = new QCheckBox(tr("Afinar el borde a subpíxel"), this);
+    subpixel_->setObjectName(QStringLiteral("subpixelCheck"));
     subpixel_->setChecked(subpixelEdges);
     subpixel_->setToolTip(
         tr("El borde de una pieza no es un escalón: la intensidad cambia a lo largo de\n"

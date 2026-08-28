@@ -74,13 +74,19 @@ void RegistrationWizard::buildUi(const QString& fixedPieceName) {
                "detectaba.")
                 .arg(fixedPieceName),
             this);
+        intro->setObjectName(QStringLiteral("variantIntro"));
         intro->setWordWrap(true);
         rootLayout->addWidget(intro);
     }
 
     auto* nameLayout = new QHBoxLayout();
-    nameLayout->addWidget(new QLabel(
-        variantMode ? tr("Nombre del acabado:") : tr("Nombre de la pieza:"), this));
+    // El rótulo del campo dice de qué se está poniendo el nombre, y es lo que
+    // distingue los dos modos del asistente. Con nombre propio se puede
+    // comprobar QUÉ dice sin tener que buscarlo por lo que dice.
+    auto* nameCaption = new QLabel(
+        variantMode ? tr("Nombre del acabado:") : tr("Nombre de la pieza:"), this);
+    nameCaption->setObjectName(QStringLiteral("nameCaption"));
+    nameLayout->addWidget(nameCaption);
     nameEdit_ = new QLineEdit(this);
     nameEdit_->setPlaceholderText(variantMode ? tr("p. ej. pulido, proveedor B, lote 24")
                                               : tr("p. ej. Engranaje A"));

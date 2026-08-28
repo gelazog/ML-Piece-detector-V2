@@ -532,6 +532,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // acciones por su nombre, con la activa marcada. El estado se lee de un
     // vistazo en vez de deducirse de dos etiquetas que se mueven.
     zoneButton_ = new QToolButton(central);
+    // El rótulo alterna entre «Zona» y «Zona fija» según cuál esté en uso.
+    zoneButton_->setObjectName(QStringLiteral("zoneButton"));
     zoneButton_->setText(tr("Zona"));
     zoneButton_->setIcon(inspection::regionIcon());
     zoneButton_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -3703,6 +3705,10 @@ void MainWindow::buildVideoBar(QWidget* parent, QVBoxLayout* root) {
     row->setContentsMargins(0, 0, 0, 0);
 
     playPauseButton_ = new QToolButton(videoBar_);
+    // Por nombre y no por su rótulo: es el único botón que CAMBIA de texto
+    // —«Pausa» y «Seguir»— así que buscarlo por lo que dice obliga a probar
+    // los dos, y una prueba que ya no encuentra ninguno falla lejos de aquí.
+    playPauseButton_->setObjectName(QStringLiteral("playPauseButton"));
     playPauseButton_->setText(tr("Pausa"));
     playPauseButton_->setToolTip(tr("Pausar o seguir. Con el vídeo parado se puede dibujar\n"
                                     "una herramienta sin que la pieza tiemble."));
@@ -3715,6 +3721,7 @@ void MainWindow::buildVideoBar(QWidget* parent, QVBoxLayout* root) {
     row->addWidget(stepButton_);
 
     videoSlider_ = new QSlider(Qt::Horizontal, videoBar_);
+    videoSlider_->setObjectName(QStringLiteral("videoSlider"));
     videoSlider_->setRange(0, 1000);
     videoSlider_->setToolTip(tr("Dónde va el vídeo. Arrastra para buscar."));
     row->addWidget(videoSlider_, 1);

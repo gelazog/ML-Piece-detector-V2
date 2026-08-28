@@ -77,6 +77,7 @@ PieceReportDialog::PieceReportDialog(inspection::PieceReport report,
     // decidir si sigue mirando o va a recolocar la pieza.
     for (const auto& warning : report_.warnings) {
         auto* label = new QLabel(QString::fromStdString(warning), this);
+        label->setObjectName(QStringLiteral("reportWarning"));
         label->setWordWrap(true);
         label->setStyleSheet(theme::noticeStyle(theme::kWarn, theme::kWarnField));
         root->addWidget(label);
@@ -159,6 +160,7 @@ PieceReportDialog::PieceReportDialog(inspection::PieceReport report,
     measurementsLayout->addWidget(table_, 1);
 
     status_ = new QLabel(measurements);
+    status_->setObjectName(QStringLiteral("watchStatus"));
     status_->setWordWrap(true);
     measurementsLayout->addWidget(status_);
     tabs->addTab(measurements, tr("Medidas de la pieza"));
@@ -169,6 +171,7 @@ PieceReportDialog::PieceReportDialog(inspection::PieceReport report,
 
     auto* buttons = new QHBoxLayout();
     auto* watch = new QPushButton(tr("Vigilar estas cotas"), this);
+    watch->setObjectName(QStringLiteral("watchButton"));
     watch->setEnabled(!report_.watchable.empty());
     watch->setToolTip(
         tr("Convierte las cotas en herramientas de la pieza, con sus tolerancias ya\n"

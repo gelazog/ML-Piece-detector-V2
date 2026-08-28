@@ -54,13 +54,11 @@ vision::SceneReading calmScene() {
     return reading;
 }
 
+// Por su nombre. El rótulo de este botón ya cambió una vez —«Separar por el
+// color del fondo» -> «Separar por color»— y se llevó por delante pruebas que
+// solo lo usaban para encontrarlo.
 QPushButton* edgeButtonOf(const ui::DetectionPage& page) {
-    for (auto* button : page.findChildren<QPushButton*>()) {
-        if (button->text().contains(QStringLiteral("canto"), Qt::CaseInsensitive)) {
-            return button;
-        }
-    }
-    return nullptr;
+    return page.findChild<QPushButton*>(QStringLiteral("useEdgesButton"));
 }
 
 }  // namespace

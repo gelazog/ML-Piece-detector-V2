@@ -100,6 +100,10 @@ void ToolPalette::buildPanel() {
     // Mover/Elegir arriba del todo y CON TEXTO, fuera de la franja: no es una
     // familia, y ponerlo entre ellas invitaría a leerlo como una más.
     selectButton_ = new QToolButton(this);
+    // Con nombre, como Borrar: es el ÚNICO botón con texto del panel, así que
+    // buscarlo por «Mover» parecía seguro — y ata tres pruebas a un rótulo que
+    // el taller pide cambiar («Elegir», «Seleccionar/Mover»...).
+    selectButton_->setObjectName(QStringLiteral("selectTool"));
     selectButton_->setIcon(moveModeIcon());
     selectButton_->setIconSize(QSize(kFamilyIconSize, kFamilyIconSize));
     selectButton_->setText(tr("Mover/Elegir"));

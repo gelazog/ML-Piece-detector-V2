@@ -218,12 +218,7 @@ TEST(ReportTabs, WatchingDoesNotAddACotaYouAlreadyHave) {
     ui::PieceReportDialog dialog(report, QStringLiteral("una imagen"), nullptr, nullptr,
                                  {existing});
 
-    QAbstractButton* watch = nullptr;
-    for (auto* candidate : dialog.findChildren<QAbstractButton*>()) {
-        if (candidate->text().contains(QStringLiteral("Vigilar"))) {
-            watch = candidate;
-        }
-    }
+    auto* watch = dialog.findChild<QAbstractButton*>(QStringLiteral("watchButton"));
     ASSERT_NE(watch, nullptr) << "no está el botón de vigilar";
     watch->click();
 
@@ -245,26 +240,21 @@ TEST(ReportTabs, WhenEverythingIsAlreadyThereItSaysSoInsteadOfClosing) {
 
     ui::PieceReportDialog dialog(report, QStringLiteral("una imagen"), nullptr, nullptr,
                                  {toolThat("Largo total", true, true)});
-    QAbstractButton* watch = nullptr;
-    for (auto* candidate : dialog.findChildren<QAbstractButton*>()) {
-        if (candidate->text().contains(QStringLiteral("Vigilar"))) {
-            watch = candidate;
-        }
-    }
+    auto* watch = dialog.findChild<QAbstractButton*>(QStringLiteral("watchButton"));
     ASSERT_NE(watch, nullptr);
     watch->click();
 
     EXPECT_TRUE(dialog.toWatch().empty());
-    // Y sigue abierto, con el motivo a la vista.
-    QString said;
-    for (auto* label : dialog.findChildren<QLabel*>()) {
-        if (label->text().contains(QStringLiteral("ya tienes"))) {
-            said = label->text();
-        }
-    }
-    std::printf("  [medir] todo repetido: «%s»\n", said.toStdString().c_str());
-    EXPECT_FALSE(said.isEmpty())
-        << "no añade nada y no dice por qué: se lee como que sí lo hizo";
+    // Y sigue abierto, con el motivo a la vista. La línea de estado se localiza
+    // por su nombre y se comprueba lo que DICE: buscarla por «ya tienes» hacía
+    // que, el día que la frase se reescriba, el test dijera «no dice por qué»
+    // justo cuando sí lo dice.
+    auto* said = dialog.findChild<QLabel*>(QStringLiteral("watchStatus"));
+    ASSERT_NE(said, nullptr) << "el diálogo no tiene línea de estado";
+    std::printf("  [medir] todo repetido: «%s»\n", said->text().toStdString().c_str());
+    EXPECT_TRUE(said->text().contains(QStringLiteral("ya tienes")))
+        << "no añade nada y no dice por qué: se lee como que sí lo hizo. Dice: «"
+        << said->text().toStdString() << "»";
 }
 
 // LOS DOS NIVELES: LA HERRAMIENTA Y TODO LO QUE SU FIGURA PUEDE MEDIR.

@@ -46,14 +46,14 @@ pci::engine::InspectionEngine::Outcome outcomeWith(const cv::Mat& normalized) {
     return outcome;
 }
 
-// Busca una etiqueta visible cuyo texto empiece por lo pedido.
-QLabel* labelStarting(QWidget& widget, const QString& prefix) {
-    for (auto* label : widget.findChildren<QLabel*>()) {
-        if (label->text().startsWith(prefix)) {
-            return label;
-        }
-    }
-    return nullptr;
+// El rótulo de una miniatura, por su NOMBRE.
+//
+// La mitad de lo que comprueba este fichero es si el mapa de diferencias
+// APARECE o no —sólo sale cuando hay algo que señalar—, y eso se estaba
+// resolviendo buscando la frase «Dónde difiere». El día que alguien mejore ese
+// rótulo, el test dirá «con un defecto no aparece el mapa» y el mapa estará ahí.
+QLabel* namedLabel(QWidget& widget, const char* name) {
+    return widget.findChild<QLabel*>(QString::fromLatin1(name));
 }
 
 }  // namespace
@@ -86,12 +86,12 @@ TEST(ResultDialog, WithADefectItShowsWhereAndSaysItInWords) {
                                                pci::camera::matToQImage(reference).copy());
         dialog.resize(1100, 700);
 
-        auto* title = labelStarting(dialog, QStringLiteral("Dónde difiere"));
+        auto* title = namedLabel(dialog, "thumbDifference");
         ASSERT_NE(title, nullptr)
             << "con un defecto no aparece el mapa: el operador se queda con un número y "
                "a buscar a ojo";
 
-        auto* note = labelStarting(dialog, QStringLiteral("Lo más distinto está"));
+        auto* note = namedLabel(dialog, "differenceNote");
         ASSERT_NE(note, nullptr) << "el mapa está y no se dice en palabras dónde mirar";
         std::printf("  [resultado] defecto en (%d,%d): %s\n", one.where.x, one.where.y,
                     note->text().toStdString().c_str());
@@ -124,10 +124,10 @@ TEST(ResultDialog, WithACleanPieceThereIsNoMapAtAll) {
                                            pci::camera::matToQImage(reference).copy());
     dialog.resize(1100, 700);
 
-    EXPECT_EQ(labelStarting(dialog, QStringLiteral("Dónde difiere")), nullptr)
+    EXPECT_EQ(namedLabel(dialog, "thumbDifference"), nullptr)
         << "se enseña un mapa de una pieza que no tiene nada: el operador aprendería a "
            "no hacerle caso";
-    EXPECT_EQ(labelStarting(dialog, QStringLiteral("Lo más distinto está")), nullptr);
+    EXPECT_EQ(namedLabel(dialog, "differenceNote"), nullptr);
 }
 
 // Sin miniatura de referencia no hay nada que comparar, y eso no puede romper el
@@ -141,8 +141,8 @@ TEST(ResultDialog, WithNoReferenceThumbnailItSimplyDoesNotOffer) {
     pci::ui::InspectionResultDialog dialog(frame, outcomeWith(reference), nullptr, 1, QImage());
     dialog.resize(1100, 700);
 
-    EXPECT_EQ(labelStarting(dialog, QStringLiteral("Dónde difiere")), nullptr);
+    EXPECT_EQ(namedLabel(dialog, "thumbDifference"), nullptr);
     // Y las dos miniaturas de siempre siguen ahí: quitar el mapa no puede
     // llevarse por delante lo que ya había.
-    EXPECT_NE(labelStarting(dialog, QStringLiteral("Actual")), nullptr);
+    EXPECT_NE(namedLabel(dialog, "thumbCurrent"), nullptr);
 }

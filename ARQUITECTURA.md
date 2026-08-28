@@ -2552,6 +2552,37 @@ que es la señal que no depende del color. Así que no se cambió el aspecto: se
 puso nombre y se guardó la medida en `test_video_bands.cpp`, que falla el día que
 alguien acerque esos dos fondos.
 
+### Los controles se buscan por su nombre, no por lo que llevan escrito
+
+Treinta y seis pruebas localizaban un botón, una casilla o una etiqueta
+recorriendo `findChildren` y comparando su **texto**. Cuatro veces ha pasado lo
+mismo: el taller pide que un rótulo diga mejor lo que hace, se reescribe, y se
+caen pruebas que no tienen nada que ver con ese rótulo — sólo lo usaban para
+encontrar el control. Ninguna rotura señalaba un fallo, y todas enseñaban a no
+tocar los rótulos, que es lo contrario de lo que se pedía.
+
+La diferencia está entre **afirmar** sobre el texto y **localizar** por el texto.
+Lo primero es el trabajo de la prueba; lo segundo es una forma frágil de decir
+`findChild<QPushButton*>("okButton")`.
+
+Ahora todo control que una prueba necesite alcanzar lleva `setObjectName`, y el
+trinquete de `tests/test_lookups_by_name.cpp` está en **cero**: cuenta los bucles
+que comparan texto Y además se llevan el widget, y falla si aparece uno.
+
+Dos cosas que se aprendieron por el camino y conviene no repetir:
+
+- **Se puede estar leyendo el control equivocado sin enterarse.** Al convertir la
+  pastilla que dice cuántas piezas se ven, se apuntó a `modeChip`, que es la del
+  modo de medición: las dos llevan la palabra «pieza», así que la búsqueda por
+  texto se quedaba con la que llegara última. Estaba avisado en
+  `main_window.cpp` desde que se nombró `piecesChip`.
+- **La búsqueda por texto se comía la aserción.** «Existe una etiqueta que
+  empieza por *Dónde difiere*» era como se comprobaba que el mapa de diferencias
+  aparece; «hay un botón que dice *Zona* y tiene menú» daba por buena la mitad
+  que el test afirmaba. Separado en dos —el control por su nombre, el texto por
+  una aserción— el fallo dice cuál de las dos cosas se rompió, e imprime lo que
+  la etiqueta decía.
+
 ### Lo que se dibuja encima de la foto
 
 Un contorno de color sobre una FOTO no tiene contraste garantizado: depende de

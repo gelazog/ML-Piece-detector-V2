@@ -23,6 +23,7 @@
 #include <QMetaObject>
 #include <QComboBox>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QImage>
 #include <QTemporaryDir>
 
@@ -43,8 +44,19 @@ QComboBox* sourceCombo(ui::MainWindow& window) {
 }
 
 // Espera a que el desplegable traiga ya la entrada de abrir ficheros.
+//
+// POR RELOJ Y NO POR VUELTAS. Esto contaba doscientas pasadas de
+// `processEvents(AllEvents, 20)` dando por hecho que cada una tardaba 20 ms, o
+// sea cuatro segundos de margen. Ese 20 es un MÁXIMO: cuando no hay nada en la
+// cola, `processEvents` vuelve en el acto, y las doscientas vueltas se gastan
+// en milisegundos. Con la máquina cargada —`ctest -j8`, que es como se corre la
+// batería— la enumeración de cámaras aún no había entregado sus entradas y el
+// test fallaba diciendo «el desplegable nunca llega a ofrecer Abrir imagen…»,
+// que es falso: llegaba medio segundo después.
 bool waitForSources(QComboBox* combo) {
-    for (int tries = 0; tries < 200; ++tries) {
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 8000) {
         for (int i = 0; i < combo->count(); ++i) {
             if (combo->itemText(i).contains(QStringLiteral("Abrir imagen"))) {
                 return true;

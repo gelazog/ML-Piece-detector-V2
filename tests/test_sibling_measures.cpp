@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <limits>
 #include <set>
 
 #include "inspection_editor/execution/tool_executor.h"
@@ -154,23 +155,37 @@ TEST(SiblingMeasures, OpeningAToolCostsWhatSixReadingsCost) {
     const auto six = configsFor(choices.options.size());
     constexpr int kRounds = 60;
 
+    // EL MEJOR DE LAS SESENTA VUELTAS, no la media.
+    //
+    // Esto promediaba, y la media incluye lo que le quita el sistema operativo:
+    // con la máquina cargada —`ctest -j4`, que es como se corre la batería— la
+    // relación se fue a 15,4 y el test dijo «abrir una región cuesta
+    // desproporcionadamente» sin que hubiera cambiado nada del código. En seco
+    // vuelve a dar 4.
+    //
+    // El mínimo es la estimación honrada de cuánto cuesta el trabajo: el ruido
+    // de planificación sólo puede SUMAR tiempo, nunca restarlo. Lo que este
+    // test vigila —que seis medidas no cuesten como doce— se sigue viendo
+    // igual, y deja de depender de qué más esté corriendo en la máquina.
     auto timeOf = [&](const std::vector<inspection::ToolConfig>& configs) -> double {
-        const auto start = std::chrono::steady_clock::now();
+        double best = std::numeric_limits<double>::max();
         for (int i = 0; i < kRounds; ++i) {
+            const auto start = std::chrono::steady_clock::now();
             const auto results = inspection::runTools(gray, fixture, configs, 0.0,
                                                       inspection::LengthUnit::Pixels);
+            const double elapsed = std::chrono::duration<double, std::milli>(
+                                       std::chrono::steady_clock::now() - start)
+                                       .count();
             EXPECT_EQ(results.size(), configs.size());
+            best = std::min(best, elapsed);
         }
-        return std::chrono::duration<double, std::milli>(
-                   std::chrono::steady_clock::now() - start)
-                   .count() /
-               kRounds;
+        return best;
     };
 
     const double justTheOne = timeOf(one);
     const double allSix = timeOf(six);
     const double ratio = allSix / std::max(justTheOne, 1e-6);
-    std::printf("  [hermanas] 1 medida %.3f ms · las 6 %.3f ms · x%.2f\n", justTheOne,
+    std::printf("  [hermanas] 1 medida %.3f ms · las 6 %.3f ms · x%.2f (la mejor de 60 vueltas)\n", justTheOne,
                 allSix, ratio);
 
     // SEIS LECTURAS NO PUEDEN COSTAR MENOS DE DOS: si costaran igual que una,

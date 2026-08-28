@@ -171,17 +171,16 @@ TEST(TwoPiecesUi, TheButtonUsesTheSameNumberTheNoticeReports) {
     ASSERT_NE(page, nullptr);
     page->setExpectedPieces(2);
 
-    // Se deja que llegue un análisis con la declaración puesta.
-    QLabel* notice = nullptr;
+    // Se deja que llegue un análisis con la declaración puesta. La línea de
+    // estado se coge por su nombre y lo que se espera es lo que DICE: buscarla
+    // por «Se ven» mezclaba las dos cosas, y si el rótulo cambiara el test
+    // esperaría para siempre a una etiqueta que ya no existe.
+    auto* notice = page->findChild<QLabel*>(QStringLiteral("countStatus"));
+    ASSERT_NE(notice, nullptr) << "la página de piezas no tiene línea de estado";
     ASSERT_TRUE(waitFor([&] {
-        for (auto* candidate : page->findChildren<QLabel*>()) {
-            if (candidate->text().contains(QStringLiteral("Se ven"))) {
-                notice = candidate;
-                return notice->text().contains(QStringLiteral("Se ven 3"));
-            }
-        }
-        return false;
-    })) << "el aviso nunca llega a decir que se ven tres manchas";
+        return notice->text().contains(QStringLiteral("Se ven 3"));
+    })) << "el aviso nunca llega a decir que se ven tres manchas. Dice: "
+        << notice->text().toStdString();
     std::printf("  [contador] aviso: «%s»\n", notice->text().toStdString().c_str());
 
     // Y ahora el botón: tiene que dejar el campo en el MISMO número.

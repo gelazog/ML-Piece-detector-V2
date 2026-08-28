@@ -1580,13 +1580,9 @@ TEST(ToolPaletteDelete, TheTwoDeleteButtonsLiveNextToMoveAndSayWhatTheyNeed) {
 
     // Se buscan por su POSICIÓN respecto a Mover/Elegir, que es lo que el test
     // tiene que garantizar: que están al lado. Buscarlos por otra cosa dejaría
-    // pasar que alguien los mueva de sitio.
-    QToolButton* move = nullptr;
-    for (auto* button : palette.findChildren<QToolButton*>()) {
-        if (button->text().contains(QStringLiteral("Mover"))) {
-            move = button;
-        }
-    }
+    // pasar que alguien los mueva de sitio. Los tres se localizan por su
+    // nombre: el rótulo «Mover/Elegir» es de los que el taller pide reescribir.
+    auto* move = palette.findChild<QToolButton*>(QStringLiteral("selectTool"));
     ASSERT_NE(move, nullptr);
 
     // Se señalan por su nombre —los iconos de familia también son QToolButton
@@ -1658,12 +1654,7 @@ TEST(ToolPaletteDelete, TheButtonsOnlyAskAndDoNotDeleteAnything) {
     QObject::connect(&palette, &ToolPalette::deleteRequested, [&] { ++deleteAsked; });
     QObject::connect(&palette, &ToolPalette::deleteAllRequested, [&] { ++deleteAllAsked; });
 
-    QToolButton* move = nullptr;
-    for (auto* button : palette.findChildren<QToolButton*>()) {
-        if (button->text().contains(QStringLiteral("Mover"))) {
-            move = button;
-        }
-    }
+    auto* move = palette.findChild<QToolButton*>(QStringLiteral("selectTool"));
     ASSERT_NE(move, nullptr);
     for (const auto* name : {"deleteTool", "deleteAllTools"}) {
         auto* button = palette.findChild<QToolButton*>(QString::fromLatin1(name));
@@ -1967,12 +1958,7 @@ TEST(PieceReportDialogTest, MeasuringDoesNotWatchUnlessYouSaySo) {
 
     // Y con el botón, se lleva exactamente las cotas: ni una de las filas del
     // contorno, que no se pueden vigilar porque no hay herramienta que las mida.
-    QPushButton* watch = nullptr;
-    for (auto* button : dialog.findChildren<QPushButton*>()) {
-        if (button->text().startsWith(QStringLiteral("Vigilar"))) {
-            watch = button;
-        }
-    }
+    auto* watch = dialog.findChild<QPushButton*>(QStringLiteral("watchButton"));
     ASSERT_NE(watch, nullptr);
     EXPECT_TRUE(watch->isEnabled());
     watch->click();
@@ -2049,14 +2035,13 @@ TEST(MainToolbar, TheZoneIsOneControlWithItsThreeActionsNamed) {
     pci::ui::MainWindow window;
     window.resize(1400, 800);
 
-    // Un solo control, no dos botones cuyas etiquetas cambian de verbo.
-    QToolButton* zone = nullptr;
-    for (auto* button : window.findChildren<QToolButton*>()) {
-        if (button->menu() != nullptr && button->text().startsWith(QStringLiteral("Zona"))) {
-            zone = button;
-        }
-    }
-    ASSERT_NE(zone, nullptr) << "no hay control de zona con menú";
+    // Un solo control, no dos botones cuyas etiquetas cambian de verbo. Se
+    // busca por nombre y se comprueba aparte que TIENE menú, que es la mitad de
+    // lo que este test afirma: buscarlo por «tiene menú y dice Zona» daba por
+    // buena la condición que había que comprobar.
+    auto* zone = window.findChild<QToolButton*>(QStringLiteral("zoneButton"));
+    ASSERT_NE(zone, nullptr) << "no hay control de zona";
+    ASSERT_NE(zone->menu(), nullptr) << "el control de zona no despliega sus acciones";
 
     // Y ninguno de los botones viejos sobrevive: dos verbos para la misma
     // decisión es justo lo que se quitó.
@@ -2294,12 +2279,7 @@ TEST(MainKeyboard, LeavingDrawingModeIsReachableWithTheKeyboard) {
     palette.resize(260, 700);
     palette.show();
 
-    QAbstractButton* select = nullptr;
-    for (auto* button : palette.findChildren<QAbstractButton*>()) {
-        if (button->text().startsWith(QStringLiteral("Mover"))) {
-            select = button;
-        }
-    }
+    auto* select = palette.findChild<QAbstractButton*>(QStringLiteral("selectTool"));
     ASSERT_NE(select, nullptr);
     EXPECT_NE(select->focusPolicy(), Qt::NoFocus)
         << "no se puede salir del modo de dibujo con el teclado";
@@ -3612,23 +3592,18 @@ TEST(VideoTransportEndToEnd, PausingStopsItAndSeekingLandsWhereItWasAsked) {
     ASSERT_TRUE(waitFor([&] { return canvas->imageSize() == QSize(320, 240); }))
         << "el vídeo no llegó a mostrarse";
 
-    // La barra de transporte tiene que estar VISIBLE con un vídeo abierto.
-    QAbstractSlider* bar = nullptr;
-    for (auto* slider : window.findChildren<QAbstractSlider*>()) {
-        if (slider->isVisible() && slider->maximum() > slider->minimum() + 10) {
-            bar = slider;
-        }
-    }
-    ASSERT_NE(bar, nullptr) << "no hay barra de posición visible con un vídeo abierto";
+    // La barra de transporte tiene que estar VISIBLE con un vídeo abierto, y la
+    // pausa también. Los dos por nombre: el botón CAMBIA de rótulo —«Pausa» y
+    // «Seguir»— así que buscarlo por texto obligaba a probar los dos, y el día
+    // que ninguno encajara el test fallaría diciendo «no hay botón de pausa»
+    // cuando lo que pasó fue que se reescribió el rótulo.
+    auto* bar = window.findChild<QAbstractSlider*>(QStringLiteral("videoSlider"));
+    ASSERT_NE(bar, nullptr) << "no hay barra de posición con un vídeo abierto";
+    EXPECT_TRUE(bar->isVisible()) << "la barra de posición está oculta con un vídeo abierto";
 
-    QAbstractButton* playPause = nullptr;
-    for (auto* button : window.findChildren<QAbstractButton*>()) {
-        if (button->isVisible() && (button->text() == QStringLiteral("Pausa") ||
-                                    button->text() == QStringLiteral("Seguir"))) {
-            playPause = button;
-        }
-    }
-    ASSERT_NE(playPause, nullptr) << "no hay botón de pausa visible";
+    auto* playPause = window.findChild<QAbstractButton*>(QStringLiteral("playPauseButton"));
+    ASSERT_NE(playPause, nullptr) << "no hay botón de pausa";
+    EXPECT_TRUE(playPause->isVisible()) << "el botón de pausa está oculto";
 
     // 1) Pausar PARA de verdad: la barra deja de moverse.
     ASSERT_TRUE(waitFor([&] { return bar->value() > bar->minimum(); }))
@@ -4001,13 +3976,7 @@ TEST(SubpixelSetting, TheOperatorCanReachItAndItStartsOff) {
     pci::vision::SegmentationOptions options;
     pci::ui::DetectionPage page(options);
 
-    QCheckBox* box = nullptr;
-    for (auto* candidate : page.findChildren<QCheckBox*>()) {
-        if (candidate->text().contains(QStringLiteral("subpíxel")) ||
-            candidate->text().contains(QStringLiteral("subpixel"))) {
-            box = candidate;
-        }
-    }
+    auto* box = page.findChild<QCheckBox*>(QStringLiteral("subpixelCheck"));
     ASSERT_NE(box, nullptr)
         << "no hay forma de encender el afinado subpíxel desde la aplicación";
 
@@ -4107,14 +4076,17 @@ TEST(PieceReportWarnings, TheDialogShowsThemBeforeTheNumbers) {
     dialog.show();
     ASSERT_TRUE(QTest::qWaitForWindowExposed(&dialog));
 
-    // El aviso tiene que estar en pantalla, entero y visible.
-    QLabel* shown = nullptr;
-    for (auto* label : dialog.findChildren<QLabel*>()) {
-        if (label->text().contains(QStringLiteral("limites inferiores"))) {
-            shown = label;
-        }
-    }
-    ASSERT_NE(shown, nullptr) << "el informe trae el aviso y el diálogo no lo enseña";
+    // El aviso tiene que estar en pantalla, entero y visible. Se localiza por su
+    // nombre y se comprueba QUÉ DICE, que es lo que este test afirma: buscarlo
+    // por su texto daba por buena la mitad que había que comprobar, y ese texto
+    // lo escribe la medición, no el diálogo.
+    const auto warnings = dialog.findChildren<QLabel*>(QStringLiteral("reportWarning"));
+    ASSERT_FALSE(warnings.isEmpty())
+        << "el informe trae avisos y el diálogo no enseña ninguno";
+    QLabel* shown = warnings.front();
+    EXPECT_TRUE(shown->text().contains(QStringLiteral("limites inferiores")))
+        << "el primer aviso no es el de la pieza cortada: «"
+        << shown->text().toStdString() << "»";
     EXPECT_TRUE(shown->isVisible());
     EXPECT_TRUE(shown->wordWrap()) << "el aviso se corta en vez de leerse entero";
 
@@ -5094,24 +5066,17 @@ TEST(PieceCountMode, ChangingTheNumberIsAnnouncedImmediately) {
            "fotograma sin que el operador haya tocado nada";
 
     QSpinBox* field = nullptr;
-    QRadioButton* manual = nullptr;
     for (auto* box : page.findChildren<QSpinBox*>()) {
         field = box;
     }
-    // El que NO es el contador automático. Se busca así y no por su texto
-    // porque el texto es lo que se cambia cuando alguien mejora el nombre — y
-    // esta prueba se rompió justo por eso: buscaba la palabra «Manual», que
-    // desapareció al renombrar la pareja a «Contador automático de piezas» /
-    // «Deben ser exactamente».
+    // Por su nombre. Esta prueba ya se rompió una vez buscando la palabra
+    // «Manual», que desapareció al renombrar la pareja a «Contador automático
+    // de piezas» / «Número exacto:», y la vuelta siguiente se quedó buscando
+    // «el que NO dice automático» — que sigue siendo el rótulo, solo que negado.
     //
     // Lo que esta prueba comprueba es el AVISO EN VIVO, no cómo se llaman los
-    // controles; atarla al rótulo la hacía frágil ante un cambio que no tiene
-    // nada que ver con lo que vigila.
-    for (auto* radio : page.findChildren<QRadioButton*>()) {
-        if (!radio->text().contains(QStringLiteral("automático"), Qt::CaseInsensitive)) {
-            manual = radio;
-        }
-    }
+    // controles.
+    auto* manual = page.findChild<QRadioButton*>(QStringLiteral("manualCountRadio"));
     ASSERT_NE(field, nullptr);
     ASSERT_NE(manual, nullptr);
 
@@ -5130,16 +5095,14 @@ TEST(PieceCountMode, ChangingTheNumberIsAnnouncedImmediately) {
     std::printf("  [contar] al poner 4 se anuncia %d\n", announced.back());
 
     // Y volver al contador automático se anuncia como 0, que es como se guarda.
-    // Se busca por «automático» y no por «Automática»: el rótulo cambió a
-    // «Contador automático de piezas» y esta línea se quedó atrás en silencio —
-    // el `for` no encontraba nada, no pulsaba nada, y la aserción de después
-    // fallaba lejos de la causa.
+    // Aquí estaba el caso más silencioso: se buscaba «automático» porque el
+    // rótulo había cambiado a «Contador automático de piezas», y el día que
+    // cambie otra vez el `for` no encontrará nada, no pulsará nada, y la
+    // aserción de después fallará lejos de la causa.
     announced.clear();
-    for (auto* radio : page.findChildren<QRadioButton*>()) {
-        if (radio->text().contains(QStringLiteral("automátic"), Qt::CaseInsensitive)) {
-            radio->setChecked(true);
-        }
-    }
+    auto* automatic = page.findChild<QRadioButton*>(QStringLiteral("automaticCountRadio"));
+    ASSERT_NE(automatic, nullptr);
+    automatic->setChecked(true);
     ASSERT_FALSE(announced.empty());
     EXPECT_EQ(announced.back(), 0);
 }
