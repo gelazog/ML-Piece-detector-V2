@@ -435,7 +435,18 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
     const double medianArc = medianOf(arcLengths);
     const bool arcsAreCorners =
         medianLine > 0.0 && medianArc < kArcIsACornerBelow * medianLine;
-    if (straight >= 3 && straight <= scaled.maxSides && arcs >= 1 &&
+    // Y TANTOS ARCOS COMO LADOS: cada esquina de un polígono redondeado es un
+    // arco, así que las cuentas cuadran o no es un polígono redondeado.
+    //
+    // Sola, la condición de esquina corta no bastaba: se midió y el polígono de
+    // 16 lados con antialiasing daba un cociente arco/lado de 0,62 mientras los
+    // rectángulos redondeados legítimos llegan a 0,60. Se solapan, y ningún
+    // umbral sobre ese número puede separarlos. Contar sí: el rectángulo da 4
+    // y 4, y el dodecágono mal leído 4 arcos con 5 rectas.
+    //
+    // Esta rama se pregunta la PRIMERA, así que lo que se cuele aquí ya no
+    // llega a las de círculo ni polígono. Por eso pide las dos cosas.
+    if (straight >= 3 && straight <= scaled.maxSides && arcs == straight &&
         curvedFraction >= 0.10 && arcsAreCorners) {
         shape.kind = ShapeKind::Rounded;
         shape.sides = straight;

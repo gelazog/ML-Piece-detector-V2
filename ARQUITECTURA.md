@@ -2863,6 +2863,44 @@ es cuánto perímetro va en curva: medido, un rectángulo de 300×200 con redond
 de 40 px lleva el **27 %** del contorno en arco y un hexágono o una L llevan
 **0 %**.
 
+#### La rama de «redondeado» era el punto frágil de todo el clasificador
+
+Que se pregunte la primera tiene un precio: lo que se cuela ahí ya no llega a la
+competición de modelos. Y se disparaba con tres umbrales sueltos —`straight >= 3
+&& arcs >= 1 && curva >= 10 %`— así que cualquier cambio en la mezcla de rectas
+y arcos la encendía donde no tocaba. **Eso bloqueó dos veces el arreglo de las
+guardas de `makePrimitive`** (E9): al quitar los arcos falsos, un dodecágono
+salía «redondeado de 3 lados» y un polígono de 16 salía «redondeado» en vez de
+círculo, y el arreglo se revirtió las dos veces.
+
+Ahora la rama pide dos cosas que significan algo geométrico, y las dos hacen
+falta:
+
+- **Los arcos son las ESQUINAS**, o sea más cortos que los lados
+  (`kArcIsACornerBelow = 0,75` sobre las medianas). Medido: los rectángulos
+  redondeados de verdad van de 0,07 a 0,60 —redondeo de 60 px sobre un lado de
+  200 incluido— y un dodecágono mal leído da 3,57.
+- **Tantos arcos como lados.** La condición de esquina sola no bastaba: el
+  polígono de 16 con antialiasing da 0,62 y los rectángulos legítimos llegan a
+  0,60, así que se solapan y ningún umbral los separa. Contar sí: 4 y 4 en el
+  rectángulo, 4 arcos con 5 rectas en el dodecágono.
+
+Con las dos, **las guardas de E9 entran sin romper nada** y lo que se publica
+deja de ser imposible: barrido mínimo del banco 0,4° → **15,1°** (la opción pide
+15) y radio máximo 31× → **3,8×** el tamaño de la pieza. Un arco de radio treinta
+y una veces su propia pieza no era una curva: era un lado recto con un número
+inventado encima.
+
+Se comprueban con `ArcGuards`, y la tercera prueba de ese grupo existe por lo que
+no dice ninguna de las otras dos: que el rectángulo redondeado siga dando 4
+esquinas y 4 lados. Sin ella, la prueba pasaría el día que la guarda se llevara
+por delante los arcos de verdad — no tener nada que comprobar es la forma más
+fácil de fingir que todo va bien.
+
+**No arregla E8.** Las cien tuercas de la bandeja siguen dando 11 aciertos de
+100: eran dos fallos, y los seis planos de una tuerca hexagonal se siguen
+descomponiendo como arcos.
+
 Cuatro cosas que costaron una medida cada una, y las cuatro tenían la misma
 forma: **un número absoluto en un mundo que escala**.
 

@@ -518,8 +518,14 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   arqueado —50 px de lado en esta foto— y ver por qué prefiere un arco de radio
   enorme a una recta. **Hecho: ver E9.**
 
-- [!] **E9 · Dos guardas de `makePrimitive` se comprueban antes del número que
-  vigilan.** Encontrado persiguiendo E8. **Se intentó arreglar y se revirtió**,
+  **Y E9 quedó resuelto sin mover esto.** Con las dos guardas puestas, el barrido
+  mínimo del banco pasa de 0,4° a 15,1° y el radio máximo de 31× a 3,8×; las cien
+  tuercas siguen dando **11 aciertos de 100** y las mismas seis respuestas. Eran
+  dos fallos, no uno: los arcos publicados sin comprobar ya no existen, pero los
+  seis planos de la tuerca se siguen descomponiendo como arcos. Ahí sigue E8.
+
+- [x] **E9 · Dos guardas de `makePrimitive` se comprueban antes del número que
+  vigilan.** RESUELTO. Encontrado persiguiendo E8. **Se intentó arreglar y se revirtió**,
   y esto último es lo que hay que leer antes de volver a intentarlo.
 
   El orden en `vision/geometry_features.cpp` es:
@@ -604,12 +610,37 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   criterio de esquina es necesario y no suficiente, y las guardas siguen sin
   poder entrar.
 
-  Lo que queda por probar, y por ese orden: que los arcos sean tantos como los
-  lados (4/4 en el rectángulo redondeado, 4 arcos y 5 rectas en el dodecágono
-  mal leído), o que la rama de «redondeado» deje de preguntarse la primera y se
-  decida comparando su residuo con el del ajuste de polígono y el de
-  circunferencia — es decir, eligiendo el modelo que mejor explica el contorno
-  en vez de por orden de llegada.
+  **[x] Resuelto con la primera de las dos vías que quedaban: tantos arcos como
+  lados.** Cada esquina de un polígono redondeado es un arco, así que las cuentas
+  cuadran o no es un polígono redondeado. El rectángulo da 4 y 4; el dodecágono
+  mal leído, 4 arcos con 5 rectas. Contar separa donde el cociente arco/lado se
+  solapaba, y la condición sigue siendo geométrica y no un umbral ajustado.
+
+  Con `arcs == straight` puesta, **las dos guardas entran a la vez sin romper
+  nada**: `ShapeClass*:*Geometry*:*Contour*:*Diverse*:*Calibration*` da 121
+  pruebas en verde, el dodecágono y el polígono de 16 aciertan los dos.
+
+  Lo que se publica ahora, sobre el mismo banco:
+
+  | | antes | ahora | lo que la opción admite |
+  |---|---|---|---|
+  | barrido mínimo | 0,4° | **15,1°** | 15° |
+  | radio máximo / radio de la pieza | 31× | **3,8×** | — |
+
+  `ArcGuards` fija las tres cosas: que no se publique un arco que las propias
+  opciones rechazarían, que ninguno mida varias veces su pieza, y que el
+  rectángulo redondeado siga dando 4 esquinas y 4 lados —sin esto último la
+  prueba pasaría por no tener nada que comprobar, que es la forma más fácil de
+  fingir.
+
+  **No hizo falta la segunda vía** —decidir «redondeado» por residuo en vez de
+  por orden de llegada—, y sigue siendo lo correcto a hacer el día que esta rama
+  vuelva a dar problemas.
+
+  **Y no arregla E8.** Se midió después: las cien tuercas siguen dando 11
+  aciertos de 100 y las mismas seis respuestas distintas. Los arcos falsos eran
+  un fallo real y otro fallo: los seis planos de la tuerca se siguen
+  descomponiendo como arcos, y esa es la pieza que le falta a E8.
 
 ## F. Ya está hecho — no volver a investigarlo
 

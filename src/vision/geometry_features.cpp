@@ -119,6 +119,46 @@ ContourPrimitive makePrimitive(const std::vector<cv::Point2f>& points, std::size
             primitive.rmsResidual = refined.rmsResidual;
             primitive.sweepDeg = primitive.length / refined.radius * kRadToDeg;
         }
+        // Y LA GUARDA DEL BARRIDO SE VUELVE A APLICAR AQUI.
+        //
+        // Estaba solo en `fitSegment`, o sea ANTES de recalcular el numero que
+        // vigila. El refinado sube el radio —para eso esta, el ajuste voraz lo
+        // dejaba hasta un 40 % bajo— y el barrido baja con el; el tramo se
+        // quedaba clasificado como arco con un barrido que ya no lo justifica.
+        //
+        // No es teorico. Medido sobre los 1288 arcos del banco de fotos entero,
+        // el barrido MINIMO era de 0,4 grados con la opcion pidiendo 15. La
+        // guarda existia, estaba documentada con su motivo, y no impedia nada.
+        //
+        // Se ve en la bandeja de cien tuercas: cada plano de la tuerca salia
+        // como un arco de radio 154-192 px sobre una pieza de radio 44 —cuatro
+        // veces la propia pieza— y con eso el clasificador no podia reconocer un
+        // hexagono. Un arco de radio enorme explica los puntos igual que una
+        // recta, y devolver ese radio es inventarselo: es lo que ya decia el
+        // comentario de `minArcSweepDeg`, solo que no llegaba a pasar.
+        // Y EL RESIDUO, POR LO MISMO. El reajuste republica las tres cosas
+        // —radio, barrido y residuo— y las tres condiciones se habian evaluado
+        // sobre los valores de antes.
+        //
+        // Se veia en un dodecagono de radio 100: sus lados salian fundidos de
+        // tres en tres como arcos con residuo 0,83-0,87 px, o sea POR ENCIMA
+        // del tope de 0,80 que los habia dejado entrar. Un tramo publicado con
+        // un error mayor del que su propia tolerancia admite no es un ajuste,
+        // es un ajuste rechazado que nadie volvio a mirar.
+        const bool sweepTooSmall = primitive.sweepDeg < options.minArcSweepDeg;
+        const bool fitTooLoose = primitive.rmsResidual > options.maxResidual;
+        if (sweepTooSmall || fitTooLoose) {
+            primitive.kind = PrimitiveKind::Line;
+            primitive.center = cv::Point2f(0.0F, 0.0F);
+            primitive.radius = 0.0;
+            primitive.sweepDeg = 0.0;
+            // Con el residuo de la RECTA, no el que traia el circulo. El campo
+            // dice «calidad del ajuste» y tiene que hablar del ajuste que se
+            // publica: dejar el del circulo seria describir un tramo con el
+            // error de un modelo que ya se ha descartado.
+            const LineFit asLine = fitLineTotal(slice);
+            primitive.rmsResidual = asLine.valid ? asLine.rmsResidual : 0.0;
+        }
     }
     return primitive;
 }
