@@ -151,7 +151,11 @@ MeasurementModeDialog::MeasurementModeDialog(const repositories::PieceMeasuremen
     // definición, así que el modo no aportaría reglas de posición.
     warning_ = new QLabel(this);
     warning_->setWordWrap(true);
-    warning_->setStyleSheet(QStringLiteral("color:#ffb454;"));
+    // 1,55:1 sobre el gris de ventana. Es el mismo fallo que motivó esta paleta
+    // —la pista de escena estaba a 1,53:1— y en un AVISO es peor: el ámbar
+    // brillante se ve en la pantalla de quien lo escribió y desaparece en un
+    // taller con luz de nave. El token está medido a 4,55:1.
+    warning_->setStyleSheet(theme::textStyle(theme::kWarn));
     warning_->setText(
         tr("⚠ Con el cero puesto sobre la propia pieza, su desviación es cero por "
            "definición: el modo Especial solo aportará el giro. Para vigilar el "

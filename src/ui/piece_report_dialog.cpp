@@ -87,7 +87,11 @@ PieceReportDialog::PieceReportDialog(inspection::PieceReport report,
         // su número es una opinión.
         auto* why = new QLabel(QString::fromStdString(report_.shape.reason), this);
         why->setWordWrap(true);
-        why->setStyleSheet(QStringLiteral("color:#9aa0a6;"));
+        // 2,32:1 sobre el gris de ventana: por debajo incluso del 3:1 que WCAG
+        // admite para texto grande. Es la frase que explica POR QUÉ se reconoció
+        // esa figura, con su residuo — una clasificación sin su número es una
+        // opinión, y una que no se lee es lo mismo que no darla.
+        why->setStyleSheet(theme::textStyle(theme::kInkMuted));
         root->addWidget(why);
     }
 

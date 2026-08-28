@@ -1,3 +1,4 @@
+#include "ui/theme.h"
 #include "ui/camera_image_page.h"
 
 #include <QCheckBox>
@@ -141,7 +142,11 @@ CameraImagePage::CameraImagePage(
             // Decir POR QUÉ está apagado evita que parezca un fallo de la app.
             // Se comprobó al abrir: la cámara rechazó escribir la propiedad.
             auto* note = new QLabel(tr("(esta cámara no deja cambiarlo)"), this);
-            note->setStyleSheet(QStringLiteral("color:#888;"));
+            // 3,11:1 sobre el gris de ventana, o sea por debajo del 4,5:1 que
+            // pide WCAG para texto. Explica por qué un control está apagado: si
+            // no se lee, el control apagado parece una avería de la aplicación,
+            // que es justo lo que esta línea venía a evitar.
+            note->setStyleSheet(theme::textStyle(theme::kInkMuted));
             form->addRow(QString(), note);
         }
         rows_.push_back(row);

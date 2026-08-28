@@ -253,7 +253,36 @@ Todo esto salió de una auditoría anterior y está verificado.
   suelta fuera de un grupo, y que **la sugerencia y su control vivan en el mismo
   grupo**.
 - [~] **C5 · Colores escritos a mano fuera de `ui/theme.h`.** El trinquete de
-  `tests/test_palette_guard.cpp` impide que suban; van **56 -> 49 -> 41 -> 36 -> 31 -> 25**.
+  `tests/test_palette_guard.cpp` impide que suban; van
+  **56 -> 49 -> 41 -> 36 -> 31 -> 25 -> 23 -> 19**.
+
+  Los cuatro de esta vuelta eran **el mismo papel escrito cuatro veces** —texto
+  secundario— y los cuatro **suspendían WCAG** sobre el gris de ventana de
+  Windows, que es el fondo real de esos diálogos:
+
+  | sitio | a mano | ahora |
+  |---|---|---|
+  | «(esta cámara no deja cambiarlo)» | `#888888` **3,11:1** | `kInkMuted` 5,31:1 |
+  | «el corte no toca la pieza» | `#8a8a8a` **3,03:1** | `kInkMuted` 5,31:1 |
+  | «por qué se reconoció esta figura» | `#9aa0a6` **2,32:1** | `kInkMuted` 5,31:1 |
+  | aviso del modo de medida | `#ffb454` **1,55:1** | `kWarn` 4,55:1 |
+
+  El último es el mismo fallo exacto que motivó esta paleta —la pista de escena
+  estaba a 1,53:1— y en un aviso es peor que en ningún sitio: un ámbar brillante
+  se ve en la pantalla de quien lo escribe y desaparece en un taller con luz de
+  nave.
+
+  **Y uno se dejó a mano a propósito.** El aviso rojo de «el corte SÍ toca la
+  pieza» está en `#3a1010` sobre `#ffd9d9`, que da **12,83:1**, mientras el par
+  de tokens (`kBad` sobre `kBadField`) da 5,55:1. Sustituirlo habría bajado el
+  contraste. La regla es que el color venga del tema, no que el tema gane
+  siempre; `test_secondary_text_contrast.cpp` deja esa excepción con su número y
+  falla el día que los tokens midan mejor, para que se quite entonces.
+
+  **Ojo con `kInkOff`.** Su 4,70:1 está medido sobre BLANCO; sobre el gris de
+  ventana da **4,12:1** y no llega. Por eso el resultado tranquilizador de
+  detección usa `kInkMuted` y no `kInkOff`, que era el token que su nombre
+  sugería.
 
   Los cinco de esta vuelta salieron de dos grupos, no sueltos:
 

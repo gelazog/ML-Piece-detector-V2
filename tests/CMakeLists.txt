@@ -131,6 +131,7 @@ add_executable(pci_gui_tests
   test_brush_size_from_menu.cpp
   test_context_menu.cpp
   test_theme.cpp
+  test_secondary_text_contrast.cpp
   test_palette_guard.cpp
   test_overlay_verdict.cpp
   test_overlay_halo.cpp

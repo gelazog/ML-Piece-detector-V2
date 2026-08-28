@@ -615,7 +615,7 @@ void DetectionPage::setClippingCheck(const vision::ClippingCheck& check) {
         check.thresholdCutsThePiece
             ? QStringLiteral("color:#3a1010; background:#ffd9d9; border:1px solid #c04040;"
                              " border-radius:4px; padding:6px; font-weight:bold;")
-            : QStringLiteral("color:#8a8a8a; padding:6px;"));
+            : theme::textStyle(theme::kInkMuted) + QStringLiteral(" padding:6px;"));
 }
 
 void DetectionPage::setBackgroundColour(const cv::Vec3b& background) {

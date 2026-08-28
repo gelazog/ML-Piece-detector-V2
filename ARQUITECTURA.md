@@ -2460,6 +2460,45 @@ Dos salvaguardas que se ganaron probando:
   operador aprende a ignorar, así que ahora hay un test que exige que **no**
   salte con una rueda normalizada.
 
+### El texto secundario no se leía, y eran cuatro grises distintos
+
+La aplicación **no es de un solo tema**, a propósito: el informe de inspección y
+el calibrador de lente se pintan sobre negro —encima llevan imagen, y un marco
+claro alrededor de una foto la falsea— y el resto va sobre el gris de ventana de
+Windows. Eso obliga a tener dos juegos de tokens y a saber cuál va dónde, y es
+justo donde se coló el fallo.
+
+El texto secundario —por qué un control está apagado, el resultado tranquilizador
+de una comprobación, el porqué de una clasificación, un aviso— estaba escrito a
+mano en cuatro ficheros con cuatro valores distintos. Nadie eligió tener cuatro:
+cada uno se tecleó por su cuenta. Y los cuatro **suspenden WCAG 2.2** sobre el
+gris de ventana:
+
+| sitio | a mano | ahora |
+|---|---|---|
+| «(esta cámara no deja cambiarlo)» | `#888888` **3,11:1** | `kInkMuted` 5,31:1 |
+| «el corte no toca la pieza» | `#8a8a8a` **3,03:1** | `kInkMuted` 5,31:1 |
+| «por qué se reconoció esta figura» | `#9aa0a6` **2,32:1** | `kInkMuted` 5,31:1 |
+| aviso del modo de medida | `#ffb454` **1,55:1** | `kWarn` 4,55:1 |
+
+El último es el mismo fallo exacto que motivó esta paleta —la pista de escena
+estaba a 1,53:1— y en un aviso es el peor sitio posible: un ámbar brillante se ve
+en la pantalla de quien lo escribe y desaparece en un taller con luz de nave, que
+es donde corre esto.
+
+**Y uno se dejó a mano a propósito, con su número.** El aviso rojo de «el corte
+SÍ toca la pieza» está en `#3a1010` sobre `#ffd9d9`, que da **12,83:1**, mientras
+el par de tokens (`kBad` sobre `kBadField`) da 5,55:1. Sustituirlo habría bajado
+el contraste. La regla es que el color venga del tema, no que el tema gane
+siempre; `test_secondary_text_contrast.cpp` guarda esa excepción y **falla el día
+que los tokens midan mejor**, para que se quite entonces y no antes.
+
+**Trampa con `kInkOff`:** su 4,70:1 está medido sobre BLANCO. Sobre el gris de
+ventana da **4,12:1** y no llega, así que el resultado tranquilizador de
+detección usa `kInkMuted` aunque `kInkOff` fuera el token que su nombre sugería.
+Un token medido contra un fondo y usado contra otro deja la pantalla igual de
+ilegible — por eso la prueba mide **el widget**, no el token.
+
 ### Lo que se dibuja encima de la foto
 
 Un contorno de color sobre una FOTO no tiene contraste garantizado: depende de
