@@ -111,7 +111,18 @@ bool measureProposal(const cv::Mat& gray, const vision::Fixture& fixture, double
     proposal.measured = result.value().measured;
     proposal.kind = result.value().kind;
     proposal.detail = result.value().detail;
-    suggestTolerances(proposal.config.type, proposal.measured, proposal.config.toleranceMin,
+    // CON LA GEOMETRÍA DELANTE, no solo con el tipo.
+    //
+    // Hay dos sobrecargas y la de tipo lleva escrito al lado que «quien tenga la
+    // geometría a mano debe llamar a la que la mira». Aquí se tiene, y se estaba
+    // llamando a la otra.
+    //
+    // Hoy no cambia ningún número —el Área y el Perímetro acaban en la misma
+    // banda relativa por los dos caminos— y por eso el fallo era invisible. Pero
+    // la Región mide seis cosas con escalas que no se parecen: el día que se
+    // proponga una que cuente agujeros, la banda de ±10 % diría «entre 1,8 y 2,2
+    // agujeros», que no es una tolerancia, es un sinsentido con forma de número.
+    suggestTolerances(proposal.geometry, proposal.measured, proposal.config.toleranceMin,
                       proposal.config.toleranceMax);
     // Y se dice cuando la cota no volverá a medir. El número de AHORA es una
     // medida de verdad —sale de la descomposición del contorno de esta pieza—

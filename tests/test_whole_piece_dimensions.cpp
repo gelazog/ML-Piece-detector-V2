@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "inspection_editor/auto_measure.h"
+#include "inspection_editor/tools/tool_geometry.h"
 #include "inspection_editor/tools/tool_types.h"
 #include "vision/contour_analysis.h"
 #include "vision/pipeline.h"
@@ -202,4 +203,47 @@ TEST(WholePieceDimensions, TheCutDoesNotEmptyOneFamilyToFillAnother) {
     EXPECT_TRUE(hasArea)
         << "el área se cae del recorte, y era la cota que venía a tapar el hueco de "
            "las piezas sin nada comprobable";
+}
+
+TEST(WholePieceDimensions, EveryRegionMeasureGetsTheBandItsOwnScaleNeeds) {
+    // LA REGIÓN MIDE SEIS COSAS CON ESCALAS QUE NO SE PARECEN, y la banda
+    // sugerida tiene que salir de la MEDIDA, no del tipo de herramienta.
+    //
+    // Hay dos sobrecargas de `suggestTolerances` y la de tipo lleva escrito al
+    // lado que quien tenga la geometría debe llamar a la que la mira. El
+    // proponedor la tiene y llamaba a la otra. Hoy no cambiaba ningún número
+    // —área y perímetro acaban en la misma banda relativa por los dos caminos— y
+    // por eso el fallo era invisible.
+    //
+    // Esta prueba lo hace visible: recorre las seis medidas y comprueba que cada
+    // una recibe la banda de su escala. Un recuento de agujeros con una banda de
+    // ±10 % diría «entre 1,8 y 2,2 agujeros», que no es una tolerancia sino un
+    // sinsentido con forma de número; y una circularidad, que vive entre 0 y 1,
+    // no puede recibir un techo mayor que 1.
+    struct Case {
+        inspection::RegionMeasure measure;
+        const char* name;
+        double measured;
+        double wantMin;
+        double wantMax;
+    };
+    const Case cases[] = {
+        {inspection::RegionMeasure::HoleCount, "agujeros", 2.0, 2.0, 2.0},
+        {inspection::RegionMeasure::Circularity, "circularidad", 0.98, 0.93, 1.0},
+        {inspection::RegionMeasure::Solidity, "solidez", 0.99, 0.94, 1.0},
+        {inspection::RegionMeasure::AspectRatio, "aspecto", 2.0, 1.9, 2.1},
+        {inspection::RegionMeasure::Area, "área", 30000.0, 27000.0, 33000.0},
+        {inspection::RegionMeasure::Perimeter, "perímetro", 700.0, 630.0, 770.0},
+    };
+    for (const auto& c : cases) {
+        inspection::RegionGeometry g;
+        g.measure = c.measure;
+        double low = 0.0;
+        double high = 0.0;
+        inspection::suggestTolerances(inspection::ToolGeometry{g}, c.measured, low, high);
+        std::printf("  [banda] %-12s medida %9.2f -> %.2f … %.2f\n", c.name, c.measured, low,
+                    high);
+        EXPECT_NEAR(low, c.wantMin, 1e-6) << c.name << ": el piso de la banda";
+        EXPECT_NEAR(high, c.wantMax, 1e-6) << c.name << ": el techo de la banda";
+    }
 }
