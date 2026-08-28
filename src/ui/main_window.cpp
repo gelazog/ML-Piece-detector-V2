@@ -1839,7 +1839,13 @@ void MainWindow::buildMenuBar() {
     // La acción de la barra, también aquí: un botón que solo existe en la barra
     // no lo encuentra quien navega con el teclado, y a los menús se va justo
     // cuando no se reconoce el icono.
-    measureMenu->addAction(tr("Medir pieza"), this, &MainWindow::onMeasurePieceClicked);
+    if (auto* measure = shortcutAction(QStringLiteral("measure_piece"),
+                                       tr("Medir pieza"))) {
+        measureMenu->addAction(measure);
+    } else {
+        measureMenu->addAction(tr("Medir pieza"), this,
+                               &MainWindow::onMeasurePieceClicked);
+    }
     measureMenu->addAction(tr("Modo de medición de la pieza…"), this,
                            &MainWindow::onMeasurementModeClicked);
 
@@ -3007,6 +3013,24 @@ void MainWindow::buildShortcuts() {
                 QKeySequence(Qt::CTRL | Qt::Key_D), &MainWindow::onDuplicateToolClicked);
     addShortcut("save_template", tr("Guardar la plantilla (herramientas en vivo)"),
                 QKeySequence::Save, &MainWindow::onSaveTemplateClicked);
+    // MEDIR PIEZA TIENE TECLA, y la tiene por una razón concreta.
+    //
+    // El taller pidió «otra ventana en donde al momento de realizar las
+    // mediciones te mostrara los cálculos, como área, perímetro, etc.». Esa
+    // ventana existe desde hace tiempo: es este botón, y da perímetro, área,
+    // agujeros, circularidad, diámetros y las cotas dibujadas, con copiar y
+    // exportar.
+    //
+    // Que alguien pida algo que ya está es la mejor prueba posible de que no se
+    // encuentra. Y no se encuentra porque es uno de trece botones del mismo
+    // peso: destacarlo también sería quitarle el sitio al de inspeccionar, que
+    // es el único destacado a propósito.
+    //
+    // Así que se hace descubrible por donde se descubren las cosas: el menú, que
+    // desde hace poco enseña la tecla de cada entrada. La M es la letra natural
+    // y estaba libre — A, C, D, I, P, R y V ya tienen dueño.
+    addShortcut("measure_piece", tr("Medir la pieza (área, perímetro, cotas)"),
+                QKeySequence(Qt::Key_M), &MainWindow::onMeasurePieceClicked);
     addShortcut("shortcuts_help", tr("Guía de atajos"), QKeySequence(Qt::Key_F1),
                 &MainWindow::onShowShortcuts);
 

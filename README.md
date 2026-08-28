@@ -549,6 +549,13 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    creyendo que la pieza no tenía más. Y el corte se lleva lo más pequeño **de
    cada tipo**, no un tipo entero — antes, un hexágono perdía sus seis ángulos.
 
+   **Medir pieza** (botón, *Medida ▸ Medir pieza*, o la tecla **M**) abre el
+   informe de la pieza que tengas señalada: perímetro, área, agujeros,
+   circularidad, los diámetros y todas tus cotas, con copiar y exportar. Tiene
+   tecla desde que alguien pidió «una ventana que muestre el área y el
+   perímetro» sin saber que ya estaba — que es la mejor prueba posible de que no
+   se encontraba.
+
    **Sacar las medidas**: en el resultado de una inspección tienes **Copiar
    medidas** (texto alineado, para pegar en un correo o en un parte) y
    **Exportar CSV…** (columnas que una hoja de cálculo puede sumar y promediar).

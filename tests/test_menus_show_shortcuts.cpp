@@ -56,13 +56,17 @@ QList<QAction*> everyAction(QWidget* window) {
 TEST(MenusShowShortcuts, TheEntriesThatHaveAKeyShowIt) {
     ui::MainWindow window;
 
-    // Las cinco entradas que hacen exactamente lo mismo que un atajo. No son
-    // todas las del menú: la mayoría no tiene tecla y no puede enseñar ninguna.
-    // Lo que no puede pasar es que la tenga y no la enseñe.
+    // Las entradas que hacen exactamente lo mismo que un atajo. No son todas las
+    // del menú: la mayoría no tiene tecla y no puede enseñar ninguna. Lo que no
+    // puede pasar es que la tenga y no la enseñe.
     const QStringList shouldShowAKey{
         QStringLiteral("Calibrar escala (mm)…"), QStringLiteral("Guardar plantilla"),
         QStringLiteral("Inspeccionar"),          QStringLiteral("Editor de plantilla…"),
         QStringLiteral("Atajos de teclado…"),
+        // «Medir pieza» tiene tecla desde que el taller pidió una ventana con el
+        // área y el perímetro que ya existía. Que alguien pida algo que ya está
+        // es la mejor prueba de que no se encuentra.
+        QStringLiteral("Medir pieza"),
     };
 
     int found = 0;
@@ -82,8 +86,8 @@ TEST(MenusShowShortcuts, TheEntriesThatHaveAKeyShowIt) {
         }
     }
     EXPECT_EQ(found, shouldShowAKey.size())
-        << "no se encuentran las cinco entradas: si se renombraron, hay que actualizar "
-           "esta lista — no borrar la prueba";
+        << "no se encuentran todas las entradas de la lista: si se renombraron, hay que "
+           "actualizarla — no borrar la prueba";
 }
 
 TEST(MenusShowShortcuts, NoTwoActionsClaimTheSameKeyInTheSameWindow) {
