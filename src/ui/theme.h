@@ -208,6 +208,27 @@ inline constexpr const char* kInkOnChipChosen = "#0b2a35";  // 9,28:1 sobre kChi
 // mano encima del borde. Es un estado distinto y por eso lleva otro color.
 inline constexpr const char* kChipEdited = "#8ce99a";
 
+// --- LA BALDOSA DEL MOSAICO QUE SE ESTÁ MIDIENDO ---------------------------
+//
+// El mosaico marca con verde la pieza que se mide, y la pastilla de estado de la
+// ventana marca ESA MISMA COSA con `kChipChosen`, que es azul. Un significado
+// con dos colores es el desorden que motivó esta paleta, y aquí está otra vez.
+//
+// Se le pone nombre CONSERVANDO el verde a propósito. Unificarlos cambia lo que
+// el operador ve todo el día en la pantalla que más usa, y eso se decide con la
+// pantalla delante y no de paso; lo que sí se arregla ahora es que el color deje
+// de estar tecleado —el mismo verde estaba escrito DOS veces en el mismo
+// fichero y en dos formatos, `QColor(0, 190, 0)` y `#00be00`— porque así es como
+// se acaba teniendo tres verdes.
+//
+// Contraste medido: 6,95:1 la tinta sobre su chapa, y 4,53:1 el marco elegido
+// contra el de reposo, que es su vecino. La baldosa en reposo reusa
+// los tokens de pastilla en reposo, que ya existían para lo mismo.
+inline constexpr const char* kTileMeasured = "#00be00";
+inline constexpr const char* kInkOnTileMeasured = "#0a1e0a";  // 6,95:1 sobre kTileMeasured
+inline constexpr int kTileBadgeAlpha = 220;      // la chapa de la que se mide
+inline constexpr int kTileBadgeRestAlpha = 170;  // la de las demás
+
 // La pastilla en reposo: la aplicación decide, y no llama la atención.
 [[nodiscard]] inline QString chipRestStyle() {
     return QStringLiteral("color:%1; background:%2; border-radius:8px; padding:1px 6px;")

@@ -155,3 +155,38 @@ TEST(SecondaryTextContrast, TheRedNoticeWasLeftAloneBecauseTheThemeMeasuresWorse
         << "el par de tokens ya mide mejor que el escrito a mano. Entonces la razón para "
            "dejar este a mano ha caducado: pásalo a tokens y borra esta prueba";
 }
+
+TEST(SecondaryTextContrast, TheMosaicBadgeSaysWhichPieceIsMeasuredAndCanBeRead) {
+    // EL MISMO SIGNIFICADO CON DOS COLORES, y de momento se queda así.
+    //
+    // El mosaico marca en verde la pieza que se está midiendo; la pastilla de
+    // estado de la ventana marca ESA MISMA COSA en azul (`kChipChosen`). Eso es
+    // el desorden que motivó la paleta, otra vez. Unificarlos cambia lo que el
+    // operador ve todo el día en la pantalla que más usa, así que se decide con
+    // la pantalla delante y no de paso.
+    //
+    // Lo que sí se arregló ahora es que el verde dejara de estar tecleado: el
+    // MISMO valor estaba escrito dos veces en el mismo fichero y en dos formatos
+    // —`QColor(0, 190, 0)` para la chapa del número y `#00be00` para el marco—.
+    // Así es como se acaba teniendo tres verdes que casi coinciden.
+    //
+    // Y ya que tiene nombre, se mide: el número de la baldosa es lo que dice CUÁL
+    // es, y sobre noventa píxeles de foto no puede quedarse en un verde sobre
+    // verde.
+    const double measured = contrast(QColor(QString(pci::ui::theme::kInkOnTileMeasured)),
+                                     QColor(QString(pci::ui::theme::kTileMeasured)));
+    std::printf("  [contraste] baldosa medida: %s sobre %s -> %.2f:1\n",
+                pci::ui::theme::kInkOnTileMeasured, pci::ui::theme::kTileMeasured, measured);
+    EXPECT_GE(measured, 4.5)
+        << "el número de la baldosa que se está midiendo no se lee sobre su propia chapa";
+
+    // Y el marco tiene que distinguirse del de las demás: es lo único que dice
+    // cuál está elegida cuando hay cien baldosas. WCAG pide 3:1 para un elemento
+    // gráfico, y aquí se compara contra el marco en reposo, que es su vecino.
+    const double frame = contrast(QColor(QString(pci::ui::theme::kTileMeasured)),
+                                  QColor(QString(pci::ui::theme::kChipRest)));
+    std::printf("  [contraste] marco elegido contra marco en reposo -> %.2f:1\n", frame);
+    EXPECT_GE(frame, 3.0)
+        << "el marco de la baldosa elegida no se distingue del de las demás, y entonces "
+           "no dice nada";
+}

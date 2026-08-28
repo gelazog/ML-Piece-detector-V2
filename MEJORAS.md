@@ -254,7 +254,7 @@ Todo esto salió de una auditoría anterior y está verificado.
   grupo**.
 - [~] **C5 · Colores escritos a mano fuera de `ui/theme.h`.** El trinquete de
   `tests/test_palette_guard.cpp` impide que suban; van
-  **56 -> 49 -> 41 -> 36 -> 31 -> 25 -> 23 -> 19**.
+  **56 -> 49 -> 41 -> 36 -> 31 -> 25 -> 23 -> 19 -> 14**.
 
   Los cuatro de esta vuelta eran **el mismo papel escrito cuatro veces** —texto
   secundario— y los cuatro **suspendían WCAG** sobre el gris de ventana de
@@ -283,6 +283,28 @@ Todo esto salió de una auditoría anterior y está verificado.
   ventana da **4,12:1** y no llega. Por eso el resultado tranquilizador de
   detección usa `kInkMuted` y no `kInkOff`, que era el token que su nombre
   sugería.
+
+  **Y otra colisión de significado, anotada sin resolver.** El mosaico marca en
+  **verde** la pieza que se está midiendo y la pastilla de estado de la ventana
+  marca **eso mismo** en azul (`kChipChosen`). Un significado con dos colores es
+  el desorden que motivó la paleta, otra vez.
+
+  De momento el verde solo ha recibido NOMBRE (`kTileMeasured`,
+  `kInkOnTileMeasured`), conservando el valor: unificarlos cambia lo que el
+  operador ve todo el día en la pantalla que más usa, y eso se decide con la
+  pantalla delante. Lo que sí se arregló es que dejara de estar tecleado — el
+  mismo verde estaba escrito **dos veces en el mismo fichero y en dos formatos**,
+  `QColor(0, 190, 0)` y `#00be00`, que es exactamente como se acaba teniendo tres
+  verdes. Contraste medido al ponerle nombre: 6,95:1 la tinta sobre su chapa y
+  4,53:1 el marco elegido contra el de reposo.
+
+  **Decisiones de color pendientes de tener la pantalla delante** (las dos son
+  cambios de aspecto, no de código):
+
+  1. `QColor(255, 60, 60)` es el punto de origen en el vídeo **y** el contorno de
+     «no cumple» en el informe.
+  2. El verde del mosaico contra el azul de la pastilla, para «esta es la pieza
+     que se mide».
 
   Los cinco de esta vuelta salieron de dos grupos, no sueltos:
 

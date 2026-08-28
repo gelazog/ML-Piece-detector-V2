@@ -199,19 +199,27 @@ void PieceMosaic::rebuild() {
             const QRectF badge(2, 2, metrics.horizontalAdvance(label) + 8,
                                metrics.height() + 2);
             painter.setPen(Qt::NoPen);
-            painter.setBrush(number == measured_ ? QColor(0, 190, 0, 220)
-                                                 : QColor(0, 0, 0, 170));
+            QColor chip = number == measured_ ? theme::color(theme::kTileMeasured)
+                                              : QColor(Qt::black);
+            chip.setAlpha(number == measured_ ? theme::kTileBadgeAlpha
+                                              : theme::kTileBadgeRestAlpha);
+            painter.setBrush(chip);
             painter.drawRoundedRect(badge, 3.0, 3.0);
-            painter.setPen(number == measured_ ? QColor(10, 30, 10) : QColor(230, 230, 230));
+            painter.setPen(number == measured_ ? theme::color(theme::kInkOnTileMeasured)
+                                               : theme::color(theme::kInkOnChipRest));
             painter.drawText(badge, Qt::AlignCenter, label);
         }
         tile->setIcon(QIcon(art));
         // La que se está midiendo lleva marco: el estado marcado de un botón
         // plano es demasiado sutil para verlo entre cien.
+        // El mismo verde que la chapa del número, y de la misma fuente: estaba
+        // escrito dos veces en este fichero y en dos formatos.
         tile->setStyleSheet(
             number == measured_
-                ? QStringLiteral("QToolButton { border:2px solid #00be00; border-radius:4px; }")
-                : QStringLiteral("QToolButton { border:1px solid #444; border-radius:4px; }"));
+                ? QStringLiteral("QToolButton { border:2px solid %1; border-radius:4px; }")
+                      .arg(QString(theme::kTileMeasured))
+                : QStringLiteral("QToolButton { border:1px solid %1; border-radius:4px; }")
+                      .arg(QString(theme::kChipRest)));
 
         connect(tile, &QToolButton::clicked, this,
                 [this, number] { emit pieceChosen(number); });
