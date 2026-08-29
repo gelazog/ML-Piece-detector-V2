@@ -2158,7 +2158,7 @@ TEST(PieceReportDialogTest, EveryMeasurementIsOnScreenWithItsUnit) {
 
     pci::ui::PieceReportDialog dialog(report, QStringLiteral("una imagen"));
     dialog.resize(900, 700);
-    auto* table = dialog.findChild<QTableWidget*>();
+    auto* table = dialog.findChild<QTableWidget*>(QStringLiteral("reportTable"));
     ASSERT_NE(table, nullptr);
 
     // Una fila por medida más los dos títulos de bloque.
@@ -2183,7 +2183,7 @@ TEST(PieceReportDialogTest, TheContourFactsComeBeforeTheDimensionsAndAreSeparate
     ASSERT_TRUE(report.ok) << report.problem;
     pci::ui::PieceReportDialog dialog(report, QStringLiteral("una imagen"));
     dialog.resize(900, 700);
-    auto* table = dialog.findChild<QTableWidget*>();
+    auto* table = dialog.findChild<QTableWidget*>(QStringLiteral("reportTable"));
     ASSERT_NE(table, nullptr);
 
     // Los dos títulos de bloque son las filas que ocupan las cinco columnas.
@@ -2225,7 +2225,7 @@ TEST(PieceReportDialogTest, ACountIsNotShownWithDecimals) {
     ASSERT_TRUE(report.ok) << report.problem;
     pci::ui::PieceReportDialog dialog(report, QStringLiteral("una imagen"));
     dialog.resize(900, 700);
-    auto* table = dialog.findChild<QTableWidget*>();
+    auto* table = dialog.findChild<QTableWidget*>(QStringLiteral("reportTable"));
     ASSERT_NE(table, nullptr);
 
     int counts = 0;
@@ -2247,7 +2247,7 @@ TEST(PieceReportDialogTest, WithoutTolerancesTheColumnSaysSoInsteadOfShowingZero
     ASSERT_TRUE(report.ok) << report.problem;
     pci::ui::PieceReportDialog dialog(report, QStringLiteral("una imagen"));
     dialog.resize(900, 700);
-    auto* table = dialog.findChild<QTableWidget*>();
+    auto* table = dialog.findChild<QTableWidget*>(QStringLiteral("reportTable"));
     ASSERT_NE(table, nullptr);
 
     // La primera fila de datos es un hecho del contorno (el perímetro).
@@ -4345,7 +4345,7 @@ TEST(PieceReportWarnings, TheDialogShowsThemBeforeTheNumbers) {
     EXPECT_TRUE(shown->wordWrap()) << "el aviso se corta en vez de leerse entero";
 
     // Y por encima de la tabla de cifras.
-    auto* table = dialog.findChild<QTableWidget*>();
+    auto* table = dialog.findChild<QTableWidget*>(QStringLiteral("reportTable"));
     ASSERT_NE(table, nullptr);
     const int warningY = shown->mapTo(&dialog, QPoint(0, 0)).y();
     const int tableY = table->mapTo(&dialog, QPoint(0, 0)).y();

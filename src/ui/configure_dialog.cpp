@@ -174,10 +174,10 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
         restore->setEnabled(canRestore);
         restore->setToolTip(canRestore
                                 ? tr("Devuelve esta pestaña a los valores de fábrica.\n"
-                                     "Para restablecerlo todo: Archivo ▸ Restablecer "
+                                     "Para restablecerlo todo: Configurar ▸ Restablecer "
                                      "configuración de fábrica…")
                                 : tr("Esta pestaña no tiene valores de fábrica que "
-                                     "restablecer.\nPara restablecerlo todo: Archivo ▸ "
+                                     "restablecer.\nPara restablecerlo todo: Configurar ▸ "
                                      "Restablecer configuración de fábrica…"));
     };
     connect(tabs_, &QTabWidget::currentChanged, this, [updateRestore](int) { updateRestore(); });

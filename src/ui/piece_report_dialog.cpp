@@ -2,6 +2,7 @@
 #include "ui/theme.h"
 #include "inspection_editor/tools/tool_geometry.h"
 #include <algorithm>
+#include <set>
 
 #include <QClipboard>
 #include <QFileDialog>
@@ -100,6 +101,11 @@ PieceReportDialog::PieceReportDialog(inspection::PieceReport report,
     const int dimensions = static_cast<int>(report_.rows.size()) - facts;
     // Dos filas de más: los dos títulos de bloque.
     table_ = new QTableWidget(static_cast<int>(report_.rows.size()) + 2, 5, this);
+    // CON NOMBRE, y no por costumbre: desde que el diálogo tiene tres pestañas
+    // hay más de una tabla dentro, y un `findChild<QTableWidget*>()` sin nombre
+    // devuelve la que Qt encuentre primero — que cambió al reordenar los hijos y
+    // dejó cuatro pruebas mirando el catálogo mientras creían leer las medidas.
+    table_->setObjectName(QStringLiteral("reportTable"));
     table_->setHorizontalHeaderLabels(
         {tr("Medida"), tr("Valor"), tr("Unidad"), tr("Tolerancia"), tr("De dónde sale")});
     table_->verticalHeader()->setVisible(false);
@@ -167,6 +173,7 @@ PieceReportDialog::PieceReportDialog(inspection::PieceReport report,
     tabs->addTab(buildToolsTab(), drawn_.empty()
                                       ? tr("Mis herramientas")
                                       : tr("Mis herramientas (%1)").arg(drawn_.size()));
+    tabs->addTab(buildCatalogueTab(), tr("Qué más puedo medir"));
     root->addWidget(tabs, 1);
 
     auto* buttons = new QHBoxLayout();
@@ -415,6 +422,112 @@ QWidget* PieceReportDialog::buildToolsTab() {
         tree->resizeColumnToContents(column);
     }
     layout->addWidget(tree, 1);
+    return page;
+}
+
+// QUÉ MÁS PUEDO MEDIR: las 32 herramientas y qué se puede hacer con cada una
+// SOBRE ESTA PIEZA.
+//
+// Petición de uso: «en medir pieza debería de haber otra sección con todas las
+// herramientas para usar/medir, aparte de la sección que te dice qué
+// herramientas se usaron y cuántas, y que se intenten agregar automáticamente».
+//
+// Son tres preguntas distintas sobre la misma pieza, y por eso son tres
+// pestañas: qué mide ella sola, qué mido YO con lo que he dibujado, y qué MÁS
+// podría medir. La tercera no vivía en ningún sitio — la paleta enseña los
+// iconos mientras dibujas, pero no dice cuáles sirven para la pieza que tienes
+// delante.
+//
+// Y CADA FILA DICE LO QUE SE PUEDE HACER CON ELLA, que es lo que la separa de
+// una lista de nombres:
+//
+//   - «ya la propone» → la medición automática la ha colocado sola sobre esta
+//     pieza, y el botón de vigilar la añade;
+//   - «ya la usas» → está entre las que dibujaste;
+//   - «hay que dibujarla» → la aplicación no sabe colocarla sola, así que la
+//     honestidad es decirlo en vez de dejar al operador esperando.
+//
+// La tercera categoría no es un fallo que ocultar: colocar una Rectitud o un
+// Chaflán exige señalar QUÉ tramo se mide, y adivinarlo daría una cota sobre un
+// sitio que nadie eligió — el mismo error que los radios inventados.
+QWidget* PieceReportDialog::buildCatalogueTab() {
+    auto* page = new QWidget(this);
+    auto* layout = new QVBoxLayout(page);
+
+    auto* intro = new QLabel(
+        tr("Todo lo que esta aplicación sabe medir, y qué se puede hacer con cada una "
+           "sobre esta pieza. Las que la medición automática sabe colocar sola ya están "
+           "propuestas: se añaden con «Vigilar estas cotas»."),
+        page);
+    intro->setWordWrap(true);
+    layout->addWidget(intro);
+
+    auto* table = new QTableWidget(0, 3, page);
+    table->setObjectName(QStringLiteral("catalogueTable"));
+    table->setHorizontalHeaderLabels({tr("Herramienta"), tr("Sobre esta pieza"),
+                                      tr("Qué mide")});
+    table->verticalHeader()->setVisible(false);
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+
+    // Qué clases están ya propuestas para esta pieza, y cuáles ya usa.
+    std::set<inspection::ToolType> proposed;
+    for (const auto& proposal : report_.watchable) {
+        proposed.insert(proposal.config.type);
+    }
+    std::set<inspection::ToolType> inUse;
+    for (const auto& tool : drawn_) {
+        inUse.insert(tool.config.type);
+    }
+
+    int automatic = 0;
+    int byHand = 0;
+    const auto& types = inspection::allToolTypes();
+    table->setRowCount(static_cast<int>(types.size()));
+    for (int row = 0; row < static_cast<int>(types.size()); ++row) {
+        const inspection::ToolType type = types[static_cast<std::size_t>(row)];
+        table->setItem(row, 0,
+                       new QTableWidgetItem(QString::fromUtf8(inspection::toolTypeLabel(type))));
+
+        QString state;
+        if (inUse.count(type) > 0) {
+            state = tr("ya la usas");
+        } else if (proposed.count(type) > 0) {
+            state = tr("ya la propone");
+            ++automatic;
+        } else if (inspection::ProposeOptions{}.allows(type) &&
+                   std::find(inspection::proposableTypes().begin(),
+                             inspection::proposableTypes().end(),
+                             type) != inspection::proposableTypes().end()) {
+            // La sabe colocar, pero en ESTA pieza no ha salido: no hay ese rasgo.
+            state = tr("no la ve en esta pieza");
+        } else {
+            state = tr("hay que dibujarla");
+            ++byHand;
+        }
+        table->setItem(row, 1, new QTableWidgetItem(state));
+
+        // La descripción entera va en el tooltip: en la celda cabe la primera
+        // frase, y en el tooltip cabe cómo se traza.
+        const QString what = QString::fromUtf8(inspection::toolTypeDescription(type));
+        auto* cell = new QTableWidgetItem(what.section(QLatin1Char('\n'), 0, 0));
+        cell->setToolTip(what);
+        table->setItem(row, 2, cell);
+    }
+    table->resizeColumnsToContents();
+    table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    layout->addWidget(table, 1);
+
+    auto* summary = new QLabel(page);
+    summary->setObjectName(QStringLiteral("catalogueSummary"));
+    summary->setWordWrap(true);
+    summary->setText(tr("%1 de %2 se colocan solas sobre esta pieza; %3 hay que dibujarlas "
+                        "a mano porque exigen señalar dónde se mide, y adivinarlo daría una "
+                        "cota sobre un sitio que nadie eligió.")
+                         .arg(automatic)
+                         .arg(types.size())
+                         .arg(byHand));
+    layout->addWidget(summary);
     return page;
 }
 

@@ -567,7 +567,7 @@ rotas a proposito, esa es la noticia.
 
 | el manual decia | donde esta de verdad |
 |---|---|
-| `Camara ▸ Configurar…` | *Fuente ▸ Configurar…* |
+| `Camara ▸ Configurar…` | *Configurar ▸ Configurar…* |
 | `Camara ▸ Calibrar escala` | *Medida ▸ Calibrar escala (mm)…* |
 | `Camara ▸ Escala por marcador` | *Medida ▸ Escala por marcador ArUco (en vivo)* |
 | `Ver ▸ Unidad` | *Medida ▸ Unidad de medida* |
@@ -584,7 +584,7 @@ hacen falta: la zona de trabajo vive en uno cuyo menu no tiene titulo, asi que
 Y obligo a arreglar una ambiguedad de notacion. El manual escribia igual una
 ruta de menu y una navegacion por pestanas de un dialogo, y no son lo mismo:
 «Detección» no es una accion, es una pestana de *Configurar*. Ahora se distingue
-—*Fuente ▸ Configurar…*, pestana **Detección**— y el lector tampoco las confunde.
+—*Configurar ▸ Configurar…*, pestana **Detección**— y el lector tampoco las confunde.
 
 #### Material REAL: lo que una foto de verdad destapa en el primer intento
 

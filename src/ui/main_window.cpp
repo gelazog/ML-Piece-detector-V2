@@ -1846,31 +1846,49 @@ void MainWindow::explainMenus() {
 }
 
 void MainWindow::buildMenuBar() {
-    // Archivo: clonar la puesta a punto a otra PC de la línea (O4).
-    auto* fileMenu = menuBar()->addMenu(tr("&Archivo"));
-    fileMenu->addAction(tr("Exportar configuración…"), this,
-                        &MainWindow::onExportConfigClicked);
-    fileMenu->addAction(tr("Importar configuración…"), this,
-                        &MainWindow::onImportConfigClicked);
-    fileMenu->addSeparator();
-    // Separada de las otras dos por lo que hace, no por estética: exportar e
-    // importar copian ajustes de una máquina a otra; esta los borra.
-    fileMenu->addAction(tr("Restablecer configuración de fábrica…"), this,
-                        &MainWindow::onResetConfigClicked);
-
-    auto* cameraMenu = menuBar()->addMenu(tr("&Fuente"));
-    refreshAction_ = cameraMenu->addAction(tr("Buscar cámaras de nuevo"), this,
-                                           &MainWindow::refreshCameras);
-    cameraMenu->addSeparator();
-    // Una sola entrada: los ajustes estaban repartidos en cuatro menús y para
-    // cambiar el enfoque y el umbral había que saber en cuál vivía cada uno.
-    configureAction_ = cameraMenu->addAction(tr("Configurar…"), this,
-                                             &MainWindow::onConfigureClicked);
+    // --- Configurar ---
+    //
+    // Dos quejas de uso que apuntan al mismo sitio: «el menú de configurar/escala
+    // debería de ser ahí y no dentro de otra sección», y «la parte de
+    // archivo-fuente-medida me parece fea, a algunas cosas les falta coherencia,
+    // las palabras y/o secciones mal retratadas».
+    //
+    // Había DOS menús mal nombrados y casi vacíos:
+    //
+    //   - «Archivo» no tenía ningún fichero. Lo que tenía era exportar, importar
+    //     y restablecer la CONFIGURACIÓN. Abrir una imagen o un vídeo nunca
+    //     estuvo ahí: eso se hace con el desplegable de fuente de la barra.
+    //   - «Fuente» tenía dos cosas que no se parecen en nada: buscar cámaras, y
+    //     «Configurar…», que es la puerta a cámara, detección, piezas,
+    //     rendimiento, ESCALA, preferencias y atajos — casi todos los ajustes de
+    //     la aplicación, metidos dentro de un menú que habla de de dónde viene la
+    //     imagen.
+    //
+    // Los dos contestan a la misma pregunta —cómo está puesta a punto esta
+    // máquina— así que van juntos y con el nombre que les toca. «Configurar…» es
+    // la primera entrada porque es la que se busca, y la escala vive dentro, que
+    // es justo donde el taller la pidió.
+    auto* setupMenu = menuBar()->addMenu(tr("&Configurar"));
+    configureAction_ = setupMenu->addAction(tr("Configurar…"), this,
+                                            &MainWindow::onConfigureClicked);
     configureAction_->setObjectName(QStringLiteral("configureAction"));
     configureAction_->setToolTip(
-        tr("Cámara e imagen, detección, escala, preferencias y atajos, todo en el\n"
-           "mismo sitio. Se abre sin bloquear el vídeo: lo que ajustes se ve al\n"
-           "momento sobre la pieza."));
+        tr("Cámara e imagen, detección, piezas, rendimiento, escala, preferencias\n"
+           "y atajos, todo en el mismo sitio. Se abre sin bloquear el vídeo: lo\n"
+           "que ajustes se ve al momento sobre la pieza."));
+    refreshAction_ = setupMenu->addAction(tr("Buscar cámaras de nuevo"), this,
+                                          &MainWindow::refreshCameras);
+    setupMenu->addSeparator();
+    // Clonar la puesta a punto a otra PC de la línea (O4).
+    setupMenu->addAction(tr("Exportar configuración…"), this,
+                         &MainWindow::onExportConfigClicked);
+    setupMenu->addAction(tr("Importar configuración…"), this,
+                         &MainWindow::onImportConfigClicked);
+    setupMenu->addSeparator();
+    // Separada de las otras dos por lo que hace, no por estética: exportar e
+    // importar copian ajustes de una máquina a otra; ésta los borra.
+    setupMenu->addAction(tr("Restablecer configuración de fábrica…"), this,
+                         &MainWindow::onResetConfigClicked);
     // --- Medida ---
     //
     // Menú nuevo, y no por gusto de tener uno más: para preparar una medición en
@@ -2175,7 +2193,7 @@ void MainWindow::buildMenuBar() {
            "SOLO cambia lo que se pinta. Las medidas salen del fotograma tal\n"
            "como llega de la cámara, así que realzar no mueve ninguna cota.\n"
            "Si lo que quieres es arreglar la iluminación de verdad, eso está en\n"
-           "Fuente ▸ Configurar…, pestaña Cámara e imagen — y eso sí cambia lo\n"
+           "Configurar ▸ Configurar…, pestaña Cámara e imagen — y eso sí cambia lo\n"
            "que se mide."));
     connect(viewEnhanceAction_, &QAction::toggled, this, [this](bool on) {
         video_->setViewEnhance(on);

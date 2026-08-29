@@ -1283,6 +1283,44 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   disposición guardada es anterior al panel, se coloca a mano en vez de quedarse
   oculto para siempre.
 
+- [x] **P7 · «Medir pieza» no decía qué MÁS se puede medir.** Petición de uso:
+  «debería de haber otra sección con todas las herramientas para usar/medir,
+  aparte de la sección que te dice qué herramientas se usaron y cuántas».
+
+  Tercera pestaña, **«Qué más puedo medir»**: las 32 con su descripción y, por
+  cada una, qué se puede hacer con ella sobre ESTA pieza — *ya la propone*, *ya
+  la usas*, *no la ve en esta pieza*, *hay que dibujarla*. Son tres preguntas
+  distintas sobre la misma pieza (qué mide ella sola, qué mido yo, qué más
+  podría medir) y la tercera no vivía en ningún sitio: la paleta enseña los
+  iconos mientras dibujas, pero no dice cuáles sirven para lo que tienes
+  delante.
+
+  El grupo «hay que dibujarla» —22 de 32 con una placa lisa— no es un fallo que
+  ocultar: colocar una Rectitud o un Chaflán exige señalar qué tramo se mide, y
+  adivinarlo daría una cota sobre un sitio que nadie eligió. El resumen lo dice
+  con su número para que la lista no se lea como una promesa.
+
+- [x] **P8 · «Archivo» y «Fuente» eran dos menús mal nombrados.** Queja de uso:
+  «el menú de configurar/escala debería de ser ahí y no dentro de otra sección»
+  y «la parte de archivo-fuente-medida me parece fea, falta coherencia, las
+  palabras y/o secciones mal retratadas».
+
+  «Archivo» no tenía ningún fichero: exportar, importar y restablecer la
+  CONFIGURACIÓN. «Fuente» tenía buscar cámaras y «Configurar…», que es la puerta
+  a cámara, detección, piezas, rendimiento, **escala**, preferencias y atajos —
+  casi todos los ajustes, dentro de un menú que habla de de dónde viene la
+  imagen.
+
+  Los dos son el mismo tema, así que se funden en **«Configurar»**, con
+  «Configurar…» de primera entrada porque es lo que se busca. La escala vive
+  dentro, que es donde el taller la pidió. De paso desaparecen dos menús de dos
+  y tres entradas.
+
+  **Queda pendiente el resto de la barra**, que es lo que el usuario llamó
+  «feo»: *Medida* mezcla calibrar escala, calibrar lente, ArUco, «Medir pieza» y
+  el modo de medición; *Ver* mezcla paneles con ayudas de dibujo. Eso se decide
+  con la pantalla delante.
+
 ## F. Ya está hecho — no volver a investigarlo
 
 Aquí para que nadie gaste otra vez el tiempo que ya se gastó.

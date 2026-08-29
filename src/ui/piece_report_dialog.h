@@ -106,6 +106,20 @@ private:
     // La pestaña nueva: las herramientas del operador, con su lectura, su
     // veredicto y su interruptor.
     [[nodiscard]] QWidget* buildToolsTab();
+    // EL CATÁLOGO: las 32 herramientas, y qué se puede hacer con cada una
+    // SOBRE ESTA PIEZA.
+    //
+    // Petición de uso: «en medir pieza debería de haber otra sección con todas
+    // las herramientas para usar/medir, aparte de la sección que te dice qué
+    // herramientas se usaron y cuántas, y que se intenten agregar
+    // automáticamente».
+    //
+    // Son tres preguntas distintas sobre la misma lista y por eso son tres
+    // pestañas: qué mide la pieza sola, qué mido YO con lo que he dibujado, y
+    // qué MÁS podría medir. La tercera no existía en ningún sitio: la paleta
+    // enseña los iconos mientras dibujas, pero no dice cuáles de ellas sirven
+    // para la pieza que tienes delante.
+    [[nodiscard]] QWidget* buildCatalogueTab();
 
     inspection::PieceReport report_;
     std::vector<inspection::AutoProposal> toWatch_;

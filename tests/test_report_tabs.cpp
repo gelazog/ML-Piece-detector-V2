@@ -18,12 +18,14 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QLabel>
+#include <QStringList>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTreeWidget>
 
 #include <cstdio>
 
+#include "inspection_editor/tools/tool_geometry.h"
 #include "ui/piece_report_dialog.h"
 
 using namespace pci;
@@ -118,8 +120,13 @@ TEST(ReportTabs, MeasuringOffersBothTheAutomaticMeasuresAndYourOwnTools) {
 
     auto* tabs = tabsOf(dialog);
     ASSERT_NE(tabs, nullptr) << "el diálogo de medir no tiene pestañas";
-    ASSERT_EQ(tabs->count(), 2) << "faltan pestañas: se esperaban las medidas y las "
-                                   "herramientas del operador";
+    // TRES: las medidas que saca el programa, las cotas del operador, y el
+    // catálogo de lo que MÁS se puede medir sobre esta pieza. Son tres
+    // preguntas distintas y el número está escrito aquí a propósito: si
+    // aparece una cuarta, alguien tiene que decidir si de verdad es otra
+    // pregunta o si cabía en una de las tres.
+    ASSERT_EQ(tabs->count(), 3) << "faltan pestañas: se esperaban las medidas, las "
+                                   "herramientas del operador y el catálogo";
     std::printf("  [medir] pestañas: «%s» y «%s»\n",
                 tabs->tabText(0).toStdString().c_str(),
                 tabs->tabText(1).toStdString().c_str());
@@ -179,7 +186,7 @@ TEST(ReportTabs, WithoutToolsTheTabExplainsItselfInsteadOfBeingEmpty) {
                                  nullptr, {});
     auto* tabs = tabsOf(dialog);
     ASSERT_NE(tabs, nullptr);
-    ASSERT_EQ(tabs->count(), 2) << "la pestaña desaparece cuando no hay herramientas: "
+    ASSERT_EQ(tabs->count(), 3) << "la pestaña desaparece cuando no hay herramientas: "
                                    "entonces nadie sabe que existe";
 
     bool explains = false;
@@ -354,4 +361,60 @@ TEST(ReportTabs, AToolWithASingleMeasureDoesNotPretendToHaveMore) {
     ASSERT_NE(tool, nullptr);
     EXPECT_EQ(tool->childCount(), 0);
     EXPECT_FALSE(tool->isExpanded());
+}
+
+// LA TERCERA PESTAÑA: QUÉ MÁS PUEDO MEDIR.
+//
+// Petición de uso: «en medir pieza debería de haber otra sección con todas las
+// herramientas para usar/medir, aparte de la sección que te dice qué
+// herramientas se usaron y cuántas, y que se intenten agregar automáticamente».
+//
+// Son tres preguntas distintas sobre la misma pieza —qué mide ella sola, qué
+// mido yo con lo que he dibujado, y qué MÁS podría medir— y la tercera no vivía
+// en ningún sitio: la paleta enseña los iconos mientras dibujas, pero no dice
+// cuáles sirven para la pieza que tienes delante.
+TEST(ReportTabs, TheCatalogueListsEveryToolAndWhatCanBeDoneWithIt) {
+    inspection::PieceReport report = plainReport();
+    inspection::AutoProposal proposed;
+    proposed.config.name = "Ø";
+    proposed.config.type = inspection::ToolType::Circle;
+    report.watchable = {proposed};
+
+    ui::PieceReportDialog dialog(report, QStringLiteral("una imagen"), nullptr, nullptr,
+                                 {toolThat("Largo total", true, true)});
+    auto* table = dialog.findChild<QTableWidget*>(QStringLiteral("catalogueTable"));
+    ASSERT_NE(table, nullptr) << "no hay pestaña con el catálogo de herramientas";
+
+    // ESTÁN TODAS, y se comparan con la lista de verdad y no con un número
+    // escrito aquí: una herramienta nueva tiene que aparecer sola, que es la
+    // misma regla que ya gobierna la paleta.
+    EXPECT_EQ(table->rowCount(),
+              static_cast<int>(inspection::allToolTypes().size()))
+        << "el catálogo no enseña las " << inspection::allToolTypes().size()
+        << " herramientas: alguna se queda invisible para el operador";
+
+    // Y cada fila dice QUÉ SE PUEDE HACER con ella sobre esta pieza, que es lo
+    // que la separa de una lista de nombres. Las tres respuestas posibles tienen
+    // que aparecer al menos una vez con este montaje: una propuesta, una
+    // dibujada, y las que hay que dibujar a mano.
+    QStringList states;
+    for (int row = 0; row < table->rowCount(); ++row) {
+        ASSERT_NE(table->item(row, 1), nullptr) << "fila " << row << " sin estado";
+        states << table->item(row, 1)->text();
+    }
+    EXPECT_TRUE(states.contains(QStringLiteral("ya la propone")))
+        << "una clase propuesta no sale como tal: el operador no sabe que basta con "
+           "pulsar «Vigilar estas cotas»";
+    EXPECT_TRUE(states.contains(QStringLiteral("ya la usas")))
+        << "una clase que el operador ya dibujó sale como si no la tuviera";
+    EXPECT_TRUE(states.contains(QStringLiteral("hay que dibujarla")))
+        << "ninguna sale como «hay que dibujarla»: o se está prometiendo que todas se "
+           "colocan solas, que es falso";
+
+    // Y el resumen dice cuántas se colocan solas y cuántas no. Sin ese número, la
+    // lista de 32 se lee como una promesa.
+    auto* summary = dialog.findChild<QLabel*>(QStringLiteral("catalogueSummary"));
+    ASSERT_NE(summary, nullptr);
+    std::printf("  [catálogo] %s\n", summary->text().toStdString().c_str());
+    EXPECT_FALSE(summary->text().isEmpty());
 }

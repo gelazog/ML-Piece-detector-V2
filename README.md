@@ -99,7 +99,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    este caso no pasa nada» — medir en píxeles sin calibrar, o procesar la imagen
    entera, son formas legítimas de trabajar.
 
-   **Configurar** (menú *Fuente ▸ Configurar…*) es **el único sitio** donde se
+   **Configurar** (menú *Configurar ▸ Configurar…*) es **el único sitio** donde se
    ajusta cómo se ve y cómo se detecta la pieza: cámara e imagen, detección,
    escala, preferencias y atajos, en pestañas. **No bloquea la ventana**, y eso
    es a propósito: ajustar un umbral o un enfoque consiste en mover y mirar, y
@@ -420,7 +420,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    Pero no hace falta que la ajustes a ojo si se repite — para eso está lo
    siguiente.
 
-   **Afinar el borde a subpíxel** (*Fuente ▸ Configurar…*, pestaña **Detección**, apartado **Precisión**): el borde
+   **Afinar el borde a subpíxel** (*Configurar ▸ Configurar…*, pestaña **Detección**, apartado **Precisión**): el borde
    de una pieza no es un escalón — el brillo cambia a lo largo de varios
    píxeles, y sobre una foto real esa rampa medía **15 px**. Un umbral coloca el
    borde en cualquier punto de ella según la iluminación. Con esto, cada punto
@@ -485,6 +485,16 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    sí se limita a doce, pero un informe cortado contesta a medias. Y nada sale
    marcado «OK», porque una cota recién medida está dentro de su propia
    tolerancia por construcción — todavía no la ha comprobado nadie.
+
+   **Y una tercera pestaña: «Qué más puedo medir».** Las 32 herramientas, con lo
+   que mide cada una y **qué se puede hacer con ella sobre esta pieza**: *ya la
+   propone* (la medición automática la ha colocado sola y entra con «Vigilar
+   estas cotas»), *ya la usas*, *no la ve en esta pieza*, o *hay que dibujarla*.
+
+   Ese último grupo no es un fallo escondido: colocar una Rectitud o un Chaflán
+   exige señalar **qué tramo** se mide, y adivinarlo daría una cota sobre un
+   sitio que nadie eligió. El resumen dice cuántas se colocan solas y cuántas
+   no, para que la lista de 32 no se lea como una promesa.
 
 4. **Medir automáticamente**: en el editor de plantilla, el botón
    **Medir automáticamente…** mira la pieza y propone las cotas que encuentra.
