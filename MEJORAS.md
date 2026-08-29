@@ -1039,6 +1039,45 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   ángulos. Sin esa tercera prueba, el filtro se podría volver a escribir donde
   no se recorre y las otras dos seguirían en verde.
 
+- [x] **E12 · La herramienta de lados ofrecía contar los lados de 17 arandelas.**
+  Barriendo el banco pieza por pieza con las dos condiciones ya puestas —meseta
+  ancha y ajuste que explica el contorno—, la herramienta seguía dando un
+  recuento **comprobable** en 17 piezas que la clasificación llama arandela o
+  círculo: «8 lados» sobre una arandela, con su banda, que la arandela de al
+  lado no repite. Las dos partes contradiciéndose sobre la misma pieza, otra
+  vez.
+
+  No era un fallo del ajuste. Un octógono se ciñe a un disco de **50 px** de
+  diámetro con ~2 px de error, y la tolerancia admite 9: **una tolerancia
+  absoluta no distingue nada en una pieza pequeña**. Lo que separa un disco de
+  un polígono no es cuánto se aparta el polígono, sino **qué se aparta menos**.
+
+  | | círculo | polígono | círculo/polígono |
+  |---|---|---|---|
+  | las 17 redondas | 0,51-3,47 px | 1,89-8,58 px | 0,08-0,64 |
+  | los 106 polígonos | — | — | **1,03**-2,82 |
+
+  El factor se pone en 0,8, en medio del hueco. **De 17 a 0, y sin perder
+  ninguno de los 106.**
+
+  El margen más justo son las tuercas de la bandeja (1,03): un hexágono de 80 px
+  se parece bastante a su circunferencia, así que la prueba va sobre el banco
+  entero y no sobre una figura de laboratorio — si alguien sube el factor «para
+  asegurar», las cien tuercas se quedan sin poder comprobar que siguen teniendo
+  seis caras, y ahí se ve.
+
+  Y el rechazo **se dice aparte**, porque lleva a hacer algo distinto de los
+  otros dos: ni otro epsilon ni otro encuadre, sino otra herramienta. «El
+  contorno se explica mejor con una circunferencia: se separa 2,2 px de un
+  polígono de 8 lados y solo 0,5 px de un círculo. Mídela con Círculo o con
+  Redondez.»
+
+  **Lo que este barrido dejó medido y NO se tocó:** en 16 de los 106 polígonos
+  la clase y la herramienta dan **recuentos distintos** —«la clase dice 11
+  lados, la herramienta 6» sobre tuercas hexagonales, o sea que ahí la
+  herramienta acierta y la clase no—. Eso es el resto de E8 (85 de 100), y
+  moverlo toca el clasificador y sus trinquetes, así que va aparte.
+
 ## F. Ya está hecho — no volver a investigarlo
 
 Aquí para que nadie gaste otra vez el tiempo que ya se gastó.

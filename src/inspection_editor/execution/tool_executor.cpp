@@ -3845,6 +3845,19 @@ ToolRunResult runPolygon(const cv::Mat& gray, const Fixture& fixture,
                         "dice nada de la pieza";
         return result;
     }
+    // Y el tercero: que el contorno se explique mejor con una circunferencia.
+    // Lleva a hacer algo DISTINTO de los otros dos —ni otro epsilon ni otro
+    // encuadre: la herramienta equivocada—, así que se dice aparte y con los
+    // dos números, que es lo que deja comprobarlo.
+    if (stable.roundIsABetterFit) {
+        result.detail = "El contorno se explica mejor con una circunferencia: se separa " +
+                        fmtLen(stable.deviation, fmt) + " de un polígono de " +
+                        std::to_string(stable.sides) + " lados y solo " +
+                        fmtLen(stable.circleDeviation, fmt) +
+                        " de un círculo. Una pieza redonda no tiene lados que contar — "
+                        "mídela con Círculo o con Redondez";
+        return result;
+    }
     if (!stable.explainsContour) {
         result.detail = "El recuento de " + std::to_string(stable.sides) +
                         " lados es estable, pero esos lados no siguen el contorno: se "

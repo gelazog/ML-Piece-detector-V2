@@ -3351,6 +3351,23 @@ porque cuantos más lados, más estrecha es la ventana de epsilon donde sobreviv
 todos. Los limpios de 14 y 16 aguantan 6/30; un disco, un cáncamo y un tornillo,
 3, 3 y 1. El corte cae en medio de ese hueco.
 
+**Y hacen falta tres, no dos.** Con la meseta y la tolerancia puestas, la
+herramienta seguía dando un recuento comprobable en **17 piezas que la clase
+llama arandela o círculo**. No era un fallo del ajuste: un octógono se ciñe a un
+disco de 50 px de diámetro con ~2 px de error y la tolerancia admite 9 — **una
+tolerancia absoluta no distingue nada en una pieza pequeña**. Lo que separa un
+disco de un polígono no es cuánto se aparta el polígono, sino **qué se aparta
+menos**: en esas 17 el círculo se aparta 0,51-3,47 px contra 1,89-8,58 del
+polígono, y en los 106 polígonos gana el polígono en todos, con 1,03 en el peor
+caso (las tuercas, donde un hexágono de 80 px se parece bastante a su
+circunferencia). El factor va en 0,8, en medio del hueco: **de 17 a 0 sin perder
+ninguno de los 106**.
+
+Ese rechazo se dice **aparte** de los otros dos, porque lleva a hacer algo
+distinto: ni otro epsilon ni otro encuadre, sino otra herramienta — «se separa
+2,2 px de un polígono de 8 lados y solo 0,5 px de un círculo; mídela con Círculo
+o con Redondez».
+
 **Lo que sigue sin llegar, y por qué.** La PROPUESTA automática del recuento
 aparece en 1 de 106, y el bloqueo está en otro sitio: la herramienta se saca su
 propio contorno con un Otsu local dentro de su recuadro en vez de usar la silueta

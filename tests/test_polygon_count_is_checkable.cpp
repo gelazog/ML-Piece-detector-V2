@@ -28,6 +28,24 @@
 // separa es cuánto se apartan esos ocho lados del contorno — 13,4 px contra
 // ~1 px.
 //
+// Y HACEN FALTA **TRES**, que es lo que se vio barriendo el banco pieza por
+// pieza. Con la meseta y la tolerancia, la herramienta daba un recuento de
+// lados comprobable en **17 piezas que la clasificación llama arandela o
+// círculo** — «8 lados» sobre una arandela, con su banda, que la arandela de al
+// lado no repite. Las dos partes contradiciéndose sobre la misma pieza, otra
+// vez, y esta vez con las dos condiciones puestas.
+//
+// No era un fallo del ajuste: un octógono se ciñe a un disco de 50 px de
+// diámetro con ~2 px de error, y la tolerancia admite 9. Una tolerancia
+// ABSOLUTA no distingue nada en una pieza pequeña. Lo que separa un disco de un
+// polígono no es cuánto se aparta el polígono, sino QUÉ SE APARTA MENOS.
+//
+// Medido: en esas 17 el círculo se aparta entre 0,51 y 3,47 px y el polígono
+// entre 1,89 y 8,58; en los 106 polígonos del banco gana el polígono en todos,
+// y el margen más justo son las tuercas con el borde en sombra (1,03).
+//
+// De 17 a 0, y sin perder ninguno de los 106.
+//
 // LO QUE ESTO NO ARREGLA, Y CONVIENE SABERLO. La propuesta automática sigue sin
 // llegar casi nunca, y la razón está en otro sitio: la herramienta se saca su
 // PROPIO contorno con un Otsu local dentro de su recuadro, en vez de usar la
@@ -211,3 +229,134 @@ TEST(PolygonCountIsCheckable, TheOldThreePointCheckFailedOnEveryRealPiece) {
         << "con el criterio de meseta la mayoría de las piezas siguen sin poder dar un "
            "recuento comprobable: el cambio no ha servido para lo que se hizo";
 }
+
+TEST(PolygonCountIsCheckable, ARingIsRefusedEvenThoughItsOctagonFitsTheTolerance) {
+    // LA TERCERA CONDICIÓN, y lo que esta prueba comprueba es que rechaza ELLA,
+    // no las otras dos. Sin esa distinción seguiría en verde el día que alguien
+    // apretara la tolerancia, y entonces no estaría comprobando lo que cree.
+    //
+    // Un disco de 50 px de diámetro: el octógono se le ciñe con ~2 px de error
+    // sobre los 9 admitidos, o sea que SÍ explica el contorno; y la meseta es
+    // ancha, porque `approxPolyDP` le devuelve ocho vértices a lo largo de medio
+    // barrido. Las dos condiciones de siempre dicen que sí. La que dice que no
+    // es que la circunferencia se aparta cuatro veces menos.
+    cv::Mat canvas(120, 120, CV_8UC1, cv::Scalar(0));
+    cv::circle(canvas, {60, 60}, 25, cv::Scalar(255), cv::FILLED, cv::LINE_AA);
+    const auto small = vision::stableSideCountOf(outerOf(canvas));
+    std::printf("  [redondo] disco de 50 px -> %d lados, meseta %d/%d, se separa %.2f px de "
+                "%.2f admitidos, y de la circunferencia %.2f px\n",
+                small.sides, small.plateau, small.swept, small.deviation, small.admissible,
+                small.circleDeviation);
+
+    EXPECT_TRUE(small.explainsContour)
+        << "el ajuste poligonal de un disco pequeño ya NO cabe en la tolerancia: entonces "
+           "esta prueba está comprobando la condición vieja y no la nueva";
+    EXPECT_TRUE(small.roundIsABetterFit)
+        << "la circunferencia no gana: el contorno de un disco se estaría explicando igual "
+           "de bien con lados";
+    EXPECT_FALSE(small.stable)
+        << "a un disco de 50 px se le da un recuento de lados comprobable. El operador le "
+           "pone «exactamente 8 lados» y la arandela de al lado da otro número";
+}
+
+TEST(PolygonCountIsCheckable, NoWasherInTheBankIsOfferedASideCount) {
+    // Y sobre las piezas de verdad, que es donde se vio. Las arandelas del banco
+    // son pequeñas —de ahí que una tolerancia absoluta no las distinga— y van
+    // fotografiadas con sombra, así que su octógono se ciñe de sobra.
+    int pieces = 0;
+    int round = 0;
+    int withCount = 0;
+    for (const auto* photo : {"arandelas-1.png", "arandelas-3.jpg", "arandelas-4.png",
+                              "arandelas-5.png"}) {
+        const cv::Mat image =
+            cv::imread(std::string("C:/Users/furro/Pictures/IMG-MC/") + photo,
+                       cv::IMREAD_COLOR);
+        if (image.empty()) {
+            GTEST_SKIP() << "sin banco de fotos";
+        }
+        vision::PipelineConfig config;
+        config.segmentation.recoverHighlightsBy = 12;
+        auto all = vision::analyzeFrames(image, config);
+        if (!all.isOk()) {
+            continue;
+        }
+        for (const auto& piece : all.value()) {
+            const cv::Mat mask =
+                vision::pieceMaskWithHoles(image, piece.mask, config.segmentation);
+            const auto shape = vision::classifyShape(piece.contour.points, mask);
+            ++pieces;
+            if (shape.kind != vision::ShapeKind::Ring &&
+                shape.kind != vision::ShapeKind::Circle) {
+                continue;
+            }
+            ++round;
+            if (vision::stableSideCountOf(piece.contour.points).stable) {
+                ++withCount;
+            }
+        }
+    }
+    std::printf("  [redondo] %d piezas, %d redondas según la clase, %d con recuento de "
+                "lados comprobable\n",
+                pieces, round, withCount);
+    ASSERT_GT(round, 10) << "apenas salen piezas redondas: esta prueba no comprueba nada";
+    EXPECT_EQ(withCount, 0)
+        << "la herramienta ofrece contar los lados de una pieza que la aplicación llama "
+           "redonda. Son las dos partes contradiciéndose sobre la misma pieza, que es "
+           "justo lo que este fichero vino a cerrar";
+}
+
+TEST(PolygonCountIsCheckable, AndTheRealPolygonsKeptTheirs) {
+    // LA OTRA MITAD, y es la que impide «arreglarlo» rechazando más. La
+    // condición nueva no le quitó el recuento a NINGUNO de los 106 polígonos del
+    // banco: el margen más estrecho son las tuercas —el círculo se aparta 1,03
+    // veces lo que el polígono, porque un hexágono de 80 px se parece bastante a
+    // su circunferencia— y el suelo está en 0,8.
+    //
+    // Ese margen de 0,23 es la razón de que esto se compruebe sobre el banco
+    // entero y no sobre una figura de laboratorio: si alguien sube el factor
+    // «para asegurar», las cien tuercas se quedan sin poder comprobar que
+    // siguen teniendo seis caras, y aquí se ve.
+    int polygons = 0;
+    int keptTheCount = 0;
+    double worstRatio = 1e9;
+    for (const auto* photo : {"producto-tuercas-prueba.jpg", "Producto_Tuerca_Liv_02.jpg",
+                              "arandelas-2.png", "rosca-1.png"}) {
+        const cv::Mat image =
+            cv::imread(std::string("C:/Users/furro/Pictures/IMG-MC/") + photo,
+                       cv::IMREAD_COLOR);
+        if (image.empty()) {
+            GTEST_SKIP() << "sin banco de fotos";
+        }
+        vision::PipelineConfig config;
+        config.segmentation.recoverHighlightsBy = 12;
+        auto all = vision::analyzeFrames(image, config);
+        if (!all.isOk()) {
+            continue;
+        }
+        for (const auto& piece : all.value()) {
+            const cv::Mat mask =
+                vision::pieceMaskWithHoles(image, piece.mask, config.segmentation);
+            const auto shape = vision::classifyShape(piece.contour.points, mask);
+            if (shape.kind != vision::ShapeKind::Polygon || shape.sides < 3) {
+                continue;
+            }
+            ++polygons;
+            const auto stable = vision::stableSideCountOf(piece.contour.points);
+            if (!stable.roundIsABetterFit) {
+                ++keptTheCount;
+            }
+            if (stable.deviation > 0.0) {
+                worstRatio = std::min(worstRatio, stable.circleDeviation / stable.deviation);
+            }
+        }
+    }
+    std::printf("  [redondo] %d polígonos, %d sin que el círculo les gane; el margen más "
+                "estrecho, círculo/polígono = %.2f\n",
+                polygons, keptTheCount, worstRatio);
+    ASSERT_GT(polygons, 50) << "el banco da muy pocos polígonos: esto no comprueba nada";
+    EXPECT_EQ(keptTheCount, polygons)
+        << "la condición de «mejor redondo» le quita el recuento a un polígono de verdad: "
+           "está apretada de más, y una tuerca hexagonal se queda sin poder comprobar que "
+           "sigue teniendo seis caras";
+}
+

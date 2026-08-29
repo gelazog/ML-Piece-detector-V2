@@ -281,6 +281,35 @@ PolygonFit fitPolygon(const std::vector<cv::Point>& contour, const ClassifyOptio
     return best;
 }
 
+// Cuánto se aparta el contorno de la MEJOR circunferencia que lo describe.
+//
+// El radio es la media de las distancias al centroide —el ajuste por mínimos
+// cuadrados de una circunferencia de centro fijo— y no el de
+// `minEnclosingCircle`, que es el radio del punto más lejano: con ese, un disco
+// perfecto con un píxel de rebaba mediría toda la rebaba como error de
+// circularidad y el círculo perdería contra cualquier polígono.
+double worstDistanceToCircle(const std::vector<cv::Point>& contour) {
+    if (contour.size() < 3) {
+        return 0.0;
+    }
+    const cv::Moments m = cv::moments(contour);
+    if (std::abs(m.m00) < 1e-9) {
+        return 0.0;
+    }
+    const cv::Point2f centre(static_cast<float>(m.m10 / m.m00),
+                             static_cast<float>(m.m01 / m.m00));
+    double sum = 0.0;
+    for (const auto& point : contour) {
+        sum += cv::norm(cv::Point2f(point) - centre);
+    }
+    const double radius = sum / static_cast<double>(contour.size());
+    double worst = 0.0;
+    for (const auto& point : contour) {
+        worst = std::max(worst, std::abs(cv::norm(cv::Point2f(point) - centre) - radius));
+    }
+    return worst;
+}
+
 // El agujero central que convierte un disco en arandela, si lo hay.
 struct CentralHole {
     bool found = false;
@@ -422,7 +451,27 @@ StableSideCount stableSideCountOf(const std::vector<cv::Point>& contour) {
     out.plateauIsWide =
         out.swept > 0 && out.plateau >= kCountIsTrustworthyAbove * out.swept;
     out.explainsContour = out.deviation <= out.admissible;
-    out.stable = out.plateauIsWide && out.explainsContour;
+
+    // Y LA TERCERA MITAD, que hacía falta y no estaba: ¿lo explica mejor una
+    // circunferencia?
+    //
+    // Las dos condiciones de arriba se cumplen a la vez en una arandela
+    // pequeña, y no por un fallo del ajuste: un octógono se ciñe a un disco de
+    // 50 px de diámetro con ~2 px de error, y la tolerancia admite 9. Medido
+    // sobre el banco, la herramienta ofrecía un recuento de lados comprobable
+    // en **17 piezas que la clasificación llama arandela o círculo** — «8
+    // lados» sobre una arandela, con su tolerancia, que el operador acepta y
+    // que la arandela de al lado no repite.
+    //
+    // Lo que separa un disco de un polígono no es cuánto se aparta el polígono,
+    // sino QUÉ SE APARTA MENOS. En esas 17 el círculo se aparta entre 0,51 y
+    // 3,47 px y el polígono entre 1,89 y 8,58; en los 106 polígonos del banco
+    // gana el polígono en todos.
+    out.circleDeviation = worstDistanceToCircle(contour);
+    out.roundIsABetterFit =
+        out.deviation > 0.0 &&
+        out.circleDeviation < kRoundExplainsItBetterBelow * out.deviation;
+    out.stable = out.plateauIsWide && out.explainsContour && !out.roundIsABetterFit;
     return out;
 }
 

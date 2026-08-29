@@ -232,11 +232,34 @@ struct StableSideCount {
     // corta, mandando al operador a tocar el epsilon, que no era el problema.
     bool plateauIsWide = false;   // el recuento aguanta al menos media barrida
     bool explainsContour = false;  // y ese polígono se ciñe al contorno
-    bool stable = false;           // las dos cosas
+    // Y LA TERCERA: que no lo explique mejor una circunferencia.
+    //
+    // Las dos de arriba se cumplen a la vez en una arandela pequeña, y no por
+    // un fallo: un octógono se ciñe a un disco de 50 px de diámetro con 2 px de
+    // error, que cabe de sobra en la tolerancia. Lo que dice que ahí no hay
+    // lados no es cuánto se aparta el polígono, sino que el círculo se aparta
+    // MENOS.
+    bool roundIsABetterFit = false;
+    bool stable = false;           // las tres cosas
     double deviation = 0.0;     // lo que se separa el contorno de ese polígono
     double admissible = 0.0;    // hasta cuánto se le admite, para poder decirlo
+    double circleDeviation = 0.0;  // y lo que se separaría de una circunferencia
     std::vector<cv::Point> vertices;  // el mejor ajuste con ese recuento
 };
+
+// Un polígono deja de contar lados cuando una circunferencia explica el
+// contorno bastante mejor que él. El factor sale de un hueco medido sobre el
+// banco, no de elegirlo:
+//
+//   - las 123 piezas con recuento «estable» que la clase llama redonda
+//     (arandelas y discos) dan círculo/polígono entre **0,08 y 0,64**;
+//   - los 106 polígonos de verdad, entre **1,03 y 2,82** — y el peor caso son
+//     las tuercas de la bandeja, con el borde en sombra dentado 2-3 px.
+//
+// 0,8 cae en el hueco con holgura por los dos lados. Por encima de eso el
+// círculo no gana lo suficiente como para quitarle los lados a una pieza que sí
+// los tiene.
+inline constexpr double kRoundExplainsItBetterBelow = 0.8;
 
 [[nodiscard]] StableSideCount stableSideCountOf(const std::vector<cv::Point>& contour);
 
