@@ -256,6 +256,34 @@ una cota fuera de banda es un problema de la pieza, y una que no mide lo es del
 trazo, del encuadre o de la referencia que le falta. Y sólo se rellena con el
 panel abierto, la misma regla que gobierna el recuento de piezas.
 
+**Segunda tanda, ya con el panel delante.** El taller pidió cinco cosas y las
+cinco caben en una idea: el panel **enseña y avisa, no toca**. Quien selecciona,
+oculta o borra es la ventana, que es la que tiene el deshacer.
+
+| petición | cómo se resuelve |
+|---|---|
+| «si presiona alguna medida, que la remarque más» | pulsar la fila selecciona esa herramienta en el lienzo |
+| «un ojo para hacer visible o invisible las medidas» | por fila; filtra lo que se PINTA, no lo que se mide |
+| «que puedas borrar si quieres la medida» | papelera por fila, por el mismo camino que el borrado del lienzo (con Ctrl+Z) |
+| «si hay más piezas… un selectbox» | desplegable que mueve la MISMA elección que las flechas y el mosaico |
+| «¿qué es OK a secas?» | «Cumple, margen 0,4 px» / «No cumple, se pasa 1,2 px» |
+
+El ojo filtra **al pintar y no al medir**, y esa diferencia es la que lo hace una
+decisión de vista: la cota apagada se sigue midiendo, sigue en la tabla con su
+veredicto y sigue contando para el OK/NG de la pieza. Filtrarla antes de medir
+sería apagar la cota, que es otra cosa y ya existe —el interruptor del informe—.
+
+El selector arranca en **Todas**: abrir mostrando sólo la pieza 1 escondería las
+otras cinco sin que nadie lo hubiera pedido, que es el mismo fallo que el vídeo
+tenía y que este panel vino a arreglar. Y ojo con las **dos numeraciones** —el
+panel habla en índices desde 0 y `focusedPiece_` desde 1, con el 0 reservado para
+«la mayor»—: la conversión está escrita en el sitio donde se cruzan.
+
+**Y vive a la IZQUIERDA**, compartiendo pestaña con la tira de capturas: «las
+medidas en vivo quedan mejor del lado izquierdo, porque estás saturando de
+opciones». Se cuenta y es cierto: a la derecha ya vivían la paleta, la
+comparación y el mosaico.
+
 #### Cuándo medir en un vídeo: una vez por pieza, no una vez por segundo
 
 Petición de uso: «la manera en la que lo toma en vídeo (grabado o en tiempo

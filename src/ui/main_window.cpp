@@ -1206,7 +1206,17 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     measurementsDock_ = new QDockWidget(tr("Medidas en vivo"), this);
     measurementsDock_->setObjectName(QStringLiteral("measurementsDock"));
     measurementsDock_->setWidget(measurements_);
-    addDockWidget(Qt::RightDockWidgetArea, measurementsDock_);
+    addDockWidget(Qt::LeftDockWidgetArea, measurementsDock_);
+    // A LA IZQUIERDA, y no a la derecha con los demás.
+    //
+    // Queja de uso: «las medidas en vivo quedan mejor del lado izquierdo,
+    // porque estás saturando de opciones». Es cierto y se cuenta: a la derecha
+    // ya viven la paleta de herramientas, la comparación y el mosaico —tres
+    // paneles— mientras que a la izquierda sólo estaba la tira de capturas.
+    //
+    // Y encaja con cómo se lee la pantalla: la vista occidental barre de
+    // izquierda a derecha, así que la columna de datos que se consulta mientras
+    // se mira la pieza gana estando en el primer barrido, no en el último.
     // COMO UNA PESTAÑA MÁS, y no cerrado.
     //
     // Nació cerrado con el razonamiento de que «un panel vacío ocupando sitio
@@ -1219,11 +1229,61 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // pestaña visible al lado de las otras. La comparación sigue delante porque
     // es la que estaba, y cambiar de golpe lo que el operador ve al abrir sería
     // otra forma de decidir por él.
-    tabifyDockWidget(compareDock_, measurementsDock_);
-    compareDock_->raise();
+    // El emparejado con la tira de capturas se hace más tarde, cuando esa
+    // existe: aquí todavía no está construida.
     // Al abrirlo se vuelve a analizar: con una imagen fija —que no genera
     // análisis nuevos— el panel aparecería vacío y el operador concluiría que
     // no funciona.
+    // LO QUE EL PANEL PIDE, LO HACE LA VENTANA.
+    //
+    // El panel enseña y avisa; no toca ni una herramienta. Borrar desde ahí pasa
+    // por el mismo camino que borrar en el lienzo —con su deshacer—, y elegir
+    // una pieza mueve la MISMA elección que las flechas y el mosaico, no un
+    // estado paralelo que pueda discrepar.
+    connect(measurements_, &MeasurementsPanel::toolChosen, this,
+            [this](std::int64_t toolId) {
+                for (std::size_t i = 0; i < liveTools_.size(); ++i) {
+                    if (liveTools_[i].config.id == toolId) {
+                        video_->setSelectedIndex(static_cast<int>(i));
+                        onLiveSelectionChanged(static_cast<int>(i));
+                        break;
+                    }
+                }
+            });
+    connect(measurements_, &MeasurementsPanel::overlayVisibilityChanged, this,
+            [this](std::int64_t toolId, bool visible) {
+                auto at = std::find(hiddenOverlays_.begin(), hiddenOverlays_.end(), toolId);
+                if (visible && at != hiddenOverlays_.end()) {
+                    hiddenOverlays_.erase(at);
+                } else if (!visible && at == hiddenOverlays_.end()) {
+                    hiddenOverlays_.push_back(toolId);
+                }
+                // Se repinta con lo último que se midió: esperar al siguiente
+                // análisis dejaría el ojo sin efecto visible durante un segundo,
+                // y un control que tarda en responder se pulsa dos veces.
+                video_->setResults(visibleResults(lastToolResults_));
+                video_->update();
+            });
+    connect(measurements_, &MeasurementsPanel::deleteRequested, this,
+            [this](std::int64_t toolId) {
+                for (std::size_t i = 0; i < liveTools_.size(); ++i) {
+                    if (liveTools_[i].config.id == toolId) {
+                        video_->setSelectedIndex(static_cast<int>(i));
+                        onDeleteToolClicked();
+                        break;
+                    }
+                }
+            });
+    connect(measurements_, &MeasurementsPanel::pieceChosen, this, [this](int piece) {
+        // OJO CON LAS DOS NUMERACIONES, que ya costaron un fallo aquí: el panel
+        // habla en índices desde 0 —como `ToolRunResult::pieceIndex`— y
+        // `focusedPiece_` va desde 1, con el 0 reservado para «la mayor», que es
+        // lo que la aplicación ha hecho siempre. «Todas» se lee como ese cero.
+        focusedPiece_ = piece < 0 ? 0 : piece + 1;
+        video_->setFocusedPiece(piece < 0 ? 0 : piece);
+        video_->update();
+    });
+
     connect(measurementsDock_, &QDockWidget::visibilityChanged, this, [this](bool shown) {
         if (shown) {
             reanalyseCurrentFrame();
@@ -1680,13 +1740,21 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     }
     // Y la tabla de medidas, que es el dock más nuevo de todos y cayó en el
     // mismo agujero: quien ya usaba el programa la tendría oculta para siempre.
-    if (measurementsDock_ != nullptr && measurementsDock_->isHidden()) {
-        addDockWidget(Qt::RightDockWidgetArea, measurementsDock_);
-        tabifyDockWidget(compareDock_, measurementsDock_);
-        measurementsDock_->show();
-        compareDock_->raise();
-        core::logInfo("La tabla de medidas no estaba en la disposición guardada: "
-                      "se coloca junto a la comparación");
+    if (measurementsDock_ != nullptr && captureDock_ != nullptr) {
+        if (measurementsDock_->isHidden()) {
+            addDockWidget(Qt::LeftDockWidgetArea, measurementsDock_);
+            measurementsDock_->show();
+            core::logInfo("La tabla de medidas no estaba en la disposición guardada: "
+                          "se coloca a la izquierda");
+        }
+        // Comparte pestaña con las capturas para no partir la columna
+        // izquierda en dos mitades estrechas. Sólo si NADIE lo ha emparejado
+        // ya: una disposición que el operador colocó a mano manda sobre esto.
+        if (tabifiedDockWidgets(captureDock_).isEmpty() &&
+            dockWidgetArea(measurementsDock_) == Qt::LeftDockWidgetArea) {
+            tabifyDockWidget(captureDock_, measurementsDock_);
+            measurementsDock_->raise();
+        }
     }
 
     refreshCameras();
@@ -3465,6 +3533,30 @@ void MainWindow::updateAutoInspectAvailability() {
     }
 }
 
+// Las medidas que SE DIBUJAN sobre la pieza: todas menos las que el operador
+// ha apagado con el ojo del panel.
+//
+// Se filtra al pintar y no al medir, y esa diferencia es la que hace que el ojo
+// sea una decisión de vista: la cota apagada se sigue midiendo, sigue en la
+// tabla con su veredicto y sigue contando para el OK/NG de la pieza. Filtrarla
+// antes de medir sería apagar la cota, que es otra cosa y ya existe —el
+// interruptor del informe—.
+std::vector<inspection::ToolRunResult> MainWindow::visibleResults(
+    const std::vector<inspection::ToolRunResult>& results) const {
+    if (hiddenOverlays_.empty()) {
+        return results;
+    }
+    std::vector<inspection::ToolRunResult> shown;
+    shown.reserve(results.size());
+    for (const auto& result : results) {
+        if (std::find(hiddenOverlays_.begin(), hiddenOverlays_.end(), result.toolId) ==
+            hiddenOverlays_.end()) {
+            shown.push_back(result);
+        }
+    }
+    return shown;
+}
+
 void MainWindow::updateStatusIndicators() {
     updateAutoInspectAvailability();
     updateGatedCommands();
@@ -4986,7 +5078,7 @@ void MainWindow::onAnalysisFinished() {
             calibLabel_->setText(tr("Escala (ArUco): marcador no visible"));
         }
         // Medidas en vivo de las herramientas dibujadas (px o mm calibrados).
-        video_->setResults(overlay.toolResults);
+        video_->setResults(visibleResults(overlay.toolResults));
         lastToolResults_ = overlay.toolResults;
         // Y la tabla de medidas, si alguien la está mirando.
         //
@@ -5005,6 +5097,10 @@ void MainWindow::onAnalysisFinished() {
             }
             measurements_->setResults(overlay.toolResults, configs, calibration_.mmPerPixel,
                                       currentUnit());
+            // Y el desplegable de pieza sigue a la elección de siempre, en vez
+            // de llevar la suya: las flechas, el mosaico y este panel mueven la
+            // MISMA cosa.
+            measurements_->setChosenPiece(focusedPiece_ > 0 ? focusedPiece_ - 1 : -1);
         }
         // Y el lienzo enseña las cotas de ESA pieza. Sin esto sólo salían las de
         // la primera en orden de lectura, así que enfocar la tercera dejaba la

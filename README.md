@@ -1210,8 +1210,27 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    da un número que parece correcto.
 
    **Medidas en vivo, en una tabla** (*Ver ▸ Medidas en vivo (tabla)*): panel
-   lateral con lo que mide **cada herramienta de cada pieza**, su banda y su
-   OK/NG. Sobre el vídeo los números se pintan encima de cada herramienta, y eso
+   a la **izquierda** —el lado derecho ya tiene la paleta, la comparación y el
+   mosaico— con lo que mide **cada herramienta de cada pieza**, su banda y su
+   estado.
+
+   Cada fila trae, además del número:
+
+   - un **ojo** para dejar de dibujar esa cota encima de la pieza. No deja de
+     medirse: sigue en la tabla con su veredicto y sigue contando para el OK/NG.
+     Es para no tapar la imagen cuando hay catorce;
+   - una **papelera** para quitarla, con el mismo Ctrl+Z que cualquier otro
+     borrado;
+   - y **pulsar la fila remarca esa cota** sobre la imagen, que es lo único que
+     permite saber cuál es cuál cuando hay muchas encima.
+
+   Arriba, un **selector de pieza** cuando hay varias en el encuadre. Es la misma
+   elección que hacen las flechas y el mosaico —no un estado aparte que pueda
+   discrepar—, y arranca en *Todas*.
+
+   **El estado dice por cuánto**, no sólo «OK»: *Cumple, margen 0,4 px* o *No
+   cumple, se pasa 1,2 px*. Un OK a secas no distingue una pieza sobrada de una
+   que se va a salir en la siguiente. Sobre el vídeo los números se pintan encima de cada herramienta, y eso
    funciona con tres cotas: con catorce se pisan, y con varias piezas sólo caben
    los de **una** —catorce por seis serían ochenta y cuatro etiquetas—. En la
    tabla se leen todos.

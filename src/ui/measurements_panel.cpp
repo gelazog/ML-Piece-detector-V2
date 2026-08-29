@@ -1,22 +1,29 @@
 #include "ui/measurements_panel.h"
 
+#include <QComboBox>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QSignalBlocker>
 #include <QTableWidget>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <set>
 
 #include "ui/theme.h"
 
 namespace pci::ui {
 namespace {
 
-constexpr int kColumnPiece = 0;
-constexpr int kColumnName = 1;
-constexpr int kColumnValue = 2;
-constexpr int kColumnBand = 3;
-constexpr int kColumnVerdict = 4;
+constexpr int kColumnEye = 0;
+constexpr int kColumnPiece = 1;
+constexpr int kColumnName = 2;
+constexpr int kColumnValue = 3;
+constexpr int kColumnBand = 4;
+constexpr int kColumnState = 5;
+constexpr int kColumnDelete = 6;
 
 // La banda declarada, tal como se escribe en la plantilla. Sin ella, un número
 // en una tabla no dice si cumple por poco o por mucho: sólo se ve el veredicto,
@@ -47,21 +54,77 @@ QString bandText(const inspection::ToolConfig& config, double mmPerPixel,
     return QStringLiteral("%1 … %2").arg(write(config.toleranceMin), write(config.toleranceMax));
 }
 
+// UN BOTÓN DE FILA: el ojo y la papelera.
+//
+// Planos y sin marco para que la tabla siga leyéndose como una tabla —catorce
+// botones con relieve serían catorce llamadas de atención—, pero con 24 px de
+// lado, que es el mínimo cómodo con ratón a 60 cm.
+QToolButton* rowButton(const QString& glyph, const QString& tip, bool checkable) {
+    auto* button = new QToolButton();
+    button->setText(glyph);
+    button->setToolTip(tip);
+    button->setAutoRaise(true);
+    button->setCheckable(checkable);
+    button->setFixedSize(24, 24);
+    return button;
+}
+
 }  // namespace
 
 MeasurementsPanel::MeasurementsPanel(QWidget* parent) : QWidget(parent) {
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(4, 4, 4, 4);
 
-    table_ = new QTableWidget(0, 5, this);
+    // QUÉ PIEZA SE SUPERVISA, arriba del todo.
+    //
+    // Va primero porque decide qué significa todo lo de abajo, que es la misma
+    // regla que ya sigue la pestaña de piezas: el modo antes que sus ajustes.
+    auto* pieceRow = new QHBoxLayout();
+    pieceRow->addWidget(new QLabel(tr("Pieza:"), this));
+    pieceBox_ = new QComboBox(this);
+    pieceBox_->setObjectName(QStringLiteral("piecePicker"));
+    pieceBox_->setToolTip(
+        tr("Cuál de las piezas del encuadre se está midiendo. Es la misma\n"
+           "elección que hacen las flechas de la barra y el mosaico: no hay\n"
+           "dos estados distintos que puedan discrepar."));
+    pieceRow->addWidget(pieceBox_, 1);
+    root->addLayout(pieceRow);
+    connect(pieceBox_, &QComboBox::currentIndexChanged, this, [this](int index) {
+        if (index < 0) {
+            return;
+        }
+        const int piece = pieceBox_->itemData(index).toInt();
+        chosenPiece_ = piece;
+        rebuild();
+        emit pieceChosen(piece);
+    });
+
+    table_ = new QTableWidget(0, 7, this);
     table_->setObjectName(QStringLiteral("measurementsTable"));
-    table_->setHorizontalHeaderLabels(
-        {tr("Pieza"), tr("Cota"), tr("Valor"), tr("Banda"), tr("")});
+    table_->setHorizontalHeaderLabels({QString(), tr("Pieza"), tr("Cota"), tr("Valor"),
+                                       tr("Banda"), tr("Estado"), QString()});
     table_->verticalHeader()->setVisible(false);
     table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table_->setSelectionMode(QAbstractItemView::SingleSelection);
     table_->horizontalHeader()->setSectionResizeMode(kColumnValue, QHeaderView::Stretch);
     root->addWidget(table_, 1);
+
+    // PULSAR UNA FILA REMARCA ESA COTA sobre la imagen.
+    //
+    // Con catorce cotas encima de la pieza, saber cuál es cuál a ojo no se puede.
+    // La tabla y el dibujo son la misma información en dos sitios, así que
+    // señalar en uno tiene que señalar en el otro.
+    connect(table_, &QTableWidget::itemSelectionChanged, this, [this] {
+        const int row = table_->currentRow();
+        if (row < 0 || table_->item(row, kColumnName) == nullptr) {
+            return;
+        }
+        const auto toolId = table_->item(row, kColumnName)->data(Qt::UserRole).toLongLong();
+        if (toolId >= 0) {
+            emit toolChosen(toolId);
+        }
+    });
 
     summary_ = new QLabel(this);
     summary_->setObjectName(QStringLiteral("measurementsSummary"));
@@ -71,65 +134,170 @@ MeasurementsPanel::MeasurementsPanel(QWidget* parent) : QWidget(parent) {
 
 int MeasurementsPanel::rowCount() const { return table_->rowCount(); }
 
+void MeasurementsPanel::setChosenPiece(int pieceIndex) {
+    if (pieceIndex == chosenPiece_) {
+        return;
+    }
+    chosenPiece_ = pieceIndex;
+    rebuild();
+}
+
 void MeasurementsPanel::setResults(const std::vector<inspection::ToolRunResult>& results,
                                    const std::vector<inspection::ToolConfig>& configs,
                                    double mmPerPixel, inspection::LengthUnit unit) {
-    table_->setRowCount(static_cast<int>(results.size()));
+    results_ = results;
+    configs_ = configs;
+    mmPerPixel_ = mmPerPixel;
+    unit_ = unit;
+    rebuild();
+}
+
+void MeasurementsPanel::rebuild() {
+    // Qué piezas hay, para el desplegable. Se rehace con cada análisis porque el
+    // encuadre cambia: una pieza que se fue no puede quedarse en la lista.
+    std::set<int> pieces;
+    for (const auto& result : results_) {
+        pieces.insert(result.pieceIndex);
+    }
+    {
+        const QSignalBlocker quiet(pieceBox_);
+        const int wanted = chosenPiece_;
+        pieceBox_->clear();
+        // «Todas» primero: con una sola pieza es lo mismo que elegirla, y con
+        // seis es lo que se quiere ver al empezar.
+        pieceBox_->addItem(tr("Todas (%1)").arg(pieces.size()), -1);
+        for (const int piece : pieces) {
+            pieceBox_->addItem(tr("Pieza %1").arg(piece + 1), piece);
+        }
+        const int index = pieceBox_->findData(wanted);
+        pieceBox_->setCurrentIndex(index >= 0 ? index : 0);
+        chosenPiece_ = pieceBox_->currentData().toInt();
+        // Con una sola pieza el desplegable no elige nada: se deja a la vista
+        // —para que no aparezca y desaparezca— pero apagado, que es lo que dice
+        // «aquí no hay nada que elegir todavía».
+        pieceBox_->setEnabled(pieces.size() > 1);
+    }
+
+    std::vector<const inspection::ToolRunResult*> shown;
+    for (const auto& result : results_) {
+        if (chosenPiece_ < 0 || result.pieceIndex == chosenPiece_) {
+            shown.push_back(&result);
+        }
+    }
+
+    const QSignalBlocker quiet(table_);
+    table_->setRowCount(static_cast<int>(shown.size()));
+    // La columna de la pieza sólo dice algo cuando se ven todas.
+    table_->setColumnHidden(kColumnPiece, chosenPiece_ >= 0);
 
     int ok = 0;
     int failing = 0;
     int withoutANumber = 0;
-    for (int row = 0; row < static_cast<int>(results.size()); ++row) {
-        const inspection::ToolRunResult& result = results[static_cast<std::size_t>(row)];
+    for (int row = 0; row < static_cast<int>(shown.size()); ++row) {
+        const inspection::ToolRunResult& result = *shown[static_cast<std::size_t>(row)];
         const auto config = std::find_if(
-            configs.begin(), configs.end(),
+            configs_.begin(), configs_.end(),
             [&result](const inspection::ToolConfig& c) { return c.id == result.toolId; });
+        const bool visible = std::find(hidden_.begin(), hidden_.end(), result.toolId) ==
+                             hidden_.end();
 
-        // La pieza de la que es esta medida, numerada como en el mosaico y en el
-        // vídeo: empezando por 1. Con seis piezas, una tabla que no diga de cuál
-        // es cada fila no se puede interpretar.
-        const auto piece = new QTableWidgetItem(QString::number(result.pieceIndex + 1));
+        // EL OJO: si esta cota se dibuja sobre la pieza.
+        //
+        // Ocultarla no la deja de medir —sigue en la tabla, con su veredicto—,
+        // así que apagar el dibujo no puede confundirse con apagar la cota. Eso
+        // último ya existe y es otra cosa: el interruptor del informe.
+        auto* eye = rowButton(visible ? QStringLiteral("👁") : QStringLiteral("—"),
+                              tr("Dibujar esta cota sobre la pieza.\n\n"
+                                 "Apagarla no deja de medirla: sigue aquí con su veredicto.\n"
+                                 "Sirve para no tapar la imagen cuando hay muchas."),
+                              true);
+        eye->setChecked(visible);
+        const std::int64_t toolId = result.toolId;
+        connect(eye, &QToolButton::toggled, this, [this, toolId, eye](bool on) {
+            eye->setText(on ? QStringLiteral("👁") : QStringLiteral("—"));
+            auto at = std::find(hidden_.begin(), hidden_.end(), toolId);
+            if (on && at != hidden_.end()) {
+                hidden_.erase(at);
+            } else if (!on && at == hidden_.end()) {
+                hidden_.push_back(toolId);
+            }
+            emit overlayVisibilityChanged(toolId, on);
+        });
+        table_->setCellWidget(row, kColumnEye, eye);
+
+        auto* piece = new QTableWidgetItem(QString::number(result.pieceIndex + 1));
         piece->setTextAlignment(Qt::AlignCenter);
         table_->setItem(row, kColumnPiece, piece);
-        table_->setItem(row, kColumnName,
-                        new QTableWidgetItem(QString::fromStdString(result.name)));
+
+        auto* name = new QTableWidgetItem(QString::fromStdString(result.name));
+        // El id viaja EN LA FILA: emparejar por posición se rompió una vez en el
+        // informe de pieza —«Ø» apagaba «alto»— al reordenar la tabla.
+        name->setData(Qt::UserRole, QVariant::fromValue<qlonglong>(result.toolId));
+        table_->setItem(row, kColumnName, name);
 
         // EL VALOR, O EL MOTIVO POR EL QUE NO LO HAY.
         //
-        // Ésta es la otra mitad de «varias herramientas no muestran medidas»:
-        // ninguna se calla —todas explican— pero esa explicación no se leía en
-        // ningún sitio mientras se trabaja. Aquí ocupa la celda del valor,
-        // porque es lo que responde a la pregunta que se estaba haciendo.
+        // Ninguna herramienta se calla —está medido sobre las 32— pero esa
+        // explicación no se leía en ningún sitio mientras se trabaja. Ocupa la
+        // celda del valor porque es lo que responde a la pregunta que se estaba
+        // haciendo.
         auto* value = new QTableWidgetItem(
             result.ok || result.measured != 0.0
                 ? QString::fromStdString(
-                      inspection::formatMeasure(result, mmPerPixel, unit, true))
+                      inspection::formatMeasure(result, mmPerPixel_, unit_, true))
                 : QString::fromStdString(result.detail));
         value->setToolTip(QString::fromStdString(result.detail));
         table_->setItem(row, kColumnValue, value);
 
         table_->setItem(row, kColumnBand,
-                        new QTableWidgetItem(config != configs.end()
-                                                 ? bandText(*config, mmPerPixel, unit,
+                        new QTableWidgetItem(config != configs_.end()
+                                                 ? bandText(*config, mmPerPixel_, unit_,
                                                             result.kind)
                                                  : QStringLiteral("—")));
 
-        // El veredicto EN TEXTO y no sólo en color, que es la regla que ya
-        // gobierna las etiquetas del vídeo y la tabla del informe: un daltónico
-        // no distingue este verde de este rojo, y en un parte impreso en blanco
-        // y negro el color desaparece entero.
+        // «¿QUÉ ES OK A SECAS?» — pregunta literal del taller, y tenía razón.
         //
-        // Las construcciones geométricas no juzgan nada, así que llevan «—»: un
-        // OK verde sobre algo que no puede estar fuera de tolerancia enseña a no
-        // fiarse de los OK.
-        auto* verdict = new QTableWidgetItem(result.informative ? QStringLiteral("—")
-                                             : result.ok        ? QStringLiteral("OK")
-                                                                : QStringLiteral("NG"));
-        verdict->setTextAlignment(Qt::AlignCenter);
+        // «OK» dice que cumple y no dice por cuánto, que es lo que hace falta
+        // para saber si la pieza va justa o sobrada. Ahora la celda dice el
+        // estado EN PALABRAS y, cuando hay banda, cuánto margen queda —o cuánto
+        // se pasa—. El veredicto sigue yendo también en color, pero el color no
+        // es lo único: en blanco y negro, o con un daltónico delante, el texto
+        // sigue ahí.
+        QString state;
+        if (result.informative) {
+            state = tr("—");  // una construcción no juzga nada
+        } else if (!result.ok && result.measured == 0.0) {
+            state = tr("No mide");
+        } else if (config != configs_.end() && config->toleranceMax < 1e8) {
+            const double toLow = result.measured - config->toleranceMin;
+            const double toHigh = config->toleranceMax - result.measured;
+            const double margin = std::min(toLow, toHigh);
+            inspection::ToolRunResult asLength = result;
+            asLength.measured = std::abs(margin);
+            const QString amount = QString::fromStdString(
+                inspection::formatMeasure(asLength, mmPerPixel_, unit_, true));
+            state = result.ok ? tr("Cumple, margen %1").arg(amount)
+                              : tr("No cumple, se pasa %1").arg(amount);
+        } else {
+            state = result.ok ? tr("Cumple") : tr("No cumple");
+        }
+        auto* verdict = new QTableWidgetItem(state);
         if (!result.informative) {
             verdict->setForeground(QColor(result.ok ? theme::kGood : theme::kBad));
         }
-        table_->setItem(row, kColumnVerdict, verdict);
+        table_->setItem(row, kColumnState, verdict);
+
+        // BORRAR, con la papelera en su propia columna y no en un menú: «que
+        // puedas borrar si quieres la medida, por si se satura de más». Quien
+        // borra es la ventana, que tiene el deshacer.
+        auto* remove = rowButton(QStringLiteral("✕"),
+                                 tr("Quitar esta cota de la pieza.\n\n"
+                                    "Se puede deshacer con Ctrl+Z, como cualquier otro\n"
+                                    "borrado de herramientas."),
+                                 false);
+        connect(remove, &QToolButton::clicked, this,
+                [this, toolId] { emit deleteRequested(toolId); });
+        table_->setCellWidget(row, kColumnDelete, remove);
 
         if (result.informative) {
             continue;
@@ -146,7 +314,7 @@ void MeasurementsPanel::setResults(const std::vector<inspection::ToolRunResult>&
     table_->resizeColumnsToContents();
     table_->horizontalHeader()->setSectionResizeMode(kColumnValue, QHeaderView::Stretch);
 
-    if (results.empty()) {
+    if (results_.empty()) {
         summary_->setText(tr("Sin herramientas dibujadas: no hay nada que medir todavía."));
         return;
     }

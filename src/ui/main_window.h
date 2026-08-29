@@ -560,6 +560,11 @@ private:
     QDockWidget* mosaicDock_ = nullptr;
     QDockWidget* measurementsDock_ = nullptr;
     MeasurementsPanel* measurements_ = nullptr;
+    // Cotas cuyo dibujo el operador ha apagado con el ojo del panel. Es una
+    // decisión de VISTA: se siguen midiendo y siguen contando para el veredicto.
+    std::vector<std::int64_t> hiddenOverlays_;
+    [[nodiscard]] std::vector<inspection::ToolRunResult> visibleResults(
+        const std::vector<inspection::ToolRunResult>& results) const;
     PieceMosaic* mosaic_ = nullptr;
     // El panel se ofrece solo la PRIMERA vez que hay varias piezas. Volver a
     // abrirlo en cada fotograma le quitaría al operador la decisión de cerrarlo.
