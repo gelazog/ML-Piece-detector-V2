@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "inspection_editor/measure_recipe.h"
+#include "inspection_editor/piece_report.h"
 #include "vision/contour_analysis.h"
 #include "vision/pipeline.h"
 #include "vision/shape_class.h"
@@ -181,8 +182,16 @@ TEST(MeasureRecipes, ARecipeForAnotherFamilySaysSoInsteadOfMeasuring) {
     // Y que el motivo nombre LAS DOS COSAS: qué pedía la receta y qué se
     // reconoció. «No aplica» a secas deja al operador probando recetas a ver
     // cuál entra.
-    EXPECT_NE(result.why.find("arandela"), std::string::npos)
-        << "el motivo no dice qué se reconoció: " << result.why;
+    // Y lo nombra COMO EL INFORME, no con la clave interna. Se compara contra
+    // `describeShape` y no contra un texto escrito aquí: son la misma lista, y
+    // si un día se reescribe «Arandela» se reescriben las dos a la vez.
+    //
+    // Aquí ponía la clave de las trazas —«arandela», «poligono», sin tildes— y
+    // el operador leía «se ha reconocido como poligono», perdiendo además el
+    // dato que más ayuda: cuántos lados.
+    EXPECT_NE(result.why.find(inspection::describeShape(ring.shape)), std::string::npos)
+        << "el motivo no dice qué se reconoció, o lo dice con otra palabra que la que usa "
+           "el informe: " << result.why;
     EXPECT_NE(result.why.find("Tuerca hexagonal"), std::string::npos)
         << "el motivo no dice qué receta se intentó: " << result.why;
 }

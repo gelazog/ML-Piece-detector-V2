@@ -31,6 +31,8 @@ MeasurementRow fact(const std::string& name, double value, MeasuredKind kind,
     return rows.front();
 }
 
+}  // namespace
+
 std::string describeShape(const vision::ShapeClass& shape) {
     switch (shape.kind) {
         case vision::ShapeKind::Circle: return "Pieza redonda";
@@ -43,8 +45,6 @@ std::string describeShape(const vision::ShapeClass& shape) {
     }
     return "Pieza";
 }
-
-}  // namespace
 
 std::size_t PieceReport::contourFactCount() const {
     return static_cast<std::size_t>(

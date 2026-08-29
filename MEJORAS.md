@@ -1130,6 +1130,17 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   La familia se hereda de la base: una receta hecha a partir de «Arandela» sigue
   siendo para arandelas.
 
+- [x] **P10 · El mensaje de la receta llamaba «poligono» a un polígono.** El
+  mismo fallo que P9, en otro sitio y escrito por mí dos días antes: el motivo de
+  «esta receta no es para esta pieza» nombraba la figura con
+  `vision::shapeKindName`, que es la CLAVE de las trazas —«poligono», «circulo»,
+  sin tildes— en vez de con la frase del informe.
+
+  Y perdía el dato que más ayuda: `describeShape` dice «Polígono de 9 lados», no
+  «poligono». Ahora hay **una sola lista** —la que ya titulaba el informe— y el
+  header de `shapeKindName` dice para qué es y para qué no, con el caso que se
+  coló escrito dentro.
+
 - [x] **P9 · El filtro de clases enseñaba los nombres internos.** «caliper»,
   «circle», «point_to_line», «region»… a dos palmos de la paleta, que dice
   «Calibre», «Círculo», «Punto-Línea». Es exactamente lo que el usuario llamó

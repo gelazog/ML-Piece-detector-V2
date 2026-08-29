@@ -47,6 +47,15 @@ enum class ShapeKind {
     Irregular,  // ninguna de las anteriores: se mide como se venía midiendo
 };
 
+// La CLAVE de la clase —«poligono», «circulo», sin tildes—, para trazas de
+// pruebas y registros. NO es para la pantalla: el nombre que lee el operador lo
+// da `inspection::describeShape`, que además dice cuántos lados tiene.
+//
+// La distinción no es de estilo. Esta clave se coló una vez en un mensaje del
+// diálogo de recetas y el operador leía «esta pieza se ha reconocido como
+// poligono», sin tilde y sin el recuento — la misma familia de fallo que la
+// fila de casillas que rotulaba «caliper  circle  point_to_line» a dos palmos
+// de una paleta que dice «Calibre  Círculo  Punto-Línea».
 [[nodiscard]] const char* shapeKindName(ShapeKind kind);
 
 struct ShapeClass {

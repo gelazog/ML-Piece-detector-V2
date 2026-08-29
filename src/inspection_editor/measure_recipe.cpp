@@ -1,5 +1,7 @@
 #include "inspection_editor/measure_recipe.h"
 
+#include "inspection_editor/piece_report.h"
+
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
@@ -227,10 +229,16 @@ RecipeResult proposeWithRecipe(const cv::Mat& gray, const cv::Mat& mask,
     // más abajo — si no saca ninguna cota, se dice.
     if (recipe.family != PieceFamily::Any && recipe.family != PieceFamily::Gear &&
         recipe.family != seen) {
+        // La figura se nombra con la MISMA frase que el título del informe
+        // (`describeShape`). Aquí ponía `vision::shapeKindName`, que devuelve la
+        // clave de las trazas —«poligono», «circulo», sin tildes— así que el
+        // operador leía «se ha reconocido como poligono». Es la misma familia de
+        // fallo que la fila de casillas que decía «caliper  circle», y además
+        // perdía el dato que más ayuda: cuántos lados.
         result.why = "La receta «" + recipe.name + "» es para una " +
-                     familyName(recipe.family) + ", y esta pieza se ha reconocido como " +
-                     std::string(vision::shapeKindName(shape.kind)) +
-                     ". Elige otra receta o mide sin ninguna: forzarla daría cotas que la "
+                     familyName(recipe.family) + ", y esta pieza se ha reconocido como «" +
+                     describeShape(shape) +
+                     "». Elige otra receta o mide sin ninguna: forzarla daría cotas que la "
                      "pieza no tiene.";
         return result;
     }

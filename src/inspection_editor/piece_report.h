@@ -84,6 +84,18 @@ inline constexpr const char* kGroupDimension = "cota";
 // `frame`, si se pasa con tamaño, es el encuadre completo del que salió la
 // máscara: hace falta para saber si la pieza está cortada por el borde. Vacío =
 // no se comprueba, y entonces el informe no puede avisar de ello.
+// CÓMO SE LLAMA UNA FIGURA, en una frase para leer.
+//
+// Existe UNA sola lista y está aquí porque es la que ya se usaba para el título
+// del informe: «Polígono de 6 lados», «Arandela», «Pieza de contorno libre».
+//
+// No confundir con `vision::shapeKindName`, que devuelve una CLAVE —«poligono»,
+// «circulo», sin tildes— pensada para las trazas de las pruebas y los registros.
+// Esa clave se coló una vez en un mensaje de pantalla y el operador leía «esta
+// pieza se ha reconocido como poligono»: la misma familia de fallo que la fila
+// de casillas que decía «caliper  circle  point_to_line».
+[[nodiscard]] std::string describeShape(const vision::ShapeClass& shape);
+
 [[nodiscard]] PieceReport measureWholePiece(const cv::Mat& gray, const cv::Mat& mask,
                                             const vision::Fixture& fixture,
                                             double mmPerPixel = 0.0,
