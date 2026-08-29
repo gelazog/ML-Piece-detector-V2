@@ -6,8 +6,10 @@
 #include <vector>
 
 #include "inspection_editor/auto_measure.h"
+#include "inspection_editor/measure_recipe.h"
 
 class QCheckBox;
+class QComboBox;
 class QTableWidget;
 class QLabel;
 class QPushButton;
@@ -42,10 +44,28 @@ public:
     //
     // Si no se pasa, el diálogo funciona como siempre y no enseña el filtro:
     // así el llamante que no puede reproponer no ofrece un control que mentiría.
-    using Reproposer = std::function<std::vector<AutoProposal>(const std::vector<ToolType>&)>;
+    //
+    // LO QUE SE LE PASA ES UNA RECETA ENTERA, no la lista de clases.
+    //
+    // Las dos cosas que el operador toca aquí —elegir una receta y marcar
+    // casillas— son la MISMA: una receta no es más que un juego de casillas con
+    // nombre. Con dos caminos distintos, elegir «Arandela» y marcar sus cuatro
+    // casillas a mano darían resultados distintos el día que una receta llevara
+    // algo más, y nadie sabría cuál manda.
+    //
+    // Y hace falta que la respuesta traiga el «no aplica»: la receta de la
+    // tuerca sobre una arandela no devuelve cero cotas, devuelve un motivo. Sin
+    // eso, el diálogo enseñaría una tabla vacía y el operador probaría recetas a
+    // ver cuál entra.
+    using Reproposer = std::function<RecipeResult(const MeasureRecipe&)>;
 
     AutoMeasureDialog(std::vector<AutoProposal> proposals, double mmPerPixel = 0.0,
                       QWidget* parent = nullptr, Reproposer reproposer = {});
+
+    // La receta elegida ahora mismo, con las casillas que el operador haya
+    // tocado. Es lo que hay que guardar en la pieza para que la próxima vez
+    // salga ya puesta.
+    [[nodiscard]] MeasureRecipe chosenRecipe() const;
 
     // Las propuestas que el operador dejó marcadas, en el orden en que se
     // mostraron. Vacío si canceló.
@@ -57,14 +77,27 @@ private:
     // Las clases marcadas ahora mismo. Vacío = todas, igual que en
     // `ProposeOptions`, para que las dos capas signifiquen lo mismo.
     [[nodiscard]] std::vector<ToolType> chosenTypes() const;
+    // Vuelve a proponer con la receta que haya ahora y refleja el resultado:
+    // la tabla, el motivo cuando no aplica, y el botón de aceptar.
+    void reproposeWithCurrentRecipe();
+    // Pone las casillas como diga la receta, sin disparar el reproponer: si
+    // cada casilla reproprusiera al ponerla, elegir una receta lanzaría siete
+    // barridos del contorno y el último ganaría.
+    void applyRecipeToBoxes(const MeasureRecipe& recipe);
 
     std::vector<AutoProposal> proposals_;
     double mmPerPixel_ = 0.0;
     QTableWidget* table_ = nullptr;
     QPushButton* acceptButton_ = nullptr;
+    QComboBox* recipeBox_ = nullptr;
+    QLabel* recipeWhat_ = nullptr;
+    QLabel* noticeLabel_ = nullptr;
     Reproposer reproposer_;
     std::vector<QCheckBox*> typeBoxes_;
     std::vector<ToolType> boxTypes_;
+    // La receta base elegida en el desplegable. Las casillas la ajustan, y por
+    // eso se guarda aparte: `chosenRecipe()` es ESTA con las casillas de ahora.
+    MeasureRecipe base_;
 };
 
 }  // namespace pci::inspection

@@ -2794,6 +2794,51 @@ Qué propone, a partir de la descomposición del contorno y de los agujeros:
 por redondeo, un **Calíper** por cada par de caras paralelas enfrentadas y un
 **Ángulo** por esquina viva.
 
+#### Recetas de medición: acotar qué se propone, sin poder forzarlo
+
+Petición de uso: «un conjunto personalizado de reglas para algunas piezas
+específicas —engranajes, círculos, piezas cuadradas, rectangulares— para tomar
+de mejor manera las medidas».
+
+Una **receta** (`inspection_editor/measure_recipe.*`) es un juego de casillas con
+nombre: qué clases de cota entran, a qué familia de pieza se aplica y una frase
+que dice qué trae. Vienen seis de fábrica —*Todas las cotas*, *Pieza redonda*,
+*Arandela*, *Cuadrada o rectangular*, *Tuerca hexagonal*, *Engranaje*— y viven al
+lado de quien las aplica, por lo mismo que `proposableTypes()`: para que añadir
+una y olvidarse de la interfaz no sea posible.
+
+**Lo que hace que esto no sea un modo de forzar.** El riesgo de una función así
+es el contrario del que parece: lo fácil es que «receta» acabe significando
+«dame el módulo de esta arandela». Ese número saldría —la herramienta lo
+calcula— y sería basura con aspecto de medida, la misma familia de fallo que los
+«Radio 28 px» sobre una tuerca de esquinas vivas o los «8 lados» sobre una
+arandela. Así que una receta que no va con la pieza **no propone: explica**, con
+las dos mitades en la frase (qué pedía la receta y qué se reconoció).
+
+**El engranaje es la excepción, y con su número.** Para el clasificador una rueda
+dentada es *irregular* —111 lados rectos en `engranaje-1.png`—, así que exigirle
+familia reconocida la dejaría sin poder aplicarse nunca. Ahí quien decide es la
+herramienta consiguiendo medir: si no saca ninguna cota, se dice. Sobre esa foto
+la receta da **dientes (z), área, perímetro y el agujero**.
+
+**Tres invariantes, y cada una tiene su prueba** (`tests/test_measure_recipes.cpp`,
+`AutoMeasureRecipeUi` en `tests/test_canvas_gestures.cpp`):
+
+1. Una receta solo ofrece las clases que dice traer.
+2. Una receta de otra familia dice que no, y el motivo nombra las dos cosas.
+3. **Sin receta, todo sigue igual**: «Todas las cotas» tiene que dar exactamente
+   lo mismo que no elegir ninguna, cota por cota y en el mismo orden. Es lo que
+   impide que las recetas se conviertan en ajustes escondidos que cambian lo que
+   recibe quien no las usa.
+
+En el diálogo, la receta va **arriba** de las casillas y las casillas se quedan:
+una receta que solo dijera su nombre sería una caja negra. Al elegirla se
+**vuelve a proponer**, nunca a esconder filas — el recorte a doce se aplica
+después de filtrar, así que esconder dejaría tres diámetros donde podía haber
+doce. Y las clases se guardan en el orden de `proposableTypes()` para que la
+receta elegida y la devuelta sean el mismo objeto: si no, comparar «¿la ha
+ajustado el operador?» diría que sí siempre.
+
 #### Y si la pieza se REPITE: rosca y engranaje
 
 Salió de una queja del taller: «en unos tornillos, que tienen rosca, usa otras

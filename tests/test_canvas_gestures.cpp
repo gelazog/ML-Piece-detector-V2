@@ -440,6 +440,157 @@ TEST(AutoMeasureDialogTest, TheFullReadingIsKeptInTheTooltip) {
 }
 
 // ---------------------------------------------------------------------------
+// Recetas de medición: elegir qué se mide en cada clase de pieza
+// ---------------------------------------------------------------------------
+//
+// Petición de uso: «un conjunto personalizado de reglas para algunas piezas
+// específicas —engranajes, círculos, piezas cuadradas, rectangulares— para
+// tomar de mejor manera las medidas».
+//
+// Lo que estas pruebas vigilan no es que el desplegable exista, sino las tres
+// cosas que lo hacen honrado: que enseñe QUÉ trae cada receta, que al elegir
+// una se vuelva a proponer con ella —y no se escondan filas—, y que cuando la
+// receta no va con la pieza se DIGA en vez de dejar una tabla vacía.
+
+namespace {
+
+// Un reproponer de mentira que apunta con qué receta se le llamó. Sin esto no
+// se puede distinguir «eligió la receta» de «escondió filas», que es
+// exactamente el fallo que el filtro de clases ya tuvo una vez.
+struct RecipeSpy {
+    std::vector<pci::inspection::MeasureRecipe> asked;
+    pci::inspection::RecipeResult answer;
+
+    pci::inspection::AutoMeasureDialog::Reproposer reproposer() {
+        return [this](const pci::inspection::MeasureRecipe& recipe) {
+            asked.push_back(recipe);
+            return answer;
+        };
+    }
+};
+
+pci::inspection::RecipeResult twoCotas() {
+    pci::inspection::RecipeResult result;
+    result.applies = true;
+    result.proposals.resize(2);
+    result.proposals[0].config.name = "Ø exterior";
+    result.proposals[1].config.name = "Ø interior";
+    return result;
+}
+
+}  // namespace
+
+TEST(AutoMeasureRecipeUi, TheSelectorOffersEveryFactoryRecipeAndSaysWhatItBrings) {
+    RecipeSpy spy;
+    spy.answer = twoCotas();
+    AutoMeasureDialog dialog({}, 0.0, nullptr, spy.reproposer());
+
+    auto* box = dialog.findChild<QComboBox*>(QStringLiteral("recipeBox"));
+    ASSERT_NE(box, nullptr) << "no hay dónde elegir la receta";
+    // Se comparan con la lista de verdad y no con nombres escritos aquí: una
+    // receta nueva tiene que aparecer sola en el diálogo, que es la razón de
+    // que `factoryRecipes()` viva al lado de quien las aplica.
+    ASSERT_EQ(box->count(), static_cast<int>(pci::inspection::factoryRecipes().size()));
+    for (int i = 0; i < box->count(); ++i) {
+        EXPECT_EQ(box->itemText(i).toStdString(),
+                  pci::inspection::factoryRecipes()[static_cast<std::size_t>(i)].name);
+    }
+
+    // Y qué trae cada una, en una frase: seis nombres sin explicación se eligen
+    // a ciegas.
+    auto* what = dialog.findChild<QLabel*>(QStringLiteral("recipeWhat"));
+    ASSERT_NE(what, nullptr) << "la receta no dice qué mide";
+    const QString first = what->text();
+    EXPECT_FALSE(first.isEmpty());
+    box->setCurrentText(QStringLiteral("Arandela"));
+    EXPECT_NE(what->text(), first)
+        << "el texto no cambia al cambiar de receta: está explicando la anterior";
+}
+
+TEST(AutoMeasureRecipeUi, ChoosingARecipeReproposesWithItAndTicksItsClasses) {
+    RecipeSpy spy;
+    spy.answer = twoCotas();
+    AutoMeasureDialog dialog({}, 0.0, nullptr, spy.reproposer());
+    auto* box = dialog.findChild<QComboBox*>(QStringLiteral("recipeBox"));
+    ASSERT_NE(box, nullptr);
+
+    spy.asked.clear();
+    box->setCurrentText(QStringLiteral("Arandela"));
+    ASSERT_FALSE(spy.asked.empty()) << "elegir una receta no vuelve a proponer: entonces "
+                                       "está escondiendo filas, y el recorte a doce ya se "
+                                       "habrá comido las cotas que sí se querían";
+    const auto& asked = spy.asked.back();
+    const auto* washer = pci::inspection::recipeNamed("Arandela");
+    ASSERT_NE(washer, nullptr);
+    EXPECT_EQ(asked.name, washer->name);
+    EXPECT_EQ(asked.options.allowedTypes, washer->options.allowedTypes)
+        << "se vuelve a proponer con otras clases que las de la receta elegida";
+
+    // Y las casillas enseñan lo que la receta trae: una receta que no se ve es
+    // una caja negra, y el operador no puede ajustarla sin salir del diálogo.
+    for (auto* check : dialog.findChildren<QCheckBox*>()) {
+        const std::string name = check->text().toStdString();
+        if (name == "Círculo") {
+            EXPECT_TRUE(check->isChecked()) << "la receta de la arandela trae el diámetro y "
+                                               "su casilla sale desmarcada";
+        }
+        if (name == "Ángulo") {
+            EXPECT_FALSE(check->isChecked())
+                << "la receta de la arandela no trae ángulos y su casilla sale marcada";
+        }
+    }
+}
+
+TEST(AutoMeasureRecipeUi, WhenTheRecipeIsNotForThisPieceItSaysWhy) {
+    // LO QUE IMPIDE QUE «RECETA» SIGNIFIQUE «FORZAR». La receta de la tuerca
+    // sobre una arandela no devuelve cero cotas: devuelve un motivo, y el
+    // diálogo tiene que enseñarlo. Una tabla vacía sin explicación se lee como
+    // «esta pieza no tiene nada que medir», que es falso.
+    RecipeSpy spy;
+    spy.answer.applies = false;
+    spy.answer.why = "La receta «Tuerca hexagonal» es para una tuerca hexagonal, y esta "
+                     "pieza se ha reconocido como arandela.";
+    AutoMeasureDialog dialog({}, 0.0, nullptr, spy.reproposer());
+    auto* box = dialog.findChild<QComboBox*>(QStringLiteral("recipeBox"));
+    ASSERT_NE(box, nullptr);
+    box->setCurrentText(QStringLiteral("Tuerca hexagonal"));
+
+    auto* notice = dialog.findChild<QLabel*>(QStringLiteral("recipeNotice"));
+    ASSERT_NE(notice, nullptr) << "no hay dónde decir por qué no se propone nada";
+    EXPECT_TRUE(notice->isVisibleTo(&dialog))
+        << "la receta no aplica y el diálogo no lo dice: la tabla vacía se lee como que la "
+           "pieza no tiene cotas";
+    EXPECT_TRUE(notice->text().contains(QStringLiteral("arandela")))
+        << "el motivo no llega a la pantalla: " << notice->text().toStdString();
+
+    auto* table = dialog.findChild<QTableWidget*>();
+    ASSERT_NE(table, nullptr);
+    EXPECT_EQ(table->rowCount(), 0) << "no aplica y aun así enseña cotas";
+}
+
+TEST(AutoMeasureRecipeUi, AdjustingTheBoxesKeepsTheFamilyOfTheRecipe) {
+    // Ajustar las casillas cambia QUÉ se propone, no A QUÉ PIEZA se aplica. Si
+    // al tocar una casilla la receta se convirtiera en «todas», desmarcar una
+    // clase apagaría de paso la comprobación de familia — y la receta de la
+    // tuerca empezaría a medir arandelas sin que nadie lo pidiera.
+    RecipeSpy spy;
+    spy.answer = twoCotas();
+    AutoMeasureDialog dialog({}, 0.0, nullptr, spy.reproposer());
+    auto* box = dialog.findChild<QComboBox*>(QStringLiteral("recipeBox"));
+    ASSERT_NE(box, nullptr);
+    box->setCurrentText(QStringLiteral("Arandela"));
+    ASSERT_EQ(dialog.chosenRecipe().family, pci::inspection::PieceFamily::Ring);
+
+    for (auto* check : dialog.findChildren<QCheckBox*>()) {
+        if (check->text() == QStringLiteral("Región")) {
+            check->setChecked(!check->isChecked());
+        }
+    }
+    EXPECT_EQ(dialog.chosenRecipe().family, pci::inspection::PieceFamily::Ring)
+        << "tocar una casilla ha cambiado a qué familia se aplica la receta";
+}
+
+// ---------------------------------------------------------------------------
 // Superposición del contorno detectado (A4)
 // ---------------------------------------------------------------------------
 

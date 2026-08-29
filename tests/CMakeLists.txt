@@ -26,6 +26,7 @@ add_executable(pci_tests
   test_background_patch.cpp
   test_smoke_flag.cpp
   test_measured_piece.cpp
+  test_measure_recipes.cpp
   test_proposals_are_checkable.cpp
   test_lookups_by_name.cpp
   test_pieces_dropped_for_being_small.cpp

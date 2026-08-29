@@ -7,6 +7,7 @@
 #include <QPushButton>
 #include <QTableWidget>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QSignalBlocker>
 #include <QVBoxLayout>
 
@@ -61,6 +62,38 @@ AutoMeasureDialog::AutoMeasureDialog(std::vector<AutoProposal> proposals, double
     // filas quedarían tres diámetros, porque los otros nueve huecos se los
     // habrían comido cotas que no se querían.
     if (reproposer_) {
+        // LA RECETA, arriba de las casillas y no al lado: es lo que se elige
+        // primero y lo que decide qué queda marcado debajo.
+        //
+        // Petición de uso: «un conjunto personalizado de reglas para algunas
+        // piezas específicas —engranajes, círculos, piezas cuadradas,
+        // rectangulares— para tomar de mejor manera las medidas».
+        //
+        // Las casillas siguen ahí a propósito. Una receta que solo dijera su
+        // nombre sería una caja negra: se ve QUÉ trae, y se puede ajustar sin
+        // salir del diálogo.
+        auto* recipeRow = new QHBoxLayout();
+        recipeRow->addWidget(new QLabel(tr("Receta:"), this));
+        recipeBox_ = new QComboBox(this);
+        recipeBox_->setObjectName(QStringLiteral("recipeBox"));
+        for (const auto& recipe : factoryRecipes()) {
+            recipeBox_->addItem(QString::fromStdString(recipe.name));
+        }
+        recipeBox_->setToolTip(
+            tr("Qué se mide en esta clase de pieza. Una receta acota las cotas que\n"
+               "se proponen; no fuerza ninguna: si la pieza no es de su familia, se\n"
+               "dice en vez de sacar un número que no significa nada."));
+        recipeRow->addWidget(recipeBox_);
+        recipeRow->addStretch(1);
+        layout->addLayout(recipeRow);
+
+        // Qué trae la receta, en una frase. Sin esto, elegir entre seis nombres
+        // es adivinar.
+        recipeWhat_ = new QLabel(this);
+        recipeWhat_->setObjectName(QStringLiteral("recipeWhat"));
+        recipeWhat_->setWordWrap(true);
+        layout->addWidget(recipeWhat_);
+
         auto* filterRow = new QHBoxLayout();
         filterRow->addWidget(new QLabel(tr("Proponer:"), this));
         for (const ToolType type : proposableTypes()) {
@@ -73,13 +106,33 @@ AutoMeasureDialog::AutoMeasureDialog(std::vector<AutoProposal> proposals, double
             typeBoxes_.push_back(box);
             boxTypes_.push_back(type);
             connect(box, &QCheckBox::toggled, this, [this](bool) {
-                proposals_ = reproposer_(chosenTypes());
-                fillTable();
-                updateAcceptLabel();
+                reproposeWithCurrentRecipe();
             });
         }
         filterRow->addStretch(1);
         layout->addLayout(filterRow);
+
+        // El motivo cuando la receta no va con esta pieza. Vive debajo del
+        // filtro y no en un aviso aparte porque es la respuesta a lo que se
+        // acaba de tocar.
+        noticeLabel_ = new QLabel(this);
+        noticeLabel_->setObjectName(QStringLiteral("recipeNotice"));
+        noticeLabel_->setWordWrap(true);
+        noticeLabel_->hide();
+        layout->addWidget(noticeLabel_);
+
+        base_ = factoryRecipes().front();
+        recipeWhat_->setText(QString::fromStdString(base_.what));
+        connect(recipeBox_, &QComboBox::currentTextChanged, this, [this](const QString& name) {
+            const auto* chosen = recipeNamed(name.toStdString());
+            if (chosen == nullptr) {
+                return;
+            }
+            base_ = *chosen;
+            recipeWhat_->setText(QString::fromStdString(base_.what));
+            applyRecipeToBoxes(base_);
+            reproposeWithCurrentRecipe();
+        });
     }
 
     fillTable();
@@ -192,6 +245,41 @@ std::vector<ToolType> AutoMeasureDialog::chosenTypes() const {
         return {};
     }
     return chosen;
+}
+
+MeasureRecipe AutoMeasureDialog::chosenRecipe() const {
+    MeasureRecipe recipe = base_;
+    recipe.options.allowedTypes = chosenTypes();
+    return recipe;
+}
+
+void AutoMeasureDialog::applyRecipeToBoxes(const MeasureRecipe& recipe) {
+    for (std::size_t i = 0; i < typeBoxes_.size(); ++i) {
+        QSignalBlocker blocker(typeBoxes_[i]);
+        typeBoxes_[i]->setChecked(recipe.options.allows(boxTypes_[i]));
+    }
+}
+
+void AutoMeasureDialog::reproposeWithCurrentRecipe() {
+    if (!reproposer_) {
+        return;
+    }
+    const RecipeResult result = reproposer_(chosenRecipe());
+    proposals_ = result.proposals;
+    fillTable();
+    updateAcceptLabel();
+    if (noticeLabel_ == nullptr) {
+        return;
+    }
+    // SE DICE POR QUÉ, siempre que haya algo que decir. Una tabla vacía sin
+    // motivo se lee como «esta pieza no tiene nada que medir», que casi nunca es
+    // lo que pasó: lo que pasó es que la receta era para otra familia.
+    if (!result.applies || result.proposals.empty()) {
+        noticeLabel_->setText(QString::fromStdString(result.why));
+        noticeLabel_->setVisible(!result.why.empty());
+    } else {
+        noticeLabel_->hide();
+    }
 }
 
 void AutoMeasureDialog::updateAcceptLabel() {

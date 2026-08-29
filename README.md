@@ -510,6 +510,29 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    entera salía con ese aviso: aceptabas las cinco propuestas y te quedabas con
    una plantilla que no podía rechazar nada.
 
+   **Y puedes acotar qué te propone, con una RECETA.** Arriba del diálogo hay un
+   desplegable —*Pieza redonda*, *Arandela*, *Cuadrada o rectangular*, *Tuerca
+   hexagonal*, *Engranaje*— que deja fijado qué clases de cota entran, con una
+   frase que dice qué trae cada una. Las casillas siguen debajo: la receta las
+   pone, y tú puedes ajustarlas sin salir del diálogo.
+
+   Sirve para lo que pediste el taller: quien mide engranajes no quiere que le
+   ofrezcan lados —los «lados» de una rueda son sus dientes— y quien mide
+   arandelas no quiere ángulos de esquinas que no existen. Con la receta puesta,
+   el tope de doce propuestas se reparte **entre las cotas que sí quieres**.
+
+   **Una receta acota, no fuerza.** Si eliges *Tuerca hexagonal* sobre una
+   arandela, no te saca un entrecaras: te dice *«la receta Tuerca hexagonal es
+   para una tuerca hexagonal, y esta pieza se ha reconocido como arandela»*. Un
+   número que sale de la herramienta equivocada se acepta, se guarda con su
+   tolerancia y luego no cuadra con el plano — y eso es peor que no tenerlo.
+
+   La única excepción es el engranaje, y por una razón medida: para el
+   clasificador una rueda dentada es *irregular* (le cuenta 111 lados rectos),
+   así que ahí quien dice si es un engranaje es la herramienta consiguiendo
+   medirlo. Sobre `engranaje-1.png` la receta saca **dientes, área, perímetro y
+   el agujero**.
+
    **Rosca y engranaje son nuevos, y antes faltaban del todo.** La medición
    automática conocía siete de las treinta y dos herramientas, y ninguna de esas
    dos estaba: a un tornillo roscado te ofrecía nueve «Radio» y tres reglas, y a

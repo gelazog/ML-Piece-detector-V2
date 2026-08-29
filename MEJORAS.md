@@ -1078,6 +1078,48 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   herramienta acierta y la clase no—. Eso es el resto de E8 (85 de 100), y
   moverlo toca el clasificador y sus trinquetes, así que va aparte.
 
+- [~] **P1 · Recetas de medición por familia de pieza.** Petición de uso: «un
+  conjunto personalizado de reglas para algunas piezas específicas —engranajes,
+  círculos, piezas cuadradas, rectangulares— para tomar de mejor manera las
+  medidas, de un lote o de una pieza».
+
+  Hecho: el modelo (`inspection_editor/measure_recipe.*`), seis recetas de
+  fábrica y el desplegable en el diálogo de medición automática, con la frase
+  que dice qué trae cada una y las casillas debajo para ajustarla.
+
+  La decisión de diseño que sostiene lo demás: **una receta acota, no fuerza**.
+  Pedir la receta de la tuerca sobre una arandela no da un entrecaras, da un
+  motivo con las dos mitades («qué pedía la receta» y «qué se reconoció»). Un
+  número sacado de la herramienta equivocada se acepta, se guarda con su
+  tolerancia y luego no cuadra con el plano.
+
+  **Falta la persistencia**, que es la mitad que el usuario pidió con «de un
+  lote»: hoy la receta se elige en cada apertura del diálogo. Va como los
+  perfiles de detección —columna en `Pieces`, esquema v15, y el editor la
+  recuerda—, que es el patrón que ya existe y la respuesta que dio el dueño del
+  proyecto al preguntárselo.
+
+- [ ] **P2 · Vídeo: disparo por paso de pieza.** La otra mitad de la misma
+  petición: «la manera en la que lo toma en vídeo (grabado o en tiempo real)
+  para que el usuario pueda definir un tiempo de espera entre que sale y entra
+  una/varias piezas en el enfoque».
+
+  Hoy la auto-inspección es un **temporizador fijo** (`pref_auto_interval_ms`,
+  1 s de fábrica) que mide el fotograma que haya: mide piezas a medio entrar,
+  mide doce veces la misma y puede no medir nunca una que pasa rápido. No hay
+  ningún concepto de «pieza que pasa».
+
+  Lo acordado con el dueño del proyecto: se rearma **cuando el encuadre se
+  vacía** durante el tiempo que fije el operador. Tres tiempos:
+
+  - **asentamiento**: la escena tiene que estar quieta N ms —mismo recuento y
+    centroides que no se mueven— antes de medir;
+  - **rearme**: tras medir, no se vuelve a medir hasta que el encuadre esté
+    vacío M ms;
+  - y **no se mide una pieza que toca el borde**, que ya se detecta hoy (el
+    informe avisa de «límites inferiores») y hoy no se usa como condición de
+    disparo.
+
 ## F. Ya está hecho — no volver a investigarlo
 
 Aquí para que nadie gaste otra vez el tiempo que ya se gastó.

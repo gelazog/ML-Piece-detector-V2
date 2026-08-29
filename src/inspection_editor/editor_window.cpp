@@ -713,10 +713,11 @@ void EditorWindow::onAutoMeasureClicked() {
     // Reproponer y no filtrar la lista: el recorte por el tope se aplica
     // DESPUÉS del filtro, así que esconder filas dejaría tres diámetros donde
     // podía haber doce.
-    auto reproposer = [&](const std::vector<ToolType>& allowed) {
-        ProposeOptions options;
-        options.allowedTypes = allowed;
-        return proposeTools(image, mask, fixture_, options, calibration_.mmPerPixel);
+    // Se le pasa una RECETA entera y no la lista de clases: la comprobación de
+    // «esta receta no es para esta pieza» necesita la familia, y el diálogo
+    // tiene que poder enseñar el motivo en vez de una tabla vacía.
+    auto reproposer = [&](const MeasureRecipe& recipe) {
+        return proposeWithRecipe(image, mask, fixture_, recipe, calibration_.mmPerPixel);
     };
     AutoMeasureDialog dialog(proposals, calibration_.mmPerPixel, this,
                              std::move(reproposer));
