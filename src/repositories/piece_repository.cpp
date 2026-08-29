@@ -189,6 +189,40 @@ core::Result<double> PieceRepository::loadOrientationOffset(std::int64_t pieceId
     return core::Result<double>::ok(stmt.value().columnDouble(0));
 }
 
+core::Result<void> PieceRepository::saveMeasureRecipe(std::int64_t pieceId,
+                                                      const std::string& name) {
+    auto stmt = db_.prepare("UPDATE Pieces SET measure_recipe = ? WHERE id = ?;");
+    if (!stmt.isOk()) {
+        return core::Result<void>::err(stmt.error().message);
+    }
+    if (auto b = stmt.value().bindText(1, name); !b.isOk()) return b;
+    if (auto b = stmt.value().bindInt(2, pieceId); !b.isOk()) return b;
+    auto step = stmt.value().step();
+    if (!step.isOk()) {
+        return core::Result<void>::err(step.error().message);
+    }
+    return core::Result<void>::ok();
+}
+
+core::Result<std::string> PieceRepository::loadMeasureRecipe(std::int64_t pieceId) {
+    using ResultT = core::Result<std::string>;
+    auto stmt = db_.prepare("SELECT measure_recipe FROM Pieces WHERE id = ?;");
+    if (!stmt.isOk()) {
+        return ResultT::err(stmt.error().message);
+    }
+    if (auto b = stmt.value().bindInt(1, pieceId); !b.isOk()) {
+        return ResultT::err(b.error().message);
+    }
+    auto row = stmt.value().step();
+    if (!row.isOk()) {
+        return ResultT::err(row.error().message);
+    }
+    if (!row.value()) {
+        return ResultT::err("La pieza " + std::to_string(pieceId) + " no existe");
+    }
+    return ResultT::ok(stmt.value().columnText(0));
+}
+
 core::Result<void> PieceRepository::saveMeasurement(std::int64_t pieceId,
                                                     const PieceMeasurement& measurement) {
     auto stmt = db_.prepare(

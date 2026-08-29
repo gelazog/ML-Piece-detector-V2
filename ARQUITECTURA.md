@@ -2862,6 +2862,22 @@ familia reconocida la dejaría sin poder aplicarse nunca. Ahí quien decide es l
 herramienta consiguiendo medir: si no saca ninguna cota, se dice. Sobre esa foto
 la receta da **dientes (z), área, perímetro y el agujero**.
 
+**Y la receta se recuerda en la PIEZA** (esquema v15, columna `measure_recipe`
+en `Pieces`), como el perfil de detección y por lo mismo: «esto es un engranaje»
+es una propiedad del trabajo, no de la máquina. Se guarda el **nombre** porque
+las recetas viven en el código y una tabla de recetas sería una copia que se
+queda vieja; un nombre que ya no existe se trata como «sin receta», igual que un
+perfil borrado devuelve a los ajustes globales.
+
+Lo que NO se guarda son las casillas ajustadas a mano: con ellas guardadas, el
+desplegable diría «Arandela» mientras las clases son otras. Lo que tiene nombre
+es la receta.
+
+El editor la lee **antes** de abrir el diálogo y la guarda **después de
+aceptar** — guardarla antes dejaría la pieza cambiada al cancelar—, y eso lo
+sostiene una prueba sobre el propio fichero, porque son seis líneas de pegamento
+que pueden desaparecer sin que nada más falle.
+
 **Tres invariantes, y cada una tiene su prueba** (`tests/test_measure_recipes.cpp`,
 `AutoMeasureRecipeUi` en `tests/test_canvas_gestures.cpp`):
 

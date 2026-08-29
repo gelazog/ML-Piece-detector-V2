@@ -73,6 +73,17 @@ public:
     core::Result<void> saveOrientationOffset(std::int64_t pieceId, double offsetDeg);
     core::Result<double> loadOrientationOffset(std::int64_t pieceId);
 
+    // LA RECETA DE MEDICIÓN de esta pieza (v15): qué cotas se proponen al
+    // medir automáticamente. Vacío = ninguna, que es como se comportaba antes.
+    //
+    // Se guarda el NOMBRE de la receta y no un identificador: las recetas viven
+    // en el código (`inspection_editor/measure_recipe.*`) y no en la base, así
+    // que una tabla de recetas sería una copia que se queda vieja. Quien lea un
+    // nombre que ya no existe tiene que tratarlo como «sin receta», por lo
+    // mismo que un perfil de detección borrado devuelve a los ajustes globales.
+    core::Result<void> saveMeasureRecipe(std::int64_t pieceId, const std::string& name);
+    core::Result<std::string> loadMeasureRecipe(std::int64_t pieceId);
+
     // Modo de medición y tablero de la pieza (v5). Una pieza guardada antes de
     // la migración devuelve modo Real y tablero centrado en la pieza, que es
     // exactamente como se comportaba.

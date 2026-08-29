@@ -247,6 +247,13 @@ std::vector<ToolType> AutoMeasureDialog::chosenTypes() const {
     return chosen;
 }
 
+void AutoMeasureDialog::selectRecipe(const std::string& name) {
+    if (recipeBox_ == nullptr || name.empty() || recipeNamed(name) == nullptr) {
+        return;
+    }
+    recipeBox_->setCurrentText(QString::fromStdString(name));
+}
+
 MeasureRecipe AutoMeasureDialog::chosenRecipe() const {
     MeasureRecipe recipe = base_;
     recipe.options.allowedTypes = chosenTypes();

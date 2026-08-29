@@ -568,6 +568,32 @@ TEST(AutoMeasureRecipeUi, WhenTheRecipeIsNotForThisPieceItSaysWhy) {
     EXPECT_EQ(table->rowCount(), 0) << "no aplica y aun así enseña cotas";
 }
 
+TEST(AutoMeasureRecipeUi, TheRecipeThePieceRememberedComesUpAlreadyChosen) {
+    // La mitad de «de un lote o de una pieza»: la receta guardada tiene que
+    // llegar puesta, y con la lista ya propuesta según ella. Si sólo cambiara el
+    // desplegable, el operador vería «Arandela» y una tabla con lados.
+    RecipeSpy spy;
+    spy.answer = twoCotas();
+    AutoMeasureDialog dialog({}, 0.0, nullptr, spy.reproposer());
+    spy.asked.clear();
+
+    dialog.selectRecipe("Arandela");
+    EXPECT_EQ(dialog.chosenRecipe().name, "Arandela");
+    ASSERT_FALSE(spy.asked.empty())
+        << "poner la receta guardada no vuelve a proponer: el desplegable dice una cosa y "
+           "la tabla enseña otra";
+    EXPECT_EQ(spy.asked.back().name, "Arandela");
+
+    // Y un nombre que ya no existe —una receta renombrada, una base más vieja—
+    // no cambia nada: se mide con lo que hubiera, nunca con una receta a medias.
+    const int askedBefore = static_cast<int>(spy.asked.size());
+    dialog.selectRecipe("Receta que ya no existe");
+    EXPECT_EQ(dialog.chosenRecipe().name, "Arandela")
+        << "un nombre desconocido ha dejado el diálogo en un estado que nadie eligió";
+    EXPECT_EQ(static_cast<int>(spy.asked.size()), askedBefore)
+        << "un nombre desconocido ha disparado una propuesta nueva";
+}
+
 TEST(AutoMeasureRecipeUi, AdjustingTheBoxesKeepsTheFamilyOfTheRecipe) {
     // Ajustar las casillas cambia QUÉ se propone, no A QUÉ PIEZA se aplica. Si
     // al tocar una casilla la receta se convirtiera en «todas», desmarcar una

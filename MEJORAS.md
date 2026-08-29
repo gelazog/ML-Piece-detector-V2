@@ -1078,7 +1078,7 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   herramienta acierta y la clase no—. Eso es el resto de E8 (85 de 100), y
   moverlo toca el clasificador y sus trinquetes, así que va aparte.
 
-- [~] **P1 · Recetas de medición por familia de pieza.** Petición de uso: «un
+- [x] **P1 · Recetas de medición por familia de pieza.** Petición de uso: «un
   conjunto personalizado de reglas para algunas piezas específicas —engranajes,
   círculos, piezas cuadradas, rectangulares— para tomar de mejor manera las
   medidas, de un lote o de una pieza».
@@ -1093,11 +1093,24 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   número sacado de la herramienta equivocada se acepta, se guarda con su
   tolerancia y luego no cuadra con el plano.
 
-  **Falta la persistencia**, que es la mitad que el usuario pidió con «de un
-  lote»: hoy la receta se elige en cada apertura del diálogo. Va como los
-  perfiles de detección —columna en `Pieces`, esquema v15, y el editor la
-  recuerda—, que es el patrón que ya existe y la respuesta que dio el dueño del
-  proyecto al preguntárselo.
+  **Y se recuerda en la pieza** (esquema v15, columna `measure_recipe` en
+  `Pieces`), que es la mitad que el usuario pidió con «de un lote»: con una
+  bandeja de cien engranajes, elegir «Engranaje» cien veces es no elegirlo.
+
+  Tres decisiones sobre cómo se guarda, cada una con su porqué:
+
+  - **el nombre y no un identificador**, porque las recetas viven en el código y
+    no en la base: una tabla de recetas sería una copia que se queda vieja;
+  - **un nombre que ya no existe se trata como «sin receta»**, igual que un
+    perfil de detección borrado devuelve a los ajustes globales — fallar por eso
+    dejaría al operador sin poder medir por algo que no ha hecho él;
+  - **las casillas ajustadas a mano NO se guardan**: si se guardaran, el
+    desplegable diría «Arandela» mientras las clases son otras, y eso se lee
+    peor que no recordarlo. Lo que tiene nombre es la receta.
+
+  Queda pendiente si hace falta: **poder guardar una receta propia** («la mía de
+  bridas»), que es el paso siguiente natural y hoy no está — se ajustan las
+  casillas y ese ajuste dura lo que la sesión.
 
 - [x] **P3 · Marcar y descartar piezas rodeándolas.** Petición de uso: «añadir
   pieza dibujando un contorno manualmente, y que detecte o intente detectar la

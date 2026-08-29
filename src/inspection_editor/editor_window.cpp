@@ -34,6 +34,7 @@
 #include "core/logging.h"
 #include "inspection_editor/auto_measure.h"
 #include "inspection_editor/auto_measure_dialog.h"
+#include "repositories/piece_repository.h"
 #include "inspection_editor/canvas/tool_icons.h"
 #include "inspection_editor/canvas/tool_palette.h"
 #include "inspection_editor/execution/tool_executor.h"
@@ -721,9 +722,34 @@ void EditorWindow::onAutoMeasureClicked() {
     };
     AutoMeasureDialog dialog(proposals, calibration_.mmPerPixel, this,
                              std::move(reproposer));
+    // LA RECETA QUE ESTA PIEZA YA TENÍA. Sin esto, quien mide un lote de cien
+    // engranajes elige «Engranaje» cien veces, que es la mitad de la petición
+    // de uso —«de un lote o de una pieza»—.
+    if (pieces_ != nullptr && pieceId_ >= 0) {
+        auto stored = pieces_->loadMeasureRecipe(pieceId_);
+        if (stored.isOk()) {
+            dialog.selectRecipe(stored.value());
+        }
+    }
     if (dialog.exec() != QDialog::Accepted) {
         statusLabel_->setText(tr("Medición automática cancelada."));
         return;
+    }
+    // Y se recuerda la que dejó puesta. Se guarda al ACEPTAR y no al elegirla:
+    // cancelar tiene que no haber pasado, también para esto.
+    //
+    // Se guarda el NOMBRE de la receta, no las casillas que el operador haya
+    // ajustado a mano. Guardar el ajuste dejaría el desplegable diciendo
+    // «Arandela» mientras las clases son otras, y eso se lee peor que no
+    // recordarlo: la receta es lo que tiene nombre.
+    if (pieces_ != nullptr && pieceId_ >= 0) {
+        const auto chosen = dialog.chosenRecipe();
+        if (auto saved = pieces_->saveMeasureRecipe(pieceId_, chosen.name); !saved.isOk()) {
+            statusLabel_->setText(
+                tr("No se pudo recordar la receta «%1»: %2")
+                    .arg(QString::fromStdString(chosen.name))
+                    .arg(QString::fromStdString(saved.error().message)));
+        }
     }
     const auto accepted = dialog.accepted();
     if (accepted.empty()) {

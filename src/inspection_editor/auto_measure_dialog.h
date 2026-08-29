@@ -67,6 +67,12 @@ public:
     // salga ya puesta.
     [[nodiscard]] MeasureRecipe chosenRecipe() const;
 
+    // Deja puesta una receta por su nombre —la que la pieza tenía guardada— y
+    // vuelve a proponer con ella. Un nombre que no existe no hace nada, que es
+    // lo correcto: una receta borrada del código no puede aplicarse, y dejar la
+    // pieza sin receta es exactamente cómo se comportaba antes de tenerlas.
+    void selectRecipe(const std::string& name);
+
     // Las propuestas que el operador dejó marcadas, en el orden en que se
     // mostraron. Vacío si canceló.
     [[nodiscard]] std::vector<AutoProposal> accepted() const;
@@ -81,7 +87,7 @@ private:
     // la tabla, el motivo cuando no aplica, y el botón de aceptar.
     void reproposeWithCurrentRecipe();
     // Pone las casillas como diga la receta, sin disparar el reproponer: si
-    // cada casilla reproprusiera al ponerla, elegir una receta lanzaría siete
+    // cada casilla repropusiera al ponerla, elegir una receta lanzaría siete
     // barridos del contorno y el último ganaría.
     void applyRecipeToBoxes(const MeasureRecipe& recipe);
 

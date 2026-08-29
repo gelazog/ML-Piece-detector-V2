@@ -304,6 +304,27 @@ CREATE TABLE IF NOT EXISTS Calibrations (
 ALTER TABLE InspectionHistory ADD COLUMN calibration_id INTEGER NOT NULL DEFAULT 0;
 )sql";
 
+// v15: LA RECETA DE MEDICIÓN DE CADA PIEZA.
+//
+// Una receta dice qué cotas se proponen al medir automáticamente —«en mis
+// engranajes quiero módulo y dientes, no lados»— y hasta ahora se elegía en cada
+// apertura del diálogo y se perdía al cerrarlo. Con lotes, eso es volver a
+// elegir lo mismo cien veces.
+//
+// Va POR PIEZA y no en los ajustes globales, por lo mismo que el perfil de
+// detección y que `expected_pieces`: «esto es un engranaje» es una propiedad
+// del trabajo, no de la máquina. Y va como el perfil de detección también en la
+// forma —una columna en `Pieces`— para que quien conozca uno reconozca el otro.
+//
+// Se guarda el NOMBRE y no un identificador: las recetas de fábrica no viven en
+// la base, viven en el código (`inspection_editor/measure_recipe.*`), así que
+// una tabla de recetas sería una copia que puede quedarse vieja. Vacío = sin
+// receta, que es como se comportaba hasta ahora; y un nombre que ya no exista se
+// trata igual que vacío, porque una receta que no está no puede aplicarse.
+const char* const kMigrationV15 = R"sql(
+ALTER TABLE Pieces ADD COLUMN measure_recipe TEXT NOT NULL DEFAULT '';
+)sql";
+
 const char* migrationFor(int targetVersion) {
     switch (targetVersion) {
         case 1: return kSchemaV1;
@@ -320,6 +341,7 @@ const char* migrationFor(int targetVersion) {
         case 12: return kMigrationV12;
         case 13: return kMigrationV13;
         case 14: return kMigrationV14;
+        case 15: return kMigrationV15;
     }
     return nullptr;
 }

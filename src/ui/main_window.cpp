@@ -8046,6 +8046,8 @@ void MainWindow::onOpenEditorClicked() {
                                     pieceId >= 0 ? repos_.tools : nullptr, calibration_,
                                     activeTemplate(), this, &liveTools_,
                                     live ? &controller_ : nullptr, inspectionConfig());
+    // Para que la receta de medición se recuerde en la pieza.
+    editor.setPieceRepository(repos_.pieces);
     editor.exec();
 
     // Devolver las herramientas editadas a la vista en vivo (ida y vuelta), en

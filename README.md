@@ -549,6 +549,16 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    número que sale de la herramienta equivocada se acepta, se guarda con su
    tolerancia y luego no cuadra con el plano — y eso es peor que no tenerlo.
 
+   **Y la receta se queda con la pieza.** La que elijas se guarda en la pieza
+   registrada, así que la próxima vez el diálogo abre ya con ella y la lista
+   propuesta según ella. Es lo que hace que sirva para un lote: con una bandeja
+   de cien engranajes, elegir «Engranaje» cien veces es no elegirlo.
+
+   Lo que se recuerda es la **receta**, no las casillas que ajustes a mano: si
+   marcas o desmarcas alguna, ese ajuste dura lo que la sesión. Guardarlo dejaría
+   el desplegable diciendo *Arandela* con otras clases marcadas, que se entiende
+   peor que no recordarlo.
+
    La única excepción es el engranaje, y por una razón medida: para el
    clasificador una rueda dentada es *irregular* (le cuenta 111 lados rectos),
    así que ahí quien dice si es un engranaje es la herramienta consiguiendo

@@ -24,6 +24,7 @@ class QPushButton;
 class QSpinBox;
 
 namespace pci::repositories {
+class PieceRepository;
 class ToolRepository;
 }
 
@@ -58,6 +59,13 @@ public:
 
     // Herramientas resultantes tras editar (sin las borradas, con su JSON al
     // día), para devolverlas a la vista en vivo. Y si se guardó a la BD.
+    // LA RECETA DE MEDICIÓN se recuerda en la PIEZA, así que el editor
+    // necesita poder leerla y guardarla. Va por un setter y no en el
+    // constructor porque ése ya lleva nueve parámetros y el décimo se pondría
+    // mal una vez de cada tres; y opcional porque el editor tiene que seguir
+    // funcionando sin base de datos, como hoy.
+    void setPieceRepository(repositories::PieceRepository* pieces) { pieces_ = pieces; }
+
     [[nodiscard]] std::vector<EditedTool> editedTools() const;
     [[nodiscard]] bool savedToDb() const { return savedToDb_; }
 
@@ -141,6 +149,7 @@ private:
     vision::Fixture fixture_;
     std::int64_t pieceId_ = -1;
     repositories::ToolRepository* repo_ = nullptr;
+    repositories::PieceRepository* pieces_ = nullptr;
     domain::ScaleCalibration calibration_;
     std::string templateName_ = "principal";
     camera::CameraController* liveController_ = nullptr;
