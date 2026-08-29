@@ -1151,9 +1151,30 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
      pieza ahora mismo».
   2. **Cálculos automáticos por herramienta** —lo que cada clase puede derivar
      sin que nadie lo pida.
-  3. **Herramientas que no muestran medida**, que es lo primero que hay que
-     medir: cuántas de las 32 devuelven un número y cuántas no, y si es porque
-     no pueden o porque nadie lo enseña.
+  3. **Herramientas que no muestran medida.** MEDIDO ya, y el resultado cambia
+     lo que hay que hacer: sobre una escena con caras rectas, esquina, borde
+     curvo y agujero, **9 de las 32 dan número y las 32 explican por qué no**
+     cuando no lo dan. O sea que no hay ninguna herramienta *callada* —el
+     barrido `NoSilentTool` lo fija como trinquete—, y lo que el operador ve no
+     es un hueco sino un motivo.
+
+     Los motivos se agrupan en tres, y solo el tercero es un hueco de verdad:
+
+     - **el trazo no cae sobre el rasgo** («Se necesitan 2 bordes y se
+       detectaron 0», «Borde circular insuficiente (0/36 rayos)»): es correcto,
+       y lo que falta es que colocarlas cueste menos;
+     - **falta el datum o la referencia** (Orientación, Desviación de centros,
+       Punto y Recta construidos, Patrón de agujeros): el operador tiene que
+       encadenarlas a mano y nada le dice cuál falta hasta que mide;
+     - **la pieza no tiene ese rasgo** (Rosca sobre una placa, Engranaje sobre
+       un rectángulo): correcto también.
+
+     Queda por decidir con el usuario qué es «resumen de medidas»: hoy existen
+     el informe de «Medir pieza» —con su pestaña **Mis herramientas**— y el
+     resultado de inspección, y lo que NO hay es una tabla de las medidas EN
+     VIVO: con catorce herramientas y seis piezas, en el vídeo solo caben los
+     números de una pieza, así que el resto no se puede leer mientras se
+     trabaja.
 
 - [x] **P2 · Vídeo: disparo por paso de pieza.** La otra mitad de la misma
   petición: «la manera en la que lo toma en vídeo (grabado o en tiempo real)
