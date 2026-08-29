@@ -3,6 +3,8 @@
 #include <QDialogButtonBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QLabel>
 #include <QPushButton>
 #include <QTableWidget>
@@ -11,6 +13,7 @@
 #include <QSignalBlocker>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <utility>
 
 #include "inspection_editor/canvas/tool_icons.h"
@@ -76,7 +79,8 @@ AutoMeasureDialog::AutoMeasureDialog(std::vector<AutoProposal> proposals, double
         recipeRow->addWidget(new QLabel(tr("Receta:"), this));
         recipeBox_ = new QComboBox(this);
         recipeBox_->setObjectName(QStringLiteral("recipeBox"));
-        for (const auto& recipe : factoryRecipes()) {
+        recipes_ = factoryRecipes();
+        for (const auto& recipe : recipes_) {
             recipeBox_->addItem(QString::fromStdString(recipe.name));
         }
         recipeBox_->setToolTip(
@@ -84,8 +88,49 @@ AutoMeasureDialog::AutoMeasureDialog(std::vector<AutoProposal> proposals, double
                "se proponen; no fuerza ninguna: si la pieza no es de su familia, se\n"
                "dice en vez de sacar un número que no significa nada."));
         recipeRow->addWidget(recipeBox_);
+
+        // GUARDAR LA MÍA, que es la mitad que faltaba de «un conjunto
+        // PERSONALIZADO de reglas»: hasta ahora se podían ajustar las casillas
+        // y ese ajuste duraba lo que la sesión.
+        //
+        // Guarda lo que hay puesto AHORA —la receta base con las casillas tal
+        // como estén—, así que el gesto es: elegir la más parecida, quitar y
+        // poner lo que haga falta, y ponerle nombre.
+        auto* saveRecipe = new QPushButton(tr("Guardar como receta…"), this);
+        saveRecipe->setObjectName(QStringLiteral("saveRecipeButton"));
+        saveRecipe->setToolTip(
+            tr("Guarda las clases que tengas marcadas con un nombre tuyo —«la mía\n"
+               "de bridas»— para no volver a marcarlas. Aparecerá en esta lista y se\n"
+               "puede asignar a una pieza como cualquier otra."));
+        recipeRow->addWidget(saveRecipe);
         recipeRow->addStretch(1);
         layout->addLayout(recipeRow);
+
+        connect(saveRecipe, &QPushButton::clicked, this, [this] {
+            bool ok = false;
+            const QString name = QInputDialog::getText(
+                this, tr("Guardar receta"),
+                tr("Nombre de la receta (p. ej. «bridas del proveedor B»):"),
+                QLineEdit::Normal, QString(), &ok);
+            if (!ok || name.trimmed().isEmpty()) {
+                return;
+            }
+            MeasureRecipe mine = chosenRecipe();
+            mine.name = name.trimmed().toStdString();
+            // Se anota de qué salió: dentro de un mes, «mía de bridas» no dice
+            // qué trae ni a qué piezas se aplica, y la frase es lo único que se
+            // lee antes de elegirla.
+            mine.what = "Receta propia, ajustada a partir de «" + base_.name + "» (" +
+                        familyName(mine.family) + ").";
+            toSave_ = mine;
+            // Quien guarda es la ventana —este diálogo no toca la base—, así que
+            // aquí solo se apunta y se dice que se apuntó.
+            if (noticeLabel_ != nullptr) {
+                noticeLabel_->setText(
+                    tr("Se guardará como «%1» al aceptar.").arg(name.trimmed()));
+                noticeLabel_->show();
+            }
+        });
 
         // Qué trae la receta, en una frase. Sin esto, elegir entre seis nombres
         // es adivinar.
@@ -97,7 +142,24 @@ AutoMeasureDialog::AutoMeasureDialog(std::vector<AutoProposal> proposals, double
         auto* filterRow = new QHBoxLayout();
         filterRow->addWidget(new QLabel(tr("Proponer:"), this));
         for (const ToolType type : proposableTypes()) {
-            auto* box = new QCheckBox(QString::fromStdString(toolTypeName(type)), this);
+            // EL NOMBRE QUE EL OPERADOR LEE, no el que usa la base de datos.
+            //
+            // Aquí ponía `toolTypeName`, que es la clave con la que una
+            // herramienta se guarda —«circle», «point_to_line», «region»— y no
+            // lo que nadie llama a esa cota. La fila del filtro decía
+            // «caliper  circle  point_to_line  arc  angle  roundness  polygon
+            // thread  gear  region» mientras la paleta, a dos palmos, decía
+            // «Calibre  Círculo  Punto-Línea…».
+            //
+            // `toolTypeLabel` es la MISMA lista que usa la paleta, así que las
+            // dos superficies no pueden volver a discrepar.
+            auto* box = new QCheckBox(QString::fromUtf8(toolTypeLabel(type)), this);
+            // Con nombre, y el nombre es la CLAVE de la clase: el rótulo es lo
+            // que se lee y puede cambiar, la clave es lo que identifica. Así
+            // una prueba puede coger la casilla del Círculo y comprobar QUÉ
+            // dice, en vez de buscarla por lo que dice.
+            box->setObjectName(QStringLiteral("typeCheck.") +
+                               QString::fromLatin1(toolTypeName(type)));
             box->setChecked(true);
             box->setToolTip(tr("Si lo desmarcas, la medición automática deja de\n"
                                "proponer cotas de esta clase — y el tope de\n"
@@ -121,11 +183,15 @@ AutoMeasureDialog::AutoMeasureDialog(std::vector<AutoProposal> proposals, double
         noticeLabel_->hide();
         layout->addWidget(noticeLabel_);
 
-        base_ = factoryRecipes().front();
+        base_ = recipes_.front();
         recipeWhat_->setText(QString::fromStdString(base_.what));
         connect(recipeBox_, &QComboBox::currentTextChanged, this, [this](const QString& name) {
-            const auto* chosen = recipeNamed(name.toStdString());
-            if (chosen == nullptr) {
+            const auto chosen =
+                std::find_if(recipes_.begin(), recipes_.end(),
+                             [&name](const MeasureRecipe& recipe) {
+                                 return recipe.name == name.toStdString();
+                             });
+            if (chosen == recipes_.end()) {
                 return;
             }
             base_ = *chosen;
@@ -247,11 +313,41 @@ std::vector<ToolType> AutoMeasureDialog::chosenTypes() const {
     return chosen;
 }
 
-void AutoMeasureDialog::selectRecipe(const std::string& name) {
-    if (recipeBox_ == nullptr || name.empty() || recipeNamed(name) == nullptr) {
+// Las que hay para elegir: las de fábrica primero y las del operador después.
+//
+// Se añaden en vez de sustituir, y las propias no pueden llamarse como una de
+// fábrica —lo impide el repositorio— así que la lista no tiene ambigüedades: el
+// nombre sigue identificando UNA receta, que es lo que la pieza guarda.
+void AutoMeasureDialog::setRecipes(std::vector<MeasureRecipe> recipes) {
+    if (recipeBox_ == nullptr || recipes.empty()) {
         return;
     }
-    recipeBox_->setCurrentText(QString::fromStdString(name));
+    const QString current = recipeBox_->currentText();
+    recipes_ = std::move(recipes);
+    QSignalBlocker quiet(recipeBox_);
+    recipeBox_->clear();
+    for (const auto& recipe : recipes_) {
+        recipeBox_->addItem(QString::fromStdString(recipe.name));
+    }
+    // Se conserva la que estuviera elegida. Sin esto, añadir las recetas
+    // guardadas —que pasa al abrir el diálogo— reiniciaría la elección a la
+    // primera, y la receta de la pieza se perdería justo al cargarla.
+    const int index = recipeBox_->findText(current);
+    recipeBox_->setCurrentIndex(index >= 0 ? index : 0);
+}
+
+void AutoMeasureDialog::selectRecipe(const std::string& name) {
+    if (recipeBox_ == nullptr || name.empty()) {
+        return;
+    }
+    // Se busca en LAS QUE HAY, no solo en las de fábrica: si no, una receta
+    // propia guardada en la pieza no se podría recuperar y el operador la vería
+    // abrirse siempre con la primera.
+    const int index = recipeBox_->findText(QString::fromStdString(name));
+    if (index < 0) {
+        return;
+    }
+    recipeBox_->setCurrentIndex(index);
 }
 
 MeasureRecipe AutoMeasureDialog::chosenRecipe() const {

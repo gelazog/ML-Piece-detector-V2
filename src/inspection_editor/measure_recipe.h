@@ -51,6 +51,30 @@ enum class PieceFamily {
 
 [[nodiscard]] const char* familyName(PieceFamily family);
 
+// La familia como CLAVE ESTABLE, para guardarla.
+//
+// No se guarda el número del enum: reordenar `PieceFamily` —añadir «tuerca
+// cuadrada» en medio, por ejemplo— convertiría en silencio todas las recetas
+// guardadas de una familia en recetas de otra, y el operador se encontraría su
+// receta de arandelas negándose a aplicarse a una arandela. Una clave de texto
+// no se puede reordenar.
+[[nodiscard]] const char* familyKey(PieceFamily family);
+[[nodiscard]] PieceFamily familyFromKey(const std::string& key);
+
+// Las clases de cota de una receta, como texto y de vuelta.
+//
+// Se usan los NOMBRES de `toolTypeName`, que son los mismos con los que se
+// guarda una herramienta en la base: una clase que se renombre rompe las dos
+// cosas a la vez y se entera todo el mundo, en vez de dejar recetas apuntando a
+// clases que ya no existen mientras las herramientas siguen bien.
+//
+// Un nombre desconocido se SALTA en vez de tirar la receta entera: si una
+// versión futura quita una clase, la receta guardada sigue sirviendo para las
+// demás. Devolver un error dejaría al operador sin su receta por una clase que
+// ya no le importa.
+[[nodiscard]] std::string typesToText(const std::vector<ToolType>& types);
+[[nodiscard]] std::vector<ToolType> typesFromText(const std::string& text);
+
 struct MeasureRecipe {
     std::string name;                    // «Engranaje», «Arandela»…
     std::string what;                    // qué trae y por qué esas cotas

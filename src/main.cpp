@@ -15,6 +15,7 @@
 #include "ml/embedding_extractor.h"
 #include "repositories/detection_profile_repository.h"
 #include "repositories/inspection_repository.h"
+#include "repositories/measure_recipe_repository.h"
 #include "repositories/piece_repository.h"
 #include "repositories/settings_repository.h"
 #include "repositories/tool_repository.h"
@@ -43,6 +44,7 @@ int main(int argc, char* argv[]) {
     std::optional<pci::repositories::ToolRepository> tools;
     std::optional<pci::repositories::InspectionRepository> inspections;
     std::optional<pci::repositories::DetectionProfileRepository> detectionProfiles;
+    std::optional<pci::repositories::MeasureRecipeRepository> measureRecipes;
     {
         auto opened = pci::database::Db::open(
             (appDir + QStringLiteral("/pc_inspector.db")).toStdString());
@@ -54,6 +56,7 @@ int main(int argc, char* argv[]) {
                 tools.emplace(*db);
                 inspections.emplace(*db);
                 detectionProfiles.emplace(*db);
+                measureRecipes.emplace(*db);
             } else {
                 pci::core::logError("Migración de BD fallida: " + migrated.error().message);
                 db.reset();
@@ -105,6 +108,8 @@ int main(int argc, char* argv[]) {
     repositories.inspections = inspections.has_value() ? &inspections.value() : nullptr;
     repositories.detectionProfiles =
         detectionProfiles.has_value() ? &detectionProfiles.value() : nullptr;
+    repositories.measureRecipes =
+        measureRecipes.has_value() ? &measureRecipes.value() : nullptr;
     repositories.engine = engine.has_value() ? &engine.value() : nullptr;
     repositories.embedFn = embedFn;
 

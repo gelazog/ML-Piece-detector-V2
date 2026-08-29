@@ -24,6 +24,7 @@ class QPushButton;
 class QSpinBox;
 
 namespace pci::repositories {
+class MeasureRecipeRepository;
 class PieceRepository;
 class ToolRepository;
 }
@@ -65,6 +66,11 @@ public:
     // mal una vez de cada tres; y opcional porque el editor tiene que seguir
     // funcionando sin base de datos, como hoy.
     void setPieceRepository(repositories::PieceRepository* pieces) { pieces_ = pieces; }
+    // Y dónde viven las recetas que el operador se guarda. Opcional por lo
+    // mismo: sin base de datos el editor sigue funcionando con las de fábrica.
+    void setRecipeRepository(repositories::MeasureRecipeRepository* recipes) {
+        recipes_ = recipes;
+    }
 
     [[nodiscard]] std::vector<EditedTool> editedTools() const;
     [[nodiscard]] bool savedToDb() const { return savedToDb_; }
@@ -150,6 +156,7 @@ private:
     std::int64_t pieceId_ = -1;
     repositories::ToolRepository* repo_ = nullptr;
     repositories::PieceRepository* pieces_ = nullptr;
+    repositories::MeasureRecipeRepository* recipes_ = nullptr;
     domain::ScaleCalibration calibration_;
     std::string templateName_ = "principal";
     camera::CameraController* liveController_ = nullptr;

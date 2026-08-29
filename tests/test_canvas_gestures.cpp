@@ -469,6 +469,14 @@ struct RecipeSpy {
     }
 };
 
+// La casilla de una clase de cota, POR SU NOMBRE. El nombre es la clave de la
+// clase («typeCheck.circle»); el rótulo es lo que se lee, y se comprueba aparte.
+QCheckBox* typeBox(const QWidget& dialog, pci::inspection::ToolType type) {
+    return dialog.findChild<QCheckBox*>(
+        QStringLiteral("typeCheck.") +
+        QString::fromLatin1(pci::inspection::toolTypeName(type)));
+}
+
 pci::inspection::RecipeResult twoCotas() {
     pci::inspection::RecipeResult result;
     result.applies = true;
@@ -528,17 +536,34 @@ TEST(AutoMeasureRecipeUi, ChoosingARecipeReproposesWithItAndTicksItsClasses) {
 
     // Y las casillas enseñan lo que la receta trae: una receta que no se ve es
     // una caja negra, y el operador no puede ajustarla sin salir del diálogo.
-    for (auto* check : dialog.findChildren<QCheckBox*>()) {
-        const std::string name = check->text().toStdString();
-        if (name == "Círculo") {
-            EXPECT_TRUE(check->isChecked()) << "la receta de la arandela trae el diámetro y "
-                                               "su casilla sale desmarcada";
-        }
-        if (name == "Ángulo") {
-            EXPECT_FALSE(check->isChecked())
-                << "la receta de la arandela no trae ángulos y su casilla sale marcada";
-        }
-    }
+    //
+    // SE COMPRUEBA QUE LAS ENCUENTRA, y no es una precaución de estilo: la
+    // primera versión de esto recorría las casillas comparando con «Círculo» y
+    // «Ángulo» mientras el diálogo las rotulaba con la clave interna —«circle»,
+    // «angle»—, así que no entraba en ningún `if` y pasaba en verde sobre una
+    // fila de nombres que ningún operador reconoce. Una prueba que no encuentra
+    // nada tiene que fallar, no aprobar.
+    // Cada casilla se coge por su NOMBRE —la clave de la clase— y se comprueba
+    // aparte QUÉ DICE. Son dos cosas distintas: el rótulo es lo que se lee y
+    // puede cambiar, la clave es lo que identifica.
+    auto* circle = typeBox(dialog, ToolType::Circle);
+    auto* angle = typeBox(dialog, ToolType::Angle);
+    ASSERT_NE(circle, nullptr) << "no está la casilla del Círculo";
+    ASSERT_NE(angle, nullptr) << "no está la casilla del Ángulo";
+    EXPECT_TRUE(circle->isChecked())
+        << "la receta de la arandela trae el diámetro y su casilla sale desmarcada";
+    EXPECT_FALSE(angle->isChecked())
+        << "la receta de la arandela no trae ángulos y su casilla sale marcada";
+
+    // Y LOS RÓTULOS SON LOS DE LA PALETA. Aquí ponía `toolTypeName` —la clave
+    // con la que una herramienta se GUARDA— así que la fila decía «caliper
+    // circle  point_to_line…» a dos palmos de una paleta que dice «Calibre
+    // Círculo  Punto-Línea». Se compara contra `toolTypeLabel` y no contra un
+    // texto escrito aquí: el día que un rótulo mejore, cambian los dos a la vez.
+    EXPECT_EQ(circle->text(), QString::fromUtf8(toolTypeLabel(ToolType::Circle)))
+        << "la casilla se rotula «" << circle->text().toStdString()
+        << "», que no es como la aplicación llama a esa cota en todos los demás sitios";
+    EXPECT_EQ(angle->text(), QString::fromUtf8(toolTypeLabel(ToolType::Angle)));
 }
 
 TEST(AutoMeasureRecipeUi, WhenTheRecipeIsNotForThisPieceItSaysWhy) {
@@ -566,6 +591,65 @@ TEST(AutoMeasureRecipeUi, WhenTheRecipeIsNotForThisPieceItSaysWhy) {
     auto* table = dialog.findChild<QTableWidget*>();
     ASSERT_NE(table, nullptr);
     EXPECT_EQ(table->rowCount(), 0) << "no aplica y aun así enseña cotas";
+}
+
+TEST(AutoMeasureRecipeUi, AnOwnRecipeCanBeChosenLikeAnyOther) {
+    // La receta propia del operador tiene que salir en la lista y poder
+    // elegirse igual que una de fábrica. Si `selectRecipe` solo mirara las de
+    // fábrica —que es como nació—, una pieza con receta propia guardada se
+    // abriría siempre con la primera y el operador la vería «perderse».
+    RecipeSpy spy;
+    spy.answer = twoCotas();
+    AutoMeasureDialog dialog({}, 0.0, nullptr, spy.reproposer());
+
+    auto all = pci::inspection::factoryRecipes();
+    pci::inspection::MeasureRecipe own;
+    own.name = "bridas del proveedor B";
+    own.what = "Receta propia";
+    own.family = pci::inspection::PieceFamily::FourSided;
+    own.options.allowedTypes = {ToolType::Ruler, ToolType::Angle};
+    all.push_back(own);
+    dialog.setRecipes(all);
+
+    auto* box = dialog.findChild<QComboBox*>(QStringLiteral("recipeBox"));
+    ASSERT_NE(box, nullptr);
+    EXPECT_EQ(box->count(), static_cast<int>(all.size()))
+        << "la receta propia no sale en la lista";
+
+    spy.asked.clear();
+    dialog.selectRecipe("bridas del proveedor B");
+    EXPECT_EQ(dialog.chosenRecipe().name, "bridas del proveedor B")
+        << "no se puede elegir una receta propia: `selectRecipe` sigue mirando solo las de "
+           "fábrica, así que la pieza que la tuviera guardada abriría con otra";
+    ASSERT_FALSE(spy.asked.empty()) << "elegirla no vuelve a proponer";
+    EXPECT_EQ(spy.asked.back().options.allowedTypes, own.options.allowedTypes);
+}
+
+TEST(AutoMeasureRecipeUi, SavingKeepsWhatIsTickedAndItsFamily) {
+    // Lo que se guarda es lo que hay puesto AHORA: la receta base con las
+    // casillas tal como estén. El gesto es «elige la más parecida, ajusta, ponle
+    // nombre», así que guardar la base sin los ajustes sería guardar otra cosa.
+    //
+    // Y conserva la FAMILIA de la base: una receta propia hecha a partir de
+    // «Arandela» sigue siendo para arandelas, y eso es lo que impide que
+    // aparezca sobre una tuerca dando cotas que no tiene.
+    RecipeSpy spy;
+    spy.answer = twoCotas();
+    AutoMeasureDialog dialog({}, 0.0, nullptr, spy.reproposer());
+    auto* box = dialog.findChild<QComboBox*>(QStringLiteral("recipeBox"));
+    ASSERT_NE(box, nullptr);
+    box->setCurrentText(QStringLiteral("Arandela"));
+
+    // Se desmarca una clase: la receta que se guarde tiene que llevar el ajuste.
+    auto* region = typeBox(dialog, ToolType::Region);
+    ASSERT_NE(region, nullptr) << "no está la casilla de la Región";
+    region->setChecked(false);
+    const auto chosen = dialog.chosenRecipe();
+    EXPECT_EQ(chosen.family, pci::inspection::PieceFamily::Ring)
+        << "la receta propia pierde la familia de la que salió: se aplicaría a piezas que "
+           "no son las suyas";
+    EXPECT_FALSE(chosen.options.allows(ToolType::Region))
+        << "guarda la receta base sin el ajuste que el operador acaba de hacer";
 }
 
 TEST(AutoMeasureRecipeUi, TheRecipeThePieceRememberedComesUpAlreadyChosen) {
@@ -607,11 +691,10 @@ TEST(AutoMeasureRecipeUi, AdjustingTheBoxesKeepsTheFamilyOfTheRecipe) {
     box->setCurrentText(QStringLiteral("Arandela"));
     ASSERT_EQ(dialog.chosenRecipe().family, pci::inspection::PieceFamily::Ring);
 
-    for (auto* check : dialog.findChildren<QCheckBox*>()) {
-        if (check->text() == QStringLiteral("Región")) {
-            check->setChecked(!check->isChecked());
-        }
-    }
+    auto* region = typeBox(dialog, ToolType::Region);
+    ASSERT_NE(region, nullptr) << "no está la casilla de la Región: sin tocarla, esta "
+                                  "prueba no comprueba nada";
+    region->setChecked(!region->isChecked());
     EXPECT_EQ(dialog.chosenRecipe().family, pci::inspection::PieceFamily::Ring)
         << "tocar una casilla ha cambiado a qué familia se aplica la receta";
 }

@@ -3,6 +3,7 @@ add_library(pci_repositories STATIC
   calibration_repository.cpp
   detection_profile_repository.cpp
   inspection_repository.cpp
+  measure_recipe_repository.cpp
   piece_repository.cpp
   settings_repository.cpp
   tool_repository.cpp

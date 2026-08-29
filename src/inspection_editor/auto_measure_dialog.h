@@ -3,6 +3,7 @@
 #include <QDialog>
 
 #include <functional>
+#include <optional>
 #include <vector>
 
 #include "inspection_editor/auto_measure.h"
@@ -67,6 +68,21 @@ public:
     // salga ya puesta.
     [[nodiscard]] MeasureRecipe chosenRecipe() const;
 
+    // LAS RECETAS QUE HAY, incluidas las que el operador se guardó.
+    //
+    // Se le pasan en vez de que las busque él: las de fábrica viven en el
+    // código y las propias en la base de datos, y este diálogo no tiene —ni
+    // debe tener— acceso a la segunda. Quien manda sobre los datos es la
+    // ventana, igual que con el interruptor de las herramientas del informe.
+    //
+    // Si no se llaman, el desplegable enseña las de fábrica y ya está: el
+    // llamante que no sepa de recetas propias no ofrece un control a medias.
+    void setRecipes(std::vector<MeasureRecipe> recipes);
+
+    // La receta que el operador pidió guardar con nombre propio, si pulsó
+    // «Guardar como receta…». Vacía si no lo hizo.
+    [[nodiscard]] std::optional<MeasureRecipe> recipeToSave() const { return toSave_; }
+
     // Deja puesta una receta por su nombre —la que la pieza tenía guardada— y
     // vuelve a proponer con ella. Un nombre que no existe no hace nada, que es
     // lo correcto: una receta borrada del código no puede aplicarse, y dejar la
@@ -104,6 +120,11 @@ private:
     // La receta base elegida en el desplegable. Las casillas la ajustan, y por
     // eso se guarda aparte: `chosenRecipe()` es ESTA con las casillas de ahora.
     MeasureRecipe base_;
+    // Las que hay en el desplegable: fábrica + las guardadas. Se guarda la
+    // lista y no se vuelve a preguntar por `recipeNamed`, que solo conoce las
+    // de fábrica y dejaría las propias sin poder elegirse.
+    std::vector<MeasureRecipe> recipes_;
+    std::optional<MeasureRecipe> toSave_;
 };
 
 }  // namespace pci::inspection

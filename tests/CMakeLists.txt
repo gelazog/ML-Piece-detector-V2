@@ -29,6 +29,7 @@ add_executable(pci_tests
   test_measure_recipes.cpp
   test_outlined_piece.cpp
   test_recipe_is_remembered.cpp
+  test_own_recipes.cpp
   test_pass_trigger.cpp
   test_no_silent_tool.cpp
   test_reference_advice.cpp

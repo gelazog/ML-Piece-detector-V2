@@ -2985,6 +2985,32 @@ aceptar** — guardarla antes dejaría la pieza cambiada al cancelar—, y eso l
 sostiene una prueba sobre el propio fichero, porque son seis líneas de pegamento
 que pueden desaparecer sin que nada más falle.
 
+**Las recetas PROPIAS** viven en la base (esquema v16, tabla `MeasureRecipes`) y
+las de fábrica en el código. Esa asimetría es a propósito: una tabla con las seis
+de fábrica sería una copia que se queda vieja en cuanto se toque una. El diálogo
+recibe la lista mezclada desde la ventana —él no toca la base, igual que no la
+toca para el interruptor de las herramientas del informe—.
+
+Se guardan con **claves de texto**, no con números de enum: reordenar
+`PieceFamily` convertiría en silencio las recetas de una familia en recetas de
+otra, y una clase de cota que desaparezca se **salta** en vez de tirar la receta
+entera. Y una receta propia **no puede llamarse como una de fábrica**, porque la
+pieza guarda el NOMBRE: con dos «Arandela» ganaría la que se buscara primero.
+
+#### El filtro de clases enseñaba los nombres internos
+
+«caliper», «circle», «point_to_line», «region» — a dos palmos de la paleta, que
+dice «Calibre», «Círculo», «Punto-Línea». `toolTypeName` es la clave con la que
+una herramienta se **guarda**; `toolTypeLabel` es como se **llama**. Estaban
+cambiados desde que se añadió el filtro.
+
+Lo tapaba una prueba vacía: recorría las casillas comparando con «Círculo» y
+«Ángulo», no entraba en ningún `if` porque los rótulos eran otros, y pasaba en
+verde. Es la misma trampa que el `--smoke` que devolvía 0 pasara lo que pasara.
+Ahora la prueba **falla si no encuentra la casilla**, y compara contra
+`toolTypeLabel` en vez de contra un texto escrito a mano — así el día que un
+rótulo cambie, cambian los dos a la vez.
+
 **Tres invariantes, y cada una tiene su prueba** (`tests/test_measure_recipes.cpp`,
 `AutoMeasureRecipeUi` en `tests/test_canvas_gestures.cpp`):
 

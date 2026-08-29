@@ -325,6 +325,33 @@ const char* const kMigrationV15 = R"sql(
 ALTER TABLE Pieces ADD COLUMN measure_recipe TEXT NOT NULL DEFAULT '';
 )sql";
 
+// v16: RECETAS DE MEDICIÓN PROPIAS.
+//
+// Las seis de fábrica viven en el código y no hacen falta aquí. Lo que sí hace
+// falta es que el operador pueda guardar la suya —«la mía de bridas»—, que era
+// la mitad que quedaba de «un conjunto PERSONALIZADO de reglas»: hasta ahora se
+// podían ajustar las casillas y ese ajuste duraba lo que la sesión.
+//
+// Se guarda por NOMBRE, sin id que referencie nadie, porque el nombre ya es la
+// clave con la que la pieza apunta a su receta (columna `measure_recipe`, v15).
+// Así una receta propia y una de fábrica se asignan igual y la pieza no tiene
+// que saber de cuál de las dos se trata.
+//
+// `tool_types` es la lista de clases separadas por comas, con los mismos
+// nombres con los que se guarda una herramienta; `family`, la clave de familia.
+// Ninguno de los dos es un número de enum a propósito: reordenar el enum
+// convertiría en silencio las recetas de una familia en recetas de otra.
+const char* const kMigrationV16 = R"sql(
+CREATE TABLE IF NOT EXISTS MeasureRecipes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL UNIQUE,
+    what       TEXT NOT NULL DEFAULT '',
+    family     TEXT NOT NULL DEFAULT 'any',
+    tool_types TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+)sql";
+
 const char* migrationFor(int targetVersion) {
     switch (targetVersion) {
         case 1: return kSchemaV1;
@@ -342,6 +369,7 @@ const char* migrationFor(int targetVersion) {
         case 13: return kMigrationV13;
         case 14: return kMigrationV14;
         case 15: return kMigrationV15;
+        case 16: return kMigrationV16;
     }
     return nullptr;
 }

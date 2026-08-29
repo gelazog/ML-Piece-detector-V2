@@ -1108,9 +1108,38 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
     desplegable diría «Arandela» mientras las clases son otras, y eso se lee
     peor que no recordarlo. Lo que tiene nombre es la receta.
 
-  Queda pendiente si hace falta: **poder guardar una receta propia** («la mía de
-  bridas»), que es el paso siguiente natural y hoy no está — se ajustan las
-  casillas y ese ajuste dura lo que la sesión.
+  **Y las recetas PROPIAS** (esquema v16, tabla `MeasureRecipes`): ajustar las
+  casillas y guardar el resultado con nombre — «bridas del proveedor B»— para no
+  volver a marcarlas. Era la mitad que faltaba de «un conjunto **personalizado**
+  de reglas»: hasta aquí el ajuste duraba lo que la sesión.
+
+  Tres decisiones, cada una con su prueba:
+
+  - **no se puede pisar una de fábrica.** La pieza guarda el NOMBRE de su
+    receta, así que dos llamadas «Arandela» la dejarían apuntando a las dos y
+    ganaría la que se buscara primero — el mismo desorden que dos herramientas
+    con el mismo nombre;
+  - **se guardan claves de texto, no números de enum.** Reordenar `PieceFamily`
+    —añadir «tuerca cuadrada» en medio— convertiría en silencio las recetas de
+    una familia en recetas de otra;
+  - **una clase que ya no existe se salta**, no tira la receta entera: quien
+    actualice no puede quedarse sin ella por una cota que ya no le importa.
+
+  Y guardar toma lo que hay puesto AHORA —la receta base con las casillas tal
+  como estén— porque el gesto es «elige la más parecida, ajusta, ponle nombre».
+  La familia se hereda de la base: una receta hecha a partir de «Arandela» sigue
+  siendo para arandelas.
+
+- [x] **P9 · El filtro de clases enseñaba los nombres internos.** «caliper»,
+  «circle», «point_to_line», «region»… a dos palmos de la paleta, que dice
+  «Calibre», «Círculo», «Punto-Línea». Es exactamente lo que el usuario llamó
+  «las palabras mal retratadas», y llevaba ahí desde que se añadió el filtro.
+
+  Lo tapaba una prueba **vacía**: recorría las casillas comparando con
+  «Círculo» y «Ángulo», no entraba en ningún `if` porque los rótulos eran otros,
+  y pasaba en verde. Ahora la prueba **falla si no encuentra la casilla**, y
+  compara contra `toolTypeLabel` —la misma lista que usa la paleta— en vez de
+  contra un texto escrito a mano.
 
 - [x] **P3 · Marcar y descartar piezas rodeándolas.** Petición de uso: «añadir
   pieza dibujando un contorno manualmente, y que detecte o intente detectar la

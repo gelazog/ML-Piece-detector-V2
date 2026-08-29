@@ -44,6 +44,62 @@ const char* familyName(PieceFamily family) {
     return "pieza";
 }
 
+const char* familyKey(PieceFamily family) {
+    switch (family) {
+        case PieceFamily::Any: return "any";
+        case PieceFamily::Round: return "round";
+        case PieceFamily::Ring: return "ring";
+        case PieceFamily::FourSided: return "foursided";
+        case PieceFamily::Hexagonal: return "hexagonal";
+        case PieceFamily::Gear: return "gear";
+    }
+    return "any";
+}
+
+PieceFamily familyFromKey(const std::string& key) {
+    for (const PieceFamily family :
+         {PieceFamily::Any, PieceFamily::Round, PieceFamily::Ring, PieceFamily::FourSided,
+          PieceFamily::Hexagonal, PieceFamily::Gear}) {
+        if (key == familyKey(family)) {
+            return family;
+        }
+    }
+    // Una clave que no se reconoce vale para CUALQUIER pieza. Es la salida
+    // segura: una receta de una versión más nueva se aplica en vez de negarse
+    // siempre, y lo que acota son sus clases de cota, que sí se entienden.
+    return PieceFamily::Any;
+}
+
+std::string typesToText(const std::vector<ToolType>& types) {
+    std::string text;
+    for (const ToolType type : types) {
+        text += (text.empty() ? "" : ",") + std::string(toolTypeName(type));
+    }
+    return text;
+}
+
+std::vector<ToolType> typesFromText(const std::string& text) {
+    std::vector<ToolType> types;
+    std::size_t from = 0;
+    while (from <= text.size()) {
+        const std::size_t comma = text.find(',', from);
+        const std::string name =
+            text.substr(from, comma == std::string::npos ? std::string::npos : comma - from);
+        if (!name.empty()) {
+            // Un nombre desconocido se salta: una versión futura que quite una
+            // clase no puede dejar sin receta a quien la tenía por las demás.
+            if (auto parsed = toolTypeFromName(name); parsed.isOk()) {
+                types.push_back(parsed.value());
+            }
+        }
+        if (comma == std::string::npos) {
+            break;
+        }
+        from = comma + 1;
+    }
+    return types;
+}
+
 const std::vector<MeasureRecipe>& factoryRecipes() {
     static const std::vector<MeasureRecipe> kRecipes = [] {
         std::vector<MeasureRecipe> recipes;

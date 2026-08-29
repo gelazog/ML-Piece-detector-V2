@@ -564,10 +564,18 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    propuesta según ella. Es lo que hace que sirva para un lote: con una bandeja
    de cien engranajes, elegir «Engranaje» cien veces es no elegirlo.
 
-   Lo que se recuerda es la **receta**, no las casillas que ajustes a mano: si
-   marcas o desmarcas alguna, ese ajuste dura lo que la sesión. Guardarlo dejaría
-   el desplegable diciendo *Arandela* con otras clases marcadas, que se entiende
-   peor que no recordarlo.
+   Lo que se recuerda en la pieza es la **receta**, no las casillas sueltas: si
+   marcas o desmarcas alguna sin guardar, ese ajuste dura lo que la sesión.
+   Guardarlo dejaría el desplegable diciendo *Arandela* con otras clases
+   marcadas, que se entiende peor que no recordarlo.
+
+   **Y puedes guardar la tuya.** Elige la receta más parecida, ajusta las
+   casillas y pulsa **Guardar como receta…**: le pones nombre —«bridas del
+   proveedor B»— y aparece en la lista como una más, asignable a cualquier
+   pieza. Hereda la familia de la que partiste, así que una receta hecha desde
+   *Arandela* sigue negándose sobre una tuerca. No puedes ponerle el nombre de
+   una de fábrica: la pieza recuerda su receta **por el nombre**, y con dos
+   iguales no sabría a cuál te referías.
 
    La única excepción es el engranaje, y por una razón medida: para el
    clasificador una rueda dentada es *irregular* (le cuenta 111 lados rectos),

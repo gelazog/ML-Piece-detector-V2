@@ -34,6 +34,7 @@
 #include "core/logging.h"
 #include "inspection_editor/auto_measure.h"
 #include "inspection_editor/auto_measure_dialog.h"
+#include "repositories/measure_recipe_repository.h"
 #include "repositories/piece_repository.h"
 #include "inspection_editor/reference_advice.h"
 #include "inspection_editor/canvas/tool_icons.h"
@@ -723,6 +724,17 @@ void EditorWindow::onAutoMeasureClicked() {
     };
     AutoMeasureDialog dialog(proposals, calibration_.mmPerPixel, this,
                              std::move(reproposer));
+    // LAS RECETAS PROPIAS, si hay base de datos. Van ANTES de elegir la de la
+    // pieza: si se añadieran después, la lista se rehace y la elección se
+    // perdería justo al cargarla.
+    if (recipes_ != nullptr) {
+        auto mine = recipes_->list();
+        if (mine.isOk() && !mine.value().empty()) {
+            auto all = factoryRecipes();
+            all.insert(all.end(), mine.value().begin(), mine.value().end());
+            dialog.setRecipes(std::move(all));
+        }
+    }
     // LA RECETA QUE ESTA PIEZA YA TENÍA. Sin esto, quien mide un lote de cien
     // engranajes elige «Engranaje» cien veces, que es la mitad de la petición
     // de uso —«de un lote o de una pieza»—.
@@ -743,6 +755,20 @@ void EditorWindow::onAutoMeasureClicked() {
     // ajustado a mano. Guardar el ajuste dejaría el desplegable diciendo
     // «Arandela» mientras las clases son otras, y eso se lee peor que no
     // recordarlo: la receta es lo que tiene nombre.
+    // Y si pidió guardar la suya, se guarda ANTES de anotarla en la pieza: si
+    // no, la pieza apuntaría a una receta que todavía no existe y al reabrir el
+    // diálogo no se podría recuperar.
+    if (recipes_ != nullptr) {
+        if (const auto mine = dialog.recipeToSave(); mine.has_value()) {
+            if (auto saved = recipes_->save(*mine); !saved.isOk()) {
+                statusLabel_->setText(QString::fromStdString(saved.error().message));
+            } else {
+                statusLabel_->setText(
+                    tr("Receta «%1» guardada: ya sale en la lista.")
+                        .arg(QString::fromStdString(mine->name)));
+            }
+        }
+    }
     if (pieces_ != nullptr && pieceId_ >= 0) {
         const auto chosen = dialog.chosenRecipe();
         if (auto saved = pieces_->saveMeasureRecipe(pieceId_, chosen.name); !saved.isOk()) {
