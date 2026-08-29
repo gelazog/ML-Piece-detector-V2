@@ -242,6 +242,7 @@ void EditorCanvas::setDetectionRegion(bool visible, const cv::Rect& imageRect) {
 }
 
 void EditorCanvas::setFreeZonePickMode(bool enabled) {
+    purpose_ = TracePurpose::WorkZone;
     freeZonePick_ = enabled;
     freeDragging_ = false;
     freeLasso_ = false;
@@ -249,6 +250,15 @@ void EditorCanvas::setFreeZonePickMode(bool enabled) {
     freeTrace_.clear();
     setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
     update();
+}
+
+// El mismo gesto de la zona libre, con otro destino. `WorkZone` lo apaga: el
+// trazo de la zona se enciende por su propio camino, y tener dos funciones que
+// puedan encender el mismo modo con distinto propósito acabaría con un trazo
+// yendo al sitio equivocado.
+void EditorCanvas::setOutlinePickMode(TracePurpose purpose) {
+    setFreeZonePickMode(purpose != TracePurpose::WorkZone);
+    purpose_ = purpose;
 }
 
 void EditorCanvas::setFreeZone(bool visible, const std::vector<cv::Point>& imagePolygon) {
@@ -272,8 +282,13 @@ void EditorCanvas::finishFreeZone(const std::vector<cv::Point>& trace) {
                "marca al menos tres esquinas a clics y cierra sobre la primera."));
         return;
     }
+    const TracePurpose purpose = purpose_;
     setFreeZonePickMode(false);
-    emit freeZonePicked(polygon);
+    switch (purpose) {
+        case TracePurpose::WorkZone: emit freeZonePicked(polygon); break;
+        case TracePurpose::MarkPiece: emit pieceOutlined(polygon, true); break;
+        case TracePurpose::DropPiece: emit pieceOutlined(polygon, false); break;
+    }
 }
 
 
@@ -462,6 +477,44 @@ void EditorCanvas::paintAt(const cv::Point2f& imagePoint) {
     strokeArea_ = strokeArea_.empty() ? touched : (strokeArea_ | touched);
 
     lastPaint_ = centre;
+}
+
+// Una zona entera, por el mismo camino que una pincelada.
+//
+// Reutiliza `beginEdgeStroke` / `commitEdgeStroke` en vez de tocar las máscaras a
+// mano: así entra en la pila de deshacer, recorta el parche a lo que cambió y
+// avisa igual que el pincel. Escribir aquí una segunda forma de acumular
+// correcciones sería el mismo error que tener dos lecturas del contorno.
+void EditorCanvas::applyCorrectionArea(const cv::Mat& area, bool asPiece) {
+    if (image_.isNull() || area.empty()) {
+        return;
+    }
+    const cv::Size size(image_.width(), image_.height());
+    if (area.cols != size.width || area.rows != size.height) {
+        return;  // de otra imagen: aplicarla desplazada sería peor que no hacer nada
+    }
+    const cv::Rect touched = cv::boundingRect(area);
+    if (touched.empty()) {
+        return;
+    }
+
+    beginEdgeStroke();
+    cv::Mat& target = asPiece ? forcePiece_ : forceBackground_;
+    cv::Mat& other = asPiece ? forceBackground_ : forcePiece_;
+    if (target.empty()) {
+        target = cv::Mat::zeros(size, CV_8UC1);
+    }
+    cv::bitwise_or(target, area, target);
+    // Y se limpia de la otra: marcar como fondo algo que se acababa de marcar
+    // como pieza tiene que ganar lo último, igual que con el pincel.
+    if (!other.empty()) {
+        other.setTo(0, area);
+    }
+    strokeArea_ = touched;
+    commitEdgeStroke();
+    showCorrection_ = true;
+    update();
+    emit edgeCorrected(forcePiece_.clone(), forceBackground_.clone());
 }
 
 // Empieza un trazo: se guarda el estado de partida para poder deshacerlo.

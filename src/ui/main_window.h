@@ -390,6 +390,8 @@ private:
     // contorno se recalcula en cada frame y una corrección a mano sería mentira
     // en cuanto la pieza se moviera.
     QToolButton* edgeBrushButton_ = nullptr;
+    QAction* outlineAddAction_ = nullptr;
+    QAction* outlineDropAction_ = nullptr;
     QAction* brushAddAction_ = nullptr;
     QAction* brushRemoveAction_ = nullptr;
     QAction* brushUndoAction_ = nullptr;
@@ -427,6 +429,8 @@ private:
     void applyLensCalibration(const vision::LensCalibration& calibration, bool enable);
     void updateEdgeBrushAvailability();
     void applyBrushRadius(int radiusPx, bool fromCanvas);
+    // El trazo de «marcar una pieza» / «descartar esto» ya terminado.
+    void onPieceOutlined(const std::vector<cv::Point>& polygon, bool add);
     void onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& forceBackground);
     void onTuneDetectionFromEdge();
     // Barra de transporte del vídeo. Solo aparece con un vídeo abierto: con una

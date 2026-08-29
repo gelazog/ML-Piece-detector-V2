@@ -76,6 +76,7 @@
 #include "vision/detection_tuning.h"
 #include "vision/contour_analysis.h"
 #include "vision/edge_segmentation.h"
+#include "vision/outlined_piece.h"
 #include "vision/pipeline.h"
 #include "vision/plane_scale.h"
 #include <opencv2/imgproc.hpp>
@@ -566,9 +567,39 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     edgeBrushButton_->setPopupMode(QToolButton::InstantPopup);
     auto* brushMenu = new QMenu(edgeBrushButton_);
     brushAddAction_ = brushMenu->addAction(tr("Pincel: añadir a la pieza"));
+    brushAddAction_->setObjectName(QStringLiteral("brushAddAction"));
     brushAddAction_->setCheckable(true);
     brushRemoveAction_ = brushMenu->addAction(tr("Pincel: quitar de la pieza"));
+    brushRemoveAction_->setObjectName(QStringLiteral("brushRemoveAction"));
     brushRemoveAction_->setCheckable(true);
+    brushMenu->addSeparator();
+
+    // RODEAR, que es otra cosa que pintar.
+    //
+    // Petición de uso: «añadir pieza dibujando un contorno manualmente, y que
+    // detecte o intente detectar la pieza (igual para quitarlo), por si en un
+    // lote no la detecta, o detecta algo que no debe».
+    //
+    // El pincel ya servía para las dos cosas, y a mano: una pieza entera son
+    // decenas de pinceladas, y lo que queda es una silueta dibujada a pulso —de
+    // la que no se pueden sacar cotas—. Rodear es un gesto y el borde lo busca
+    // el programa dentro del trazo.
+    outlineAddAction_ = brushMenu->addAction(tr("Marcar una pieza rodeándola…"));
+    outlineAddAction_->setObjectName(QStringLiteral("outlineAddAction"));
+    outlineAddAction_->setCheckable(true);
+    outlineAddAction_->setToolTip(
+        tr("Rodea con el ratón una pieza que la detección no ve. Dentro del trazo\n"
+           "se vuelve a buscar el borde con el fondo que haya ahí, así que la\n"
+           "pieza se mide de verdad y no con el pulso de tu mano.\n\n"
+           "Si ahí dentro no hay nada que detectar, se dice: la pieza se marca\n"
+           "igual —vale para contarla— pero sus cotas serían las del trazo."));
+    outlineDropAction_ = brushMenu->addAction(tr("Descartar lo que no es una pieza…"));
+    outlineDropAction_->setObjectName(QStringLiteral("outlineDropAction"));
+    outlineDropAction_->setCheckable(true);
+    outlineDropAction_->setToolTip(
+        tr("Rodea una mancha que la detección cuenta como pieza y no lo es: una\n"
+           "sombra, un reflejo, un rótulo impreso en la mesa.\n\n"
+           "Todo lo que quede dentro del trazo pasa a ser fondo."));
     brushMenu->addSeparator();
 
     // EL TAMAÑO, A LA VISTA.
@@ -675,6 +706,34 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
                     "reflejos, la pieza de al lado.")
                : tr("Pincel apagado."));
     });
+    // Rodear: los dos modos son exclusivos entre sí y con el pincel, porque el
+    // gesto es el mismo arrastre y sólo puede significar una cosa.
+    connect(outlineAddAction_, &QAction::triggered, this, [this](bool on) {
+        outlineDropAction_->setChecked(false);
+        brushAddAction_->setChecked(false);
+        brushRemoveAction_->setChecked(false);
+        video_->setEdgeBrush(inspection::EditorCanvas::EdgeBrush::Off);
+        video_->setOutlinePickMode(on ? inspection::EditorCanvas::TracePurpose::MarkPiece
+                                     : inspection::EditorCanvas::TracePurpose::WorkZone);
+        statusBar()->showMessage(
+            on ? tr("Rodea la pieza que falta: arrastra para trazarla a pulso, o marca "
+                    "esquinas a clics y cierra sobre la primera.")
+               : tr("Marcar piezas: apagado."));
+    });
+    connect(outlineDropAction_, &QAction::triggered, this, [this](bool on) {
+        outlineAddAction_->setChecked(false);
+        brushAddAction_->setChecked(false);
+        brushRemoveAction_->setChecked(false);
+        video_->setEdgeBrush(inspection::EditorCanvas::EdgeBrush::Off);
+        video_->setOutlinePickMode(on ? inspection::EditorCanvas::TracePurpose::DropPiece
+                                     : inspection::EditorCanvas::TracePurpose::WorkZone);
+        statusBar()->showMessage(
+            on ? tr("Rodea lo que no es una pieza: todo lo que quede dentro pasa a ser "
+                    "fondo.")
+               : tr("Descartar manchas: apagado."));
+    });
+    connect(video_, &inspection::EditorCanvas::pieceOutlined, this,
+            &MainWindow::onPieceOutlined);
     connect(brushClearAction_, &QAction::triggered, this, [this] {
         video_->clearEdgeCorrection();
         statusBar()->showMessage(tr("Correcciones del borde quitadas."));
@@ -4249,6 +4308,56 @@ void MainWindow::updateEdgeBrushAvailability() {
         }
         video_->setEdgeBrush(inspection::EditorCanvas::EdgeBrush::Off);
     }
+}
+
+// MARCAR UNA PIEZA RODEÁNDOLA, Y DESCARTAR LO QUE NO LO ES.
+//
+// El trazo no se toma como si fuera la pieza, y ese es el punto entero: un
+// contorno dibujado a pulso no se puede medir, así que el diámetro que saliera
+// de ahí sería el pulso del operador con aspecto de cota. El trazo dice DÓNDE
+// MIRAR y el borde lo busca `pieceInsideOutline` dentro, con el fondo que haya
+// ahí — que es el mismo truco de la zona de trabajo, y por eso funciona con las
+// piezas que el umbral global se deja fuera.
+//
+// Se aplica por `applyCorrectionArea` para que entre en la MISMA pila de
+// deshacer que las pinceladas: dos formas de corregir el borde, una deshacible
+// y otra no, se aprende perdiendo trabajo.
+void MainWindow::onPieceOutlined(const std::vector<cv::Point>& polygon, bool add) {
+    // El modo se apaga solo al terminar el trazo, como la zona libre: quien
+    // quiera rodear otra vuelve a pulsar. Dejarlo encendido convierte el
+    // siguiente arrastre —para mover, para dibujar— en una pieza inventada.
+    if (outlineAddAction_ != nullptr) {
+        outlineAddAction_->setChecked(false);
+    }
+    if (outlineDropAction_ != nullptr) {
+        outlineDropAction_->setChecked(false);
+    }
+    if (lastFrame_.isNull() || polygon.size() < 3) {
+        statusBar()->showMessage(tr("Ese trazo no encierra ninguna zona."));
+        return;
+    }
+
+    const cv::Mat frame = camera::qImageToMat(lastFrame_);
+    if (!add) {
+        cv::Mat area(frame.size(), CV_8UC1, cv::Scalar(0));
+        cv::fillPoly(area, std::vector<std::vector<cv::Point>>{polygon}, cv::Scalar(255));
+        video_->applyCorrectionArea(area, false);
+        statusBar()->showMessage(
+            tr("Descartado: %1 px pasan a ser fondo. Ctrl+Z lo deshace.")
+                .arg(cv::countNonZero(area)));
+        return;
+    }
+
+    const auto found = vision::pieceInsideOutline(frame, polygon, pipelineConfig_.segmentation);
+    if (found.mask.empty()) {
+        statusBar()->showMessage(QString::fromStdString(found.why));
+        return;
+    }
+    video_->applyCorrectionArea(found.mask, true);
+    // El motivo va entero a la barra de estado, y con él la diferencia que
+    // importa: si el borde salió de la imagen, la pieza se puede medir; si salió
+    // del trazo, no. Callarlo dejaría al operador aceptando cotas de su pulso.
+    statusBar()->showMessage(QString::fromStdString(found.why));
 }
 
 void MainWindow::onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& forceBackground) {

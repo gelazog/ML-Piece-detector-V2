@@ -192,6 +192,47 @@ que nadie lo pidiera.
 Medido: una sombra que se comía el borde derecho dejaba la pieza en 180 px de
 ancho; pintando ese trozo como pieza vuelve a 240, que es el real.
 
+#### Rodear una pieza, que no es lo mismo que pintarla
+
+Petición de uso: «añadir pieza dibujando un contorno manualmente, y que detecte
+o intente detectar la pieza (igual para quitarlo), por si en un lote no la
+detecta, o detecta algo que no debe».
+
+Las dos mitades pasan de verdad. La segunda está medida sobre el banco:
+`arandelas-2.png` es una foto de catálogo con rótulos impresos, y **lo único que
+la aplicación detecta ahí es un rótulo** —168×53 px, casi tres veces más largo
+que ancho, clasificado como «polígono de 9 lados»—.
+
+El pincel ya servía para las dos cosas, píxel a píxel. Una pieza entera son
+decenas de pinceladas, y lo que queda es una silueta dibujada a pulso.
+
+**El trazo dice DÓNDE MIRAR, no dónde está el borde.** Ésa es la decisión que
+gobierna `vision::pieceInsideOutline`: dentro del trazo se vuelve a segmentar con
+el fondo que haya ahí —el mismo truco de la zona de trabajo—, y el borde sale de
+la imagen. Sobre un rectángulo de 100×100 rodeado con un trazo 22 px por fuera y
+ondulado, lo que vuelve mide 100×100.
+
+Tomar el trazo como si fuera la pieza habría sido más fácil y es lo que no se
+puede hacer: un contorno a pulso no se mide, así que el diámetro que saliera de
+ahí sería el pulso del operador llegando a la plantilla con su tolerancia,
+indistinguible de una medida de verdad.
+
+**Y cuando ahí dentro no hay nada que detectar, se dice.** Dos límites, y los dos
+con su porqué: lo detectado tiene que ocupar entre el **5 %** y el **95 %** del
+trazo. Por debajo es una mota o un reflejo, no la pieza que se rodeó; por encima
+es el propio trazo devuelto —no había dos niveles que separar—, y darlo por
+detectado sería llamar medida al pulso. En los dos casos la pieza se marca igual
+(vale para contarla) pero `detected` viene en falso y el motivo lo explica.
+
+La zona rodeada se aplica por `applyCorrectionArea`, que la mete en la **misma
+pila de deshacer** que las pinceladas. Dos formas de corregir el borde, una
+deshacible y otra no, se aprende perdiendo trabajo.
+
+El gesto se reutiliza entero: es el de la zona libre —a pulso o a clics, botón
+derecho para deshacer un vértice— con un `TracePurpose` que dice a dónde va el
+polígono. Escribir un segundo gesto que se parece habría dado dos que se
+comportan distinto, que es peor que no tener el segundo.
+
 #### El pincel pintaba a puntos
 
 Lo destapó el test, y es de los que no se ven probando a ojo. Se pintaba un

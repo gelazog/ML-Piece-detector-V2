@@ -387,6 +387,28 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    **sigue puesta** — un aviso «Borde corregido» junto al modo de medición te
    lo dice, con cuántos píxeles lleva.
 
+   **Rodear una pieza entera, en vez de pintarla** (*Corregir borde ▸ Marcar una
+   pieza rodeándola…*): cuando en un lote hay una pieza que la detección **no
+   ve** —mate, en sombra, de un tono que el umbral global se deja fuera—,
+   pintarla con el pincel son decenas de pinceladas y lo que queda es una
+   silueta dibujada a pulso. Rodéala de un trazo y el programa **busca el borde
+   dentro**: vuelve a separar pieza y fondo mirando solo esa zona, que es donde
+   sí hay contraste.
+
+   Eso importa para lo que viene después: **el borde sale de la imagen, no de tu
+   mano**, así que la pieza se puede medir. Sobre una pieza de 100×100 px
+   rodeada con un trazo 22 px por fuera y ondulado, lo que sale mide 100×100.
+
+   Y si ahí dentro no hay nada que detectar —fondo liso, o un trazo tan ceñido
+   que no deja fondo con el que comparar—, **se dice**: la pieza se marca igual,
+   porque vale para contarla y para no perderla, pero el mensaje avisa de que
+   sus cotas serían las del trazo.
+
+   **Descartar lo que no es una pieza** (*Corregir borde ▸ Descartar lo que no es
+   una pieza…*): el mismo gesto al revés, para una sombra, un reflejo o un
+   rótulo impreso en la mesa. Todo lo que quede dentro del trazo pasa a ser
+   fondo. Las dos cosas entran en el **mismo Ctrl+Z** que las pinceladas.
+
    **Deshacer y rehacer**: con el pincel activo, **Ctrl+Z** deshace la última
    pincelada y **Ctrl+Y** la rehace. Con el pincel apagado, esos mismos atajos
    siguen siendo los de las herramientas dibujadas, como siempre: hay un solo

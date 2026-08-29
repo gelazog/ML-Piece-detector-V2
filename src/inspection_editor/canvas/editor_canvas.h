@@ -80,6 +80,19 @@ public:
     [[nodiscard]] bool freeZonePickMode() const { return freeZonePick_; }
     void setFreeZone(bool visible, const std::vector<cv::Point>& imagePolygon = {});
 
+    // PARA QUÉ es el trazo que se está dibujando.
+    //
+    // El gesto de rodear una zona a pulso —o a clics, con el botón derecho
+    // deshaciendo— ya estaba resuelto para la zona de trabajo, y es exactamente
+    // el que hace falta para «esta pieza no la ves, míratela» y para «esto que
+    // has detectado no es una pieza». Reescribirlo daría dos gestos que se
+    // parecen y se comportan distinto, que es peor que no tener el segundo.
+    //
+    // Así que el trazo es UNO y lo que cambia es a dónde va el polígono.
+    enum class TracePurpose { WorkZone, MarkPiece, DropPiece };
+    void setOutlinePickMode(TracePurpose purpose);
+    [[nodiscard]] TracePurpose tracePurpose() const { return purpose_; }
+
     // --- pincel de borde ---
     //
     // Corregir a mano dónde está el borde de la pieza cuando la detección se
@@ -193,6 +206,19 @@ public:
     // puesta aunque ya no se vea.
     [[nodiscard]] int correctedPixelCount() const;
     // Las dos máscaras acumuladas, para enseñarlas y para deshacerlas.
+    // UNA ZONA ENTERA COMO SI FUERA UNA PINCELADA.
+    //
+    // Lo usa el trazo de «marcar una pieza» / «descartar esto»: la zona se
+    // calcula fuera —hay que segmentar dentro del trazo, y eso no es trabajo
+    // del lienzo— pero se aplica POR AQUÍ para que entre en la misma pila de
+    // deshacer. Con `setEdgeCorrection` se veria igual en pantalla y Ctrl+Z no
+    // la desharía: dos formas de corregir el borde, una deshacible y otra no,
+    // es de las cosas que se aprenden a base de perder trabajo.
+    //
+    // `asPiece` decide a cuál de las dos máscaras va, y se limpia de la otra:
+    // gana lo último que hizo el operador, igual que con el pincel.
+    void applyCorrectionArea(const cv::Mat& area, bool asPiece);
+
     void setEdgeCorrection(const cv::Mat& forcePiece, const cv::Mat& forceBackground);
     void clearEdgeCorrection();
 
@@ -309,6 +335,12 @@ signals:
     void regionPicked(const cv::Rect& imageRect);
     // Zona libre terminada, ya simplificada, en coordenadas de imagen.
     void freeZonePicked(const std::vector<cv::Point>& imagePolygon);
+    // El mismo trazo, cuando lo que se estaba rodeando era una PIEZA: para
+    // marcarla (`add` cierto) o para descartarla (`add` falso). Va aparte de
+    // `freeZonePicked` porque quien lo escucha hace algo completamente
+    // distinto, y un solo aviso con una bandera acabaría en un `if` en el
+    // sitio equivocado.
+    void pieceOutlined(const std::vector<cv::Point>& imagePolygon, bool add);
     // El operador se echó atrás. Existe porque quien encendió el modo tiene un
     // botón pulsado, y un botón que se queda hundido después de cancelar dice
     // que el programa sigue esperando un trazo que ya nadie va a hacer.
@@ -561,6 +593,7 @@ private:
     void paintBrushCursor(QPainter& painter) const;
 
     bool freeZonePick_ = false;
+    TracePurpose purpose_ = TracePurpose::WorkZone;
     bool freeZoneVisible_ = false;
     std::vector<cv::Point> freeZone_;      // la activa, coords de imagen
     std::vector<cv::Point> freeVertices_;  // vértices marcados a clic, en curso

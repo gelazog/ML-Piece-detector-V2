@@ -12,6 +12,7 @@ add_library(pci_vision STATIC
   fixture_stabilizer.cpp
   frame_geometry.cpp
   orientation.cpp
+  outlined_piece.cpp
   orientation_anchor.cpp
   periodicity.cpp
   pipeline.cpp

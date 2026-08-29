@@ -1099,6 +1099,49 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   recuerda—, que es el patrón que ya existe y la respuesta que dio el dueño del
   proyecto al preguntárselo.
 
+- [x] **P3 · Marcar y descartar piezas rodeándolas.** Petición de uso: «añadir
+  pieza dibujando un contorno manualmente, y que detecte o intente detectar la
+  pieza (igual para quitarlo), por si en un lote no la detecta, o detecta algo
+  que no debe».
+
+  Las dos mitades pasan, y la segunda está medida: en `arandelas-2.png` —foto de
+  catálogo— **lo único que la aplicación detecta es un rótulo impreso**, de
+  168×53 px y clasificado como «polígono de 9 lados».
+
+  El pincel ya servía para las dos cosas, píxel a píxel; una pieza entera son
+  decenas de pinceladas y lo que queda es una silueta a pulso. Ahora se rodea de
+  un trazo —el mismo gesto de la zona libre— y **el borde lo busca el programa
+  dentro**, volviendo a segmentar con el fondo que haya ahí.
+
+  Medido: un rectángulo de 100×100 rodeado con un trazo 22 px por fuera y
+  ondulado vuelve midiendo 100×100. Y la pieza que el umbral global se deja
+  fuera —la de menos contraste de la bandeja— aparece al mirarla de cerca.
+
+  **Lo que no se hace, y es la decisión que gobierna esto:** el trazo no se toma
+  como si fuera la pieza. Cuando dentro no hay nada que detectar —lo hallado
+  ocupa menos del 5 % o más del 95 % del trazo— la pieza se marca igual, porque
+  vale para contarla, pero se dice que sus cotas serían las del pulso de quien
+  la dibujó.
+
+  Y entra en la misma pila de Ctrl+Z que las pinceladas: dos formas de corregir
+  el borde, una deshacible y otra no, se aprende perdiendo trabajo.
+
+- [ ] **P4 · Resumen de medidas, cálculos automáticos y herramientas mudas.**
+  Petición de uso: «falta la parte donde te resume las medidas, la
+  ventana/pestaña para verlas, y algunos cálculos automáticos por herramienta;
+  también varias herramientas no muestran medidas».
+
+  Tres cosas distintas y hay que separarlas antes de tocar nada:
+
+  1. **Dónde se ven las medidas.** Hay informe de pieza y hay resultados de
+     inspección, pero no un sitio único que resuma «esto es lo que mide esta
+     pieza ahora mismo».
+  2. **Cálculos automáticos por herramienta** —lo que cada clase puede derivar
+     sin que nadie lo pida.
+  3. **Herramientas que no muestran medida**, que es lo primero que hay que
+     medir: cuántas de las 32 devuelven un número y cuántas no, y si es porque
+     no pueden o porque nadie lo enseña.
+
 - [ ] **P2 · Vídeo: disparo por paso de pieza.** La otra mitad de la misma
   petición: «la manera en la que lo toma en vídeo (grabado o en tiempo real)
   para que el usuario pueda definir un tiempo de espera entre que sale y entra

@@ -1868,6 +1868,83 @@ protected:
 
 }  // namespace
 
+// EL MISMO TRAZO, PARA MARCAR O DESCARTAR UNA PIEZA.
+//
+// Petición de uso: «añadir pieza dibujando un contorno manualmente, y que
+// detecte o intente detectar la pieza (igual para quitarlo)».
+//
+// El gesto es el de la zona libre —a pulso o a clics, el botón derecho
+// deshace—, y lo único que cambia es a dónde va el polígono. Se comprueba
+// justamente eso: que el trazo llega al sitio correcto, porque un aviso que
+// llega al oyente equivocado deja al operador rodeando una pieza y viendo cómo
+// cambia la zona de trabajo.
+TEST_F(FreeZoneGestureTest, TheSameTraceCanMarkOrDropAPiece) {
+    std::vector<cv::Point> outlined;
+    int addedTimes = 0;
+    int droppedTimes = 0;
+    QObject::connect(&canvas, &EditorCanvas::pieceOutlined,
+                     [&](const std::vector<cv::Point>& polygon, bool add) {
+                         outlined = polygon;
+                         if (add) {
+                             ++addedTimes;
+                         } else {
+                             ++droppedTimes;
+                         }
+                     });
+
+    const auto traceASquare = [this] {
+        const std::vector<cv::Point2f> path{{400, 300}, {800, 300}, {800, 700}, {400, 700}};
+        press(&canvas, at(path.front().x, path.front().y));
+        for (std::size_t i = 1; i <= path.size(); ++i) {
+            const cv::Point2f from = path[i - 1];
+            const cv::Point2f to = path[i % path.size()];
+            for (int step = 1; step <= 30; ++step) {
+                const double t = static_cast<double>(step) / 30.0;
+                moveTo(&canvas,
+                       at(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t));
+            }
+        }
+        release(&canvas, at(path.front().x, path.front().y));
+    };
+
+    canvas.setOutlinePickMode(EditorCanvas::TracePurpose::MarkPiece);
+    traceASquare();
+    EXPECT_EQ(addedTimes, 1) << "rodear una pieza no avisa de que hay que marcarla";
+    EXPECT_EQ(pickedTimes, 0)
+        << "el trazo se ha entregado como zona de trabajo: el operador rodea una pieza y "
+           "lo que cambia es dónde se busca";
+    EXPECT_GE(outlined.size(), 4U);
+
+    canvas.setOutlinePickMode(EditorCanvas::TracePurpose::DropPiece);
+    traceASquare();
+    EXPECT_EQ(droppedTimes, 1) << "rodear una mancha no avisa de que hay que descartarla";
+    EXPECT_EQ(addedTimes, 1) << "descartar se ha entregado como marcar: el aviso lleva la "
+                                "bandera al revés y la mancha se convertiría en pieza";
+
+    // Y el modo se apaga solo, como el de la zona: dejarlo encendido convierte
+    // el siguiente arrastre —mover, dibujar— en una pieza inventada.
+    EXPECT_EQ(canvas.tracePurpose(), EditorCanvas::TracePurpose::WorkZone);
+}
+
+TEST_F(FreeZoneGestureTest, AnOutlinedAreaGoesIntoTheSameUndoStackAsTheBrush) {
+    // Una corrección que no se puede deshacer con Ctrl+Z, al lado de otra que
+    // sí, es de las cosas que se aprenden perdiendo trabajo. La zona rodeada
+    // entra por el mismo camino que una pincelada.
+    cv::Mat area(kImageHeight, kImageWidth, CV_8UC1, cv::Scalar(0));
+    cv::rectangle(area, cv::Rect(100, 100, 200, 200), cv::Scalar(255), cv::FILLED);
+
+    EXPECT_EQ(canvas.correctedPixelCount(), 0);
+    canvas.applyCorrectionArea(area, false);
+    const int marked = canvas.correctedPixelCount();
+    std::printf("  [gesto] zona descartada -> %d px corregidos\n", marked);
+    EXPECT_EQ(marked, 200 * 200) << "la zona rodeada no llega a la corrección del borde";
+    ASSERT_TRUE(canvas.canUndoEdgeCorrection())
+        << "rodear no deja nada que deshacer: Ctrl+Z no la quitaría";
+
+    EXPECT_TRUE(canvas.undoEdgeCorrection());
+    EXPECT_EQ(canvas.correctedPixelCount(), 0) << "deshacer no quita la zona rodeada";
+}
+
 TEST_F(FreeZoneGestureTest, DraggingTracesTheZoneFreehand) {
     // El gesto rápido: rodear la pieza sin levantar el ratón. Se traza un
     // rombo, que no es un rectángulo ni por casualidad — si el resultado
