@@ -1374,6 +1374,30 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   sola cosa —las cinco unidades, los cinco orígenes del tablero— donde un
   separador no agruparía nada.
 
+- [x] **P11 · Trece comandos encendidos que no podían hacer nada.** Queja de
+  uso: «las opciones, aunque no esté nada activo… le doy a alguna, la abre, la
+  mide, pero no abrió nada».
+
+  Medido con la ventana recién abierta —sin cámara, sin imagen, sin pieza—: de
+  40 comandos de los menús, **13 estaban encendidos sin nada sobre lo que
+  actuar**. Calibrar la escala sin imagen que marcar, medir una pieza que no
+  hay, inspeccionar sin pieza, guardar una plantilla que no existe, ver el
+  historial de nadie.
+
+  Un comando encendido es una **promesa**, y cuando no se puede cumplir el
+  operador se lo encuentra de una de tres formas, todas malas: no pasa nada
+  visible y concluye que el programa está roto; pasa algo a medias sobre datos
+  que no hay; o sale un aviso explicando lo que debería haber estado apagado.
+
+  La aplicación ya lo hacía bien en un sitio —la auto-inspección se queda
+  apagada con el motivo en su tooltip— y ahora esa misma cortesía la tienen los
+  nueve que la necesitaban. Los cuatro restantes NO se apagan y hay que saber
+  por qué: son **ajustes, no acciones** (el marcador ArUco y los tres orígenes
+  automáticos del tablero). Dejan puesto algo que se aplicará cuando haya pieza;
+  apagarlos obligaría a abrir una fuente para poder preparar la máquina.
+
+  Trinquete en `test_dead_controls.cpp`, en **0**.
+
 ## F. Ya está hecho — no volver a investigarlo
 
 Aquí para que nadie gaste otra vez el tiempo que ya se gastó.

@@ -1730,6 +1730,14 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // sobre el ajuste global (M2); loadPieceList puede no disparar la señal.
     loadMeasurementForSelectedPiece();
     loadDetectionProfileForSelectedPiece();
+
+    // LO ÚLTIMO: qué comandos se pueden usar de verdad ahora mismo.
+    //
+    // Va al final del constructor porque necesita las acciones ya creadas y sus
+    // tooltips ya repartidos —guarda el texto de siempre para devolverlo cuando
+    // el comando vuelva a poder usarse—, y porque la pieza y la fuente
+    // recordadas acaban de cargarse: con eso ya se sabe qué hay delante.
+    registerGatedCommands();
 }
 
 inspection::LengthUnit MainWindow::currentUnit() const {
@@ -2011,8 +2019,9 @@ void MainWindow::buildMenuBar() {
         measureMenu->addAction(tr("Medir pieza"), this,
                                &MainWindow::onMeasurePieceClicked);
     }
-    measureMenu->addAction(tr("Modo de medición de la pieza…"), this,
-                           &MainWindow::onMeasurementModeClicked);
+    measurementModeAction_ = measureMenu->addAction(
+        tr("Modo de medición de la pieza…"), this,
+        &MainWindow::onMeasurementModeClicked);
 
     auto* pieceMenu = menuBar()->addMenu(tr("&Pieza"));
     pieceMenu->addAction(tr("Registrar con asistente…"), this,
@@ -2023,8 +2032,9 @@ void MainWindow::buildMenuBar() {
     // hay que evitar: quien tiene delante la misma pieza con otro acabado
     // acabaría registrándola otra vez, y eso crea una pieza distinta con sus
     // herramientas y su historial aparte.
-    pieceMenu->addAction(tr("Registrar otro acabado de esta pieza…"), this,
-                         &MainWindow::onRegisterVariantClicked);
+    registerVariantAction_ = pieceMenu->addAction(
+        tr("Registrar otro acabado de esta pieza…"), this,
+        &MainWindow::onRegisterVariantClicked);
     pieceMenu->addAction(tr("Gestionar piezas…"), this,
                                                &MainWindow::onManagePiecesClicked);
     pieceMenu->addSeparator();
@@ -2064,8 +2074,8 @@ void MainWindow::buildMenuBar() {
         inspectionMenu->addAction(tr("Editor de plantilla…"), this,
                                   &MainWindow::onOpenEditorClicked);
     }
-    inspectionMenu->addAction(tr("Ver historial…"), this,
-                              &MainWindow::onShowHistoryClicked);
+    historyAction_ = inspectionMenu->addAction(tr("Ver historial…"), this,
+                                              &MainWindow::onShowHistoryClicked);
 
     auto* viewMenu = menuBar()->addMenu(tr("&Ver"));
     showContourAction_ = viewMenu->addAction(tr("Mostrar contorno"));
@@ -2271,6 +2281,14 @@ void MainWindow::buildMenuBar() {
         action->setData(static_cast<int>(entry.origin));
         action->setChecked(entry.origin == boardConfig_.origin);
         boardOriginGroup_->addAction(action);
+        // El punto a mano se marca CON EL RATÓN SOBRE LA IMAGEN, así que sin
+        // imagen no se puede elegir: al pulsarlo el lienzo se queda esperando
+        // un clic que no puede llegar, y el tablero se queda en un origen que
+        // nadie fijó. Los tres automáticos sí son ajustes y se pueden dejar
+        // puestos de antemano.
+        if (entry.origin == vision::BoardOrigin::FixedPoint) {
+            boardFixedPointAction_ = action;
+        }
     }
     connect(boardOriginGroup_, &QActionGroup::triggered, this, &MainWindow::onBoardOriginChanged);
 
@@ -3331,6 +3349,92 @@ void MainWindow::onRedo() {
 //
 // Ahora está apagado con su motivo en el tooltip, que es lo que este proyecto ya
 // hace en los botones de borrar: se lee antes de pulsar, y se puede comprobar.
+// Los comandos que prometen algo, con lo que cada uno necesita.
+//
+// Se registran DESPUÉS de construir la interfaz y de repartir los tooltips,
+// porque aquí se guarda el texto de siempre para poder devolverlo cuando el
+// comando vuelva a poder usarse. Sin eso, apagar y encender una vez dejaría al
+// operador con el motivo de la última vez que no se podía.
+void MainWindow::registerGatedCommands() {
+    const auto add = [this](QAction* action, QAbstractButton* button, bool needsImage,
+                            bool needsPiece, bool needsEngine) {
+        if (action == nullptr && button == nullptr) {
+            return;
+        }
+        GatedCommand gate;
+        gate.action = action;
+        gate.button = button;
+        gate.needsImage = needsImage;
+        gate.needsPiece = needsPiece;
+        gate.needsEngine = needsEngine;
+        // El compilador no sabe que uno de los dos existe —lo garantiza la
+        // guarda de arriba—, así que se escribe en dos pasos en vez de con un
+        // ternario que él lee como «puede llamar a `toolTip` sobre nulo».
+        if (action != nullptr) {
+            gate.help = action->toolTip();
+        } else if (button != nullptr) {
+            gate.help = button->toolTip();
+        }
+        gated_.push_back(std::move(gate));
+    };
+
+    // Necesitan una IMAGEN delante: sin fotograma no hay nada que medir ni
+    // sobre lo que hacer clic.
+    add(shortcutAction(QStringLiteral("calibrate")), nullptr, true, false, false);
+    add(shortcutAction(QStringLiteral("measure_piece")), measurePieceButton_, true, false,
+        false);
+    add(shortcutAction(QStringLiteral("template_editor")), nullptr, true, false, false);
+    add(boardFixedPointAction_, nullptr, true, false, false);
+
+    // Necesitan una PIEZA registrada seleccionada: todas guardan o consultan
+    // algo suyo.
+    add(measurementModeAction_, nullptr, false, true, false);
+    add(registerVariantAction_, nullptr, false, true, false);
+    add(historyAction_, nullptr, false, true, false);
+    add(shortcutAction(QStringLiteral("save_template")), nullptr, false, true, false);
+
+    // Y la inspección, las tres cosas: pieza que comparar, imagen que mirar y
+    // motor que juzgue.
+    add(shortcutAction(QStringLiteral("inspect_once")), inspectButton_, true, true, true);
+
+    updateGatedCommands();
+}
+
+void MainWindow::updateGatedCommands() {
+    const bool hasImage = !lastFrame_.isNull();
+    const bool hasPiece = selectedPieceId() >= 0;
+    const bool hasEngine = repos_.engine != nullptr;
+
+    for (const auto& gate : gated_) {
+        QStringList missing;
+        if (gate.needsImage && !hasImage) {
+            missing << tr("no hay ninguna imagen delante (abre una fuente o una foto)");
+        }
+        if (gate.needsPiece && !hasPiece) {
+            missing << tr("no hay ninguna pieza registrada seleccionada");
+        }
+        if (gate.needsEngine && !hasEngine) {
+            missing << tr("no hay motor de inspección");
+        }
+        const bool usable = missing.isEmpty();
+        // El motivo SUSTITUYE al tooltip mientras está apagado, y se devuelve el
+        // de siempre al reactivarse. Añadirlo al final dejaría al operador
+        // leyendo un párrafo de ayuda para encontrar la única línea que le
+        // importa: por qué no puede pulsar.
+        const QString tip = usable ? gate.help
+                                   : tr("Todavía no se puede: %1.")
+                                         .arg(missing.join(tr("; ")));
+        if (gate.action != nullptr) {
+            gate.action->setEnabled(usable);
+            gate.action->setToolTip(tip);
+        }
+        if (gate.button != nullptr) {
+            gate.button->setEnabled(usable);
+            gate.button->setToolTip(tip);
+        }
+    }
+}
+
 void MainWindow::updateAutoInspectAvailability() {
     if (autoInspectButton_ == nullptr) {
         return;
@@ -3363,6 +3467,7 @@ void MainWindow::updateAutoInspectAvailability() {
 
 void MainWindow::updateStatusIndicators() {
     updateAutoInspectAvailability();
+    updateGatedCommands();
     updateEdgeBrushAvailability();
     // Punto de color + leyenda por indicador (rich text: sin assets externos).
     auto set = [](QLabel* label, const QString& caption, bool ok, const QString& okText,

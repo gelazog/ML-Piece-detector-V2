@@ -40,6 +40,7 @@ class QActionGroup;
 class QButtonGroup;
 class QCheckBox;
 class QComboBox;
+class QAbstractButton;
 class QDockWidget;
 class QLabel;
 class QListWidget;
@@ -189,6 +190,28 @@ private:
     // qué no cuando no. Antes se contestaba con un diálogo modal DESPUÉS de
     // pulsar, que además colgaba el banco de pruebas sin pantalla.
     void updateAutoInspectAvailability();
+    // UN COMANDO QUE NO PUEDE HACER NADA SE APAGA, Y DICE POR QUÉ.
+    //
+    // Queja de uso: «las opciones, aunque no esté nada activo… le doy a alguna,
+    // la abre, la mide, pero no abrió nada». Un comando encendido es una
+    // promesa —«esto se puede hacer ahora»— y la aplicación arranca sin cámara,
+    // sin imagen y sin pieza: medir sin imagen, inspeccionar sin pieza o guardar
+    // una plantilla que no existe no hacen nada, o hacen algo a medias sobre
+    // datos que no hay.
+    //
+    // La auto-inspección ya lo hacía bien —apagada, con el motivo en su
+    // tooltip— y esto es esa misma cortesía para los demás.
+    struct GatedCommand {
+        QAction* action = nullptr;
+        QAbstractButton* button = nullptr;
+        bool needsImage = false;
+        bool needsPiece = false;
+        bool needsEngine = false;
+        QString help;  // el tooltip de siempre, para devolverlo al reactivarse
+    };
+    std::vector<GatedCommand> gated_;
+    void registerGatedCommands();
+    void updateGatedCommands();
     void updateZoomIndicator();     // porcentaje y botones de la barra de zoom (Z3)
     void onBoardOriginChanged(QAction* action);  // origen del tablero (T2)
     void updateBoardReadout();  // lectura en vivo de desviacion y giro (T3)
@@ -393,6 +416,10 @@ private:
     // en cuanto la pieza se moviera.
     QToolButton* edgeBrushButton_ = nullptr;
     QAction* outlineAddAction_ = nullptr;
+    QAction* measurementModeAction_ = nullptr;
+    QAction* registerVariantAction_ = nullptr;
+    QAction* historyAction_ = nullptr;
+    QAction* boardFixedPointAction_ = nullptr;
     QAction* outlineDropAction_ = nullptr;
     QAction* brushAddAction_ = nullptr;
     QAction* brushRemoveAction_ = nullptr;
