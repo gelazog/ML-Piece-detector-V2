@@ -876,6 +876,28 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    **sensibilidad de anomalía (kσ)** de apariencia. Se aplican al aceptar y
    quedan guardados.
 
+   **Medir una vez por pieza que pasa** (misma pestaña): para vídeo y cámara en
+   marcha. Con el temporizador solo, sobre una cinta pasan tres cosas y ninguna
+   avisa: se mide **media pieza** mientras entra, se mide **la misma pieza doce
+   veces** mientras cruza —y cada una cuenta como una inspección distinta en el
+   historial—, y una pieza rápida puede pasar **entre dos disparos** sin medirse
+   nunca.
+
+   Con esto encendido se mide cuando la escena está **quieta** el tiempo que
+   pongas (*asentamiento*) y **ninguna pieza toca el borde**, y no se vuelve a
+   medir hasta que el encuadre se **vacía** el tiempo que pongas (*rearme*) —
+   que es el «tiempo de espera entre que sale y entra una pieza».
+
+   La cuenta de quietud **vuelve a empezar** con cada movimiento en vez de sumar
+   trozos: sumando, una cinta que avanza a tirones dispararía entre dos tirones.
+   Y si no dispara, la barra de estado dice **por qué** —la escena se mueve, hay
+   una pieza en el borde, o ya se midió y falta que el encuadre se vacíe—,
+   porque son causas que llevan a hacer cosas distintas.
+
+   Viene **apagado**: encenderlo cambia cuándo se mide, y quien ya tenía su
+   auto-inspección ajustada no tiene por qué encontrarse con otro
+   comportamiento.
+
    **Calibrar la lente** (menú *Medida ▸ Calibrar la lente…*): imprime un
    tablero de ajedrez, pégalo a algo rígido y enséñaselo a la cámara desde
    varios sitios. Toda lente curva las rectas, y con una lente corriente **la

@@ -74,6 +74,10 @@ public:
         camera::CameraResolution currentResolution;
         int autoIntervalMs = 700;
         double kSigma = 3.0;
+        // Disparo por paso de pieza (P2) y sus dos tiempos.
+        bool passTrigger = false;
+        int settleMs = 400;
+        int rearmMs = 300;
         vision::WorkingZoneMode zoneMode = vision::WorkingZoneMode::Off;
         bool hasFixedZone = false;
         bool hasFreeZone = false;

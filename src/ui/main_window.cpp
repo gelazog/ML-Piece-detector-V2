@@ -1382,6 +1382,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(&layoutSaveTimer_, &QTimer::timeout, this, &MainWindow::persistWindowLayout);
 
     captureTimer_.setInterval(350);
+    // El reloj del disparo por paso de pieza: monótono y propio, para no
+    // depender de la hora del sistema —que puede saltar hacia atrás— ni del
+    // intervalo del temporizador.
+    passClock_.start();
     autoTimer_.setInterval(autoIntervalMs_);  // se reajusta al cargar Preferencias
 
     // Calibración de escala persistida.
@@ -1406,6 +1410,16 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             std::clamp(repos_.settings->getInt("pref_auto_interval_ms", 1000).value(),
                        200, 10000);
         kSigma_ = std::clamp(repos_.settings->getDouble("pref_ksigma", 3.0).value(), 0.5, 6.0);
+        // Disparo por paso de pieza (P2). De fábrica APAGADO: encenderlo cambia
+        // cuándo se mide, y quien ya tenía la auto-inspección funcionando no
+        // puede encontrarse con que mide en otros momentos por actualizar.
+        passTriggerOn_ = repos_.settings->getInt("pref_pass_trigger", 0).value() != 0;
+        vision::PassTriggerOptions passOptions;
+        passOptions.settleMs =
+            std::clamp(repos_.settings->getInt("pref_pass_settle_ms", 400).value(), 0, 10000);
+        passOptions.rearmMs =
+            std::clamp(repos_.settings->getInt("pref_pass_rearm_ms", 300).value(), 0, 10000);
+        passTrigger_.setOptions(passOptions);
         // Pestaña del panel Configurar (C1). Sin acotar por arriba: el diálogo
         // ignora un índice que no exista, que es lo que pasará si una versión
         // futura tiene menos pestañas que la que guardó el número.
@@ -3711,6 +3725,13 @@ bool MainWindow::startFileSourceAtPath(camera::SourceKind kind, const QString& p
     sourceKind_ = kind;
     lastSourcePath_ = path;
     streaming_ = true;
+    // El disparo por paso de pieza empieza de cero con cada fuente: los
+    // milisegundos del vídeo anterior no dicen nada de éste, y si se cerró con
+    // una pieza dentro el disparo quedó desarmado — la primera pieza del vídeo
+    // nuevo no se mediría hasta que el encuadre se vaciara.
+    passTrigger_.reset();
+    passWantsMeasure_ = false;
+    lastPassWhy_.clear();
     // La identidad de la fuente sirve para el aviso de calibración obsoleta: la
     // escala en px/mm depende de la óptica y de la distancia al plano, y pasar
     // de una cámara a un fichero (o entre ficheros) cambia las dos.
@@ -4639,6 +4660,10 @@ void MainWindow::onAnalysisFinished() {
             page->setStageStats(stageStats_);
         }
     }
+
+    // El disparo por paso de pieza mira la escena aquí, que es donde puede
+    // haber cambiado.
+    observeSceneForPassTrigger(overlay);
 
     if (overlay.piecesFound >= 0) {
         lastPiecesSeen_ = overlay.piecesFound;
@@ -6666,6 +6691,19 @@ void MainWindow::applyPreferencesPage(PreferencesPage* page) {
     }
     autoIntervalMs_ = page->autoIntervalMs();
     kSigma_ = page->kSigma();
+    const bool wasOn = passTriggerOn_;
+    passTriggerOn_ = page->passTrigger();
+    vision::PassTriggerOptions passOptions;
+    passOptions.settleMs = page->settleMs();
+    passOptions.rearmMs = page->rearmMs();
+    passTrigger_.setOptions(passOptions);
+    // Al encenderlo se empieza de cero: los milisegundos que llevara contados
+    // con otros tiempos no dicen nada de los nuevos.
+    if (passTriggerOn_ != wasOn || passTriggerOn_) {
+        passTrigger_.reset();
+        passWantsMeasure_ = false;
+        lastPassWhy_.clear();
+    }
 
     // Aplicar de inmediato.
     autoTimer_.setInterval(autoIntervalMs_);
@@ -6675,6 +6713,9 @@ void MainWindow::applyPreferencesPage(PreferencesPage* page) {
     if (repos_.settings != nullptr) {
         repos_.settings->setInt("pref_auto_interval_ms", autoIntervalMs_);
         repos_.settings->setDouble("pref_ksigma", kSigma_);
+        repos_.settings->setInt("pref_pass_trigger", passTriggerOn_ ? 1 : 0);
+        repos_.settings->setInt("pref_pass_settle_ms", passOptions.settleMs);
+        repos_.settings->setInt("pref_pass_rearm_ms", passOptions.rearmMs);
     }
     statusBar()->showMessage(tr("Preferencias guardadas."));
 }
@@ -6708,6 +6749,9 @@ void MainWindow::onConfigureClicked() {
     inputs.currentResolution = currentResolution_;
     inputs.autoIntervalMs = autoIntervalMs_;
     inputs.kSigma = kSigma_;
+    inputs.passTrigger = passTriggerOn_;
+    inputs.settleMs = passTrigger_.options().settleMs;
+    inputs.rearmMs = passTrigger_.options().rearmMs;
     inputs.zoneMode = zoneMode_;
     inputs.expectedPieces = expectedPieces_;
     inputs.showMosaic = showMosaic_;
@@ -7796,7 +7840,79 @@ void MainWindow::onAutoToggled(bool enabled) {
     }
 }
 
+// LA ESCENA, MIRADA UNA VEZ POR ANÁLISIS.
+//
+// Se observa aquí y no en el temporizador a propósito: el disparador cuenta
+// milisegundos de escena QUIETA, y preguntárselo con el reloj le daría la misma
+// foto varias veces —o se saltaría los cambios entre dos ticks—. La escena solo
+// puede cambiar cuando llega un análisis nuevo, así que ése es el sitio.
+void MainWindow::observeSceneForPassTrigger(const AnalysisOverlay& overlay) {
+    if (!passTriggerOn_ || !autoInspecting_ || !overlay.analysed) {
+        return;
+    }
+    vision::SceneSnapshot snapshot;
+    snapshot.atMs = passClock_.elapsed();
+
+    // Los contornos de TODAS si se contaron; si no, el de la pieza medida. Sin
+    // este segundo camino, el disparo no funcionaría con el recuento apagado —
+    // que es como está de fábrica.
+    const auto& outlines = overlay.pieceContours;
+    const QSize frame = overlay.frameSize;
+    const auto look = [&](const QPolygonF& polygon) {
+        if (polygon.isEmpty()) {
+            return;
+        }
+        const QRectF bounds = polygon.boundingRect();
+        snapshot.centres.emplace_back(static_cast<float>(bounds.center().x()),
+                                      static_cast<float>(bounds.center().y()));
+        // «Toca el borde» con un margen de un píxel: el contorno de una pieza
+        // pegada al canto puede quedarse en x=1 por el suavizado, y tratarla
+        // como entera es justo lo que se quiere evitar.
+        if (frame.isValid() &&
+            (bounds.left() <= 1.0 || bounds.top() <= 1.0 ||
+             bounds.right() >= frame.width() - 2.0 ||
+             bounds.bottom() >= frame.height() - 2.0)) {
+            snapshot.someoneTouchesTheEdge = true;
+        }
+    };
+    if (!outlines.empty()) {
+        for (const auto& polygon : outlines) {
+            look(polygon);
+        }
+    } else if (overlay.valid) {
+        look(overlay.contour);
+    }
+
+    const vision::PassVerdict verdict = passTrigger_.observe(snapshot);
+    if (verdict.decision == vision::PassDecision::Measure) {
+        passWantsMeasure_ = true;
+    }
+    // El porqué, en la barra de estado y solo cuando CAMBIA. Un disparador que
+    // no dispara y no dice por qué se vive como «la auto-inspección no
+    // funciona», y la causa casi siempre es una de dos —la cinta no para, o la
+    // pieza asoma por el borde— que llevan a hacer cosas distintas. Repetirlo en
+    // cada frame, en cambio, taparía cualquier otro mensaje.
+    if (verdict.why != lastPassWhy_) {
+        lastPassWhy_ = verdict.why;
+        statusBar()->showMessage(QString::fromStdString(verdict.why));
+    }
+}
+
 void MainWindow::onAutoTick() {
+    // CON EL DISPARO POR PASO DE PIEZA, EL RELOJ NO DECIDE.
+    //
+    // El temporizador sigue corriendo porque es lo que descubre que la
+    // inspección anterior terminó, pero quien dice «ahora» es la escena: una
+    // pieza entera, quieta el tiempo pedido, y el encuadre vaciado desde la
+    // anterior. La bandera la pone `observeSceneForPassTrigger` cuando llega un
+    // análisis, que es el único momento en el que la escena puede haber
+    // cambiado.
+    if (passTriggerOn_) {
+        if (!passWantsMeasure_) {
+            return;
+        }
+        passWantsMeasure_ = false;
+    }
     if (inspectionWatcher_.isRunning() || lastFrame_.isNull()) {
         return;
     }

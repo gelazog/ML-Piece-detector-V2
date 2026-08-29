@@ -13,6 +13,7 @@ add_library(pci_vision STATIC
   frame_geometry.cpp
   orientation.cpp
   outlined_piece.cpp
+  pass_trigger.cpp
   orientation_anchor.cpp
   periodicity.cpp
   pipeline.cpp

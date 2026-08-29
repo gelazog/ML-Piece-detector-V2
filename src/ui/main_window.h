@@ -27,6 +27,7 @@
 #include "inspection_editor/canvas/editor_canvas.h"
 #include "inspection_editor/canvas/tool_palette.h"
 #include "ui/analysis_overlay.h"
+#include "vision/pass_trigger.h"
 #include "vision/auto_roi.h"
 #include "ui/app_repositories.h"
 #include "repositories/piece_repository.h"
@@ -432,6 +433,8 @@ private:
     // El trazo de «marcar una pieza» / «descartar esto» ya terminado.
     void onPieceOutlined(const std::vector<cv::Point>& polygon, bool add);
     void onEdgeCorrected(const cv::Mat& forcePiece, const cv::Mat& forceBackground);
+    // Le da al disparador la escena de este análisis, y apunta si toca medir.
+    void observeSceneForPassTrigger(const AnalysisOverlay& overlay);
     void onTuneDetectionFromEdge();
     // Barra de transporte del vídeo. Solo aparece con un vídeo abierto: con una
     // cámara no hay nada que rebobinar, y una barra muerta bajo la imagen es
@@ -667,6 +670,16 @@ private:
     double markerSizeMm_ = 30.0;    // lado real del marcador impreso
     // Preferencias configurables (O1), persistidas en Settings.
     int autoIntervalMs_ = 1000;     // intervalo de auto-inspección
+    // DISPARO POR PASO DE PIEZA (P2). Con esto encendido, la auto-inspección
+    // deja de medir «cada N ms» y pasa a medir «una vez por pieza que pasa»:
+    // pieza entera, quieta el tiempo pedido, y el encuadre vaciado desde la
+    // anterior. El temporizador sigue corriendo como bomba, pero quien decide
+    // es la escena.
+    bool passTriggerOn_ = false;
+    bool passWantsMeasure_ = false;
+    vision::PassTrigger passTrigger_;
+    QElapsedTimer passClock_;
+    std::string lastPassWhy_;
     double kSigma_ = 3.0;           // sensibilidad de anomalía de apariencia
 };
 

@@ -123,7 +123,9 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
             &ConfigureDialog::scaleWizardRequested);
 
     // --- Preferencias ---
-    preferences_ = new PreferencesPage(inputs.autoIntervalMs, inputs.kSigma, this);
+    preferences_ = new PreferencesPage(inputs.autoIntervalMs, inputs.kSigma,
+                                       inputs.passTrigger, inputs.settleMs,
+                                       inputs.rearmMs, this);
     tabs_->addTab(preferences_, tr("Preferencias"));
 
     // --- Atajos (asistente) ---

@@ -18,7 +18,9 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QCheckBox>
 #include <QComboBox>
+#include <QSpinBox>
 #include <QApplication>
 #include <QDir>
 #include <QTemporaryDir>
@@ -133,6 +135,35 @@ TEST(ConfigureRoundTrip, ThePreferencesPageGivesBackWhatItWasGiven) {
     pci::ui::PreferencesPage page(interval, sigma);
     EXPECT_EQ(page.autoIntervalMs(), interval) << "el intervalo de auto no vuelve";
     EXPECT_NEAR(page.kSigma(), sigma, 1e-9) << "la sensibilidad no vuelve";
+
+    // Y los tres del disparo por paso de pieza. Van en la misma prueba porque
+    // se pierden igual: un campo que vuelve mal deja al operador poniendo el
+    // mismo tiempo cada vez que abre el panel, sin entender por qué no se queda.
+    pci::ui::PreferencesPage byPass(interval, sigma, true, 750, 900);
+    EXPECT_TRUE(byPass.passTrigger()) << "el disparo por paso de pieza no vuelve encendido";
+    EXPECT_EQ(byPass.settleMs(), 750) << "el asentamiento no vuelve";
+    EXPECT_EQ(byPass.rearmMs(), 900) << "el rearme no vuelve";
+}
+
+TEST(ConfigureRoundTrip, TheTwoTimesAreOffWhenTheTriggerIsOff) {
+    // Dos campos activos que no hacen nada son peores que dos campos apagados:
+    // el operador ajusta el asentamiento, no cambia nada, y concluye que la
+    // función no sirve. Con el disparo apagado, los tiempos no significan nada.
+    pci::ui::PreferencesPage off(1000, 3.0, false, 400, 300);
+    auto* settle = off.findChild<QSpinBox*>(QStringLiteral("settleSpin"));
+    auto* rearm = off.findChild<QSpinBox*>(QStringLiteral("rearmSpin"));
+    auto* check = off.findChild<QCheckBox*>(QStringLiteral("passTriggerCheck"));
+    ASSERT_NE(settle, nullptr);
+    ASSERT_NE(rearm, nullptr);
+    ASSERT_NE(check, nullptr);
+    EXPECT_FALSE(settle->isEnabled());
+    EXPECT_FALSE(rearm->isEnabled());
+
+    check->setChecked(true);
+    EXPECT_TRUE(settle->isEnabled())
+        << "se enciende el disparo y sus tiempos siguen apagados: no hay forma de "
+           "ajustarlos";
+    EXPECT_TRUE(rearm->isEnabled());
 }
 
 // Y EL CAMINO COMPLETO: ventana real, abrir Configurar, aceptar sin tocar.

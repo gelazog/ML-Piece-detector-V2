@@ -192,6 +192,49 @@ que nadie lo pidiera.
 Medido: una sombra que se comía el borde derecho dejaba la pieza en 180 px de
 ancho; pintando ese trozo como pieza vuelve a 240, que es el real.
 
+#### Cuándo medir en un vídeo: una vez por pieza, no una vez por segundo
+
+Petición de uso: «la manera en la que lo toma en vídeo (grabado o en tiempo
+real), para que el usuario pueda definir un tiempo de espera entre que sale y
+entra una/varias piezas en el enfoque».
+
+La auto-inspección era un temporizador: cada `pref_auto_interval_ms` se
+inspeccionaba el fotograma que hubiera. Sobre una cinta eso falla de tres formas
+y las tres en silencio — mide piezas a medio entrar, mide la misma pieza doce
+veces mientras cruza, y una pieza rápida pasa entre dos disparos sin medirse.
+
+`vision::PassTrigger` cambia el disparo del reloj a la ESCENA, con tres
+condiciones y una contra cada fallo:
+
+1. **Ninguna pieza tocando el borde.** Se comprueba **antes** que la quietud, y
+   ese orden importa: una pieza parada en el borde —la cinta detenida— cumple el
+   asentamiento, y al revés se mediría media pieza.
+2. **Asentamiento**: mismo recuento y centroides que no se mueven más de 2 px
+   durante el tiempo pedido. La cuenta se **reinicia** con cada movimiento en
+   vez de acumular trozos: sumando, una cinta a tirones dispararía entre dos
+   tirones. Los centroides se emparejan por cercanía y no por orden, porque el
+   orden depende de por dónde recorra el contorno la segmentación.
+3. **Rearme al vaciarse**: tras medir, no se vuelve a medir hasta que el
+   encuadre lleve vacío el tiempo pedido. Es lo que convierte doce medidas en
+   una, y es la opción elegida entre tres: sobre una cinta con piezas sueltas,
+   «se vació» es un hecho, mientras que «ha cambiado bastante lo que veo» es una
+   estimación que falla cuando dos piezas se parecen.
+
+**La escena se observa una vez por ANÁLISIS, no por tick del reloj.** El
+disparador cuenta milisegundos de escena quieta; preguntárselo desde el
+temporizador le daría la misma foto varias veces o se saltaría los cambios entre
+dos ticks. El temporizador se queda como bomba —es lo que descubre que la
+inspección anterior terminó— y la bandera la pone el análisis.
+
+Vive en `vision/` y no en la ventana, así que un paso de pieza entero —entra, se
+para, sale— se prueba con instantes dados a mano, sin cámara, sin vídeo y sin
+esperar un segundo de reloj.
+
+Y **dice por qué no dispara**, en la barra de estado y solo cuando el motivo
+cambia. Un disparador callado se vive como «la auto-inspección no funciona», y
+las dos causas frecuentes llevan a hacer cosas distintas: parar la cinta un poco
+más, o recolocar la cámara para que la pieza entre entera.
+
 #### Rodear una pieza, que no es lo mismo que pintarla
 
 Petición de uso: «añadir pieza dibujando un contorno manualmente, y que detecte

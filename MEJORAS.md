@@ -1155,26 +1155,49 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
      medir: cuántas de las 32 devuelven un número y cuántas no, y si es porque
      no pueden o porque nadie lo enseña.
 
-- [ ] **P2 · Vídeo: disparo por paso de pieza.** La otra mitad de la misma
+- [x] **P2 · Vídeo: disparo por paso de pieza.** La otra mitad de la misma
   petición: «la manera en la que lo toma en vídeo (grabado o en tiempo real)
   para que el usuario pueda definir un tiempo de espera entre que sale y entra
   una/varias piezas en el enfoque».
 
-  Hoy la auto-inspección es un **temporizador fijo** (`pref_auto_interval_ms`,
-  1 s de fábrica) que mide el fotograma que haya: mide piezas a medio entrar,
-  mide doce veces la misma y puede no medir nunca una que pasa rápido. No hay
-  ningún concepto de «pieza que pasa».
+  Lo que había era un **temporizador fijo** (`pref_auto_interval_ms`, 1 s de
+  fábrica) que medía el fotograma que hubiera. Sobre una cinta eso falla de tres
+  formas, y las tres en silencio: mide piezas **a medio entrar** —media pieza da
+  cotas cortas y un NG que es del momento en que se miró, no de la pieza—, mide
+  **la misma pieza doce veces** mientras cruza (doce inspecciones en el
+  histórico), y una pieza rápida puede pasar **entre dos disparos** sin medirse
+  nunca.
 
-  Lo acordado con el dueño del proyecto: se rearma **cuando el encuadre se
-  vacía** durante el tiempo que fije el operador. Tres tiempos:
+  Ahora quien dice «ahora» es la escena (`vision::PassTrigger`), con tres
+  condiciones y cada una contra uno de los tres fallos:
 
-  - **asentamiento**: la escena tiene que estar quieta N ms —mismo recuento y
-    centroides que no se mueven— antes de medir;
-  - **rearme**: tras medir, no se vuelve a medir hasta que el encuadre esté
-    vacío M ms;
-  - y **no se mide una pieza que toca el borde**, que ya se detecta hoy (el
-    informe avisa de «límites inferiores») y hoy no se usa como condición de
-    disparo.
+  1. **Nada a medio entrar**: si alguna pieza toca el borde, no se mide. Y se
+     comprueba ANTES que la quietud, porque una pieza parada en el borde —la
+     cinta detenida— cumple el asentamiento y sin este orden se mediría.
+  2. **Asentamiento**: la escena quieta el tiempo que fije el operador —mismo
+     recuento y centroides que no se mueven más de 2 px—. La cuenta se
+     **reinicia** con cada movimiento en vez de sumar trozos: sumando, una cinta
+     a tirones dispararía entre dos tirones.
+  3. **Rearme al vaciarse**: tras medir no se vuelve a medir hasta que el
+     encuadre lleve vacío el tiempo pedido. Es lo que convierte «doce medidas
+     mientras cruza» en «una por pieza», y es la opción que eligió el dueño del
+     proyecto entre tres — sobre una cinta con piezas sueltas, «se vació» es un
+     hecho, mientras que «ha cambiado bastante lo que veo» es una estimación que
+     falla justo cuando dos piezas se parecen.
+
+  De fábrica **apagado**: encenderlo cambia cuándo se mide, y quien ya tenía la
+  auto-inspección funcionando no puede encontrarse con que mide en otros
+  momentos por haber actualizado.
+
+  La decisión vive en `vision/` y no en la ventana, así que un paso de pieza
+  entero —entra, se para, sale— se prueba con instantes dados a mano, sin cámara
+  y sin esperar un segundo de reloj.
+
+  **Y dice por qué no dispara.** Un disparador callado se vive como «la
+  auto-inspección no funciona», y la causa casi siempre es una de dos que llevan
+  a hacer cosas distintas: la cinta no para, o la pieza asoma por el borde. El
+  motivo sale en la barra de estado y **solo cuando cambia**, para no tapar todo
+  lo demás.
 
 ## F. Ya está hecho — no volver a investigarlo
 
