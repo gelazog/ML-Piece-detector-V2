@@ -1731,7 +1731,41 @@ ToolRunResult runThread(const cv::Mat& gray, const Fixture& fixture, const ToolC
 
     appendConditionWarnings(result.detail, fmt,
                             (meanStrength(rawA) + meanStrength(rawB)) / 2.0);
+
+    // EL PERFIL QUE SE HA LEÍDO, DIBUJADO.
+    //
+    // Queja de uso: «está tomando el centro y luego dos líneas paralelas, pero
+    // no está siguiendo la rosca». Era cierto EN PANTALLA: lo único que se veía
+    // era el eje trazado y las dos rayas del alcance de búsqueda —que son dónde
+    // MIRA, no lo que encuentra—, así que no había forma de saber si el filete
+    // se estaba siguiendo o si el número salía de cualquier sitio.
+    //
+    // Su hermana la del engranaje ya lo hacía bien: pinta las puntas de diente
+    // que encontró. Aquí se pinta el perfil entero, uniendo punto con punto los
+    // bordes hallados a cada lado del eje. Si la rosca se sigue, se ve el
+    // zigzag; si no, se ve una línea recta y el operador sabe qué está pasando
+    // sin tener que creerse el número.
+    //
+    // Se dibuja con SEGMENTOS y no con puntos: el lienzo pinta cada punto como
+    // una cruz de diez píxeles, y doscientas cuarenta cruces sobre una caña de
+    // tornillo taparían la pieza en vez de enseñar el filete.
+    const auto traceProfile = [&result](const std::vector<AxialSample>& raw) {
+        const AxialSample* previous = nullptr;
+        for (const auto& sample : raw) {
+            if (!sample.found) {
+                previous = nullptr;  // hueco: no se une a través de lo que no se vio
+                continue;
+            }
+            if (previous != nullptr) {
+                result.overlaySegments.push_back({previous->point, sample.point});
+            }
+            previous = &sample;
+        }
+    };
+    traceProfile(rawA);
+    traceProfile(rawB);
     result.overlaySegments.push_back({from, to});
+    // El punto del medio va EL ÚLTIMO porque el lienzo ancla ahí la etiqueta.
     result.overlayPoints.push_back(from + (to - from) * 0.5F);
     return result;
 }

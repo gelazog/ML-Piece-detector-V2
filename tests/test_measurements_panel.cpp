@@ -25,6 +25,8 @@
 
 #include <gtest/gtest.h>
 
+#include <QAction>
+#include <QDockWidget>
 #include <QLabel>
 #include <QTableWidget>
 
@@ -32,6 +34,7 @@
 #include <vector>
 
 #include "inspection_editor/execution/tool_executor.h"
+#include "ui/main_window.h"
 #include "ui/measurements_panel.h"
 
 using namespace pci;
@@ -178,4 +181,40 @@ TEST(MeasurementsPanel, AConstructionIsNotGivenAVerdictItCannotHave) {
     EXPECT_EQ(cell(panel, 0, 4), QStringLiteral("—"))
         << "a una construcción se le pone veredicto: no puede tenerlo, y un OK que no "
            "significa nada resta valor a los que sí";
+}
+
+// Y QUE SE ENCUENTRE, que es por donde falló la primera entrega.
+//
+// El panel se entregó **cerrado**, con el razonamiento de que «uno vacío
+// ocupando sitio enseña a cerrarlo». La primera respuesta del taller fue «no
+// agregaste el apartado de mediciones, como los de herramientas o comparación o
+// capturar»: existía, tenía su entrada de menú, y no estaba donde se busca.
+//
+// Un panel que arranca cerrado no se encuentra. Ahora vive como una pestaña más
+// junto a la comparación —que sigue delante, porque cambiar de golpe lo que se
+// ve al abrir sería decidir por el operador—.
+TEST(MeasurementsPanel, ThePanelIsWhereTheOtherPanelsAre) {
+    pci::ui::MainWindow window;
+    auto* dock = window.findChild<QDockWidget*>(QStringLiteral("measurementsDock"));
+    ASSERT_NE(dock, nullptr) << "no existe el panel de medidas";
+
+    // Comparte sitio con la comparación: es una pestaña al lado de las otras, no
+    // un panel más robándole alto a la ventana.
+    auto* compare = window.findChild<QDockWidget*>(QStringLiteral("compareDock"));
+    ASSERT_NE(compare, nullptr);
+    const auto tabbed = window.tabifiedDockWidgets(compare);
+    EXPECT_TRUE(tabbed.contains(dock))
+        << "la tabla de medidas no comparte pestaña con la comparación: o se ha quedado "
+           "suelta ocupando sitio, o ha vuelto a arrancar cerrada y no se encuentra";
+
+    // Y sigue teniendo su entrada en Ver, que es lo que permite recuperarla si
+    // el operador la cierra: sin ella, cerrarla una vez sería cerrarla para
+    // siempre.
+    bool inTheMenu = false;
+    for (auto* action : window.findChildren<QAction*>()) {
+        if (action->objectName() == QStringLiteral("measurementsToggle")) {
+            inTheMenu = true;
+        }
+    }
+    EXPECT_TRUE(inTheMenu) << "no hay forma de volver a abrirla desde el menú Ver";
 }

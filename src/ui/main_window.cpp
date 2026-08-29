@@ -1207,9 +1207,20 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     measurementsDock_->setObjectName(QStringLiteral("measurementsDock"));
     measurementsDock_->setWidget(measurements_);
     addDockWidget(Qt::RightDockWidgetArea, measurementsDock_);
-    // Arranca cerrado, como el mosaico y por lo mismo: un panel vacío ocupando
-    // sitio desde el primer arranque enseña a cerrarlo y a no volver a abrirlo.
-    measurementsDock_->setVisible(false);
+    // COMO UNA PESTAÑA MÁS, y no cerrado.
+    //
+    // Nació cerrado con el razonamiento de que «un panel vacío ocupando sitio
+    // enseña a cerrarlo», y el razonamiento era bueno para el mosaico y malo
+    // para éste: la primera respuesta del taller al entregarlo fue «no agregaste
+    // el apartado de mediciones, como los de herramientas o comparación o
+    // capturar». Un panel que arranca cerrado no se encuentra, y punto.
+    //
+    // Compartiendo sitio con la comparación no quita espacio a nadie: es una
+    // pestaña visible al lado de las otras. La comparación sigue delante porque
+    // es la que estaba, y cambiar de golpe lo que el operador ve al abrir sería
+    // otra forma de decidir por él.
+    tabifyDockWidget(compareDock_, measurementsDock_);
+    compareDock_->raise();
     // Al abrirlo se vuelve a analizar: con una imagen fija —que no genera
     // análisis nuevos— el panel aparecería vacío y el operador concluiría que
     // no funciona.
@@ -1666,6 +1677,16 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         captureDock_->show();
         core::logInfo("La tira de capturas no estaba en la disposición guardada: "
                       "se coloca a la izquierda");
+    }
+    // Y la tabla de medidas, que es el dock más nuevo de todos y cayó en el
+    // mismo agujero: quien ya usaba el programa la tendría oculta para siempre.
+    if (measurementsDock_ != nullptr && measurementsDock_->isHidden()) {
+        addDockWidget(Qt::RightDockWidgetArea, measurementsDock_);
+        tabifyDockWidget(compareDock_, measurementsDock_);
+        measurementsDock_->show();
+        compareDock_->raise();
+        core::logInfo("La tabla de medidas no estaba en la disposición guardada: "
+                      "se coloca junto a la comparación");
     }
 
     refreshCameras();

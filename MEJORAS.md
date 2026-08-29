@@ -1262,6 +1262,27 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   motivo sale en la barra de estado y **solo cuando cambia**, para no tapar todo
   lo demás.
 
+- [x] **P5 · La Rosca seguía el filete y no lo enseñaba.** Queja de uso: «está
+  tomando el centro y luego dos líneas paralelas, pero no está siguiendo la
+  rosca». En pantalla era cierta: se dibujaba el eje y las dos rayas del alcance
+  de búsqueda —**dónde mira**, no lo que encuentra—.
+
+  La herramienta no persigue el filete con un trazo: lanza 240 escaneos
+  perpendiculares al eje y saca el paso del periodo de las distancias al borde,
+  medido a los dos lados y exigiendo que coincidan. Ahora dibuja ese perfil.
+  Medido sobre `rosca-1.png`: 479 segmentos, oscilación de 54,1 px respecto al
+  eje. Y cuando se niega a medir no dibuja nada — dibujar afirmaría que ha
+  seguido un filete que no existe.
+
+- [x] **P6 · El panel de medidas arrancaba cerrado y por eso «no estaba».**
+  Respuesta del taller a la entrega anterior: «no agregaste el apartado de
+  mediciones, como los de herramientas o comparación o capturar». Existía y
+  tenía su entrada en *Ver*. **Un panel que arranca cerrado no se encuentra.**
+  Ahora comparte pestaña con la comparación —sin quitarle alto a nadie— y hay
+  además la red de seguridad que ya tenían la paleta y las capturas: si la
+  disposición guardada es anterior al panel, se coloca a mano en vez de quedarse
+  oculto para siempre.
+
 ## F. Ya está hecho — no volver a investigarlo
 
 Aquí para que nadie gaste otra vez el tiempo que ya se gastó.

@@ -32,6 +32,7 @@ add_executable(pci_tests
   test_pass_trigger.cpp
   test_no_silent_tool.cpp
   test_reference_advice.cpp
+  test_thread_shows_the_thread.cpp
   test_proposals_are_checkable.cpp
   test_lookups_by_name.cpp
   test_pieces_dropped_for_being_small.cpp
