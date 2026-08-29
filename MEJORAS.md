@@ -1194,11 +1194,29 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   panel cerrado es trabajo tirado, la misma regla que ya gobierna el recuento de
   piezas.
 
-  **[ ] Falta la segunda mitad**, elegida también: que las cinco herramientas
-  que hoy no miden sin datum —Orientación, Desviación de centros, Patrón de
-  agujeros y las dos construcciones— **resuelvan sola la referencia** cuando hay
-  una evidente, y que cuando no la haya lo digan **al dibujarlas** y no al
-  medir.
+  **[x] Y la referencia que falta se dice al DIBUJAR**, no al medir. Las cinco
+  herramientas que no miden sin datum —Orientación, Desviación de centros,
+  Patrón de agujeros y las dos construcciones— lo decían cuando ya se había
+  medido: el operador la dibujaba, la veía dibujada, seguía trabajando, y se
+  enteraba con el veredicto.
+
+  La regla, y es donde está todo el riesgo:
+
+  | candidatas | qué hace |
+  |---|---|
+  | una | **se pone sola** y se dice cuál |
+  | varias | se pregunta, nombrándolas todas |
+  | ninguna | se dice **qué hace falta dibujar** |
+
+  El desempate inventado —«la primera», «la más cercana»— es la peor de las tres
+  salidas: da una referencia plausible y equivocada, la herramienta mide contra
+  un datum que nadie eligió, y **el número parece correcto**.
+
+  Las candidatas salen de lo que las otras herramientas PRODUJERON al medir, no
+  de una tabla de «qué ofrece cada tipo»: esa tabla acabaría discrepando del
+  ejecutor, que es el fallo que este proyecto lleva arreglando desde el primer
+  día. Y nunca se propone a sí misma ni una que no llegó a medir en ese frame —
+  las dos dejarían la cadena rota igual, pero con la culpa repartida.
 
 - [x] **P2 · Vídeo: disparo por paso de pieza.** La otra mitad de la misma
   petición: «la manera en la que lo toma en vídeo (grabado o en tiempo real)

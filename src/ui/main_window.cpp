@@ -1,5 +1,6 @@
 #include "ui/main_window.h"
 
+#include "inspection_editor/reference_advice.h"
 #include "ui/measurements_panel.h"
 #include "ui/theme.h"
 
@@ -5218,6 +5219,26 @@ void MainWindow::onLiveToolCreated(const inspection::ToolGeometry& geometry) {
                             QString::fromStdString(result.isOk() ? result.value().detail
                                                                  : result.error().message));
         }
+    }
+    // LA REFERENCIA QUE LE FALTA, DICHA AL DIBUJAR.
+    //
+    // Cinco herramientas no miden nada sin una referencia declarada, y hasta
+    // ahora lo decían al MEDIR: el operador la dibujaba, seguía trabajando, y
+    // se enteraba con el veredicto. Aquí las candidatas salen de la última
+    // medición en vivo —lo que las demás producen de verdad— y si sólo hay una,
+    // se pone sola.
+    const auto needs = inspection::referenceOperandsOf(tool.geometry);
+    if (needs[0] != inspection::OperandKind::Unused ||
+        needs[1] != inspection::OperandKind::Unused) {
+        const auto advice =
+            inspection::adviseReference(tool.config, tool.geometry, lastToolResults_);
+        if (!advice.first.empty()) {
+            tool.config.reference = advice.first;
+        }
+        if (!advice.second.empty()) {
+            tool.config.reference2 = advice.second;
+        }
+        hint = QString::fromStdString(advice.why);
     }
     liveTools_.push_back(std::move(tool));
     commitUndoState();

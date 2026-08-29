@@ -35,6 +35,7 @@
 #include "inspection_editor/auto_measure.h"
 #include "inspection_editor/auto_measure_dialog.h"
 #include "repositories/piece_repository.h"
+#include "inspection_editor/reference_advice.h"
 #include "inspection_editor/canvas/tool_icons.h"
 #include "inspection_editor/canvas/tool_palette.h"
 #include "inspection_editor/execution/tool_executor.h"
@@ -830,6 +831,31 @@ void EditorWindow::onToolCreated(const ToolGeometry& geometry) {
                 .arg(QString::fromStdString(tool.config.name),
                      QString::fromStdString(measured.isOk() ? measured.value().detail
                                                             : measured.error().message)));
+    }
+    // LA REFERENCIA QUE LE FALTA, AHORA Y NO AL MEDIR.
+    //
+    // Cinco herramientas no miden nada sin una referencia declarada, y hasta
+    // ahora se enteraban de ello **al medir**: el operador la dibujaba, la veía
+    // dibujada, seguía trabajando, y descubría que no medía cuando llegaba el
+    // veredicto. Se le dice aquí, con el gesto todavía en la mano — y si sólo
+    // hay una candidata, se le pone y se le dice cuál.
+    // Las otras herramientas se miden AQUÍ y sólo si esta lleva referencia
+    // (cinco de treinta y dos): así el caso normal no paga nada, y el consejo
+    // sale de lo que las demás producen de verdad sobre esta imagen y no de una
+    // tabla escrita aparte que acabaría discrepando.
+    const auto needs = referenceOperandsOf(tool.geometry);
+    if (needs[0] != OperandKind::Unused || needs[1] != OperandKind::Unused) {
+        const auto others =
+            runTools(camera::qImageToMat(reference_), fixture_, activeConfigs(),
+                     calibration_.mmPerPixel);
+        const auto advice = adviseReference(tool.config, tool.geometry, others);
+        if (!advice.first.empty()) {
+            tool.config.reference = advice.first;
+        }
+        if (!advice.second.empty()) {
+            tool.config.reference2 = advice.second;
+        }
+        statusLabel_->setText(QString::fromStdString(advice.why));
     }
     tools_.push_back(std::move(tool));
     commitUndoState();

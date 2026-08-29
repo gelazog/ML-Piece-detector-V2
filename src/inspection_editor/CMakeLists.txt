@@ -8,6 +8,7 @@ add_library(pci_inspection STATIC
   execution/tool_executor.cpp
   measure_recipe.cpp
   piece_report.cpp
+  reference_advice.cpp
   tools/template_io.cpp
   tools/tool_geometry.cpp
 )

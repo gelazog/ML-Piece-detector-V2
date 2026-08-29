@@ -192,6 +192,39 @@ que nadie lo pidiera.
 Medido: una sombra que se comía el borde derecho dejaba la pieza en 180 px de
 ancho; pintando ese trozo como pieza vuelve a 240, que es el real.
 
+#### La referencia que falta se dice al dibujar, no al medir
+
+De las 32 herramientas, cinco no miden nada sin una referencia declarada:
+Orientación y Desviación de centros necesitan un datum, el Punto y la Recta
+construidos necesitan de qué construirse, y el Patrón de agujeros necesita los
+agujeros. Todas lo dicen —el barrido `NoSilentTool` lo comprueba— pero lo decían
+**cuando ya se había medido**, y para entonces el operador ya ha soltado el
+gesto y ha seguido trabajando.
+
+`inspection_editor/reference_advice.*` responde en el momento de crearla, con
+tres salidas y una regla:
+
+| candidatas | qué hace |
+|---|---|
+| una | la pone y dice cuál |
+| varias | pregunta, nombrándolas |
+| ninguna | dice qué hace falta dibujar |
+
+**El desempate inventado es la peor de las tres.** «La primera» o «la más
+cercana» dan una referencia plausible y equivocada: la herramienta mide contra un
+datum que nadie eligió y el número parece correcto — que es exactamente la clase
+de resultado que este proyecto persigue desde los «Radio 28 px» de una tuerca sin
+redondeos.
+
+Las candidatas salen de lo que las otras herramientas **produjeron al medir**
+(`ToolRunResult::derived`), no de una tabla de «qué ofrece cada tipo». Esa tabla
+sería una segunda respuesta a una pregunta que el ejecutor ya contesta, y acabaría
+discrepando. Nunca se propone a sí misma ni una que no midió en ese frame: las
+dos dejarían la cadena rota igual, pero con la culpa repartida entre dos.
+
+Y las otras herramientas se miden **sólo si la nueva lleva referencia** —cinco de
+treinta y dos—, así que el caso normal no paga nada.
+
 #### Las medidas estaban y no se podían leer
 
 Petición de uso: «falta la parte en donde te resume las medidas, la

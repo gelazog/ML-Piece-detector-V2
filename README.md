@@ -1180,6 +1180,17 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    medidor puro) también puedes registrar: se avisa una vez y la pieza queda
    registrada **solo con herramientas** — se mide con las que dibujes, pero no
    hay comparación de apariencia que detecte defectos inesperados.
+   **La referencia que falta se te dice al dibujar.** Cinco herramientas no
+   miden nada sin una referencia declarada —Orientación y Desviación de centros
+   necesitan un datum, el Punto y la Recta construidos necesitan de qué
+   construirse, el Patrón de agujeros necesita los agujeros—. Antes te enterabas
+   al medir. Ahora, al soltarla: si **sólo hay una** referencia posible se pone
+   sola y se te dice cuál; si hay **varias** se te nombran para que elijas; y si
+   **no hay ninguna** se te dice qué hace falta dibujar primero.
+
+   Con varias no se elige por ti a propósito: medir contra el datum equivocado
+   da un número que parece correcto.
+
    **Medidas en vivo, en una tabla** (*Ver ▸ Medidas en vivo (tabla)*): panel
    lateral con lo que mide **cada herramienta de cada pieza**, su banda y su
    OK/NG. Sobre el vídeo los números se pintan encima de cada herramienta, y eso
