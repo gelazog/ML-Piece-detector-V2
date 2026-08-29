@@ -1316,10 +1316,23 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   dentro, que es donde el taller la pidió. De paso desaparecen dos menús de dos
   y tres entradas.
 
-  **Queda pendiente el resto de la barra**, que es lo que el usuario llamó
-  «feo»: *Medida* mezcla calibrar escala, calibrar lente, ArUco, «Medir pieza» y
-  el modo de medición; *Ver* mezcla paneles con ayudas de dibujo. Eso se decide
-  con la pantalla delante.
+  **Y el resto de la barra, con el mismo criterio.** *Medida* mezclaba las
+  calibraciones con el acto de medir: calibrar se hace UNA vez —al montar la
+  cámara, al cambiar el objetivo— y dura turnos enteros; medir se hace cien
+  veces al día. Las cuatro entradas de calibración (escala, lente, corregir
+  distorsión, ArUco) se van a *Configurar*, que es donde vive «cómo está puesta
+  a punto esta máquina» y donde la pestaña **Escala** ya abría ese mismo
+  asistente — el atajo estaba en un menú y el sitio de verdad en otro.
+
+  *Medida* queda con lo que se hace con una pieza delante: unidad, «Medir pieza»
+  y el modo de medición. Y *Ver* separa en tres grupos lo que antes eran diez
+  entradas seguidas: lo que se pinta sobre la imagen, los paneles que se abren y
+  cierran, y lo que cambia cómo se ve la pieza.
+
+  **La racha más larga de la barra baja de 8 a 5**, y el trinquete de
+  `test_menu_grouping.cpp` se aprieta a 5. Las dos que quedan son listas de una
+  sola cosa —las cinco unidades, los cinco orígenes del tablero— donde un
+  separador no agruparía nada.
 
 ## F. Ya está hecho — no volver a investigarlo
 

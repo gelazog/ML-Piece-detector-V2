@@ -856,7 +856,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    vacío para dibujar un **marco de selección** — las herramientas dentro
    quedan seleccionadas y se mueven o borran (Supr) en grupo.
 
-   **Escala por marcador ArUco en vivo** (**Medida ▸ Escala por marcador ArUco (en vivo)**): imprime el marcador `sample_images/aruco_4x4_id0.png`, mide su
+   **Escala por marcador ArUco en vivo** (**Configurar ▸ Escala por marcador ArUco (en vivo)**): imprime el marcador `sample_images/aruco_4x4_id0.png`, mide su
    lado real con una regla y escríbelo al activar la opción. Colócalo junto a
    la pieza (en el mismo plano): la escala px→mm se recalcula **en cada frame
    con la homografía del marcador** y se ajusta sola si acercas o alejas la
@@ -908,7 +908,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    auto-inspección ajustada no tiene por qué encontrarse con otro
    comportamiento.
 
-   **Calibrar la lente** (menú *Medida ▸ Calibrar la lente…*): imprime un
+   **Calibrar la lente** (menú *Configurar ▸ Calibrar la lente…*): imprime un
    tablero de ajedrez, pégalo a algo rígido y enséñaselo a la cámara desde
    varios sitios. Toda lente curva las rectas, y con una lente corriente **la
    misma pieza mide hasta un 18,5 % menos en una esquina que en el centro** —sin
@@ -921,11 +921,11 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    perfecta —el programa la puntúa igual de bien— y deja el borde un 35 %
    desviado, que es peor que no corregir nada.
 
-   Una vez calibrada, se enciende y se apaga en *Medida ▸ Corregir la distorsión
+   Una vez calibrada, se enciende y se apaga en *Configurar ▸ Corregir la distorsión
    de la lente*. **Encenderla cambia todas las medidas**, que es justo lo que se
    pretende: si ya tienes piezas registradas, vuelve a mirar sus tolerancias.
 
-   **Calibración a milímetros** (menú *Medida ▸ Calibrar escala (mm)…*): dos
+   **Calibración a milímetros** (menú *Configurar ▸ Calibrar escala (mm)…*): dos
    métodos —
    **A)** haz dos clics sobre una distancia real conocida (una regla, el
    diámetro de una moneda) y escribe cuánto mide **en mm, cm, m o pulgadas**

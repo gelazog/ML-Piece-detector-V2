@@ -568,8 +568,8 @@ rotas a proposito, esa es la noticia.
 | el manual decia | donde esta de verdad |
 |---|---|
 | `Camara ▸ Configurar…` | *Configurar ▸ Configurar…* |
-| `Camara ▸ Calibrar escala` | *Medida ▸ Calibrar escala (mm)…* |
-| `Camara ▸ Escala por marcador` | *Medida ▸ Escala por marcador ArUco (en vivo)* |
+| `Camara ▸ Calibrar escala` | *Configurar ▸ Calibrar escala (mm)…* |
+| `Camara ▸ Escala por marcador` | *Configurar ▸ Escala por marcador ArUco (en vivo)* |
 | `Ver ▸ Unidad` | *Medida ▸ Unidad de medida* |
 
 Una cifra obsoleta en un documento tecnico despista a quien programa. Una ruta

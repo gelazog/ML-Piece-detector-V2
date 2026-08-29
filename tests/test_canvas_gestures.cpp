@@ -2398,45 +2398,71 @@ TEST(MainMenus, EveryToolbarActionIsAlsoReachableFromAMenu) {
     }
 }
 
-TEST(MainMenus, ScaleAndUnitLiveInTheSamePlace) {
-    // Para preparar una medición en milímetros había que visitar DOS menús que
-    // no hablan de medir: «Calibrar escala» estaba en Fuente, junto a «Buscar
-    // cámaras», y «Unidad de medida» en Ver, junto a «Mostrar contorno» — como
-    // si elegir milímetros o píxeles fuera cuestión de aspecto.
+TEST(MainMenus, CalibratingIsSetupAndMeasuringIsNot) {
+    // ESTA PRUEBA CAMBIÓ DE CRITERIO, y conviene saber por qué antes de volver a
+    // cambiarlo.
+    //
+    // Nació exigiendo que «Calibrar escala» y «Unidad de medida» vivieran juntas
+    // en *Medida*: para preparar una medición en milímetros había que visitar
+    // DOS menús que no hablaban de medir —«Calibrar escala» estaba en *Fuente*,
+    // junto a «Buscar cámaras», y la unidad en *Ver*, junto a «Mostrar
+    // contorno»—. Aquello era cierto y se arregló.
+    //
+    // Lo que la mueve ahora es una petición del dueño del proyecto: «el menú de
+    // configurar/escala debería de ser ahí y no dentro de otra sección». Y al
+    // mirarlo tiene su razón medible: **calibrar se hace una vez** —al montar la
+    // cámara, al cambiar el objetivo— y dura turnos enteros, mientras que medir
+    // se hace cien veces al día. Con las cuatro calibraciones en *Medida*, había
+    // que pasar por delante de ellas cada vez que se buscaba «Medir pieza».
+    //
+    // Además la pestaña **Escala** de *Configurar* ya abría ese mismo asistente:
+    // el atajo estaba en un menú y el sitio de verdad en otro.
+    //
+    // Lo que NO cambia es la mitad que evita el desorden: cada cosa en UN sitio.
     pci::ui::MainWindow window;
     window.resize(1400, 800);
 
+    QMenu* setup = nullptr;
     QMenu* measure = nullptr;
     for (auto* menu : window.menuBar()->findChildren<QMenu*>()) {
+        if (menu->title().contains(QStringLiteral("Configurar"))) {
+            setup = menu;
+        }
         if (menu->title().contains(QStringLiteral("Medida"))) {
             measure = menu;
         }
     }
+    ASSERT_NE(setup, nullptr) << "no hay menú de Configurar";
     ASSERT_NE(measure, nullptr) << "no hay menú de Medida";
 
-    bool calibration = false;
-    bool unit = false;
-    for (auto* action : measure->actions()) {
-        if (action->text().contains(QStringLiteral("Calibrar"))) {
-            calibration = true;
+    const auto has = [](QMenu* menu, const QString& what) {
+        for (auto* action : menu->actions()) {
+            if (action->text().contains(what)) {
+                return true;
+            }
         }
-        if (action->text().contains(QStringLiteral("Unidad"))) {
-            unit = true;
-        }
-    }
-    EXPECT_TRUE(calibration) << "calibrar la escala sigue fuera del menú de Medida";
-    EXPECT_TRUE(unit) << "la unidad sigue fuera del menú de Medida";
+        return false;
+    };
 
-    // Y ya no están donde estaban: dejarlas en los dos sitios sería peor que
-    // no moverlas — dos caminos a lo mismo que hay que mantener a la vez.
+    EXPECT_TRUE(has(setup, QStringLiteral("Calibrar escala")))
+        << "calibrar la escala no está en Configurar, que es donde vive la pestaña que "
+           "abre ese mismo asistente";
+    EXPECT_TRUE(has(setup, QStringLiteral("Calibrar la lente")))
+        << "calibrar la lente no está en Configurar";
+    EXPECT_TRUE(has(measure, QStringLiteral("Unidad")))
+        << "la unidad no está en Medida: es lo que se elige con la pieza delante, porque "
+           "cambia el número que se apunta en el parte";
+
+    // Y en UN solo sitio: dejarlas en los dos sería peor que no moverlas — dos
+    // caminos a lo mismo que hay que mantener a la vez, y que se separan.
     for (auto* menu : window.menuBar()->findChildren<QMenu*>()) {
-        if (menu == measure || menu->title().isEmpty()) {
+        if (menu == setup || menu->title().isEmpty()) {
             continue;
         }
-        for (auto* action : menu->actions()) {
-            EXPECT_FALSE(action->text().contains(QStringLiteral("Calibrar escala")))
-                << "«Calibrar escala» sigue duplicada en " << menu->title().toStdString();
-        }
+        EXPECT_FALSE(has(menu, QStringLiteral("Calibrar escala")))
+            << "«Calibrar escala» sigue duplicada en " << menu->title().toStdString();
+        EXPECT_FALSE(has(menu, QStringLiteral("Calibrar la lente")))
+            << "«Calibrar la lente» sigue duplicada en " << menu->title().toStdString();
     }
 }
 

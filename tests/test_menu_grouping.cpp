@@ -103,9 +103,24 @@ TEST(MenuGrouping, NoMenuMakesYouReadTenOptionsWithoutABreak) {
     std::printf("  [menú] la racha más larga: %d en «%s»\n", worst,
                 worstMenu.toStdString().c_str());
 
-    // El tope, que es el mismo que se aceptó en la pestaña Detección.
-    EXPECT_LE(worst, 8) << "«" << worstMenu.toStdString() << "» hace leer " << worst
-                        << " opciones seguidas sin un separador. No es estilo: son "
-                           "diez cosas de tipos distintos puestas en fila, y el "
-                           "operador tiene que recorrerlas todas para encontrar una.";
+    // EL TOPE ES EL DE HOY, y hoy es 5. Nació en 8 —el mismo que se aceptó en la
+    // pestaña Detección— y bajó al reordenar la barra: «Archivo» y «Fuente» se
+    // fundieron en «Configurar», las calibraciones se fueron con ellas, y «Ver»
+    // separó los paneles de lo que se pinta sobre la imagen.
+    //
+    // Las dos rachas de 5 que quedan son listas de una sola cosa —las cinco
+    // unidades de medida, los cinco orígenes del tablero— y ahí un separador no
+    // agruparía nada: son cinco opciones excluyentes de la misma pregunta.
+    constexpr int kToday = 5;
+    EXPECT_LE(worst, kToday)
+        << "«" << worstMenu.toStdString() << "» hace leer " << worst
+        << " opciones seguidas sin un separador. No es estilo: son cosas de tipos "
+           "distintos puestas en fila, y el operador tiene que recorrerlas todas "
+           "para encontrar una.";
+    if (worst < kToday) {
+        ADD_FAILURE() << "la racha más larga ya es " << worst << " y el tope sigue en "
+                      << kToday << ": bájalo a " << worst
+                      << " para que no pueda volver a subir. Un trinquete que no se "
+                         "aprieta deja de serlo.";
+    }
 }

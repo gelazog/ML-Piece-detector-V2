@@ -1889,29 +1889,32 @@ void MainWindow::buildMenuBar() {
     // importar copian ajustes de una máquina a otra; ésta los borra.
     setupMenu->addAction(tr("Restablecer configuración de fábrica…"), this,
                          &MainWindow::onResetConfigClicked);
-    // --- Medida ---
+
+    // --- Las calibraciones, aquí y no en «Medida» ---
     //
-    // Menú nuevo, y no por gusto de tener uno más: para preparar una medición en
-    // milímetros había que visitar DOS menús que no hablan de medir. «Calibrar
-    // escala» vivía en *Fuente*, junto a «Buscar cámaras», y «Unidad de medida»
-    // en *Ver*, junto a «Mostrar contorno» — como si elegir milímetros o píxeles
-    // fuera una cuestión de aspecto, cuando cambia el número que se apunta en el
-    // parte.
+    // Segunda parte de la misma queja: «el menú de configurar/escala debería de
+    // ser ahí y no dentro de otra sección».
     //
-    // Lo que las une es la pregunta que contestan: con qué se mide. Quien busca
-    // cualquiera de las dos va al mismo sitio.
-    auto* measureMenu = menuBar()->addMenu(tr("&Medida"));
+    // Calibrar no es medir. Se hace UNA vez —cuando se monta la cámara, cuando
+    // se cambia el objetivo— y luego se queda puesto durante turnos enteros;
+    // medir es lo que se hace cien veces al día. Tenerlas juntas obligaba a
+    // pasar por delante de tres entradas que nadie va a tocar cada vez que se
+    // buscaba «Medir pieza».
+    //
+    // Y son exactamente lo mismo que ya vive aquí: cómo está puesta a punto esta
+    // máquina. La pestaña «Escala» de Configurar ya abría este mismo asistente,
+    // así que el atajo estaba en un menú y el sitio de verdad en otro.
+    setupMenu->addSeparator();
     if (auto* calibrate = shortcutAction(QStringLiteral("calibrate"),
-                                        tr("Calibrar escala (mm)…"))) {
-        measureMenu->addAction(calibrate);
+                                         tr("Calibrar escala (mm)…"))) {
+        setupMenu->addAction(calibrate);
     } else {
-        measureMenu->addAction(tr("Calibrar escala (mm)…"), this,
-                               &MainWindow::onCalibrateClicked);
+        setupMenu->addAction(tr("Calibrar escala (mm)…"), this,
+                             &MainWindow::onCalibrateClicked);
     }
-    measureMenu->addSeparator();
-    measureMenu->addAction(tr("Calibrar la lente…"), this,
-                           &MainWindow::onCalibrateLensClicked);
-    lensCorrectionAction_ = measureMenu->addAction(tr("Corregir la distorsión de la lente"));
+    setupMenu->addAction(tr("Calibrar la lente…"), this,
+                         &MainWindow::onCalibrateLensClicked);
+    lensCorrectionAction_ = setupMenu->addAction(tr("Corregir la distorsión de la lente"));
     lensCorrectionAction_->setCheckable(true);
     lensCorrectionAction_->setEnabled(false);  // hasta que haya un modelo
     lensCorrectionAction_->setToolTip(
@@ -1935,8 +1938,7 @@ void MainWindow::buildMenuBar() {
                 : tr("Corrección de la lente apagada."));
         reanalyseCurrentFrame();
     });
-    measureMenu->addSeparator();
-    auto* arucoAction = measureMenu->addAction(tr("Escala por marcador ArUco (en vivo)"));
+    auto* arucoAction = setupMenu->addAction(tr("Escala por marcador ArUco (en vivo)"));
     arucoAction->setCheckable(true);
     arucoAction->setChecked(arucoLiveScale_);
     arucoAction->setToolTip(
@@ -1968,7 +1970,19 @@ void MainWindow::buildMenuBar() {
         reanalyseCurrentFrame();
     });
 
-
+    // --- Medida ---
+    //
+    // Lo que queda aquí es lo que se hace CON UNA PIEZA DELANTE: medirla, decir
+    // en qué unidad se lee y con qué criterio se juzga. Las calibraciones se han
+    // ido a «Configurar» porque se hacen una vez y duran turnos enteros — pasar
+    // por delante de ellas cien veces al día para llegar a «Medir pieza» era el
+    // recorrido al revés.
+    //
+    // Este menú nació porque «Calibrar escala» vivía en *Fuente*, junto a
+    // «Buscar cámaras», y «Unidad de medida» en *Ver*, junto a «Mostrar
+    // contorno» — como si elegir milímetros o píxeles fuera una cuestión de
+    // aspecto, cuando cambia el número que se apunta en el parte.
+    auto* measureMenu = menuBar()->addMenu(tr("&Medida"));
     auto* unitMenu = measureMenu->addMenu(tr("Unidad de medida"));
     unitGroup_ = new QActionGroup(this);
     // El número es el valor del enum `LengthUnit`, no la posición en la lista.
@@ -2087,6 +2101,15 @@ void MainWindow::buildMenuBar() {
         reanalyseCurrentFrame();
     });
 
+    // LOS PANELES, EN SU GRUPO.
+    //
+    // «Ver» tenía diez entradas seguidas con un solo separador: lo que se pinta
+    // encima de la imagen y los paneles que se abren y se cierran, mezclados en
+    // una lista que hay que leer entera. Son dos cosas distintas —una cambia lo
+    // que se dibuja sobre la pieza, la otra qué ventanas hay alrededor— y desde
+    // aquí se ven separadas.
+    viewMenu->addSeparator();
+
     // Un panel que se cierra sin forma de recuperarlo es una herramienta
     // perdida, así que el dock tiene su entrada en el menú igual que el de
     // comparación.
@@ -2128,6 +2151,9 @@ void MainWindow::buildMenuBar() {
         viewMenu->addAction(toggle);
     }
 
+    // Y lo que cambia CÓMO SE VE la pieza, en el suyo: seguir su giro y realzar
+    // el contraste no abren ni cierran nada, cambian lo que hay en pantalla.
+    viewMenu->addSeparator();
     trackRotationAction_ = viewMenu->addAction(tr("Seguir rotación de la pieza"));
     trackRotationAction_->setCheckable(true);
     trackRotationAction_->setChecked(pipelineConfig_.autoOrient);
