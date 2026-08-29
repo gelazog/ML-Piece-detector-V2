@@ -1,4 +1,6 @@
 #include "ui/main_window.h"
+
+#include "ui/measurements_panel.h"
 #include "ui/theme.h"
 
 #include <QAction>
@@ -1192,6 +1194,30 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     compareDock_->setWidget(compareWidget);
     addDockWidget(Qt::RightDockWidgetArea, compareDock_);
 
+    // LA TABLA DE MEDIDAS EN VIVO.
+    //
+    // Petición de uso: «falta la parte en donde te resume las medidas, la
+    // ventana/pestaña para verlas». Los números existían y se pintaban sobre el
+    // vídeo, pero con catorce cotas se pisan y, con varias piezas, sólo se
+    // escriben los de UNA — que es lo correcto para el vídeo y deja las demás
+    // sin poder leerse en ningún sitio.
+    measurements_ = new MeasurementsPanel(this);
+    measurementsDock_ = new QDockWidget(tr("Medidas en vivo"), this);
+    measurementsDock_->setObjectName(QStringLiteral("measurementsDock"));
+    measurementsDock_->setWidget(measurements_);
+    addDockWidget(Qt::RightDockWidgetArea, measurementsDock_);
+    // Arranca cerrado, como el mosaico y por lo mismo: un panel vacío ocupando
+    // sitio desde el primer arranque enseña a cerrarlo y a no volver a abrirlo.
+    measurementsDock_->setVisible(false);
+    // Al abrirlo se vuelve a analizar: con una imagen fija —que no genera
+    // análisis nuevos— el panel aparecería vacío y el operador concluiría que
+    // no funciona.
+    connect(measurementsDock_, &QDockWidget::visibilityChanged, this, [this](bool shown) {
+        if (shown) {
+            reanalyseCurrentFrame();
+        }
+    });
+
     mosaic_ = new PieceMosaic(this);
     mosaicDock_ = new QDockWidget(tr("Piezas del encuadre"), this);
     mosaicDock_->setObjectName(QStringLiteral("mosaicDock"));
@@ -2046,6 +2072,19 @@ void MainWindow::buildMenuBar() {
         toggle->setToolTip(
             tr("Enseña cada pieza recortada y numerada, todas al mismo tamaño. "
                "Pulsa una para medir esa."));
+        viewMenu->addAction(toggle);
+    }
+
+    // La tabla de medidas en vivo. Sin esta entrada el panel existiría y no se
+    // podría encontrar: arranca cerrado a propósito.
+    if (measurementsDock_ != nullptr) {
+        auto* toggle = measurementsDock_->toggleViewAction();
+        toggle->setObjectName(QStringLiteral("measurementsToggle"));
+        toggle->setText(tr("Medidas en vivo (tabla)"));
+        toggle->setToolTip(
+            tr("Lo que mide cada herramienta de cada pieza, con su banda y su\n"
+               "veredicto. Sobre el vídeo sólo caben los números de una pieza; aquí\n"
+               "se leen todos, y las que no llegan a medir dicen por qué."));
         viewMenu->addAction(toggle);
     }
 
@@ -4778,6 +4817,24 @@ void MainWindow::onAnalysisFinished() {
         // Medidas en vivo de las herramientas dibujadas (px o mm calibrados).
         video_->setResults(overlay.toolResults);
         lastToolResults_ = overlay.toolResults;
+        // Y la tabla de medidas, si alguien la está mirando.
+        //
+        // Sólo con el panel abierto: rellenar ochenta y cuatro celdas por frame
+        // para un panel cerrado es trabajo tirado, y es la misma regla que ya
+        // gobierna el recuento de piezas —contar cuesta y sólo se hace cuando
+        // alguien mira el número—.
+        if (measurements_ != nullptr && measurementsDock_ != nullptr &&
+            measurementsDock_->isVisible()) {
+            std::vector<inspection::ToolConfig> configs;
+            configs.reserve(liveTools_.size());
+            for (const auto& tool : liveTools_) {
+                if (!tool.deleted) {
+                    configs.push_back(tool.config);
+                }
+            }
+            measurements_->setResults(overlay.toolResults, configs, calibration_.mmPerPixel,
+                                      currentUnit());
+        }
         // Y el lienzo enseña las cotas de ESA pieza. Sin esto sólo salían las de
         // la primera en orden de lectura, así que enfocar la tercera dejaba la
         // pieza remarcada y las cifras encima de otra.

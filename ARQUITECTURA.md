@@ -192,6 +192,37 @@ que nadie lo pidiera.
 Medido: una sombra que se comía el borde derecho dejaba la pieza en 180 px de
 ancho; pintando ese trozo como pieza vuelve a 240, que es el real.
 
+#### Las medidas estaban y no se podían leer
+
+Petición de uso: «falta la parte en donde te resume las medidas, la
+ventana/pestaña para verlas».
+
+Los números existían y se pintan sobre el vídeo, encima de cada herramienta.
+Funciona con tres cotas y se rompe con catorce —las etiquetas se pisan, y el
+lienzo tiene un buscador de huecos por eso— y con varias piezas se rompe del
+todo: el lienzo escribe los números de **una sola pieza**, porque catorce por
+seis serían ochenta y cuatro encima del vídeo. Esa decisión es la correcta para
+el vídeo, y dejaba las demás sin poder leerse en ningún sitio.
+
+`ui/measurements_panel.*` es un dock con una fila por cota: **pieza, cota, valor,
+banda y veredicto**. Tres invariantes, y las tres tienen prueba:
+
+- **están las de todas las piezas**, no sólo las de la medida — si no, tendría el
+  mismo problema que el vídeo;
+- **la que no mide enseña su motivo** en la celda del valor. Es la otra mitad de
+  «varias herramientas no muestran medidas»: medido sobre las 32, ninguna se
+  calla, y lo que faltaba era dónde leer esa explicación mientras se trabaja;
+- **rotula igual que el vídeo**, porque llama a `formatMeasure` — el único sitio
+  donde se decide cómo se escribe una medida. La prueba compara la celda con esa
+  función y no con un texto escrito a mano: lo que no puede pasar es que se
+  separen. Cuatro pantallas tuvieron su propia regla y las cuatro se equivocaban
+  igual, convirtiendo a milímetros todo lo que no fuera un ángulo.
+
+El resumen cuenta aparte las que **no cumplen** y las que **no llegan a medir**:
+una cota fuera de banda es un problema de la pieza, y una que no mide lo es del
+trazo, del encuadre o de la referencia que le falta. Y sólo se rellena con el
+panel abierto, la misma regla que gobierna el recuento de piezas.
+
 #### Cuándo medir en un vídeo: una vez por pieza, no una vez por segundo
 
 Petición de uso: «la manera en la que lo toma en vídeo (grabado o en tiempo

@@ -18,6 +18,7 @@ add_library(pci_ui STATIC
   pieces_page.cpp
   piece_manager_dialog.cpp
   dialog_buttons.cpp
+  measurements_panel.cpp
   piece_mosaic.cpp
   piece_report_dialog.cpp
   preferences_page.cpp

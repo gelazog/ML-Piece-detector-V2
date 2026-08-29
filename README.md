@@ -1180,6 +1180,22 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    medidor puro) también puedes registrar: se avisa una vez y la pieza queda
    registrada **solo con herramientas** — se mide con las que dibujes, pero no
    hay comparación de apariencia que detecte defectos inesperados.
+   **Medidas en vivo, en una tabla** (*Ver ▸ Medidas en vivo (tabla)*): panel
+   lateral con lo que mide **cada herramienta de cada pieza**, su banda y su
+   OK/NG. Sobre el vídeo los números se pintan encima de cada herramienta, y eso
+   funciona con tres cotas: con catorce se pisan, y con varias piezas sólo caben
+   los de **una** —catorce por seis serían ochenta y cuatro etiquetas—. En la
+   tabla se leen todos.
+
+   Y la herramienta que **no llega a medir** enseña ahí su motivo, en la celda
+   del valor: «Se necesitan 2 bordes y se detectaron 0», «falta el datum». Es lo
+   que responde a «esta herramienta no muestra medida» sin tener que abrirlas
+   una por una. El resumen de abajo cuenta aparte las que no cumplen y las que
+   no miden, porque son dos averías distintas: una es de la pieza, la otra del
+   trazo o de la referencia que falta.
+
+   Arranca cerrado y sólo se rellena mientras está abierto.
+
 7. **Auto-inspección**: el botón queda activo y la app inspecciona el video
    continuamente (~1/s): banner **OK/NG** en vivo, resultados por herramienta
    dibujados sobre el video y estadísticas del día en la barra de estado.

@@ -56,6 +56,7 @@ class CameraImagePage;
 class ConfigureDialog;
 class DetectionPage;
 class PerformancePage;
+class MeasurementsPanel;
 class PieceMosaic;
 class PiecesPage;
 class PreferencesPage;
@@ -530,6 +531,8 @@ private:
     // revisarlas es un trabajo que nadie hace. Aquí salen recortadas, todas al
     // mismo tamaño y con su número, y pulsar una la enfoca.
     QDockWidget* mosaicDock_ = nullptr;
+    QDockWidget* measurementsDock_ = nullptr;
+    MeasurementsPanel* measurements_ = nullptr;
     PieceMosaic* mosaic_ = nullptr;
     // El panel se ofrece solo la PRIMERA vez que hay varias piezas. Volver a
     // abrirlo en cada fotograma le quitaría al operador la decisión de cerrarlo.

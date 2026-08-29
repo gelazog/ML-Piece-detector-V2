@@ -1169,12 +1169,36 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
      - **la pieza no tiene ese rasgo** (Rosca sobre una placa, Engranaje sobre
        un rectángulo): correcto también.
 
-     Queda por decidir con el usuario qué es «resumen de medidas»: hoy existen
-     el informe de «Medir pieza» —con su pestaña **Mis herramientas**— y el
-     resultado de inspección, y lo que NO hay es una tabla de las medidas EN
-     VIVO: con catorce herramientas y seis piezas, en el vídeo solo caben los
-     números de una pieza, así que el resto no se puede leer mientras se
-     trabaja.
+     Y el sitio donde leer esos motivos **ya existe**: es la tabla de medidas en
+     vivo, donde la celda del valor enseña la explicación cuando no hay número.
+
+  **[x] La tabla de medidas en vivo**, elegida por el dueño del proyecto entre
+  tres lecturas posibles de «resumen». *Ver ▸ Medidas en vivo (tabla)*, panel
+  acoplable que arranca cerrado.
+
+  Los números ya existían y se pintaban sobre el vídeo. Eso funciona con tres
+  cotas y se rompe con catorce —las etiquetas se pisan, y el lienzo tiene un
+  buscador de huecos justamente por eso— y con varias piezas se rompe del todo:
+  el lienzo escribe los números de **una sola pieza**, porque catorce por seis
+  serían ochenta y cuatro encima del vídeo. Esa decisión es la correcta para el
+  vídeo y dejaba las demás sin poder leerse en ningún sitio.
+
+  Tres cosas la hacen útil y las tres tienen prueba: que estén las de **todas**
+  las piezas (si no, tendría el mismo problema que el vídeo), que la que no mide
+  enseñe **su motivo** en la celda del valor, y que rotule **exactamente igual**
+  que el vídeo —usando `formatMeasure`, que es el único sitio donde se decide
+  cómo se escribe una medida; cuatro pantallas tuvieron su propia regla y las
+  cuatro se equivocaban igual—.
+
+  Sólo se rellena con el panel abierto: ochenta y cuatro celdas por frame para un
+  panel cerrado es trabajo tirado, la misma regla que ya gobierna el recuento de
+  piezas.
+
+  **[ ] Falta la segunda mitad**, elegida también: que las cinco herramientas
+  que hoy no miden sin datum —Orientación, Desviación de centros, Patrón de
+  agujeros y las dos construcciones— **resuelvan sola la referencia** cuando hay
+  una evidente, y que cuando no la haya lo digan **al dibujarlas** y no al
+  medir.
 
 - [x] **P2 · Vídeo: disparo por paso de pieza.** La otra mitad de la misma
   petición: «la manera en la que lo toma en vídeo (grabado o en tiempo real)
