@@ -18,7 +18,24 @@
 //
 // Medido sobre el banco entero: 48 piezas, 268 propuestas, 89 con descargo
 // (33 %, y son todos los `ruler` y los cuatro `angle`), y **cero** piezas donde
-// todo lleve descargo. Esta prueba fija ese cero.
+// todo lleve descargo. Esta prueba fijaba ese cero.
+//
+// ------------------------------------------------------------------------
+// POR QUÉ EL CERO SE CAYÓ, Y POR QUÉ NO SE VUELVE A PONER
+//
+// El cero se cumplía, pero lo tapaba una cota que no valía. A casi todas las
+// piezas las salvaba el ÁREA de la Región, que es de las que comprueban… salvo
+// que en TRECE de las diecisiete fotos del banco esa área no se parecía a la de
+// la pieza: 5523 px² de contorno contra 991 de cota en `arandelas-2.png`. Al
+// dejar de publicar la cota que no reproduce el contorno, tres piezas se quedan
+// sin nada que comprobar — y eso no es una regresión: es lo que siempre fue
+// verdad debajo del número.
+//
+// Así que la garantía no se afloja, cambia de sitio. Lo que el operador no puede
+// es quedarse con una plantilla que no rechaza nada **sin que nadie se lo diga**
+// —lo dice esta misma prueba en su motivo desde el primer día—, así que ahora se
+// comprueba justo eso: o la pieza tiene una cota que la juzgue, o el informe
+// lleva el aviso de que ninguna vuelve a medir.
 //
 // No fija el 33 %: esa proporción puede moverse por motivos legítimos —una foto
 // nueva, una pieza más sencilla— y atarla sería atar el banco de fotos.
@@ -28,11 +45,13 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include <algorithm>
 #include <cstdio>
 #include <string>
 #include <vector>
 
 #include "inspection_editor/auto_measure.h"
+#include "inspection_editor/piece_report.h"
 #include "inspection_editor/tools/tool_types.h"
 #include "vision/contour_analysis.h"
 #include "vision/pipeline.h"
@@ -63,6 +82,7 @@ TEST(ProposalsAreCheckable, EveryPieceGetsAtLeastOneThingItCanBeJudgedBy) {
     int proposals = 0;
     int references = 0;
     std::vector<std::string> barren;
+    int unjudgeable = 0;
 
     for (const auto& photo : photos) {
         const cv::Mat image =
@@ -94,7 +114,22 @@ TEST(ProposalsAreCheckable, EveryPieceGetsAtLeastOneThingItCanBeJudgedBy) {
             }
             // Una pieza sin NINGUNA propuesta no es este fallo: es que no había
             // nada que proponer, y la aplicación lo dice por otro camino.
-            if (!offered.empty() && checkable == 0) {
+            if (offered.empty() || checkable > 0) {
+                continue;
+            }
+            // Sin nada que comprobar: entonces el informe TIENE que avisarlo.
+            cv::Mat gray;
+            cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+            const auto report = inspection::measureWholePiece(
+                gray, mask, piece.fixture, 0.0, inspection::LengthUnit::Auto, gray.size());
+            const bool saysSo = std::any_of(
+                report.warnings.begin(), report.warnings.end(),
+                [](const std::string& warning) {
+                    return warning.find("Ninguna de estas cotas vuelve a medir") !=
+                           std::string::npos;
+                });
+            ++unjudgeable;
+            if (!saysSo) {
                 barren.push_back(photo + " pieza " + std::to_string(i + 1));
             }
         }
@@ -119,10 +154,11 @@ TEST(ProposalsAreCheckable, EveryPieceGetsAtLeastOneThingItCanBeJudgedBy) {
 
     for (const auto& piece : barren) {
         ADD_FAILURE() << piece
-                      << ": todas sus cotas llevan el descargo de «no como comprobación». "
-                         "El operador aceptaría la lista entera y se quedaría con una "
-                         "plantilla que no puede rechazar nada, sin que nadie se lo diga.";
+                      << ": todas sus cotas llevan el descargo de «no como comprobación» "
+                         "y el informe no lo avisa. El operador aceptaría la lista entera "
+                         "y se quedaría con una plantilla que no puede rechazar nada, sin "
+                         "que nadie se lo diga.";
     }
-    std::printf("  [propuestas] piezas sin ninguna cota comprobable: %d\n",
-                static_cast<int>(barren.size()));
+    std::printf("  [propuestas] piezas sin ninguna cota comprobable: %d, avisadas %d\n",
+                unjudgeable, unjudgeable - static_cast<int>(barren.size()));
 }

@@ -333,6 +333,16 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
     // El recuadro se traza sobre los ejes de la PIEZA con un 15 % de holgura:
     // ceñido al contorno, la umbralización de la Región se queda sin fondo con
     // el que contrastar y el área sale disparada.
+    // LOS AGUJEROS DE ESTA PIEZA, una sola vez: los necesitan el área de la
+    // silueta (que los descuenta) y las cotas de agujero de más abajo.
+    std::vector<std::vector<cv::Point>> holesOfThisPiece;
+    for (const auto& hole : vision::findHoles(mask)) {
+        if (!hole.empty() &&
+            cv::pointPolygonTest(contour, cv::Point2f(hole.front()), false) > 0.0) {
+            holesOfThisPiece.push_back(hole);
+        }
+    }
+
     {
         const bool darkPiece = pieceIsDarkerThanBackground(gray, mask);
         const float margin = 1.15F;
@@ -356,6 +366,46 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
              "así que juntas cogen defectos que por separado se escapan."},
         };
 
+        // LO QUE MIDA LA REGIÓN TIENE QUE PARECERSE AL CONTORNO DE LA PIEZA.
+        //
+        // El informe enseña las dos cosas en la misma tabla: el ÁREA como hecho
+        // del contorno y el ÁREA como cota. Si no coinciden, hay dos filas con
+        // el mismo nombre y números distintos, y el operador no tiene forma de
+        // saber cuál apuntar en el parte.
+        //
+        // Y no coincidían casi nunca. Medido sobre el banco de fotos, foto a
+        // foto: en TRECE de diecisiete la diferencia pasaba del 10 %, con casos
+        // de 82 % en el área (`arandelas-2.png`: el contorno 5523 px², la cota
+        // 991) y de 130 % en el perímetro (`tornillo-ojo-3.png`). La Región
+        // vuelve a umbralizar dentro de su recuadro y ahí ve otro borde —o el
+        // trozo de otra pieza que le cae dentro—; con varias piezas en el
+        // encuadre es lo normal, no la excepción.
+        //
+        // Un aviso no vale: saltaría en trece de diecisiete fotos, y un aviso
+        // que sale siempre se aprende a ignorar en dos días. Lo que vale es no
+        // publicar la cota, que es la misma regla de siempre —no medir es una
+        // respuesta honesta— y además deja el problema A LA VISTA: la pieza se
+        // queda sin la cota que la vigila entera, y eso se nota.
+        //
+        // El listón sale de los datos, no de la nada. Las diferencias medidas,
+        // ordenadas: 0,3 · 0,8 · 0,8 · 1,8 · 2,4 · 2,8 · 3,0 · 3,8 · 4,0 · 7,0 %
+        // y después 10,7 · 15,5 · 18,9 · 22,5 … hasta 130 %. El hueco está entre
+        // el 7 y el 10,7, y el corte va en el hueco: no hay ningún caso en medio
+        // al que la decisión le cambie la vida.
+        //
+        // La causa de fondo —cada herramienta vuelve a umbralizar su propio
+        // contorno en vez de heredar la máscara de la pieza— está aparcada por
+        // decisión del dueño. Esto no la arregla; solo deja de mentir mientras
+        // siga aparcada.
+        // CON LOS AGUJEROS DESCONTADOS, igual que el hecho del contorno: sin
+        // descontarlos, una arandela compararía su cota contra el disco macizo
+        // y se caería una cota que estaba bien.
+        double areaOfThePiece = std::abs(cv::contourArea(contour));
+        for (const auto& hole : holesOfThisPiece) {
+            areaOfThePiece -= std::abs(cv::contourArea(hole));
+        }
+        const double perimeterOfThePiece = vision::digitalPerimeter(contour);
+        constexpr double kSameThing = 0.10;
         for (const auto& whole : kWholePiece) {
             AutoProposal p;
             p.config.type = ToolType::Region;
@@ -368,9 +418,21 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
             g.darkPiece = darkPiece;
             p.geometry = g;
             p.reason = whole.reason;
-            if (measureProposal(gray, fixture, mmPerPixel, p)) {
-                proposals.push_back(std::move(p));
+            if (!measureProposal(gray, fixture, mmPerPixel, p)) {
+                continue;
             }
+            // Las dos en píxeles: `measured` es siempre px o px².
+            const double contourSays = whole.measure == RegionMeasure::Area
+                                           ? areaOfThePiece
+                                           : perimeterOfThePiece;
+            if (contourSays > 0.0 &&
+                std::abs(p.measured - contourSays) / contourSays > kSameThing) {
+                if (dropped != nullptr) {
+                    ++*dropped;
+                }
+                continue;
+            }
+            proposals.push_back(std::move(p));
         }
     }
 
@@ -396,11 +458,7 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
     // es hijo del contorno de la pieza. Aquí se comprueba con el contorno
     // delante, porque `findHoles` no devuelve de quién es cada hueco.
     int holeIndex = 0;
-    for (const auto& hole : vision::findHoles(mask)) {
-        if (hole.empty() ||
-            cv::pointPolygonTest(contour, cv::Point2f(hole.front()), false) <= 0.0) {
-            continue;  // el agujero es de otra pieza del encuadre
-        }
+    for (const auto& hole : holesOfThisPiece) {
         ++holeIndex;
         cv::Point2f center;
         float radius = 0.0F;
@@ -445,9 +503,14 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
         // lo que la pieza entera es un imposible, y aquí ya hay regla escrita
         // para eso —`NoProposedToolPublishesAnImpossibleNumber`—. No medir es
         // una respuesta honesta; medir mal y decirlo con tres decimales, no.
-        const double toMeasureUnits = mmPerPixel > 0.0 ? mmPerPixel : 1.0;
-        const double fitsInside =
-            std::min(box.size.width, box.size.height) * toMeasureUnits;
+        // En PÍXELES las dos, y eso no es casualidad: `ToolRunResult::measured`
+        // es siempre px, px², grados o cuenta —`mmPerPixel` solo se usa para
+        // escribir el `detail`—, así que aquí no hay conversión que hacer.
+        // Meterla «por si acaso» era el fallo: con la escala puesta, multiplicar
+        // el lado por 0,05 mm/px dejaba el listón en 9 px y se caían todas las
+        // cotas de agujero, y el banco de fotos no lo habría visto nunca porque
+        // ahí se mide sin calibrar.
+        const double fitsInside = std::min(box.size.width, box.size.height);
         if (p.kind == MeasuredKind::Length && p.measured >= fitsInside) {
             if (dropped != nullptr) {
                 ++*dropped;

@@ -161,3 +161,73 @@ TEST(HoleDimensions, NoHoleMeasuresAsMuchAsThePieceItIsIn) {
     EXPECT_GT(checked, 0) << "ninguna cota de agujero llegó a comprobarse: esta prueba "
                              "no está mirando donde cree";
 }
+
+// DOS FILAS «ÁREA» EN LA MISMA TABLA, CON NÚMEROS QUE NO SE PARECEN.
+//
+// El informe de pieza enseña cada magnitud dos veces a propósito: el área como
+// HECHO del contorno y el área como COTA vigilada, que son cosas distintas —una
+// describe, la otra juzga—. Lo que no puede pasar es que no se parezcan: si la
+// tabla dice «Área 4294 px²» arriba y «Área 3126 px²» abajo, el operador no
+// tiene forma de saber cuál apunta en el parte.
+//
+// Y no se parecían casi nunca. Medido foto a foto sobre el banco, antes de
+// arreglarlo: en TRECE de diecisiete fotos la diferencia pasaba del 10 %, con
+// 82 % en el área de `arandelas-2.png` —el contorno 5523 px², la cota 991— y
+// 130 % en el perímetro de `tornillo-ojo-3.png`. La Región vuelve a umbralizar
+// dentro de su recuadro y ahí ve otro borde, o el trozo de otra pieza que le
+// cae dentro; con varias piezas en el encuadre eso es lo normal.
+//
+// Por qué esta prueba y no un aviso: un aviso saltaría en trece de diecisiete
+// fotos, y un aviso que sale siempre se aprende a ignorar en dos días. La cota
+// que no se parece a la pieza no se publica, y entonces la pieza se queda sin la
+// cota que la vigila entera —que se nota, que es justo lo que se quiere—.
+//
+// El «Largo total» y el «Ancho total» sirven de testigo: esos salen de la
+// geometría del contorno y no de volver a umbralizar, y coinciden al 0,0 % en
+// las diecisiete. Si algún día esta prueba fallara por ellos, el problema sería
+// otro muy distinto.
+TEST(PieceReport, ACotaNamedLikeAContourFactHasToAgreeWithIt) {
+    const auto photos = bank();
+    if (photos.empty()) {
+        GTEST_SKIP() << "las fotos del usuario no están en esta máquina";
+    }
+    int compared = 0;
+    double worst = 0.0;
+    for (const auto& [name, piece] : photos) {
+        const auto report =
+            inspection::measureWholePiece(piece.gray, piece.mask, {}, 0.0,
+                                          inspection::LengthUnit::Auto, piece.gray.size());
+        if (!report.ok) {
+            continue;
+        }
+        for (const char* magnitude : {"Área", "Perímetro", "Largo total", "Ancho total"}) {
+            double fact = -1.0;
+            double cota = -1.0;
+            for (const auto& row : report.rows) {
+                if (row.tool != magnitude) {
+                    continue;
+                }
+                if (row.group == inspection::kGroupContour) {
+                    fact = row.value;
+                } else if (cota < 0.0) {
+                    cota = row.value;
+                }
+            }
+            if (fact <= 0.0 || cota < 0.0) {
+                continue;  // esa magnitud no sale por los dos caminos en esta pieza
+            }
+            ++compared;
+            const double gap = std::abs(fact - cota) / fact;
+            worst = std::max(worst, gap);
+            EXPECT_LT(gap, 0.10)
+                << name << ": la tabla enseña dos filas «" << magnitude
+                << "», una de " << fact << " y otra de " << cota << " (" << 100.0 * gap
+                << " % de diferencia). Con el mismo nombre y números distintos, no hay "
+                   "manera de saber cuál va al parte";
+        }
+    }
+    std::printf("  [informe] %d parejas hecho/cota comparadas, la peor difiere %.1f%%\n",
+                compared, 100.0 * worst);
+    EXPECT_GT(compared, 10) << "casi ninguna magnitud sale por los dos caminos: esta "
+                               "prueba no está mirando donde cree";
+}

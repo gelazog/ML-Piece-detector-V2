@@ -3025,6 +3025,45 @@ contorno de la pieza—, comprobado con el contorno delante porque `findHoles` n
 dice de quién es cada hueco. Sobre el banco entero: **190 cotas de agujero pasan
 a 71**, y ninguna foto ofrece más agujeros de los que cuenta.
 
+##### El área que enseñaba dos números distintos en la misma tabla
+
+El informe enseña cada magnitud dos veces a propósito: el **área como hecho** del
+contorno y el **área como cota** vigilada. Una describe, la otra juzga. Lo que no
+puede pasar es que no se parezcan, y no se parecían casi nunca. Medido foto a
+foto:
+
+| Foto | Área del contorno | Área como cota | Diferencia |
+|---|---|---|---|
+| `arandelas-2.png` | 5523 px² | 991 px² | **82 %** |
+| `tornillo-2.png` | 50 034 px² | 13 719 px² | **73 %** |
+| `tornillo-ojo-3.png` (perímetro) | 2401 px | 5530 px | **130 %** |
+
+En **trece de las diecisiete** fotos la diferencia pasaba del 10 %. La Región
+vuelve a umbralizar dentro de su recuadro y ahí ve otro borde —o el trozo de otra
+pieza que le cae dentro—; con varias piezas en el encuadre es lo normal. El
+«Largo total» y el «Ancho total» sirven de testigo: salen de la geometría del
+contorno, no de volver a umbralizar, y coinciden al **0,0 %** en las diecisiete.
+
+**Un aviso no valía.** Habría saltado en trece de diecisiete fotos, y un aviso
+que sale siempre se aprende a ignorar en dos días — el mismo argumento que ya
+está escrito unas páginas más arriba sobre los avisos de detección. Lo que vale
+es no publicar la cota: no medir es una respuesta honesta, y además deja el
+problema **a la vista**, porque la pieza se queda sin la cota que la vigila
+entera.
+
+El listón sale de los datos. Las diferencias medidas, ordenadas: 0,3 · 0,8 · 0,8
+· 1,8 · 2,4 · 2,8 · 3,0 · 3,8 · 4,0 · 7,0 % y después 10,7 · 15,5 · 18,9 · 22,5 …
+hasta 130 %. **El hueco está entre el 7 y el 10,7**, y el corte va en el hueco.
+
+**Lo que esto destapó, que es lo importante.** Había una garantía comprobada
+—«ninguna pieza se queda solo con cotas que no comprueban nada»— y se cumplía
+gracias a esa área. Al dejar de publicarla, **tres piezas del banco se quedan sin
+nada que comprobar**: no es una regresión, es lo que siempre fue verdad debajo
+del número. Así que la garantía no se afloja, cambia de sitio: o la pieza tiene
+una cota que la juzgue, **o el informe avisa** de que ninguna vuelve a medir y de
+que hay que dibujar a mano la que la juzgue. Lo que el operador no puede es
+llevarse una plantilla que no rechaza nada sin que nadie se lo diga.
+
 ##### Y un agujero no puede medir más que su pieza
 
 En `arandelas-4.png` la tabla ponía «Ø exterior 191,52 px» y justo debajo «Ø

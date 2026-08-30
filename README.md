@@ -531,6 +531,13 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    | **Una rueda dentada** | **cuántos dientes**, Ø de cabeza, Ø de raíz y la excentricidad |
    | **Una rosca de perfil** | el **paso**, el Ø exterior y el Ø de fondo |
 
+   **Si ninguna cota puede juzgar la pieza, te lo dice.** Hay dos clases de
+   cota: las que vuelven a medir en cada inspección —un diámetro, la redondez,
+   el paso de una rosca— y las que repiten el valor de hoy porque salen de la
+   descomposición de *este* contorno. Si a una pieza solo le salen de las
+   segundas, el informe lo avisa: guardarla como plantilla daría una pieza que
+   no rechaza nada, y eso tienes que saberlo antes y no tres lotes después.
+
    **Los agujeros que te propone son los de ESA pieza.** Si en el encuadre hay
    una bandeja entera —veinte tuercas, un puñado de arandelas—, cada informe
    habla solo de la pieza que estás midiendo: antes listaba también los agujeros

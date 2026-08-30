@@ -196,6 +196,37 @@ PieceReport measureWholePiece(const cv::Mat& gray, const cv::Mat& mask,
             "del borde. En ese caso el perimetro no es de fiar.");
     }
 
+    // Y EL AVISO DE QUE ESTE INFORME NO PUEDE RECHAZAR NADA.
+    //
+    // Las cotas son de dos clases y cada una lo dice en su motivo: las que
+    // COMPRUEBAN —un diámetro, la redondez, el paso de una rosca— vuelven a
+    // medir en cada inspección, y las de REFERENCIA repiten el valor de hoy
+    // porque salen de la descomposición de ESTE contorno («Lado 4» es el cuarto
+    // tramo en que se cortó esta pieza, y en la de al lado el cuarto tramo es
+    // otra cosa).
+    //
+    // Una pieza a la que solo le salen de las segundas se puede guardar como
+    // plantilla entera y no rechazará nunca nada. Antes no pasaba nunca, pero
+    // porque el hueco lo tapaba el área de la Región — y sobre trece de las
+    // diecisiete fotos del banco esa área no se parecía a la de la pieza, así
+    // que la garantía se cumplía con un número que no valía. Ahora esa cota no
+    // se publica cuando no reproduce el contorno, y donde no quede ninguna
+    // comprobación hay que DECIRLO: es la mitad que faltaba de la misma regla.
+    const bool nothingRechecks =
+        !report.watchable.empty() &&
+        std::none_of(report.watchable.begin(), report.watchable.end(),
+                     [](const AutoProposal& proposal) {
+                         return proposal.reason.find("no como comprobación") ==
+                                std::string::npos;
+                     });
+    if (nothingRechecks) {
+        report.warnings.push_back(
+            "Ninguna de estas cotas vuelve a medir: todas salen de la descomposicion "
+            "de ESTE contorno y guardadas repetirian el valor de hoy. Sirven para "
+            "apuntar la pieza, no para rechazar la siguiente. Si hace falta vigilarla, "
+            "dibuja a mano la cota que la juzgue.");
+    }
+
     report.ok = true;
     return report;
 }
