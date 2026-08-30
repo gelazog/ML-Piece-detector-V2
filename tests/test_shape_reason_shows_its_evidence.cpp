@@ -37,6 +37,7 @@
 #include <string>
 #include <vector>
 
+#include "inspection_editor/piece_report.h"
 #include "vision/geometry_features.h"
 #include "vision/segmentation.h"
 #include "vision/shape_class.h"
@@ -110,4 +111,53 @@ TEST(ShapeReason, APolygonSaysHowManySweepsItsCountSurvives) {
     EXPECT_LT(weakest, firmest)
         << "todas las piezas del banco aguantan lo mismo (" << weakest
         << "): el número no está diciendo nada y publicarlo no ayuda a nadie";
+}
+
+// Y LA RESERVA VIAJA CON EL NOMBRE, no solo con el motivo.
+//
+// El motivo lleva los dos números —desviación y meseta— y se pinta debajo del
+// titular del informe. Pero el NOMBRE de la figura sale además por sitios donde
+// no hay motivo al lado:
+//
+//   - el mensaje de una receta que no va con la pieza: «esta pieza se ha
+//     reconocido como “Polígono de 7 lados”, elige otra receta»;
+//   - el titular del informe, que es lo único que viaja al exportar.
+//
+// En esos dos, un recuento de 2 de 30 se lee exactamente igual que uno de 17 de
+// 30. Así que el nombre lleva su propia reserva cuando la meseta no llega al
+// listón con el que se decidió, que es el mismo `kPlateauRulesAbove` de siempre
+// — escrito una sola vez, en `vision::sideCountIsFirm`, para que la pantalla y
+// el clasificador no puedan discrepar.
+//
+// Lo que esta prueba protege de verdad: que la reserva NO salga cuando no se ha
+// medido. El polígono redondeado cuenta sus lados por otro camino, sin barrido y
+// sin meseta, y ahí decir «poco firme» sería insinuar una duda que nadie ha
+// medido — la otra forma de mentir con un número.
+TEST(ShapeReason, TheNameCarriesItsOwnReservation) {
+    vision::ShapeClass firm;
+    firm.kind = vision::ShapeKind::Polygon;
+    firm.sides = 6;
+    firm.sideCountPlateau = 17;
+    firm.sideCountSweeps = 30;
+    EXPECT_TRUE(vision::sideCountIsFirm(firm));
+    EXPECT_EQ(inspection::describeShape(firm), "Polígono de 6 lados");
+
+    vision::ShapeClass flimsy = firm;
+    flimsy.sides = 9;
+    flimsy.sideCountPlateau = 2;  // lo que da `arandelas-2.png`
+    EXPECT_FALSE(vision::sideCountIsFirm(flimsy));
+    EXPECT_EQ(inspection::describeShape(flimsy), "Polígono de 9 lados (recuento poco firme)");
+
+    // Sin barrido no hay dato, y «no medido» no es «flojo».
+    vision::ShapeClass rounded;
+    rounded.kind = vision::ShapeKind::Rounded;
+    rounded.sides = 4;
+    EXPECT_TRUE(vision::sideCountIsFirm(rounded))
+        << "un polígono redondeado no barre epsilon: no tiene meseta que juzgar";
+    EXPECT_EQ(inspection::describeShape(rounded), "Polígono redondeado de 4 lados");
+
+    // Y una figura que no cuenta lados no se ve afectada.
+    vision::ShapeClass ring;
+    ring.kind = vision::ShapeKind::Ring;
+    EXPECT_EQ(inspection::describeShape(ring), "Arandela");
 }

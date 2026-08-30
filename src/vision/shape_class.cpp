@@ -376,6 +376,20 @@ const char* shapeKindName(ShapeKind kind) {
     return "irregular";
 }
 
+bool sideCountIsFirm(const ShapeClass& shape) {
+    // SIN BARRIDO NO HAY DATO, y «no medido» no es «flojo».
+    //
+    // El polígono redondeado cuenta sus lados por otro camino —la descomposición
+    // en rectas y arcos—, que no barre epsilon y por tanto no tiene meseta.
+    // Devolver «poco firme» ahí sería insinuar una duda que nadie ha medido, que
+    // es la otra forma de mentir con un número.
+    if (shape.sideCountSweeps <= 0) {
+        return true;
+    }
+    return static_cast<double>(shape.sideCountPlateau) >=
+           kPlateauRulesAbove * static_cast<double>(shape.sideCountSweeps);
+}
+
 StableSideCount stableSideCountOf(const std::vector<cv::Point>& contour) {
     StableSideCount out;
     const double perimeter = cv::arcLength(contour, true);
@@ -794,6 +808,8 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
         shape.sides = static_cast<int>(polygon.vertices.size());
         shape.vertices = refinePolygonVertices(dense, polygon.vertices);
         shape.deviation = polygon.deviation;
+        shape.sideCountPlateau = polygon.plateau;
+        shape.sideCountSweeps = polygon.swept;
         // CON LAS DOS EVIDENCIAS, no con una.
         //
         // La desviación dice si ese polígono explica el contorno; la meseta dice

@@ -34,13 +34,33 @@ MeasurementRow fact(const std::string& name, double value, MeasuredKind kind,
 }  // namespace
 
 std::string describeShape(const vision::ShapeClass& shape) {
+    // «(RECUENTO POCO FIRME)», y no es un adorno.
+    //
+    // El recuento de lados sale de un barrido de treinta epsilon, y la MESETA
+    // —en cuántos gana ese recuento— es la evidencia que dice si esos son los
+    // lados de la pieza. Medido sobre el banco: una tuerca hexagonal de verdad
+    // aguanta 17 de 30, y `arandelas-2.png` sale «Polígono de 9 lados»
+    // aguantando 2 de 30. Nueve lados que salen dos veces de treinta no son un
+    // recuento, son una casualidad que cupo en la tolerancia.
+    //
+    // El motivo ya lleva los dos números, pero el motivo NO viaja a todas
+    // partes: el mensaje de una receta que no va con la pieza dice «esta pieza
+    // se ha reconocido como “Polígono de 7 lados”» y ahí no hay motivo al lado,
+    // igual que el titular del informe es lo único que se exporta. Así que la
+    // reserva viaja con el nombre.
+    //
+    // El listón es el mismo con el que se decidió —`kPlateauRulesAbove`— y vive
+    // en `vision::sideCountIsFirm` para que la pantalla y el clasificador no
+    // puedan discrepar.
+    const std::string doubt =
+        vision::sideCountIsFirm(shape) ? "" : " (recuento poco firme)";
     switch (shape.kind) {
         case vision::ShapeKind::Circle: return "Pieza redonda";
         case vision::ShapeKind::Ring: return "Arandela";
         case vision::ShapeKind::Polygon:
-            return "Polígono de " + std::to_string(shape.sides) + " lados";
+            return "Polígono de " + std::to_string(shape.sides) + " lados" + doubt;
         case vision::ShapeKind::Rounded:
-            return "Polígono redondeado de " + std::to_string(shape.sides) + " lados";
+            return "Polígono redondeado de " + std::to_string(shape.sides) + " lados" + doubt;
         case vision::ShapeKind::Irregular: return "Pieza de contorno libre";
     }
     return "Pieza";

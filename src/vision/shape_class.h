@@ -99,7 +99,25 @@ struct ShapeClass {
     // En castellano y con el número dentro: es lo que el operador lee para
     // decidir si se fía de la propuesta.
     std::string reason;
+
+    // CUÁNTO AGUANTA EL RECUENTO DE LADOS, y sobre cuántos epsilon barridos.
+    // Cero los dos cuando la figura no es un polígono.
+    //
+    // Es la SEGUNDA evidencia del clasificador, y gobernaba la decisión sin
+    // salir de la función que la calculaba: `kPlateauRulesAbove` explica ahí
+    // arriba que la tolerancia dice si el polígono explica el contorno y la
+    // meseta dice cuántos lados tiene la pieza. Sale aquí porque hay pantallas
+    // que nombran la figura SIN el motivo al lado —el mensaje de una receta que
+    // no va con la pieza, por ejemplo— y ahí el nombre tiene que poder llevar su
+    // propia reserva.
+    int sideCountPlateau = 0;
+    int sideCountSweeps = 0;
 };
+
+// ¿El recuento de lados está fuera de duda? Es el mismo listón con el que se
+// decidió (`kPlateauRulesAbove`), escrito una vez para que la pantalla y el
+// clasificador no puedan discrepar.
+[[nodiscard]] bool sideCountIsFirm(const ShapeClass& shape);
 
 // CUÁNDO UNA MESETA ES TAN ANCHA QUE MANDA SOBRE LA TOLERANCIA.
 //

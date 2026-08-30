@@ -531,7 +531,10 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    | **Una rueda dentada** | **cuántos dientes**, Ø de cabeza, Ø de raíz y la excentricidad |
    | **Una rosca de perfil** | el **paso**, el Ø exterior y el Ø de fondo |
 
-   **Y te dice con cuánta seguridad reconoció la forma.** Debajo del título del
+   **Y te dice con cuánta seguridad reconoció la forma.** Cuando el recuento de
+   lados no es firme, el propio nombre lo dice —«Polígono de 9 lados (recuento
+   poco firme)»— y no solo la explicación de debajo, porque ese nombre es lo que
+   sale al exportar y lo que te dice una receta cuando no va con la pieza. Debajo del título del
    informe va la frase que lo explica, y lleva dos números: cuánto se separa el
    contorno del polígono que se le ajustó, y **en cuántos barridos aguanta ese
    recuento de lados**. Un hexágono de verdad aguanta 17 de 30; unas arandelas

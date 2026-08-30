@@ -3051,6 +3051,26 @@ igual. Ahora el motivo lleva las dos mitades, y es el mismo principio que ya
 estaba escrito para el residuo —*una clasificación sin su número es una
 opinión*—, solo que los números eran dos.
 
+##### Y la reserva viaja con el NOMBRE, no solo con el motivo
+
+El motivo se pinta debajo del titular del informe, pero el **nombre** de la
+figura sale además por sitios donde no hay motivo al lado: el mensaje de una
+receta que no va con la pieza —«esta pieza se ha reconocido como *Polígono de 7
+lados*»— y el propio titular, que es lo único que viaja al exportar. Ahí un 2 de
+30 se leía exactamente igual que un 17 de 30.
+
+Así que el nombre lleva su propia reserva: **«Polígono de 9 lados (recuento poco
+firme)»** cuando la meseta no llega al listón con el que se decidió. El listón es
+el mismo de siempre, `kPlateauRulesAbove`, y se escribe una sola vez en
+`vision::sideCountIsFirm` para que la pantalla y el clasificador no puedan
+discrepar.
+
+Lo que hay que cuidar es lo contrario: **la reserva no sale cuando no se ha
+medido**. Un polígono redondeado cuenta sus lados por otro camino —la
+descomposición en rectas y arcos—, que no barre epsilon y no tiene meseta; decir
+ahí «poco firme» sería insinuar una duda que nadie ha medido, que es la otra
+forma de mentir con un número.
+
 ##### El titular que decía «no sé qué es esto» debajo de «20 dientes»
 
 Para el clasificador de figuras una rueda dentada es **irregular** —en
