@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDialog>
+#include <QSize>
 
 #include "ui/station_status.h"
 
@@ -83,6 +84,10 @@ public:
         bool hasFreeZone = false;
         int expectedPieces = 1;
         bool showMosaic = false;
+        // EL TAMAÑO DE LA IMAGEN QUE SE ESTÁ VIENDO, para poder traducir el
+        // «área mínima» a algo que se pueda mirar. Vacío = no hay imagen todavía,
+        // y entonces la página no traduce nada en vez de inventarse un tamaño.
+        QSize frameSize;
     };
 
     ConfigureDialog(Inputs inputs, QWidget* parent = nullptr);

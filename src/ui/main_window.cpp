@@ -7137,6 +7137,10 @@ void MainWindow::onConfigureClicked() {
     inputs.zoneMode = zoneMode_;
     inputs.expectedPieces = expectedPieces_;
     inputs.showMosaic = showMosaic_;
+    // El tamaño del frame que se está viendo, para que «área mínima» se pueda
+    // traducir a píxeles. Si todavía no ha llegado ninguno, va vacío y la página
+    // no traduce en vez de inventarse una referencia.
+    inputs.frameSize = lastFrame_.size();
     inputs.hasFixedZone = pipelineConfig_.roi.area() > 0;
     inputs.hasFreeZone = pipelineConfig_.roiPolygon.size() >= 3;
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QSize>
 #include <QWidget>
 
 #include <cstdint>
@@ -34,7 +35,7 @@ public:
                     repositories::DetectionProfileRepository* profiles = nullptr,
                     std::int64_t selectedProfileId = 0,
                     double minAreaFraction = 0.005, double maxAreaFraction = 0.9,
-                    bool subpixelEdges = false);
+                    bool subpixelEdges = false, QSize frameSize = {});
 
     [[nodiscard]] vision::SegmentationOptions options() const;
     // Qué se acepta como pieza, en fracción del área de la imagen. Estaban
@@ -157,6 +158,10 @@ public:
     QSpinBox* blur_ = nullptr;
     QSpinBox* morph_ = nullptr;
     QDoubleSpinBox* minArea_ = nullptr;
+    // Qué significa ese porcentaje EN LA IMAGEN QUE SE ESTÁ VIENDO, y el tamaño
+    // con el que se traduce. Sin imagen no se traduce nada.
+    QLabel* minAreaHint_ = nullptr;
+    QSize frameSize_;
     QDoubleSpinBox* maxArea_ = nullptr;
 };
 

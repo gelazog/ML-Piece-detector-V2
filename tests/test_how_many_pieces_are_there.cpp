@@ -129,3 +129,80 @@ TEST(PieceCount, WhatTheMinimumAreaLeavesOutIsCountedAndRecoverable) {
     EXPECT_EQ(static_cast<int>(withAll.value().size()), kPiecesInThePhoto)
         << "bajando el área mínima tienen que salir las dieciséis y ninguna más";
 }
+
+// «0,5 %» NO ES UNA UNIDAD CON LA QUE SE PUEDA DECIDIR.
+//
+// El área mínima manda de verdad —de ella depende que una mancha sea una pieza o
+// no exista— y se pedía en fracción de la imagen. Nadie mira una tuerca y piensa
+// «esto es el 0,4 % del encuadre».
+//
+// Y hay que decidirlo de verdad: con el valor de fábrica, `arandelas-4.png`
+// enseña 4 piezas de 16 porque los doce tornillos no llegan al mínimo. El
+// operador que abre este ajuste para arreglarlo no tiene forma de saber si 0,5
+// es mucho o poco para lo que está mirando.
+//
+// Traducido a píxeles sí: «una mancha de unos 39×39 px no llega a pieza» se
+// compara de un vistazo con la pieza del vídeo. Se da el LADO del cuadrado y no
+// solo el área, porque un área en px² tampoco se imagina.
+//
+// Lo que esta prueba cuida además: que sin imagen no se traduzca nada. Inventar
+// un tamaño de referencia sería dar una equivalencia que no vale para la cámara
+// que haya puesta — la misma familia de fallo que decir «poco firme» de un
+// recuento que nadie ha medido.
+
+#include <QApplication>
+#include <QDoubleSpinBox>
+#include <QLabel>
+
+#include "ui/configure_dialog.h"
+#include "ui/detection_page.h"
+
+TEST(DetectionPage, TheMinimumAreaIsAlsoSaidInPixelsOfThisImage) {
+    ui::ConfigureDialog::Inputs inputs;
+    inputs.minAreaFraction = 0.005;
+    inputs.frameSize = QSize(631, 477);  // el tamaño de `arandelas-4.png`
+    ui::ConfigureDialog dialog(inputs);
+
+    auto* hint = dialog.findChild<QLabel*>(QStringLiteral("minAreaHint"));
+    ASSERT_NE(hint, nullptr) << "no hay equivalencia en píxeles del área mínima";
+    // `isHidden` y no `isVisible`: la pestaña de Detección no es la que se abre
+    // por delante, así que sus hijos no están «visibles» aunque nadie los haya
+    // escondido. Lo que se comprueba es que la etiqueta NO se haya apagado.
+    ASSERT_FALSE(hint->isHidden()) << "la equivalencia está apagada habiendo imagen";
+    std::printf("  [área mínima] %s\n", hint->text().toStdString().c_str());
+    // 0,5 % de 631x477 son 1505 px², o sea un cuadrado de 39 px de lado.
+    EXPECT_NE(hint->text().indexOf(QStringLiteral("1505")), -1)
+        << "no dice cuántos píxeles son: «" << hint->text().toStdString() << "»";
+    EXPECT_NE(hint->text().indexOf(QStringLiteral("39×39")), -1)
+        << "no dice el lado de la mancha, que es lo que se compara con la pieza: «"
+        << hint->text().toStdString() << "»";
+
+    // Y sigue al ajuste mientras se toca, que es cuando hace falta.
+    auto* spin = dialog.detectionPage()->findChild<QDoubleSpinBox*>();
+    ASSERT_NE(spin, nullptr);
+    const QString before = hint->text();
+    for (auto* box : dialog.detectionPage()->findChildren<QDoubleSpinBox*>()) {
+        if (box->suffix().contains(QStringLiteral("%")) && box->value() < 5.0) {
+            box->setValue(0.05);
+            break;
+        }
+    }
+    QApplication::processEvents();
+    EXPECT_NE(hint->text(), before)
+        << "la equivalencia no cambia al mover el ajuste: entonces está mintiendo en "
+           "cuanto se toca";
+    std::printf("  [área mínima] al 0,05 %%: %s\n", hint->text().toStdString().c_str());
+}
+
+// Sin imagen todavía, no se traduce.
+TEST(DetectionPage, WithNoFrameYetItPromisesNothing) {
+    ui::ConfigureDialog::Inputs inputs;
+    inputs.minAreaFraction = 0.005;
+    ui::ConfigureDialog dialog(inputs);
+    auto* hint = dialog.findChild<QLabel*>(QStringLiteral("minAreaHint"));
+    ASSERT_NE(hint, nullptr);
+    EXPECT_TRUE(hint->isHidden())
+        << "sin frame no se sabe de qué tamaño es la imagen, y una equivalencia "
+           "inventada vale menos que ninguna: «"
+        << hint->text().toStdString() << "»";
+}

@@ -2110,6 +2110,21 @@ sin eso, decirle al operador que baje el ajuste sería mandarlo a un sitio peor.
 
 #### Y el número se lee sin pasar el ratón
 
+El otro lado del mismo ajuste: **«0,5 %» no es una unidad con la que se pueda
+decidir**. El área mínima manda de verdad —de ella depende que una mancha sea una
+pieza o no exista— y se pedía en fracción de la imagen. Nadie mira una tuerca y
+piensa «esto es el 0,4 % del encuadre», así que quien abría el ajuste para
+recuperar los doce tornillos no tenía forma de saber si 0,5 era mucho o poco.
+
+Debajo del control va ahora la traducción, y se mueve con él: «*en la imagen de
+ahora (631×477 px) son 1505 px²: una mancha de unos 39×39 px no llega a pieza*».
+Se da el **lado del cuadrado** y no solo el área, porque un área en px² tampoco
+se imagina y un lado se compara de un vistazo con la pieza del vídeo.
+
+Sin imagen todavía, no se traduce nada: inventar un tamaño de referencia sería
+dar una equivalencia que no vale para la cámara que haya puesta — la misma
+familia de fallo que decir «recuento poco firme» de algo que nadie ha medido.
+
 El aviso ya existía, con su ajuste dentro («baja *Área mínima* en *Configurar ▸
 Detección*»), pero vivía **solo en el emergente** del chip de piezas. Un
 emergente hay que ir a buscarlo, y mientras tanto la pantalla afirma «4 piezas»

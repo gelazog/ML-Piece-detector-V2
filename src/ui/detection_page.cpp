@@ -3,6 +3,8 @@
 
 #include "vision/pipeline.h"
 
+#include <cmath>
+
 #include <QColor>
 #include <QCheckBox>
 #include <QColorDialog>
@@ -28,8 +30,8 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
                                  repositories::DetectionProfileRepository* profiles,
                                  std::int64_t selectedProfileId, double minAreaFraction,
                                  double maxAreaFraction,
-                             bool subpixelEdges)
-    : QWidget(parent), profiles_(profiles) {
+                             bool subpixelEdges, QSize frameSize)
+    : QWidget(parent), profiles_(profiles), frameSize_(frameSize) {
     auto* rootLayout = new QVBoxLayout(this);
     auto* help = new QLabel(
         tr("Si las luces o sombras arruinan el contorno automático: fija el umbral a "
@@ -394,6 +396,53 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
            "Por defecto 0,50 %. Bájalo si tus piezas son pequeñas y no se detectan;\n"
            "súbelo si se cuela ruido."));
     pieceForm->addRow(tr("Área mínima:"), minArea_);
+
+    // QUÉ ES UN 0,5 % EN LA IMAGEN QUE TIENES DELANTE.
+    //
+    // El ajuste manda de verdad —de él depende que una pieza exista o no— y se
+    // pedía en una unidad con la que no se puede decidir: nadie mira una tuerca
+    // y piensa «esto es el 0,4 % del encuadre». Medido sobre el banco, con el
+    // valor de fábrica: en `arandelas-4.png` se quedan fuera doce tornillos, y
+    // el operador que va a tocar este control no tiene forma de saber si 0,5 es
+    // mucho o poco para lo que está mirando.
+    //
+    // Traducido a píxeles sí se puede: «una mancha de unos 39x39 px» se compara
+    // de un vistazo con la pieza del vídeo. Se dice el lado del cuadrado y no
+    // solo el área porque un área en px² tampoco se imagina; un lado sí.
+    //
+    // Sin imagen no se traduce nada: inventar un tamaño de referencia sería dar
+    // una equivalencia que no vale para la cámara que haya puesta.
+    minAreaHint_ = new QLabel(this);
+    // Con nombre: la página tiene ya varias etiquetas de ayuda y buscarla por su
+    // texto es lo que rompió cuatro pruebas la última vez que se reordenó algo.
+    minAreaHint_->setObjectName(QStringLiteral("minAreaHint"));
+    minAreaHint_->setWordWrap(true);
+    minAreaHint_->setStyleSheet(theme::textStyle(theme::kInkMuted));
+    pieceForm->addRow(QString(), minAreaHint_);
+    const auto refreshHint = [this] {
+        if (minAreaHint_ == nullptr) {
+            return;
+        }
+        if (frameSize_.isEmpty()) {
+            minAreaHint_->setVisible(false);
+            return;
+        }
+        const double pixels = minArea_->value() / 100.0 *
+                              static_cast<double>(frameSize_.width()) *
+                              static_cast<double>(frameSize_.height());
+        const int side = static_cast<int>(std::lround(std::sqrt(std::max(pixels, 0.0))));
+        minAreaHint_->setVisible(true);
+        minAreaHint_->setText(
+            tr("En la imagen de ahora (%1×%2 px) son %3 px²: una mancha de unos "
+               "%4×%4 px no llega a pieza.")
+                .arg(frameSize_.width())
+                .arg(frameSize_.height())
+                .arg(static_cast<qlonglong>(std::llround(pixels)))
+                .arg(side));
+    };
+    connect(minArea_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [refreshHint](double) { refreshHint(); });
+    refreshHint();
 
     maxArea_ = new QDoubleSpinBox(this);
     maxArea_->setRange(10.0, 100.0);
