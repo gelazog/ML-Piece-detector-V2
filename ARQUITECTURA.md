@@ -2085,6 +2085,42 @@ arandela real da 3,56 y el tornillo tiene 42 manchas compactas) ni el área
 relativa (los agujeros de aligeramiento del engranaje son más pequeños que el
 ruido del tornillo).
 
+### Cuántas piezas hay, cuántas encuentra y cuántas se caen
+
+El banco tampoco tenía un recuento contrastado: se sabía cuántas piezas
+*encuentra* la aplicación, no cuántas *hay*. Contadas mirando las fotos:
+
+| Foto | Hay | Encuentra | Dice «pequeñas» |
+|---|---|---|---|
+| `producto-tuercas-prueba.jpg` | 100 | **100** | 0 |
+| `tornillo-ojo-5.png` | 5 | **5** | 0 |
+| `tornillos-1.png` | 3 | **3** | 0 |
+| `tornillo-ojo-4.png` | 2 | **2** | 7 |
+| `arandelas-4.png` | 16 | 4 | **12** |
+| `arandelas-1.png` | ~20 | 5 | 14 |
+
+Acertar cien tuercas de cien no estaba comprobado y no es poca cosa. Lo otro
+tampoco es un fallo: el área mínima de fábrica —el 0,5 % de la imagen— existe
+para que las letras de un rótulo o una barra de escala no se cuenten como
+piezas, y en `arandelas-4.png` los doce tornillos caen por ahí. **Lo que importa
+es que ninguna se pierda en silencio**, y eso ahora se comprueba con una suma
+exacta: 4 encontradas + 12 declaradas = 16, las que hay. Y bajando el mínimo al
+0,05 % salen **exactamente** las dieciséis, ni una mancha de ruido de propina —
+sin eso, decirle al operador que baje el ajuste sería mandarlo a un sitio peor.
+
+#### Y el número se lee sin pasar el ratón
+
+El aviso ya existía, con su ajuste dentro («baja *Área mínima* en *Configurar ▸
+Detección*»), pero vivía **solo en el emergente** del chip de piezas. Un
+emergente hay que ir a buscarlo, y mientras tanto la pantalla afirma «4 piezas»
+sobre una foto que tiene dieciséis.
+
+Ahora el rótulo dice **«4 piezas +12 pequeñas»**. El «+12» no explica nada y no
+le toca: dice que hay algo más y cuánto, que es lo que hace mirar; el porqué y el
+ajuste siguen en el emergente. La regla que lo pedía ya estaba escrita y es
+anterior al fallo: **lo que se enseña al pasar el ratón tiene que poder leerse
+sin ratón**.
+
 ### La guarda que borraba los agujeros de las arandelas
 
 `pieceMaskWithHoles` existe para una cosa: `analyzeFrame` devuelve la máscara con

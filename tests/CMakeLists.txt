@@ -137,6 +137,7 @@ add_executable(pci_gui_tests
   test_holes_belong_to_the_piece.cpp
   test_shape_reason_shows_its_evidence.cpp
   test_the_drawing_brings_its_own_ruler.cpp
+  test_how_many_pieces_are_there.cpp
   test_mosaic_click_survives.cpp
   test_scale_dialog.cpp
   test_selfexplaining.cpp

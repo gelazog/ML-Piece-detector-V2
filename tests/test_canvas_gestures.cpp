@@ -3424,6 +3424,75 @@ TEST(MultiPieceEndToEnd, WithSixPiecesInViewTheWindowSaysSix) {
         << "un aviso que no explica qué hacer con él es sólo un número más";
 }
 
+// LO QUE SE CAE POR PEQUEÑO SE DICE EN EL RÓTULO, NO SOLO AL PASAR EL RATÓN.
+//
+// El aviso existía —con su ajuste dentro, «baja Área mínima en Configurar ▸
+// Detección»— pero vivía SOLO en el emergente del chip. Un emergente hay que ir
+// a buscarlo, y mientras tanto la pantalla afirma «4 piezas» sobre una foto que
+// tiene dieciséis.
+//
+// No es un caso raro. Medido sobre el banco con el área mínima de fábrica:
+// `arandelas-4.png` enseña 4 de 16 —los cuatro anillos, y los doce tornillos
+// fuera— y `arandelas-1.png`, 5 de unas veinte. Pasa en cuanto la bandeja mezcla
+// tamaños, que es lo normal en una mesa de inspección.
+//
+// La regla de diseño que lo pedía está escrita y es anterior a este fallo: lo
+// que se enseña al pasar el ratón tiene que poder leerse SIN ratón. El «+4» no
+// explica nada y no le toca: dice que hay algo más y cuánto, que es lo que hace
+// mirar. El porqué y el ajuste siguen en el emergente.
+TEST(MultiPieceEndToEnd, TheChipSaysHowManyFellBelowTheMinimumArea) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    // 400x300 = 120 000 px, así que el área mínima de fábrica (0,5 %) son 600 px.
+    // Tres cuadrados de 40x40 (1600 px) la pasan; cuatro de 18x18 (324 px) no.
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        for (int i = 0; i < 3; ++i) {
+            painter.fillRect(QRect(40 + i * 90, 40, 40, 40), QColor(235, 235, 235));
+        }
+        for (int i = 0; i < 4; ++i) {
+            painter.fillRect(QRect(40 + i * 70, 180, 18, 18), QColor(235, 235, 235));
+        }
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("mezcla.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, path));
+
+    QElapsedTimer timer;
+    timer.start();
+    QLabel* chip = nullptr;
+    while (timer.elapsed() < 5000) {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+        auto* found = window.findChild<QLabel*>(QStringLiteral("piecesChip"));
+        if (found != nullptr && found->isVisible() &&
+            found->text().contains(QStringLiteral("pequeñas"))) {
+            chip = found;
+            break;
+        }
+        chip = found;
+    }
+    ASSERT_NE(chip, nullptr) << "no hay recuento de piezas en la ventana";
+    std::printf("  [pequeñas] el rótulo dice: «%s»\n", chip->text().trimmed().toStdString().c_str());
+    EXPECT_TRUE(chip->text().contains(QStringLiteral("pequeñas")))
+        << "el rótulo dice «" << chip->text().toStdString()
+        << "» y calla las cuatro manchas que no llegaron al área mínima. Sin ratón "
+           "encima, el operador no tiene forma de saber que se dejó piezas fuera";
+    EXPECT_TRUE(chip->text().contains(QStringLiteral("4")))
+        << "se cayeron cuatro y el rótulo no dice cuántas: «"
+        << chip->text().toStdString() << "»";
+    // Y el emergente sigue llevando el ajuste, que es lo que se toca.
+    EXPECT_TRUE(chip->toolTip().contains(QStringLiteral("Área mínima")))
+        << "el rótulo avisa y el emergente ya no dice dónde se arregla: «"
+        << chip->toolTip().toStdString() << "»";
+}
+
 // Y con una sola pieza no grita: el aviso destacado sólo tiene sentido cuando
 // cambia lo que el operador debe hacer.
 TEST(MultiPieceEndToEnd, WithASinglePieceItDoesNotShout) {

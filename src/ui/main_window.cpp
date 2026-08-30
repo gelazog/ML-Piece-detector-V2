@@ -5912,11 +5912,30 @@ void MainWindow::updatePiecesChip() {
     // Cuando sobran manchas se dicen LAS DOS cifras. Enseñar solo las usadas
     // haria desaparecer del informe una sombra de mas sin dejar rastro; enseñar
     // solo las vistas contradiria al selector, que numera las usadas.
+    // Y LAS QUE SE CAYERON POR PEQUEÑAS, EN EL PROPIO ROTULO.
+    //
+    // El aviso con su ajuste ya existía, pero vivía SOLO en el emergente del
+    // chip, y un emergente hay que ir a buscarlo con el ratón: mientras tanto la
+    // pantalla dice «4 piezas» sobre una foto que tiene dieciséis.
+    //
+    // Medido sobre el banco, con el área mínima de fábrica: `arandelas-4.png`
+    // enseña 4 de 16 —los cuatro anillos, y los doce tornillos fuera—, y
+    // `arandelas-1.png`, 5 de unas veinte. No es un caso raro de una foto rara:
+    // es lo que pasa en cuanto la bandeja mezcla tamaños.
+    //
+    // El «+12» no cabe explicado en el rótulo y no hace falta que quepa: dice
+    // que hay algo más y cuánto, que es lo que hace mirar. El porqué y el ajuste
+    // que lo arregla siguen en el emergente, que es donde se va a mirar cuando
+    // el número extraña.
+    const QString dropped =
+        lastPiecesTooSmall_ > 0 ? tr("+%1 pequeñas ").arg(lastPiecesTooSmall_) : QString();
     piecesChip_->setText(
-        someLeftOut ? tr(" %1 de %2 ").arg(lastPieceCount_).arg(lastPiecesSeen_)
-                    : (several ? tr(" %1 piezas ").arg(lastPieceCount_) : tr(" 1 pieza ")));
+        (someLeftOut ? tr(" %1 de %2 ").arg(lastPieceCount_).arg(lastPiecesSeen_)
+                     : (several ? tr(" %1 piezas ").arg(lastPieceCount_)
+                                : tr(" 1 pieza "))) +
+        dropped);
     piecesChip_->setStyleSheet(
-        (several || someLeftOut)
+        (several || someLeftOut || lastPiecesTooSmall_ > 0)
             ? theme::noticeStyle(theme::kWarn, theme::kWarnField) +
                   QStringLiteral(" border-radius:8px; padding:1px 6px; font-weight:bold;")
             : QStringLiteral("color:%1; background:%2; border-radius:8px;"

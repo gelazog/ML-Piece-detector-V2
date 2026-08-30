@@ -259,10 +259,15 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    entre "no hay pieza" y "hay pieza" — bájalo si no se detectan, súbelo si se
    cuela ruido.
 
-   **Y ahora te dice cuántas se han quedado fuera por ese mínimo.** El recuento
-   de piezas lo pone en su explicación: «*además, 14 mancha(s) más se quedaron
-   fuera por no llegar al área mínima; si son piezas tuyas, baja «Área mínima»
-   en Configurar ▸ Detección*».
+   **Y ahora te dice cuántas se han quedado fuera por ese mínimo, en el propio
+   rótulo.** El recuento de piezas pone «**4 piezas +12 pequeñas**», sin tener
+   que pasar el ratón por encima; la explicación de al lado dice el resto:
+   «*además, 12 mancha(s) más se quedaron fuera por no llegar al área mínima; si
+   son piezas tuyas, baja «Área mínima» en Configurar ▸ Detección*».
+
+   El número corto va a la vista a propósito: un aviso que solo aparece al pasar
+   el ratón no está, y mientras tanto la pantalla afirma «4 piezas» sobre una
+   foto que tiene dieciséis.
 
    Hacía falta porque antes se descartaban en silencio. Sobre una foto de
    catálogo con dieciséis arandelas graduadas, el mínimo de fábrica deja **una**
