@@ -3025,6 +3025,21 @@ contorno de la pieza—, comprobado con el contorno delante porque `findHoles` n
 dice de quién es cada hueco. Sobre el banco entero: **190 cotas de agujero pasan
 a 71**, y ninguna foto ofrece más agujeros de los que cuenta.
 
+##### El titular que decía «no sé qué es esto» debajo de «20 dientes»
+
+Para el clasificador de figuras una rueda dentada es **irregular** —en
+`engranaje-1.png` le cuenta 111 lados rectos, que no son ni un polígono medible
+uno a uno ni un círculo—, y una rosca vista de perfil, también. Así que el
+informe salía titulado «Pieza de contorno libre» mientras tres filas más abajo
+ponía «Dientes (z) 20»; en `rosca-1.png`, lo mismo con «Paso de rosca 66 px».
+
+El diálogo daba dos respuestas a la vez y quien lo lee tenía que elegir a cuál
+creer. Se cree a la herramienta, y no por simpatía: el engranaje **cuenta los
+dientes por dos caminos independientes y se niega si no coinciden**, y la rosca
+solo da paso si el perfil se repite a lo largo del eje. El porqué del
+clasificador no se tapa — sigue en la línea de debajo del titular, que es la que
+dice «contorno de 111 lados rectos… se mide como pieza suelta».
+
 ##### El área que enseñaba dos números distintos en la misma tabla
 
 El informe enseña cada magnitud dos veces a propósito: el **área como hecho** del

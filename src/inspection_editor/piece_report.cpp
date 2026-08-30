@@ -145,6 +145,40 @@ PieceReport measureWholePiece(const cv::Mat& gray, const cv::Mat& mask,
     everything.maxProposals = 200;
     report.watchable = proposeTools(gray, mask, fixture, everything, mmPerPixel);
 
+    // EL TITULAR, CORREGIDO POR QUIEN SUPO MÁS QUE EL CLASIFICADOR.
+    //
+    // Para el clasificador de figuras una rueda dentada es «irregular» —en
+    // `engranaje-1.png` le cuenta 111 lados rectos— y una rosca vista de perfil,
+    // también. Así que el informe se titulaba «Pieza de contorno libre» mientras
+    // tres filas más abajo ponía «Dientes (z) 20» o «Paso de rosca 66 px».
+    //
+    // El diálogo decía a la vez «no sé qué es esto» y «es un engranaje de veinte
+    // dientes», y quien lo lee tiene que elegir a cuál creer. Se cree a la
+    // herramienta, y por un motivo concreto: el engranaje cuenta los dientes por
+    // DOS caminos independientes y se niega si no coinciden, y la rosca solo da
+    // paso si el perfil se repite a lo largo del eje. Ninguna de las dos contesta
+    // por contestar.
+    //
+    // El porqué del clasificador no se tapa: sigue justo debajo del titular, en
+    // la línea que dice «contorno de 111 lados rectos… se mide como pieza
+    // suelta». Lo que cambia es el titular, que es lo que se lee primero y lo
+    // único que viaja al exportar.
+    if (report.shape.kind == vision::ShapeKind::Irregular) {
+        for (const auto& proposal : report.watchable) {
+            if (proposal.config.type == ToolType::Gear) {
+                report.headline = "Rueda dentada de " +
+                                  std::to_string(static_cast<int>(
+                                      std::lround(proposal.measured))) +
+                                  " dientes";
+                break;
+            }
+            if (proposal.config.type == ToolType::Thread) {
+                report.headline = "Rosca vista de perfil";
+                break;
+            }
+        }
+    }
+
     std::vector<ToolRunResult> asResults;
     std::vector<ToolConfig> asTools;
     asResults.reserve(report.watchable.size());

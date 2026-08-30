@@ -231,3 +231,49 @@ TEST(PieceReport, ACotaNamedLikeAContourFactHasToAgreeWithIt) {
     EXPECT_GT(compared, 10) << "casi ninguna magnitud sale por los dos caminos: esta "
                                "prueba no está mirando donde cree";
 }
+
+// EL TÍTULO DECÍA «NO SÉ QUÉ ES ESTO» Y LA TABLA, «ENGRANAJE DE 20 DIENTES».
+//
+// Para el clasificador de figuras una rueda dentada es irregular: en
+// `engranaje-1.png` le cuenta 111 lados rectos, que no son ni un polígono
+// medible uno a uno ni un círculo. Así que el informe salía titulado «Pieza de
+// contorno libre» mientras tres filas más abajo ponía «Dientes (z) 20». Lo mismo
+// en `rosca-1.png`, con «Paso de rosca 66 px» debajo del mismo título.
+//
+// El diálogo decía las dos cosas a la vez y quien lo lee tiene que elegir a cuál
+// creer — que es justo la clase de incoherencia por la que se abrió este repaso.
+//
+// Se cree a la herramienta, y no por simpatía: el engranaje cuenta los dientes
+// por dos caminos independientes y se niega si no coinciden; la rosca solo da
+// paso si el perfil se repite a lo largo del eje. El porqué del clasificador no
+// se tapa, sigue en la línea de debajo del titular.
+TEST(PieceReport, TheHeadlineSaysWhatTheToolRecognised) {
+    const auto photos = bank();
+    if (photos.empty()) {
+        GTEST_SKIP() << "las fotos del usuario no están en esta máquina";
+    }
+    int seen = 0;
+    for (const auto& [name, piece] : photos) {
+        if (name != "engranaje-1.png" && name != "rosca-1.png") {
+            continue;
+        }
+        const auto report =
+            inspection::measureWholePiece(piece.gray, piece.mask, {}, 0.0,
+                                          inspection::LengthUnit::Auto, piece.gray.size());
+        ASSERT_TRUE(report.ok) << name;
+        ++seen;
+        const std::string expected = name == "engranaje-1.png" ? "Rueda dentada" : "Rosca";
+        EXPECT_NE(report.headline.find(expected), std::string::npos)
+            << name << ": el informe se titula «" << report.headline
+            << "» y dentro lleva la cota que dice qué es la pieza. Dos respuestas "
+               "distintas en el mismo diálogo";
+        // Y el porqué del clasificador sigue estando, que es lo que evita que el
+        // titular nuevo se lea como una certeza que no hay.
+        EXPECT_FALSE(report.shape.reason.empty())
+            << name << ": se cambió el titular y se perdió la explicación de por qué "
+                       "el contorno no se reconoció; entonces el titular miente por "
+                       "omisión";
+    }
+    ASSERT_EQ(seen, 2) << "faltan las dos fotos que dan el caso: sin ellas esta prueba "
+                          "no comprueba nada";
+}

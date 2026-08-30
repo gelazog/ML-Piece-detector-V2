@@ -673,6 +673,29 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
 - [ ] **E7 · `runRegion` no coincide en área con la silueta de la aplicación.**
   Usa su propio Otsu local y la diferencia llega al 52 % en cotas ya guardadas.
   **Decisión del dueño del proyecto, aparcada a propósito.**
+
+  **Medido otra vez, foto a foto sobre el banco entero** (para que la decisión de
+  desaparcarlo se tome con el número delante, no de memoria). Comparando cada
+  magnitud consigo misma —el hecho del contorno contra la cota de la Región—:
+
+  | | |
+  |---|---|
+  | fotos donde la diferencia pasa del 10 % | **13 de 17** |
+  | peor área | `arandelas-2.png`: 5523 px² contra 991 → **82 %** |
+  | peor perímetro | `tornillo-ojo-3.png`: 2401 px contra 5530 → **130 %** |
+  | testigo: largo y ancho (geometría, sin umbralizar) | **0,0 % en las 17** |
+
+  El 52 % de la primera medición se queda corto. Y no es un caso raro: con varias
+  piezas en el encuadre, el recuadro de la Región coge trozos de las vecinas, y
+  eso en esta aplicación es lo normal.
+
+  **Lo que ha cambiado mientras sigue aparcado.** La cota que no reproduce el
+  contorno de su pieza **ya no se publica** (corte en el 10 %, elegido en el hueco
+  medido entre el 7 y el 10,7). Eso destapó una consecuencia que estaba tapada:
+  tres piezas del banco se quedan **sin ninguna cota que pueda rechazar nada**,
+  porque el área de la Región era la única que comprobaba. Ahora el informe lo
+  avisa en vez de callarlo. Es decir: E7 ya no da números falsos, pero **cuesta
+  cotas** — y ese es el precio de tenerlo aparcado, ahora visible.
 - [x] **E8 · Cien tuercas iguales, ocho formas distintas.** RESUELTO: 85 de 100. Verificado midiendo
   `producto-tuercas-prueba.jpg` pieza por pieza. Son cien tuercas hexagonales
   del mismo lote y **el área varía solo un 0,9 %** entre la mayor y la menor, así
