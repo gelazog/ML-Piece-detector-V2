@@ -34,6 +34,7 @@
 #include <vector>
 
 #include "vision/pipeline.h"
+#include "vision/segmentation.h"
 
 using namespace pci;
 
@@ -128,6 +129,86 @@ TEST(PieceCount, WhatTheMinimumAreaLeavesOutIsCountedAndRecoverable) {
                 static_cast<int>(withAll.value().size()), stillTooSmall);
     EXPECT_EQ(static_cast<int>(withAll.value().size()), kPiecesInThePhoto)
         << "bajando el área mínima tienen que salir las dieciséis y ninguna más";
+}
+
+// LA FOTO PEOR DEL BANCO NECESITA LOS DOS AJUSTES, Y CADA UNO SIN EL OTRO NO
+// LLEGA.
+//
+// `arandelas-1.png` son veinte arandelas surtidas sobre un cartón ROJO, con su
+// barra de 20 mm. Es la foto donde la detección de fábrica peor lo hace, y
+// mirarla pieza por pieza contesta por qué — con números, que es lo que faltaba:
+//
+//   | clave de color | área mínima | piezas |
+//   |----------------|-------------|--------|
+//   | apagada        | 0,50 % (fábrica) |  5 |
+//   | apagada        | 0,05 %      |  9 |
+//   | por color      | 0,50 %      | 11 |
+//   | por color      | 0,10 %      | **20** |
+//
+// O sea: bajar el área mínima sola llega a nueve y se atasca, porque lo que
+// pierde a las otras once no es el tamaño — es que sobre un cartón rojo una
+// arandela de latón tiene casi la misma CLARIDAD que la mesa, y la segmentación
+// por claridad no las separa. Y la clave de color sola llega a once, porque las
+// pequeñas siguen sin pasar el área mínima.
+//
+// Las dos cosas ya están en la aplicación y las dos se avisan por su lado: el
+// aviso «tu mesa tiene color» con su botón, y el «+N pequeñas» del recuento con
+// su ajuste. Lo que no había era la comprobación de que la cadena entera llega
+// hasta las veinte — y sin eso, cualquiera de los dos avisos podría dejar de
+// servir sin que nada fallara.
+TEST(PieceCount, TheWorstPhotoNeedsBothKnobsAndTheChainReachesTwenty) {
+    const std::filesystem::path path{
+        "C:/Users/furro/Pictures/IMG-MC/arandelas-1.png"};
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec)) {
+        GTEST_SKIP() << "las fotos del usuario no están en esta máquina";
+    }
+    const cv::Mat image = cv::imread(path.string(), cv::IMREAD_COLOR);
+    ASSERT_FALSE(image.empty());
+    constexpr int kWashersInThePhoto = 20;
+
+    const auto count = [&image](vision::SegmentationOptions::BackgroundKey key,
+                                double minArea) {
+        vision::PipelineConfig config;
+        config.minAreaFraction = minArea;
+        config.segmentation.recoverHighlightsBy = 12;
+        config.segmentation.backgroundKey = key;
+        auto found = vision::analyzeFrames(image, config);
+        return found.isOk() ? static_cast<int>(found.value().size()) : -1;
+    };
+    using Key = vision::SegmentationOptions::BackgroundKey;
+
+    const int byLightness = count(Key::Off, 0.005);
+    const int byLightnessFiner = count(Key::Off, 0.0005);
+    const int byColour = count(Key::Auto, 0.005);
+    const int both = count(Key::Auto, 0.001);
+    std::printf("  [rojo] por claridad %d (y %d bajando el mínimo diez veces), "
+                "por color %d, con los dos %d de %d\n",
+                byLightness, byLightnessFiner, byColour, both, kWashersInThePhoto);
+
+    // Y el aviso que lleva al operador a la clave de color tiene que dispararse
+    // en esta foto: el fondo es rojo de sobra.
+    const double colourful =
+        vision::backgroundColourfulness(vision::estimateBackgroundColour(image));
+    EXPECT_GT(colourful, 0.15)
+        << "el cartón rojo ya no se ve colorido (" << colourful
+        << "): entonces el aviso que manda a separar por color no salta, y esta foto "
+           "se queda en cinco piezas sin que nadie diga por qué";
+
+    // Ninguno de los dos ajustes llega solo. Si algún día uno de ellos llegara,
+    // esta prueba falla y hay que volver a mirar: sería una mejora, no un fallo,
+    // pero cambia el consejo que se le da al operador.
+    EXPECT_LT(byLightnessFiner, kWashersInThePhoto)
+        << "bajar el área mínima sola ya llega a las veinte: el aviso de la clave de "
+           "color deja de hacer falta en esta foto y hay que revisarlo";
+    EXPECT_LT(byColour, kWashersInThePhoto)
+        << "la clave de color sola ya llega a las veinte: entonces sobra el consejo de "
+           "bajar además el área mínima";
+
+    // Y juntos sí.
+    EXPECT_EQ(both, kWashersInThePhoto)
+        << "con la clave de color y el área mínima al 0,1 % tienen que salir las veinte "
+           "arandelas de la foto, y salen " << both;
 }
 
 // «0,5 %» NO ES UNA UNIDAD CON LA QUE SE PUEDA DECIDIR.
