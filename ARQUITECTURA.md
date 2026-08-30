@@ -2036,6 +2036,70 @@ misma.
 
 ---
 
+## 2 bis. El banco de fotos: qué hay de verdad en cada una
+
+Vive fuera del repositorio, en `C:\\Users\\furro\\Pictures\\IMG-MC`, y las pruebas se saltan solas si
+no está. Esta tabla sale de **mirar las diecisiete imágenes una por una**, y
+hacía falta: varias pruebas —incluidas algunas escritas hace dos días— medían
+contra suposiciones que nadie había comprobado.
+
+| Fichero | Qué es | Piezas | Agujeros de la mayor |
+|---|---|---|---|
+| `arandelas-1.png` | ~20 arandelas variadas sobre fondo rojo, con barra de «20 mm» | ~20 | 1 |
+| `arandelas-2.png` | **lámina de catálogo** de arandelas planas: rótulos, «ID/OD», regla dibujada | 0 | — |
+| `arandelas-3.jpg` | ~18 arandelas variadas: planas, dentadas, de lengüeta | ~18 | 1 |
+| `arandelas-4.png` | 4 anillos separadores (taladro central + 6 agujeros) y 12 tornillos | 16 | **7** |
+| `arandelas-5.png` | juego: piñón helicoidal, tambor dentado, 3 arandelas metálicas, 3 de fibra | ~10 | 1 |
+| `engranaje-1.png` | **ilustración vectorial** de un engranaje con chavetero | 1 | 1 |
+| `engranajes-1.jpg` | dos engranajes que se tocan, con agujeros de aligeramiento | 2, fundidos en un contorno | ~20 |
+| `producto-tuercas-prueba.jpg` | 100 tuercas autoblocantes hexagonales, 10×10 | 100 | 2 |
+| `Producto_Tuerca_Liv_02.jpg` | **render** de una tuerca hexagonal, con mascota de la marca | 1 | 2-3 |
+| `rosca-1.png` | **dibujo didáctico** de una rosca: flecha de «1 pulgada» sobre 6 hilos numerados | 1 | **0** |
+| `tablero-ajedrez-medida.png` | **anuncio** de un tablero de silicona: marca de agua, cotas «50CM» | 1 | 0 (las 18 «casillas») |
+| `tornillo-1.png` | 1 tornillo de cabeza hexagonal, roscado | 1 | **0** |
+| `tornillo-2.png` | 1 tirafondo galvanizado de cabeza hexagonal | 1 | **0** |
+| `tornillo-ojo-3.png` | 1 cáncamo, brillo fuerte | 1 | 1 |
+| `tornillo-ojo-4.png` | 2 cáncamos que se tocan | 2 | 1 cada uno |
+| `tornillo-ojo-5.png` | 5 cáncamos separados | 5 | 1 cada uno |
+| `tornillos-1.png` | 3 tornillos de cabeza hexagonal | 3 | **0** |
+
+**Cinco de las diecisiete no son fotografías de piezas.** Son material comercial:
+una lámina de catálogo, dos ilustraciones, un render y un anuncio. Eso no las
+invalida —el clasificador y las herramientas trabajan sobre lo que ven— pero sí
+decide **qué se puede comprobar con ellas**:
+
+- las pruebas de **coherencia** (que el informe no se contradiga, que no publique
+  imposibles, que los agujeros sean de la pieza que mide) valen sobre cualquier
+  imagen, dibujo incluido;
+- las de **acierto** necesitan una pieza de verdad o un patrón. Y aquí está lo
+  que se descubrió al mirarlas: `arandelas-2.png` no tiene ninguna pieza, y lo
+  que la aplicación mide en ella —«Polígono de 9 lados»— es **el dibujito de la
+  leyenda** que ilustra la cota H. Ninguna mejora del clasificador arregla eso.
+
+**Y los agujeros de los tornillos son cero.** La aplicación cuenta 83 en
+`tornillo-1.png`, 22 en `tornillo-2.png` y 7 en `tornillos-1.png`: son las
+rendijas de sombra del filete, vistas en la máscara. Queda escrito con su verdad
+de campo para que nadie vuelva a tomar esos recuentos por buenos — y también
+queda escrito lo que **no** los separa, medido y descartado: ni la esbeltez (una
+arandela real da 3,56 y el tornillo tiene 42 manchas compactas) ni el área
+relativa (los agujeros de aligeramiento del engranaje son más pequeños que el
+ruido del tornillo).
+
+### La única medida del banco contrastada contra un patrón
+
+`rosca-1.png` **trae el patrón dentro**: una flecha azul que rotula una pulgada y
+los seis hilos que caben en ella, numerados del 1 al 6. O sea que el dibujo
+declara su propio paso.
+
+La flecha se mide en la imagen en vez de copiar aquí el número, porque un número
+copiado se queda viejo el día que alguien recorte la foto. El asta va de x=172 a
+x=562: **391 px por pulgada**, que entre seis hilos son **65,2 px** de paso. La
+herramienta de rosca mide **66,0 px**: un **1,3 %**.
+
+Es la primera comprobación del proyecto contra un patrón **externo** a la
+aplicación. Todo lo demás sobre el banco compara la aplicación consigo misma, y
+eso puede estar de acuerdo y equivocado a la vez.
+
 ## 3. Detección de la pieza (visión clásica)
 
 Aquí **no hay IA**. Es una cadena de visión clásica, elegida porque es rápida,
