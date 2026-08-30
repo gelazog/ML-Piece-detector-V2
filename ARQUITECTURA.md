@@ -2085,6 +2085,45 @@ arandela real da 3,56 y el tornillo tiene 42 manchas compactas) ni el área
 relativa (los agujeros de aligeramiento del engranaje son más pequeños que el
 ruido del tornillo).
 
+### La guarda que borraba los agujeros de las arandelas
+
+`pieceMaskWithHoles` existe para una cosa: `analyzeFrame` devuelve la máscara con
+el contorno exterior **relleno** —a propósito, para que el ruido no sesgue el
+fixture— y rellenar borra los agujeros, que en una arandela son la mitad de la
+pieza. La función vuelve a segmentar y cruza.
+
+Llevaba una regla de seguridad razonable: *si el cruce conserva menos de la mitad
+de la máscara rellena, la segunda segmentación no vio lo mismo — devuelve la
+rellena, que perder los agujeros es un inconveniente y perder la pieza es no
+medir nada*. Medía la sospecha **por área**, y por eso descartaba justo las
+piezas para las que la función existe.
+
+Los anillos de `arandelas-4.png` son Ø 191 px con un taladro de Ø 150: el
+material es el **46 %** del disco. Por debajo de la mitad. Resultado, al elegir
+uno como pieza:
+
+| | Con la guarda vieja | De verdad |
+|---|---|---|
+| agujeros | 0 | 7 |
+| figura | disco (`Ø`) | arandela (`Ø exterior`) |
+| área | 28 678 px² | 13 264 px² |
+
+Y lo peor no es la cota perdida: **la misma arandela salía con siete agujeros en
+el informe de la imagen entera y con cero al elegirla como pieza**, según por qué
+camino se llegara.
+
+Lo que hay que comprobar no es cuánta área queda, sino si sigue estando la pieza:
+el cruce tiene que conservar su **contorno exterior**. Se rellena el contorno
+mayor del cruce y se compara con la máscara rellena — una arandela da el 100 %
+porque su borde de fuera es el mismo, y un cruce con la polaridad cambiada se
+queda con el agujero, cuyo contorno relleno es mucho menor (el 62 % en esos
+anillos). El 0,8 del corte es holgura para que un umbral algo distinto pueda
+comerse unos píxeles del borde, no una frontera entre dos poblaciones medidas.
+
+La prueba que lo fija dibuja una arandela **de pared fina** —taladro de Ø 300 en
+un disco de Ø 380, el 62 % del área— porque la que ya había, de Ø 380 / Ø 160,
+conserva el 82 % y nunca llegaba a tocar la regla. Ahí estuvo escondido el fallo.
+
 ### La única medida del banco contrastada contra un patrón
 
 `rosca-1.png` **trae el patrón dentro**: una flecha azul que rotula una pulgada y

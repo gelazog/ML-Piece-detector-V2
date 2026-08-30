@@ -315,11 +315,48 @@ cv::Mat pieceMaskWithHoles(const cv::Mat& image, const cv::Mat& filledMask,
     }
     cv::Mat withHoles;
     cv::bitwise_and(filledMask, segmented.value(), withHoles);
+    // ¿SE HA PERDIDO LA PIEZA, O ES QUE LA PIEZA TIENE UN AGUJERO GRANDE?
+    //
     // Un cruce que se queda sin pieza significa que la segunda segmentación no
     // vio lo mismo que la primera (otra polaridad, otro umbral automático). En
     // ese caso manda la máscara original: perder los agujeros es un
     // inconveniente, perder la pieza es no medir nada.
-    if (cv::countNonZero(withHoles) < cv::countNonZero(filledMask) / 2) {
+    //
+    // Aquí la sospecha se medía por ÁREA —«si el cruce conserva menos de la
+    // mitad, desconfía»— y eso descartaba justo las piezas para las que existe
+    // esta función. Una arandela de pared fina conserva poco de su disco por
+    // definición: en `arandelas-4.png` los anillos son Ø 191 px con un taladro
+    // de Ø 150, o sea que el material es el 46 % del disco. Caía por debajo de
+    // la mitad, se devolvía la máscara rellena y la arandela se quedaba sin
+    // agujeros, sin Ø interior y con un área de 28 678 px² en vez de 13 264.
+    //
+    // Y era peor que una cota perdida: la MISMA arandela salía con siete
+    // agujeros en el informe de la imagen entera y con cero al elegirla como
+    // pieza, según por qué camino se llegara.
+    //
+    // Lo que hay que comprobar no es cuánta área queda, sino si sigue estando la
+    // pieza: el cruce tiene que conservar su CONTORNO EXTERIOR. Se rellena el
+    // contorno mayor del cruce y se compara con la máscara rellena. Una arandela
+    // da el 100 % —su borde de fuera es el mismo— y un cruce con la polaridad
+    // cambiada se queda con el agujero, cuyo contorno relleno es mucho menor.
+    std::vector<std::vector<cv::Point>> kept;
+    cv::findContours(withHoles, kept, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    if (kept.empty()) {
+        return filledMask;
+    }
+    const auto biggest = std::max_element(
+        kept.begin(), kept.end(),
+        [](const auto& a, const auto& b) { return cv::contourArea(a) < cv::contourArea(b); });
+    cv::Mat outline = cv::Mat::zeros(withHoles.size(), CV_8UC1);
+    cv::drawContours(outline, kept,
+                     static_cast<int>(std::distance(kept.begin(), biggest)),
+                     cv::Scalar(255), cv::FILLED);
+    // El 0,8 no separa dos poblaciones medidas: es holgura para que un umbral
+    // algo distinto pueda comerse unos píxeles del borde sin que eso cuente como
+    // haber perdido la pieza. Lo que tiene que caer del otro lado —quedarse con
+    // el agujero en vez de con la pieza— no se acerca: en los anillos de
+    // `arandelas-4.png` sería el 62 %.
+    if (cv::countNonZero(outline) < 0.8 * cv::countNonZero(filledMask)) {
         return filledMask;
     }
     return withHoles;

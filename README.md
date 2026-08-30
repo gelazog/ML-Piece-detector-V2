@@ -549,6 +549,12 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    segundas, el informe lo avisa: guardarla como plantilla daría una pieza que
    no rechaza nada, y eso tienes que saberlo antes y no tres lotes después.
 
+   **Una arandela conserva su agujero también al elegirla como pieza.** Si el
+   taladro se come más de la mitad del disco —una arandela de pared fina, un
+   anillo separador—, antes se perdía al seleccionarla: salía como disco macizo,
+   sin Ø interior y con el doble de área. La misma pieza daba un número distinto
+   según la miraras en el informe de la foto entera o de una en una.
+
    **Los agujeros que te propone son los de ESA pieza.** Si en el encuadre hay
    una bandeja entera —veinte tuercas, un puñado de arandelas—, cada informe
    habla solo de la pieza que estás midiendo: antes listaba también los agujeros

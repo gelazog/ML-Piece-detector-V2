@@ -405,6 +405,60 @@ TEST(PieceReport, AWasherKeepsItsHoleThroughTheRealPipeline) {
     EXPECT_NEAR(innerDiameter->value, 160.0, 6.0);
 }
 
+// UNA ARANDELA DE PARED FINA CONSERVA POCO DE SU DISCO. ESO NO ES PERDER LA PIEZA.
+//
+// La regla de seguridad del cruce medía la sospecha por ÁREA: «si el cruce
+// conserva menos de la mitad de la máscara rellena, la segunda segmentación no
+// vio lo mismo — devuelve la rellena». Y eso descartaba justo las piezas para
+// las que existe la función.
+//
+// El caso está en el banco: en `arandelas-4.png` los anillos son de Ø 191 px con
+// un taladro de Ø 150, así que el material es el **46 %** del disco. Caía por
+// debajo de la mitad, se devolvía la máscara rellena, y el anillo se quedaba sin
+// agujeros, sin Ø interior y con un área de 28 678 px² en vez de 13 264.
+//
+// Y era peor que una cota perdida: la MISMA arandela salía con siete agujeros en
+// el informe de la imagen entera y con **cero** al elegirla como pieza, según
+// por qué camino se llegara. Dos respuestas para la misma pieza.
+//
+// Lo que hay que comprobar no es cuánta área queda, sino si sigue estando la
+// pieza: el cruce tiene que conservar su contorno EXTERIOR.
+//
+// Esta prueba dibuja la arandela que el fallo se comía —bore de Ø 300 en un disco
+// de Ø 380, o sea el 62 % del área— porque la que ya había (Ø 380 / Ø 160)
+// conserva el 82 % y nunca llegaba a tocar la regla.
+TEST(PieceReport, AThinWalledWasherAlsoKeepsItsHole) {
+    const cv::Mat image = washerImage(190, 150);
+    const auto analysis = pci::vision::analyzeFrame(image, {});
+    ASSERT_TRUE(analysis.isOk()) << analysis.error().message;
+
+    const double filledArea = cv::countNonZero(analysis.value().mask);
+    const cv::Mat withHoles =
+        pci::vision::pieceMaskWithHoles(image, analysis.value().mask);
+    const double keptArea = cv::countNonZero(withHoles);
+    std::printf("  [arandela fina] el cruce conserva %.0f de %.0f px (%.0f %%)\n",
+                keptArea, filledArea, 100.0 * keptArea / filledArea);
+    ASSERT_LT(keptArea, filledArea * 0.5)
+        << "esta arandela ya no es de pared fina: deja de reproducir el fallo, y "
+           "entonces la prueba no comprueba nada. Adelgázala";
+
+    const auto report = measureWholePiece(image, withHoles, {});
+    ASSERT_TRUE(report.ok) << report.problem;
+    EXPECT_EQ(report.shape.kind, pci::vision::ShapeKind::Ring)
+        << "sin su agujero, una arandela se mide como un disco macizo";
+    const auto* holes = rowNamed(report, "Agujeros");
+    ASSERT_NE(holes, nullptr);
+    EXPECT_DOUBLE_EQ(holes->value, 1.0);
+    // El diámetro interior se comprueba contra el CLASIFICADOR y no contra la
+    // cota. La cota la mide un Círculo que vuelve a umbralizar dentro de su
+    // banda de búsqueda, y sobre esta misma arandela da 363 px para un taladro
+    // de 300: es la avería aparcada por decisión del dueño, y comprobarla aquí
+    // sería atar esta prueba a un fallo que no es el suyo. Lo que esta prueba
+    // defiende es que el agujero SIGUE ESTANDO.
+    EXPECT_NEAR(report.shape.innerDiameter, 300.0, 8.0)
+        << "el agujero se conserva pero no es el que se dibujó";
+}
+
 TEST(PieceReport, RestoringTheHolesNeverLosesThePiece) {
     // La regla de seguridad del cruce: si la segunda segmentación no viera lo
     // mismo que la primera, quedarse sin pieza sería mucho peor que quedarse
