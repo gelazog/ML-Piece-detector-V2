@@ -256,7 +256,8 @@ MeasurementStability measureStability(const cv::Mat& image, const PipelineConfig
 
 core::Result<std::vector<PieceAnalysis>> analyzeFrames(const cv::Mat& image,
                                                        const PipelineConfig& config,
-                                                       int* belowMinArea) {
+                                                       int* belowMinArea,
+                                                       std::vector<double>* blobAreas) {
     if (image.empty()) {
         return core::Result<std::vector<PieceAnalysis>>::err("Imagen vacía");
     }
@@ -277,7 +278,7 @@ core::Result<std::vector<PieceAnalysis>> analyzeFrames(const cv::Mat& image,
                               ? splitTouchingPieces(mask.value())
                               : mask.value(),
                           config.minAreaFraction, config.maxAreaFraction, kMaxPieces,
-                          nullptr, belowMinArea);
+                          nullptr, belowMinArea, blobAreas);
     if (contours.empty()) {
         return core::Result<std::vector<PieceAnalysis>>::err(
             "No se encontró ninguna pieza en la imagen");

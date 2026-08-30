@@ -257,8 +257,10 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    (en % de la imagen): deciden qué se acepta como pieza y antes estaban fijas
    en el código. **Debajo del área mínima te dice qué significa ese porcentaje
    en la imagen que tienes delante** —«*en la imagen de ahora (631×477 px) son
-   1505 px²: una mancha de unos 39×39 px no llega a pieza*»— y cambia mientras
-   mueves el valor. Nadie mira una tuerca y piensa «esto es el 0,4 % del
+   1505 px²: una mancha de unos 39×39 px no llega a pieza*»— **y cuántas piezas
+   entran y se caen con ese valor**: «*con este valor pasan el mínimo 4 y se
+   quedan fuera 12 por pequeñas*». Las dos frases cambian mientras mueves el
+   número, así que bajarlo hasta que entren todas es un gesto de un segundo. Nadie mira una tuerca y piensa «esto es el 0,4 % del
    encuadre»; un cuadrado de 39 px sí se compara de un vistazo. Con piezas pequeñas, el 0,5 % por defecto es justo la frontera
    entre "no hay pieza" y "hay pieza" — bájalo si no se detectan, súbelo si se
    cuela ruido.

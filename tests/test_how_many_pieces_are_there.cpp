@@ -157,6 +157,52 @@ TEST(PieceCount, WhatTheMinimumAreaLeavesOutIsCountedAndRecoverable) {
 #include "ui/configure_dialog.h"
 #include "ui/detection_page.h"
 
+
+// Y LO QUE DE VERDAD TRAE AL OPERADOR A ESTE AJUSTE: CUÁNTAS ENTRAN.
+//
+// La equivalencia en píxeles dice qué es el número; lo que se quiere saber es
+// qué HACE. La pregunta que trae aquí es «se ven 4 piezas y hay 16», y se
+// contesta sin coste: las áreas de todas las manchas ya las calculó el análisis
+// que se está viendo, así que esto es contar en una lista ordenada.
+//
+// Volver a segmentar en cada tecla habría costado un frame entero por pulsación
+// y, peor, podría dar un resultado distinto del que hay en pantalla — el ajuste
+// diría una cosa y el vídeo otra.
+//
+// Los números de esta prueba son los de `arandelas-4.png`, medidos: dieciséis
+// manchas, cuatro anillos de unos 28 000 px² y doce tornillos de unos 700.
+TEST(DetectionPage, ItSaysHowManyPiecesWouldEnterWithThatValue) {
+    ui::ConfigureDialog::Inputs inputs;
+    inputs.minAreaFraction = 0.005;   // 1505 px² en esta imagen
+    inputs.frameSize = QSize(631, 477);
+    for (int i = 0; i < 4; ++i) {
+        inputs.blobAreas.push_back(28000.0);  // los anillos
+    }
+    for (int i = 0; i < 12; ++i) {
+        inputs.blobAreas.push_back(700.0);  // los tornillos
+    }
+    ui::ConfigureDialog dialog(inputs);
+    auto* hint = dialog.findChild<QLabel*>(QStringLiteral("minAreaHint"));
+    ASSERT_NE(hint, nullptr);
+    std::printf("  [área mínima] %s\n", hint->text().toStdString().c_str());
+    EXPECT_NE(hint->text().indexOf(QStringLiteral("4 y se quedan fuera 12")), -1)
+        << "no dice qué hace este valor con lo que hay delante: «"
+        << hint->text().toStdString() << "»";
+
+    // Y al bajarlo, los doce entran. Ese es el gesto entero.
+    for (auto* box : dialog.detectionPage()->findChildren<QDoubleSpinBox*>()) {
+        if (box->suffix().contains(QStringLiteral("%")) && box->value() < 5.0) {
+            box->setValue(0.05);  // 150 px²
+            break;
+        }
+    }
+    QApplication::processEvents();
+    std::printf("  [área mínima] al 0,05 %%: %s\n", hint->text().toStdString().c_str());
+    EXPECT_NE(hint->text().indexOf(QStringLiteral("las 16")), -1)
+        << "bajando el mínimo tenían que entrar las dieciséis: «"
+        << hint->text().toStdString() << "»";
+}
+
 TEST(DetectionPage, TheMinimumAreaIsAlsoSaidInPixelsOfThisImage) {
     ui::ConfigureDialog::Inputs inputs;
     inputs.minAreaFraction = 0.005;

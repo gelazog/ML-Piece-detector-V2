@@ -119,12 +119,16 @@ cv::Mat splitTouchingPieces(const cv::Mat& mask, double coreRatio) {
 
 std::vector<PieceContour> findPieceContours(const cv::Mat& mask, double minAreaFraction,
                                             double maxAreaFraction, int maxCount,
-                                            int* discarded, int* belowMinArea) {
+                                            int* discarded, int* belowMinArea,
+                                            std::vector<double>* allAreas) {
     if (discarded != nullptr) {
         *discarded = 0;
     }
     if (belowMinArea != nullptr) {
         *belowMinArea = 0;
+    }
+    if (allAreas != nullptr) {
+        allAreas->clear();
     }
     std::vector<PieceContour> pieces;
     if (mask.empty() || mask.type() != CV_8UC1 || maxCount <= 0) {
@@ -137,6 +141,12 @@ std::vector<PieceContour> findPieceContours(const cv::Mat& mask, double minAreaF
     std::vector<std::pair<double, const std::vector<cv::Point>*>> accepted;
     for (const auto& contour : contours) {
         const double area = cv::contourArea(contour);
+        // TODAS las áreas, antes de filtrar. Se recogen para que el ajuste que
+        // decide con ellas —el área mínima— pueda enseñar qué pasaría con otro
+        // valor sin volver a segmentar la imagen en cada tecla.
+        if (allAreas != nullptr) {
+            allAreas->push_back(area);
+        }
         // El mismo filtro que ya se aplicaba al contorno mayor, ahora a cada
         // uno: por debajo es ruido, por encima es una segmentacion degenerada.
         if (area < minAreaFraction * imageArea || area > maxAreaFraction * imageArea) {

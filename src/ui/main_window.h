@@ -628,6 +628,9 @@ private:
 
     AppRepositories repos_;
     QImage lastFrame_;
+    // Áreas (px²) de todas las manchas del último análisis, filtradas o no. Solo
+    // las usa el diálogo de Detección para enseñar qué haría otro «área mínima».
+    std::vector<double> lastBlobAreas_;
     // Lo que midió cada herramienta la última vez. Se guarda porque el menú del
     // clic derecho ofrece copiar ese valor, y pedírselo otra vez al ejecutor
     // daría un número medido en OTRO instante — con la pieza ya movida.

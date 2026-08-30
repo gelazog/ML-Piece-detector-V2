@@ -88,6 +88,10 @@ public:
         // «área mínima» a algo que se pueda mirar. Vacío = no hay imagen todavía,
         // y entonces la página no traduce nada en vez de inventarse un tamaño.
         QSize frameSize;
+        // Área (px²) de cada mancha del último análisis, filtradas o no. Con
+        // ellas el ajuste de «área mínima» puede decir cuántas piezas dejaría
+        // dentro y cuántas fuera, sin volver a segmentar nada.
+        std::vector<double> blobAreas;
     };
 
     ConfigureDialog(Inputs inputs, QWidget* parent = nullptr);

@@ -123,7 +123,8 @@ inline constexpr double kTouchingCoreMinFraction = 0.02;
                                                           double maxAreaFraction = 0.9,
                                                           int maxCount = kMaxPieces,
                                                           int* discarded = nullptr,
-                                                          int* belowMinArea = nullptr);
+                                                          int* belowMinArea = nullptr,
+                                                          std::vector<double>* allAreas = nullptr);
 
 // Pone en orden de lectura una lista ya encontrada. Publica porque el orden es
 // una decision que hay que poder comprobar por separado de la deteccion.

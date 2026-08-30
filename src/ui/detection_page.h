@@ -4,6 +4,8 @@
 #include <QSize>
 #include <QWidget>
 
+#include <vector>
+
 #include <cstdint>
 
 #include "repositories/detection_profile_repository.h"
@@ -35,7 +37,8 @@ public:
                     repositories::DetectionProfileRepository* profiles = nullptr,
                     std::int64_t selectedProfileId = 0,
                     double minAreaFraction = 0.005, double maxAreaFraction = 0.9,
-                    bool subpixelEdges = false, QSize frameSize = {});
+                    bool subpixelEdges = false, QSize frameSize = {},
+                    std::vector<double> blobAreas = {});
 
     [[nodiscard]] vision::SegmentationOptions options() const;
     // Qué se acepta como pieza, en fracción del área de la imagen. Estaban
@@ -162,6 +165,9 @@ public:
     // con el que se traduce. Sin imagen no se traduce nada.
     QLabel* minAreaHint_ = nullptr;
     QSize frameSize_;
+    // Las manchas del último análisis, por área. Ordenadas al recibirlas para
+    // contar con una búsqueda binaria en vez de recorrerlas en cada tecla.
+    std::vector<double> blobAreas_;
     QDoubleSpinBox* maxArea_ = nullptr;
 };
 

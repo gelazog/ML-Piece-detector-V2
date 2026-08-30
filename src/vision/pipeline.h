@@ -137,9 +137,13 @@ core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image,
 //
 // Es el mismo fallo que ya se corrigió con la zona automática, que escondía
 // piezas sin decirlo, y con las cotas que el tope dejaba fuera.
+// `blobAreas`, si se pasa, recibe el área en px² de TODAS las manchas antes de
+// filtrar. Existe para que el ajuste de «área mínima» pueda enseñar qué pasaría
+// con otro valor —cuántas entrarían, cuántas se quedarían fuera— sin volver a
+// segmentar la imagen cada vez que se mueve el número.
 [[nodiscard]] core::Result<std::vector<PieceAnalysis>> analyzeFrames(
     const cv::Mat& image, const PipelineConfig& config = {},
-    int* belowMinArea = nullptr);
+    int* belowMinArea = nullptr, std::vector<double>* blobAreas = nullptr);
 
 // CUÁNTO SE MOVERÍA ESTA MEDIDA SI LA LUZ CAMBIARA UN POCO.
 //

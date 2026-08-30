@@ -85,6 +85,10 @@ struct AnalysisOverlay {
     // no aparecían en ningún sitio: el operador veía «1 pieza» sobre una foto
     // con dieciséis y no tenía ni el número ni qué tocar.
     int piecesTooSmall = 0;
+    // Y EL ÁREA DE CADA MANCHA, filtrada o no, en px². No se pinta: viaja para
+    // que el ajuste que decide con ella pueda enseñar qué pasaría con otro
+    // valor sin volver a segmentar.
+    std::vector<double> blobAreas;
     // Si este frame llegó a SEGMENTARSE. Con la pose congelada (contorno
     // oculto) no se segmenta: las herramientas se miden con el fixture del
     // frame anterior y no hay contorno nuevo. Distinguirlo de «se segmentó y no

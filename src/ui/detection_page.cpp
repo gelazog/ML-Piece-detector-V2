@@ -3,6 +3,7 @@
 
 #include "vision/pipeline.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include <QColor>
@@ -30,8 +31,13 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
                                  repositories::DetectionProfileRepository* profiles,
                                  std::int64_t selectedProfileId, double minAreaFraction,
                                  double maxAreaFraction,
-                             bool subpixelEdges, QSize frameSize)
-    : QWidget(parent), profiles_(profiles), frameSize_(frameSize) {
+                             bool subpixelEdges, QSize frameSize,
+                             std::vector<double> blobAreas)
+    : QWidget(parent),
+      profiles_(profiles),
+      frameSize_(frameSize),
+      blobAreas_(std::move(blobAreas)) {
+    std::sort(blobAreas_.begin(), blobAreas_.end());
     auto* rootLayout = new QVBoxLayout(this);
     auto* help = new QLabel(
         tr("Si las luces o sombras arruinan el contorno automático: fija el umbral a "
@@ -432,13 +438,38 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
                               static_cast<double>(frameSize_.height());
         const int side = static_cast<int>(std::lround(std::sqrt(std::max(pixels, 0.0))));
         minAreaHint_->setVisible(true);
-        minAreaHint_->setText(
-            tr("En la imagen de ahora (%1×%2 px) son %3 px²: una mancha de unos "
-               "%4×%4 px no llega a pieza.")
-                .arg(frameSize_.width())
-                .arg(frameSize_.height())
-                .arg(static_cast<qlonglong>(std::llround(pixels)))
-                .arg(side));
+        QString text = tr("En la imagen de ahora (%1×%2 px) son %3 px²: una mancha de "
+                          "unos %4×%4 px no llega a pieza.")
+                           .arg(frameSize_.width())
+                           .arg(frameSize_.height())
+                           .arg(static_cast<qlonglong>(std::llround(pixels)))
+                           .arg(side);
+        // Y LO QUE DE VERDAD SE QUIERE SABER: cuántas entran y cuántas se caen
+        // CON ESTE VALOR, sobre la imagen que ya está analizada.
+        //
+        // Es la pregunta que trae al operador aquí —«se ven 4 piezas y hay
+        // 16»— y contestarla no cuesta nada: las áreas de todas las manchas
+        // vienen del análisis que ya se hizo, así que esto es contar en una
+        // lista ordenada. Volver a segmentar en cada tecla costaría un frame
+        // entero y encima podría no dar lo mismo que se está viendo.
+        if (!blobAreas_.empty()) {
+            const auto firstAccepted =
+                std::lower_bound(blobAreas_.begin(), blobAreas_.end(), pixels);
+            const int left = static_cast<int>(
+                std::distance(blobAreas_.begin(), firstAccepted));
+            const int kept = static_cast<int>(blobAreas_.size()) - left;
+            text += QLatin1Char(' ');
+            // «Por pequeñas» y no «fuera» a secas: el área MÁXIMA también
+            // descarta, y decir «se quedan fuera 12» cuando una de ellas se cae
+            // por el otro extremo sería mandar a bajar el mínimo para nada.
+            text += left > 0 ? tr("Con este valor pasan el mínimo %1 y se quedan fuera "
+                                  "%2 por pequeñas.")
+                                   .arg(kept)
+                                   .arg(left)
+                             : tr("Con este valor pasan el mínimo las %1 que se ven.")
+                                   .arg(kept);
+        }
+        minAreaHint_->setText(text);
     };
     connect(minArea_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             [refreshHint](double) { refreshHint(); });

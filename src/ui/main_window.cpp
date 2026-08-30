@@ -223,7 +223,8 @@ AnalysisOverlay buildOverlay(const QImage& frame,
         core::Result<vision::PieceAnalysis> analysis =
             core::Result<vision::PieceAnalysis>::err("sin analizar");
         if (countPieces) {
-            auto all = vision::analyzeFrames(image, pipeline, &overlay.piecesTooSmall);
+            auto all = vision::analyzeFrames(image, pipeline, &overlay.piecesTooSmall,
+                                             &overlay.blobAreas);
             if (all.isOk()) {
                 overlay.piecesFound = static_cast<int>(all.value().size());
                 // EL NUMERO DECLARADO MANDA SOBRE QUE SE TRATA COMO PIEZA.
@@ -4989,6 +4990,12 @@ void MainWindow::onAnalysisFinished() {
     if (overlay.piecesFound >= 0) {
         lastPiecesSeen_ = overlay.piecesFound;
         lastPiecesTooSmall_ = overlay.piecesTooSmall;
+        // Las áreas de todas las manchas del último análisis, para que el ajuste
+        // de «área mínima» pueda decir qué pasaría con otro valor. Se guardan
+        // aquí y no se recalculan en el diálogo: volver a segmentar en cada
+        // tecla costaría lo mismo que un frame entero, y encima podría no dar el
+        // mismo resultado que lo que se está viendo.
+        lastBlobAreas_ = overlay.blobAreas;
         // El recuento con el que trabaja todo lo demas es el de las piezas que
         // se estan TRATANDO como tales: son las que se dibujan, las que se
         // numeran y entre las que navega el selector.
@@ -7141,6 +7148,7 @@ void MainWindow::onConfigureClicked() {
     // traducir a píxeles. Si todavía no ha llegado ninguno, va vacío y la página
     // no traduce en vez de inventarse una referencia.
     inputs.frameSize = lastFrame_.size();
+    inputs.blobAreas = lastBlobAreas_;
     inputs.hasFixedZone = pipelineConfig_.roi.area() > 0;
     inputs.hasFreeZone = pipelineConfig_.roiPolygon.size() >= 3;
 

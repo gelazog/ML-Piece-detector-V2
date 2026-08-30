@@ -2125,6 +2125,21 @@ Sin imagen todavía, no se traduce nada: inventar un tamaño de referencia serí
 dar una equivalencia que no vale para la cámara que haya puesta — la misma
 familia de fallo que decir «recuento poco firme» de algo que nadie ha medido.
 
+**Y la segunda frase es la que contesta la pregunta que trae aquí al operador**:
+«*con este valor pasan el mínimo 4 y se quedan fuera 12 por pequeñas*». La
+equivalencia dice qué ES el número; esto dice qué HACE.
+
+Contestarla no cuesta nada, y ese es el detalle de diseño: `analyzeFrames`
+devuelve ahora, si se le pide, **el área de todas las manchas antes de filtrar**,
+así que el diálogo sólo cuenta en una lista ordenada. Volver a segmentar en cada
+pulsación habría costado un frame entero por tecla y —peor— podría dar un
+resultado distinto del que hay en pantalla: el ajuste diría una cosa y el vídeo
+otra.
+
+Dice «por pequeñas» y no «fuera» a secas porque el área **máxima** también
+descarta, y mandar a bajar el mínimo por una mancha que se cae por el otro
+extremo sería mandar a un sitio equivocado.
+
 El aviso ya existía, con su ajuste dentro («baja *Área mínima* en *Configurar ▸
 Detección*»), pero vivía **solo en el emergente** del chip de piezas. Un
 emergente hay que ir a buscarlo, y mientras tanto la pantalla afirma «4 piezas»
