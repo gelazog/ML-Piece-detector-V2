@@ -4524,6 +4524,31 @@ acumulando. Ahora hay tres, y no fijan el aspecto sino las decisiones: una sola
 acción destacada, un solo control de zona con sus tres acciones, y los
 desplegables sin comerse la fila.
 
+#### La otra mitad de la regla: cuántos compiten
+
+«Una sola acción destacada» no sirve de nada si la fila tiene veinte: destacar
+uno entre veinte sigue siendo buscar entre veinte. Faltaba medir **cuántos
+controles compiten** por esa mirada, y nadie lo había medido — la cifra de
+«trece» de más arriba venía de contarlos a ojo al repartirlos en tres filas.
+
+Contados de verdad, con la ventana abierta y filtrando lo que no es barra (los
+paneles acoplables y la paleta de herramientas, que tiene treinta y dos botones y
+es otra cosa), salieron **catorce**. El decimocuarto era «Atajos (F1)», y se ha
+ido a *Ayuda*. El criterio con el que se fue, por si hay que aplicarlo otra vez:
+
+> Un control de la barra que (1) no forma parte del trabajo de cada pieza,
+> (2) tiene tecla y (3) tiene entrada de menú, no necesita estar en la fila que se
+> mira cien veces al día.
+
+«Atajos» los cumplía los tres —hasta anunciaba su propia tecla en el rótulo, que
+es la señal de que ya se alcanzaba sin él—. Los otros trece no: o son el trabajo
+de cada pieza, o no tienen otro camino.
+
+El resultado es un **trinquete** (`ToolbarWeight`): el test imprime la lista y
+falla si la barra pasa de trece, y también si baja de trece sin bajar el tope. La
+barra puede adelgazar; engordar solo si alguien lo decide a propósito y quita
+otro. Así es como se evita volver a llegar a catorce sin enterarse.
+
 ### Restablecer es OLVIDAR, no escribir los valores de fábrica
 
 La diferencia parece de matiz y es la que impide que la función se

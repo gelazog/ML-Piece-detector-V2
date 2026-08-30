@@ -1170,7 +1170,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    que al cambiar de pieza se aplican sus ajustes de detección solos. Si borras
    un perfil, las piezas que lo usaban vuelven a los ajustes globales.
 
-   **Atajos de teclado** (botón *Atajos (F1)* o tecla `F1`): guía completa y
+   **Atajos de teclado** (*Ayuda ▸ Atajos de teclado…* o tecla `F1`): guía completa y
    **editable** — haz clic en el atajo y pulsa la combinación nueva; se
    guardan en la BD. Por defecto: `Ctrl+Z`/`Ctrl+Y` deshacer/rehacer las
    herramientas dibujadas (crear, mover, borrar — también dentro del editor),

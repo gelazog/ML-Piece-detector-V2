@@ -748,8 +748,10 @@ TEST(ToolsDock, TheThirdRowIsNarrowerWithoutTheDrawingControls) {
     // dibujo y lo que actua sobre la herramienta seleccionada se fueron al dock.
     const QStringList after{QStringLiteral("Rasgo distintivo"),
                             QStringLiteral("Fijar escala con esta medida…"),
-                            QStringLiteral("Guardar plantilla (Ctrl+S)"),
-                            QStringLiteral("Atajos (F1)")};
+                            QStringLiteral("Guardar plantilla (Ctrl+S)")};
+    // «Atajos (F1)» ya no esta en la lista porque ya no esta en la fila: se fue
+    // a *Ayuda* al auditar el peso de la barra. No es ayuda de la pieza ni de la
+    // plantilla, y se alcanza por tecla y por menu.
 
     const int narrow = rowWidth(after);
     std::printf("  la fila 3 pedia %d px medidos y ahora pide %d\n", kMeasuredBefore,

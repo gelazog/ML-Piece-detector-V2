@@ -948,10 +948,16 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     toolsLayout->addWidget(saveTemplateButton_);
 
     toolsLayout->addStretch(1);
-    auto* shortcutsButton = new QPushButton(tr("Atajos (F1)"), central);
-    shortcutsButton->setToolTip(tr("Guía de atajos de teclado — también puedes cambiarlos"));
-    connect(shortcutsButton, &QPushButton::clicked, this, &MainWindow::onShowShortcuts);
-    toolsLayout->addWidget(shortcutsButton);
+    // «ATAJOS (F1)» SE VA DE LA BARRA.
+    //
+    // Estaba en la fila que se mira cien veces al día, compitiendo por la misma
+    // mirada que «Inspeccionar», y no es trabajo: es ayuda. Y ya se alcanza por
+    // dos caminos —la tecla F1, que el propio botón anunciaba en su rótulo, y
+    // *Ayuda ▸ Atajos de teclado…*—, así que quitarlo no le quita nada a nadie.
+    //
+    // El criterio, por si hay que aplicarlo otra vez: un control de la barra que
+    // (1) no forma parte del trabajo de cada pieza, (2) tiene tecla y (3) tiene
+    // entrada de menú, no necesita estar ahí. Los otros trece la pasan.
     rootLayout->addLayout(toolsLayout);
 
     // Guía del primer arranque (I3). Va donde el veredicto y no en un diálogo

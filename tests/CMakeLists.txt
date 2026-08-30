@@ -133,6 +133,7 @@ add_executable(pci_gui_tests
   test_piece_mosaic.cpp
   test_measurements_panel.cpp
   test_dead_controls.cpp
+  test_toolbar_weight.cpp
   test_mosaic_click_survives.cpp
   test_scale_dialog.cpp
   test_selfexplaining.cpp
