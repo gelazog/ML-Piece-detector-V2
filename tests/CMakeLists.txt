@@ -135,6 +135,7 @@ add_executable(pci_gui_tests
   test_dead_controls.cpp
   test_toolbar_weight.cpp
   test_holes_belong_to_the_piece.cpp
+  test_shape_reason_shows_its_evidence.cpp
   test_mosaic_click_survives.cpp
   test_scale_dialog.cpp
   test_selfexplaining.cpp

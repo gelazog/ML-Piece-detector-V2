@@ -3025,6 +3025,32 @@ contorno de la pieza—, comprobado con el contorno delante porque `findHoles` n
 dice de quién es cada hueco. Sobre el banco entero: **190 cotas de agujero pasan
 a 71**, y ninguna foto ofrece más agujeros de los que cuenta.
 
+##### La segunda evidencia, que se decidía con ella y no se decía
+
+El clasificador de figuras decide con **dos** números y publicaba uno:
+
+- la **desviación** dice si ese polígono explica el contorno («el punto peor se
+  separa 4,77 px de ellos») — salía escrita;
+- la **meseta** dice si esos son los lados que tiene la pieza: en cuántos de los
+  treinta epsilon del barrido gana ese recuento — no salía.
+
+Que son independientes está escrito en el propio código, en `kPlateauRulesAbove`:
+una meseta ancha manda sobre la tolerancia justamente porque contestan a
+preguntas distintas. Con la segunda callada, el informe afirmaba con el mismo
+aplomo un hexágono reconocido en 17 de 30 barridos y esto:
+
+| Foto | Titular | Aguanta |
+|---|---|---|
+| `arandelas-2.png` | «Polígono de 9 lados» | **2 de 30** |
+| `producto-tuercas-prueba.jpg` | «Polígono de 7 lados» | **4 de 30** |
+| `arandelas-3.jpg` | «Polígono de 7 lados» | 9 de 30 |
+
+Dos de treinta no es un recuento: es una casualidad que cabía en la tolerancia. Y
+el operador no tenía cómo distinguirla de una buena, porque las dos se leían
+igual. Ahora el motivo lleva las dos mitades, y es el mismo principio que ya
+estaba escrito para el residuo —*una clasificación sin su número es una
+opinión*—, solo que los números eran dos.
+
 ##### El titular que decía «no sé qué es esto» debajo de «20 dientes»
 
 Para el clasificador de figuras una rueda dentada es **irregular** —en

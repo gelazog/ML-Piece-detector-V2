@@ -531,6 +531,14 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    | **Una rueda dentada** | **cuántos dientes**, Ø de cabeza, Ø de raíz y la excentricidad |
    | **Una rosca de perfil** | el **paso**, el Ø exterior y el Ø de fondo |
 
+   **Y te dice con cuánta seguridad reconoció la forma.** Debajo del título del
+   informe va la frase que lo explica, y lleva dos números: cuánto se separa el
+   contorno del polígono que se le ajustó, y **en cuántos barridos aguanta ese
+   recuento de lados**. Un hexágono de verdad aguanta 17 de 30; unas arandelas
+   que salieron «polígono de 9 lados» aguantan 2 de 30, que no es un recuento
+   sino una casualidad que cupo en la tolerancia. Con un solo número los dos
+   casos se leían igual.
+
    **Si ninguna cota puede juzgar la pieza, te lo dice.** Hay dos clases de
    cota: las que vuelven a medir en cada inspección —un diámetro, la redondez,
    el paso de una rosca— y las que repiten el valor de hoy porque salen de la

@@ -192,6 +192,15 @@ struct PolygonFit {
     // silueta irregular) de uno que explican muchas rectas (una curva
     // discretizada). El segundo no es irregular, es redondo.
     int unlimitedSides = 0;
+    // CUÁNTO AGUANTA EL RECUENTO GANADOR, y sobre cuántos barridos.
+    //
+    // Este par ya gobernaba la decisión —es `kPlateauRulesAbove`, la evidencia
+    // que dice «son estos los lados que tiene la pieza» frente a la tolerancia,
+    // que solo dice «este polígono explica el contorno»— pero se quedaba dentro
+    // de la función. Sale porque es lo que separa un hexágono de verdad (17 de
+    // 30) de un recuento que se sostiene en un solo epsilon.
+    int plateau = 0;
+    int swept = 0;
 };
 
 PolygonFit fitPolygon(const std::vector<cv::Point>& contour, const ClassifyOptions& options) {
@@ -271,9 +280,11 @@ PolygonFit fitPolygon(const std::vector<cv::Point>& contour, const ClassifyOptio
         return winner;
     };
 
+    best.swept = swept;
     if (const Tally* capped = widestThatFits(options.maxSides); capped != nullptr) {
         best.vertices = capped->vertices;
         best.deviation = capped->bestDeviation;
+        best.plateau = capped->seen;
     }
     if (const Tally* free = widestThatFits(0); free != nullptr) {
         best.unlimitedSides = static_cast<int>(free->vertices.size());
@@ -783,9 +794,23 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
         shape.sides = static_cast<int>(polygon.vertices.size());
         shape.vertices = refinePolygonVertices(dense, polygon.vertices);
         shape.deviation = polygon.deviation;
+        // CON LAS DOS EVIDENCIAS, no con una.
+        //
+        // La desviación dice si ese polígono explica el contorno; la meseta dice
+        // si esos son los lados que tiene la pieza. Enseñar solo la primera
+        // convierte en una afirmación lo que a veces es una casualidad: sobre
+        // `producto-tuercas-prueba.jpg` el informe se titulaba «Polígono de 7
+        // lados» con la misma seguridad con la que una arandela limpia dice sus
+        // seis, y esas siete se sostenían en un puñado de epsilon de treinta.
+        //
+        // Es el mismo principio que ya está escrito para el residuo: una
+        // clasificación sin su número es una opinión. Aquí eran dos números y se
+        // publicaba uno.
         shape.reason = "contorno de " + std::to_string(shape.sides) +
                        " lados rectos (el punto peor se separa " +
-                       roundFine(polygon.deviation) + " px de ellos)";
+                       roundFine(polygon.deviation) + " px de ellos; ese recuento "
+                       "aguanta " + std::to_string(polygon.plateau) + " de " +
+                       std::to_string(polygon.swept) + " barridos)";
         return shape;
     }
 
