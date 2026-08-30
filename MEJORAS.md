@@ -1323,6 +1323,26 @@ inmune a la trampa de `-Werror` dejando el binario viejo en pie.
   disposición guardada es anterior al panel, se coloca a mano en vez de quedarse
   oculto para siempre.
 
+- [x] **P12 · La pestaña del catálogo era una lista, no una elección.** Segunda
+  vuelta sobre P7, con el taller mirándola: «debería de ser un checkbox para que
+  el programa use las herramientas o no, y si hay algo que no detecta
+  correctamente le diga, y tal vez como opcional, que el usuario quiera hacerlo
+  manual». Y «(cambia el nombre)».
+
+  Ahora se llama **«Elegir qué se mide»** y cada clase trae su casilla, marcada
+  de entrada. «Vigilar estas cotas» añade sólo las marcadas: antes se llevaba las
+  doce propuestas y el operador borraba después las que no quería.
+
+  Las que el programa NO sabe colocar **no tienen casilla que marcar** —marcar
+  algo que no haría nada es una promesa que no se cumple— sino un botón
+  **«Dibujarla»** que cierra el informe y deja esa herramienta elegida en la
+  paleta. Es la parte «manual» de la petición, y es la respuesta honrada:
+  colocar una Rectitud exige señalar qué tramo se mide.
+
+  Y cada estado lleva **su motivo** en el tooltip de la celda: «no la ve aquí»
+  sin explicación se lee como que el programa falla, cuando lo que pasa es que la
+  pieza no tiene ese rasgo.
+
 - [x] **P7 · «Medir pieza» no decía qué MÁS se puede medir.** Petición de uso:
   «debería de haber otra sección con todas las herramientas para usar/medir,
   aparte de la sección que te dice qué herramientas se usaron y cuántas».

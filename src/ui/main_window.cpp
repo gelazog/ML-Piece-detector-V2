@@ -3062,6 +3062,19 @@ void MainWindow::onMeasurePieceClicked() {
                 .arg(saved));
         reanalyseCurrentFrame();
     }
+    // «DIBUJARLA»: la cota que el programa no sabe colocar solo.
+    //
+    // Petición de uso: «y tal vez como opcional, que el usuario quiera hacerlo
+    // manual». Para una Rectitud o un Chaflán no hay adivinanza honrada —hay
+    // que señalar QUÉ tramo se mide— así que el informe no finge colocarla:
+    // deja la herramienta elegida en la paleta, que es el paso que si no hay
+    // que buscar entre treinta y dos iconos.
+    if (const auto byHand = dialog.toolToDrawByHand(); byHand.has_value()) {
+        toolPalette_->activate(*byHand);
+        statusBar()->showMessage(
+            tr("«%1» elegida en la paleta: trázala sobre la pieza.")
+                .arg(QString::fromUtf8(inspection::toolTypeLabel(*byHand))));
+    }
     // LAS MEDIDAS HERMANAS MARCADAS EN EL SEGUNDO NIVEL.
     //
     // Se atienden aunque se cierre sin «vigilar», por lo mismo que los

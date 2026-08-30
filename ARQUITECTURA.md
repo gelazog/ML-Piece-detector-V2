@@ -225,6 +225,39 @@ dos dejarían la cadena rota igual, pero con la culpa repartida entre dos.
 Y las otras herramientas se miden **sólo si la nueva lleva referencia** —cinco de
 treinta y dos—, así que el caso normal no paga nada.
 
+#### El catálogo de cotas: una elección, no una lista
+
+Petición de uso, en dos vueltas. La primera: «en medir pieza debería de haber
+otra sección con todas las herramientas para usar/medir, aparte de la sección que
+te dice qué herramientas se usaron y cuántas». La segunda, ya con la pestaña
+delante: «debería de ser un checkbox para que el programa use las herramientas o
+no, y si hay algo que no detecta correctamente le diga, y tal vez como opcional,
+que el usuario quiera hacerlo manual».
+
+La pestaña —**«Elegir qué se mide»**— pone las 32 clases con su casilla, y
+«Vigilar estas cotas» añade **sólo las marcadas**. Antes se llevaba las doce
+propuestas y el operador borraba después las que no quería.
+
+Las tres reglas que la sostienen:
+
+1. **La casilla va pegada al nombre**, no en una columna aparte: en una tabla de
+   treinta y dos filas, emparejar a ojo casilla y fila es donde se cometen los
+   errores.
+2. **Lo que el programa no sabe colocar no tiene casilla**, tiene un botón
+   «Dibujarla». Marcar algo que no haría nada es una promesa que no se cumple;
+   el botón deja esa herramienta elegida en la paleta, que es el paso que si no
+   hay que adivinar entre treinta y dos iconos. Colocar una Rectitud o un
+   Chaflán exige señalar QUÉ tramo se mide.
+3. **Cada estado lleva su motivo** en el tooltip de la celda. «No la ve aquí»
+   sin explicación se lee como que el programa falla, cuando lo que pasa es que
+   la pieza no tiene ese rasgo.
+
+Y las casillas de esta pestaña llevan nombre (`use.<clase>`) igual que el
+interruptor de la pestaña de herramientas (`toolSwitch`), porque son dos cosas
+distintas que se parecen: una elige qué CLASES entran al proponer, la otra apaga
+una cota ya dibujada. Una prueba que contaba «todas las casillas del diálogo»
+pasó de dos a treinta y cuatro el día que nació esta pestaña.
+
 #### Las medidas estaban y no se podían leer
 
 Petición de uso: «falta la parte en donde te resume las medidas, la

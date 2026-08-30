@@ -173,7 +173,7 @@ PieceReportDialog::PieceReportDialog(inspection::PieceReport report,
     tabs->addTab(buildToolsTab(), drawn_.empty()
                                       ? tr("Mis herramientas")
                                       : tr("Mis herramientas (%1)").arg(drawn_.size()));
-    tabs->addTab(buildCatalogueTab(), tr("Qué más puedo medir"));
+    tabs->addTab(buildCatalogueTab(), tr("Elegir qué se mide"));
     root->addWidget(tabs, 1);
 
     auto* buttons = new QHBoxLayout();
@@ -327,6 +327,10 @@ QWidget* PieceReportDialog::buildToolsTab() {
             use->setText(2, QString::fromStdString(tool.text));
 
             auto* box = new QCheckBox(tree);
+            // CON NOMBRE, porque ya no es la única clase de casilla del diálogo:
+            // la pestaña del catálogo trae treinta y dos más, y una prueba que
+            // contara «todas las casillas» pasó a contar treinta y cuatro.
+            box->setObjectName(QStringLiteral("toolSwitch"));
             box->setChecked(tool.config.enabled);
             box->setToolTip(tr("Si lo desmarcas, esta cota deja de medirse y deja de\n"
                                "pesar en el veredicto. La herramienta NO se borra:\n"
@@ -455,17 +459,19 @@ QWidget* PieceReportDialog::buildCatalogueTab() {
     auto* layout = new QVBoxLayout(page);
 
     auto* intro = new QLabel(
-        tr("Todo lo que esta aplicación sabe medir, y qué se puede hacer con cada una "
-           "sobre esta pieza. Las que la medición automática sabe colocar sola ya están "
-           "propuestas: se añaden con «Vigilar estas cotas»."),
+        tr("Marca las cotas que quieres que el programa use en esta pieza. Las marcadas "
+           "se añaden al pulsar «Vigilar estas cotas».\n\n"
+           "Las que no se pueden marcar es porque la medición automática no sabe dónde "
+           "ponerlas en ESTA pieza: la columna del medio dice por qué, y desde ahí puedes "
+           "dibujarlas tú."),
         page);
     intro->setWordWrap(true);
     layout->addWidget(intro);
 
-    auto* table = new QTableWidget(0, 3, page);
+    auto* table = new QTableWidget(0, 4, page);
     table->setObjectName(QStringLiteral("catalogueTable"));
-    table->setHorizontalHeaderLabels({tr("Herramienta"), tr("Sobre esta pieza"),
-                                      tr("Qué mide")});
+    table->setHorizontalHeaderLabels({tr("Usar"), tr("Sobre esta pieza"), tr("Qué mide"),
+                                      QString()});
     table->verticalHeader()->setVisible(false);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -486,26 +492,56 @@ QWidget* PieceReportDialog::buildCatalogueTab() {
     table->setRowCount(static_cast<int>(types.size()));
     for (int row = 0; row < static_cast<int>(types.size()); ++row) {
         const inspection::ToolType type = types[static_cast<std::size_t>(row)];
-        table->setItem(row, 0,
-                       new QTableWidgetItem(QString::fromUtf8(inspection::toolTypeLabel(type))));
 
+        // LA CASILLA ES LA COLUMNA DEL NOMBRE, no una columna aparte.
+        //
+        // Petición de uso: «debería de ser un checkbox para que el programa use
+        // las herramientas o no». Con la casilla pegada al nombre, marcar es un
+        // solo gesto sobre lo que se está leyendo; en una columna suelta habría
+        // que emparejar a ojo la casilla con su fila, que es donde se cometen
+        // los errores en una tabla de treinta y dos.
+        auto* use = new QCheckBox(QString::fromUtf8(inspection::toolTypeLabel(type)), table);
+        use->setObjectName(QStringLiteral("use.") +
+                           QString::fromLatin1(inspection::toolTypeName(type)));
+        table->setCellWidget(row, 0, use);
+        useBoxes_.emplace_back(type, use);
+
+        // QUÉ SE PUEDE HACER CON ELLA SOBRE ESTA PIEZA, que es lo que separa
+        // esto de una lista de nombres. Y cuando no se puede, el motivo: «si hay
+        // algo que no detecta correctamente le diga».
         QString state;
-        if (inUse.count(type) > 0) {
-            state = tr("ya la usas");
-        } else if (proposed.count(type) > 0) {
-            state = tr("ya la propone");
+        QString why;
+        bool usable = false;
+        if (proposed.count(type) > 0) {
+            state = tr("propuesta");
+            why = tr("La medición automática ha sabido colocarla sobre esta pieza.\n"
+                     "Marcada, se añade al pulsar «Vigilar estas cotas».");
+            usable = true;
             ++automatic;
-        } else if (inspection::ProposeOptions{}.allows(type) &&
-                   std::find(inspection::proposableTypes().begin(),
+        } else if (inUse.count(type) > 0) {
+            state = tr("ya la usas");
+            why = tr("Ya tienes una cota de esta clase dibujada sobre la pieza.\n"
+                     "Mírala en la pestaña «Mis herramientas».");
+        } else if (std::find(inspection::proposableTypes().begin(),
                              inspection::proposableTypes().end(),
                              type) != inspection::proposableTypes().end()) {
             // La sabe colocar, pero en ESTA pieza no ha salido: no hay ese rasgo.
-            state = tr("no la ve en esta pieza");
+            state = tr("no la ve aquí");
+            why = tr("El programa sabe colocar esta cota solo, pero en esta pieza no\n"
+                     "encuentra el rasgo que mide. Puedes dibujarla tú.");
         } else {
-            state = tr("hay que dibujarla");
+            state = tr("a mano");
+            why = tr("Esta cota exige señalar DÓNDE se mide —qué tramo, qué cara— y\n"
+                     "adivinarlo daría un número sobre un sitio que nadie eligió.\n"
+                     "Se dibuja a mano.");
             ++byHand;
         }
-        table->setItem(row, 1, new QTableWidgetItem(state));
+        use->setEnabled(usable);
+        use->setChecked(usable);
+        use->setToolTip(why);
+        auto* stateCell = new QTableWidgetItem(state);
+        stateCell->setToolTip(why);
+        table->setItem(row, 1, stateCell);
 
         // La descripción entera va en el tooltip: en la celda cabe la primera
         // frase, y en el tooltip cabe cómo se traza.
@@ -513,6 +549,24 @@ QWidget* PieceReportDialog::buildCatalogueTab() {
         auto* cell = new QTableWidgetItem(what.section(QLatin1Char('\n'), 0, 0));
         cell->setToolTip(what);
         table->setItem(row, 2, cell);
+
+        // «Y tal vez como opcional, que el usuario quiera hacerlo manual.»
+        //
+        // Para las que el programa no coloca, el camino honrado no es fingir que
+        // sí puede: es llevar al operador a dibujarla. El botón cierra el informe
+        // y deja ESA herramienta elegida en la paleta, que es el paso que si no
+        // hay que adivinar.
+        if (!usable) {
+            auto* byHandButton = new QPushButton(tr("Dibujarla"), table);
+            byHandButton->setToolTip(
+                tr("Cierra este informe y deja esta herramienta elegida en la paleta,\n"
+                   "lista para trazarla sobre la pieza."));
+            connect(byHandButton, &QPushButton::clicked, this, [this, type] {
+                toDrawByHand_ = type;
+                accept();
+            });
+            table->setCellWidget(row, 3, byHandButton);
+        }
     }
     table->resizeColumnsToContents();
     table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
@@ -603,7 +657,21 @@ void PieceReportDialog::onWatchClicked() {
     // al menos lo que ya existe se queda fuera, y se dice cuántas.
     toWatch_.clear();
     int already = 0;
+    int unticked = 0;
     for (const auto& proposal : report_.watchable) {
+        // Y LO QUE EL OPERADOR NO QUIERE, TAMPOCO.
+        //
+        // Petición de uso: «debería de ser un checkbox para que el programa use
+        // las herramientas o no». La casilla vive en la pestaña del catálogo y
+        // manda aquí: sin esto, el botón se llevaba las doce propuestas y el
+        // operador tenía que borrar después las que no quería.
+        const auto box = std::find_if(
+            useBoxes_.begin(), useBoxes_.end(),
+            [&proposal](const auto& entry) { return entry.first == proposal.config.type; });
+        if (box != useBoxes_.end() && !box->second->isChecked()) {
+            ++unticked;
+            continue;
+        }
         bool have = false;
         for (const auto& tool : drawn_) {
             if (tool.config.name == proposal.config.name) {
@@ -621,9 +689,16 @@ void PieceReportDialog::onWatchClicked() {
         // No se cierra: cerrar sin añadir nada y sin decir por qué se lee como
         // que se añadieron.
         status_->setStyleSheet(theme::textStyle(theme::kWarn));
-        status_->setText(tr("No se ha añadido ninguna: ya tienes las %1 cotas que se "
-                            "proponen. Mira la pestaña «Mis herramientas».")
-                             .arg(already));
+        // Dos motivos distintos para no haber añadido nada, y llevan a hacer
+        // cosas distintas: ya las tienes, o las has desmarcado tú.
+        status_->setText(
+            unticked > 0 && already == 0
+                ? tr("No se ha añadido ninguna: has desmarcado las %1 que se proponían. "
+                     "Márcalas en «Elegir qué se mide».")
+                      .arg(unticked)
+                : tr("No se ha añadido ninguna: ya tienes las %1 cotas que se "
+                     "proponen. Mira la pestaña «Mis herramientas».")
+                      .arg(already));
         return;
     }
     if (already > 0) {

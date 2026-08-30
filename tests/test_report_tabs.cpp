@@ -16,13 +16,16 @@
 #include <gtest/gtest.h>
 
 #include <QApplication>
+#include <QAbstractButton>
 #include <QCheckBox>
+#include <QPushButton>
 #include <QLabel>
 #include <QStringList>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTreeWidget>
 
+#include <algorithm>
 #include <cstdio>
 
 #include "inspection_editor/tools/tool_geometry.h"
@@ -142,7 +145,11 @@ TEST(ReportTabs, EachToolHasASwitchThatDoesNotDeleteIt) {
     ui::PieceReportDialog dialog(plainReport(), QStringLiteral("una imagen"), nullptr,
                                  nullptr, drawn);
 
-    const auto boxes = dialog.findChildren<QCheckBox*>();
+    // POR NOMBRE, y no «todas las casillas del diálogo»: desde que la pestaña
+    // del catálogo trae una por cada una de las 32 clases, contarlas todas daba
+    // treinta y cuatro. El interruptor de una herramienta y la casilla de una
+    // clase son dos cosas distintas y ahora se distinguen por su nombre.
+    const auto boxes = dialog.findChildren<QCheckBox*>(QStringLiteral("toolSwitch"));
     ASSERT_EQ(boxes.size(), 2) << "no hay un interruptor por herramienta";
     // Cada uno arranca como estaba la herramienta.
     EXPECT_TRUE(boxes[0]->isChecked());
@@ -394,22 +401,30 @@ TEST(ReportTabs, TheCatalogueListsEveryToolAndWhatCanBeDoneWithIt) {
         << " herramientas: alguna se queda invisible para el operador";
 
     // Y cada fila dice QUÉ SE PUEDE HACER con ella sobre esta pieza, que es lo
-    // que la separa de una lista de nombres. Las tres respuestas posibles tienen
-    // que aparecer al menos una vez con este montaje: una propuesta, una
-    // dibujada, y las que hay que dibujar a mano.
+    // que la separa de una lista de nombres. Las cuatro respuestas posibles
+    // tienen que aparecer con este montaje: propuesta, ya en uso, la sabe
+    // colocar pero no la ve aquí, y las que hay que dibujar a mano.
     QStringList states;
     for (int row = 0; row < table->rowCount(); ++row) {
         ASSERT_NE(table->item(row, 1), nullptr) << "fila " << row << " sin estado";
         states << table->item(row, 1)->text();
     }
-    EXPECT_TRUE(states.contains(QStringLiteral("ya la propone")))
+    EXPECT_TRUE(states.contains(QStringLiteral("propuesta")))
         << "una clase propuesta no sale como tal: el operador no sabe que basta con "
            "pulsar «Vigilar estas cotas»";
     EXPECT_TRUE(states.contains(QStringLiteral("ya la usas")))
         << "una clase que el operador ya dibujó sale como si no la tuviera";
-    EXPECT_TRUE(states.contains(QStringLiteral("hay que dibujarla")))
-        << "ninguna sale como «hay que dibujarla»: o se está prometiendo que todas se "
-           "colocan solas, que es falso";
+    EXPECT_TRUE(states.contains(QStringLiteral("a mano")))
+        << "ninguna sale como «a mano»: se estaría prometiendo que todas se colocan "
+           "solas, que es falso";
+
+    // Y CADA ESTADO LLEVA SU MOTIVO. «Si hay algo que no detecta correctamente
+    // le diga»: sin el porqué, «no la ve aquí» se lee como que el programa
+    // falla, cuando lo que pasa es que la pieza no tiene ese rasgo.
+    for (int row = 0; row < table->rowCount(); ++row) {
+        EXPECT_FALSE(table->item(row, 1)->toolTip().isEmpty())
+            << "el estado de la fila " << row << " no explica por qué";
+    }
 
     // Y el resumen dice cuántas se colocan solas y cuántas no. Sin ese número, la
     // lista de 32 se lee como una promesa.
@@ -417,4 +432,86 @@ TEST(ReportTabs, TheCatalogueListsEveryToolAndWhatCanBeDoneWithIt) {
     ASSERT_NE(summary, nullptr);
     std::printf("  [catálogo] %s\n", summary->text().toStdString().c_str());
     EXPECT_FALSE(summary->text().isEmpty());
+}
+
+// LA CASILLA: «que el programa use las herramientas o no».
+//
+// Antes, «Vigilar estas cotas» se llevaba las doce propuestas y el operador
+// tenía que borrar después las que no quería. Ahora cada clase trae su casilla,
+// marcada de entrada —lo normal es quererlas— y desmarcarla la deja fuera.
+//
+// Y las que el programa NO sabe colocar no tienen casilla que marcar, sino un
+// botón para dibujarlas: fingir que se pueden marcar sería prometer que se
+// colocan solas.
+TEST(ReportTabs, TheCheckboxDecidesWhichClassesTheProgramUses) {
+    inspection::PieceReport report = plainReport();
+    inspection::AutoProposal circle;
+    circle.config.name = "Ø";
+    circle.config.type = inspection::ToolType::Circle;
+    inspection::AutoProposal ruler;
+    ruler.config.name = "Largo total";
+    ruler.config.type = inspection::ToolType::Ruler;
+    report.watchable = {circle, ruler};
+
+    ui::PieceReportDialog dialog(report, QStringLiteral("una imagen"));
+    const auto boxOf = [&dialog](inspection::ToolType type) {
+        return dialog.findChild<QCheckBox*>(
+            QStringLiteral("use.") + QString::fromLatin1(inspection::toolTypeName(type)));
+    };
+
+    auto* circleBox = boxOf(inspection::ToolType::Circle);
+    auto* rulerBox = boxOf(inspection::ToolType::Ruler);
+    ASSERT_NE(circleBox, nullptr) << "la clase propuesta no tiene casilla";
+    ASSERT_NE(rulerBox, nullptr);
+    EXPECT_TRUE(circleBox->isChecked()) << "las propuestas nacen desmarcadas: entonces "
+                                           "«vigilar» no añadiría nada y el botón mentiría";
+    EXPECT_TRUE(circleBox->isEnabled());
+
+    // Una que el programa no sabe colocar: sin casilla que marcar.
+    auto* straightness = boxOf(inspection::ToolType::Straightness);
+    ASSERT_NE(straightness, nullptr);
+    EXPECT_FALSE(straightness->isEnabled())
+        << "se puede marcar una clase que el programa no sabe colocar: marcarla no haría "
+           "nada, que es una promesa que no se cumple";
+
+    // Se desmarca el círculo y se pulsa vigilar: sólo entra la regla.
+    circleBox->setChecked(false);
+    auto* watch = dialog.findChild<QAbstractButton*>(QStringLiteral("watchButton"));
+    ASSERT_NE(watch, nullptr);
+    watch->click();
+
+    const auto added = dialog.toWatch();
+    std::printf("  [elegir] de 2 propuestas, con una desmarcada se añaden %d\n",
+                static_cast<int>(added.size()));
+    ASSERT_EQ(added.size(), 1U) << "la casilla no decide nada: se añaden las dos";
+    EXPECT_EQ(added.front().config.name, "Largo total")
+        << "se añade justo la que el operador desmarcó";
+}
+
+TEST(ReportTabs, WhatTheProgramCannotPlaceOffersToDrawItByHand) {
+    // «Y tal vez como opcional, que el usuario quiera hacerlo manual.»
+    //
+    // Para una Rectitud no hay adivinanza honrada: hay que señalar qué tramo se
+    // mide. Así que el informe no finge colocarla — dice cuál quiere el operador
+    // y la ventana la deja elegida en la paleta.
+    ui::PieceReportDialog dialog(plainReport(), QStringLiteral("una imagen"));
+    EXPECT_FALSE(dialog.toolToDrawByHand().has_value())
+        << "sin pulsar nada ya pide dibujar una herramienta";
+
+    auto* table = dialog.findChild<QTableWidget*>(QStringLiteral("catalogueTable"));
+    ASSERT_NE(table, nullptr);
+    // La fila de la Rectitud, buscada por su POSICIÓN en la lista de tipos —que
+    // es la que ordena la tabla— y no por su rótulo.
+    const auto& types = inspection::allToolTypes();
+    const auto at = std::find(types.begin(), types.end(), inspection::ToolType::Straightness);
+    ASSERT_NE(at, types.end());
+    const int row = static_cast<int>(std::distance(types.begin(), at));
+    auto* draw = qobject_cast<QPushButton*>(table->cellWidget(row, 3));
+    ASSERT_NE(draw, nullptr)
+        << "una cota que el programa no sabe colocar no ofrece dibujarla: el operador se "
+           "queda mirando un «a mano» sin saber por dónde empezar";
+
+    draw->click();
+    ASSERT_TRUE(dialog.toolToDrawByHand().has_value());
+    EXPECT_EQ(*dialog.toolToDrawByHand(), inspection::ToolType::Straightness);
 }

@@ -2,6 +2,9 @@
 
 #include <QDialog>
 
+#include <optional>
+#include <utility>
+
 #include "inspection_editor/piece_report.h"
 
 class QCheckBox;
@@ -94,6 +97,16 @@ public:
     // los datos es la ventana.
     [[nodiscard]] std::vector<inspection::ToolConfig> toolsWithChangedState() const;
 
+    // LA CLASE QUE EL OPERADOR QUIERE DIBUJAR A MANO, si pulsó «Dibujarla».
+    //
+    // Para las cotas que el programa no sabe colocar solo —una Rectitud, un
+    // Chaflán: exigen señalar QUÉ tramo se mide— el camino honrado no es fingir
+    // que sí puede, sino llevar al operador a trazarla. El diálogo no dibuja
+    // nada: dice cuál, y la ventana la deja elegida en la paleta.
+    [[nodiscard]] std::optional<inspection::ToolType> toolToDrawByHand() const {
+        return toDrawByHand_;
+    }
+
     // Las medidas hermanas marcadas para vigilar. Vacío si no marcó ninguna.
     [[nodiscard]] std::vector<MeasureToAdd> measuresToAdd() const;
 
@@ -126,6 +139,11 @@ private:
     QTableWidget* table_ = nullptr;
     QLabel* status_ = nullptr;
     std::vector<DrawnTool> drawn_;
+    // Las casillas del catálogo, CON SU CLASE al lado. Emparejar por posición
+    // ya se rompió una vez en este mismo diálogo —al agrupar por clase, apagar
+    // «Ø» apagaba «alto»— así que aquí la pareja va explícita.
+    std::vector<std::pair<inspection::ToolType, QCheckBox*>> useBoxes_;
+    std::optional<inspection::ToolType> toDrawByHand_;
     // EL INTERRUPTOR, CON LA HERRAMIENTA A LA QUE PERTENECE.
     //
     // Antes esto era un vector de casillas y se emparejaba con `drawn_` POR

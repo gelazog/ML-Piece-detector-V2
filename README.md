@@ -486,15 +486,21 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    marcado «OK», porque una cota recién medida está dentro de su propia
    tolerancia por construcción — todavía no la ha comprobado nadie.
 
-   **Y una tercera pestaña: «Qué más puedo medir».** Las 32 herramientas, con lo
-   que mide cada una y **qué se puede hacer con ella sobre esta pieza**: *ya la
-   propone* (la medición automática la ha colocado sola y entra con «Vigilar
-   estas cotas»), *ya la usas*, *no la ve en esta pieza*, o *hay que dibujarla*.
+   **Y una tercera pestaña: «Elegir qué se mide».** Las 32 herramientas, cada
+   una con **su casilla**: marcadas son las que el programa usa al pulsar
+   «Vigilar estas cotas». Antes se llevaba las doce propuestas y había que
+   borrar después las que no querías.
 
-   Ese último grupo no es un fallo escondido: colocar una Rectitud o un Chaflán
-   exige señalar **qué tramo** se mide, y adivinarlo daría una cota sobre un
-   sitio que nadie eligió. El resumen dice cuántas se colocan solas y cuántas
-   no, para que la lista de 32 no se lea como una promesa.
+   Al lado, **qué se puede hacer con ella sobre esta pieza** —*propuesta*, *ya la
+   usas*, *no la ve aquí*, *a mano*— y **por qué**, en el tooltip de la propia
+   celda. «No la ve aquí» no es que el programa falle: es que la pieza no tiene
+   ese rasgo, y así lo dice.
+
+   Las que no puede colocar no traen casilla —marcar algo que no haría nada es
+   una promesa que no se cumple— sino un botón **Dibujarla**: cierra el informe
+   y te deja esa herramienta elegida en la paleta. Colocar una Rectitud o un
+   Chaflán exige señalar **qué tramo** se mide, y adivinarlo daría una cota
+   sobre un sitio que nadie eligió.
 
 4. **Medir automáticamente**: en el editor de plantilla, el botón
    **Medir automáticamente…** mira la pieza y propone las cotas que encuentra.
