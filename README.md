@@ -531,6 +531,14 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    | **Una rueda dentada** | **cuántos dientes**, Ø de cabeza, Ø de raíz y la excentricidad |
    | **Una rosca de perfil** | el **paso**, el Ø exterior y el Ø de fondo |
 
+   **Los agujeros que te propone son los de ESA pieza.** Si en el encuadre hay
+   una bandeja entera —veinte tuercas, un puñado de arandelas—, cada informe
+   habla solo de la pieza que estás midiendo: antes listaba también los agujeros
+   de las vecinas, y en la foto de las tuercas eso eran ciento sesenta y nueve
+   filas casi iguales para una pieza que tiene dos agujeros. Y si una cota de
+   agujero sale midiendo tanto como la pieza entera, no se publica: un agujero
+   está dentro, así que no puede medir más que ella.
+
    **Y a todas, el área y el perímetro de la silueta.** Son las dos únicas
    cotas que miran la pieza **entera**: todo lo demás mide un rasgo —este
    diámetro, aquel lado, esta esquina— y una pieza puede pasar las doce y estar

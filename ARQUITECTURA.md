@@ -3003,6 +3003,43 @@ Qué propone, a partir de la descomposición del contorno y de los agujeros:
 por redondeo, un **Calíper** por cada par de caras paralelas enfrentadas y un
 **Ángulo** por esquina viva.
 
+##### «Un Círculo por agujero» es por agujero DE ESTA PIEZA
+
+Y esa precisión costó ciento sesenta y nueve filas. En el encuadre puede haber
+una bandeja entera: `findHoles` devuelve los huecos de TODA la máscara, mientras
+que el resto del proponedor mira el contorno mayor —«esta pieza»—. El informe de
+una tuerca acababa listando los agujeros de las demás.
+
+Medido sobre el banco de fotos, midiendo pieza por pieza:
+
+| Foto | Los hechos del contorno decían | Las cotas publicaban |
+|---|---|---|
+| `producto-tuercas-prueba.jpg` | Agujeros: 2 | **169** filas «Ø agujero N», todas ≈ 42,7 px |
+| `arandelas-4.png` | corona con un agujero central | **4** filas llamadas todas «Ø interior» |
+
+Los números no eran falsos: son agujeros de verdad, de tuercas de verdad, y como
+todas las tuercas se parecen salían casi iguales. Eran de **otras piezas**, y el
+mismo informe se contradecía a sí mismo dos filas más arriba. El criterio ahora
+es el que ya usaba `describeContour` para contarlos —un agujero es hijo del
+contorno de la pieza—, comprobado con el contorno delante porque `findHoles` no
+dice de quién es cada hueco. Sobre el banco entero: **190 cotas de agujero pasan
+a 71**, y ninguna foto ofrece más agujeros de los que cuenta.
+
+##### Y un agujero no puede medir más que su pieza
+
+En `arandelas-4.png` la tabla ponía «Ø exterior 191,52 px» y justo debajo «Ø
+interior 191,47 px». El círculo se propone sobre el agujero que la máscara ve
+—Ø 150 px— y al medirlo la herramienta se va al borde de fuera: es la avería
+conocida de que **cada herramienta vuelve a umbralizar su propio contorno**, que
+está aparcada por decisión del dueño.
+
+Publicar el número no es lo mismo que arreglarla. Un agujero está dentro de la
+pieza, así que su diámetro no llega al lado corto del rectángulo que la contiene
+— no es un criterio de calidad, es geometría—, y la regla de no publicar
+imposibles ya estaba escrita para otras cotas. Sobre el banco entero la guarda
+retira exactamente **dos** cotas, que son las dos imposibles; ninguna otra se
+mueve.
+
 #### Recetas de medición: acotar qué se propone, sin poder forzarlo
 
 Petición de uso: «un conjunto personalizado de reglas para algunas piezas

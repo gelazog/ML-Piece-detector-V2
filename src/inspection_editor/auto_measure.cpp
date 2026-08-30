@@ -375,8 +375,32 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
     }
 
     // --- Agujeros: un Círculo por cada uno --------------------------------
+    //
+    // POR CADA AGUJERO **DE ESTA PIEZA**, y esa precisión no es un detalle.
+    //
+    // `findHoles` devuelve los huecos de TODA la máscara, y la máscara puede
+    // llevar cien piezas: en el encuadre hay una bandeja de tuercas. Todo lo
+    // demás de este proponedor mira el contorno mayor —«esta pieza»—, así que
+    // el informe de UNA tuerca acababa listando los agujeros de las otras.
+    //
+    // Medido sobre el banco: en `producto-tuercas-prueba.jpg` los hechos del
+    // contorno decían «Agujeros: 2» y las cotas publicaban CIENTO SESENTA Y
+    // NUEVE «Ø agujero N», todas alrededor de 42,7 px. Los números no estaban
+    // mal —son agujeros de verdad, de tuercas de verdad, todas parecidas— pero
+    // eran de otras piezas, y el mismo informe se contradecía a sí mismo dos
+    // filas más arriba. En `arandelas-4.png` pasaba lo mismo con peor pinta:
+    // cuatro filas llamadas todas «Ø interior», que son cuatro arandelas
+    // distintas, y una corona tiene UN agujero central.
+    //
+    // El criterio es el que ya usa `describeContour` para contarlos: un agujero
+    // es hijo del contorno de la pieza. Aquí se comprueba con el contorno
+    // delante, porque `findHoles` no devuelve de quién es cada hueco.
     int holeIndex = 0;
     for (const auto& hole : vision::findHoles(mask)) {
+        if (hole.empty() ||
+            cv::pointPolygonTest(contour, cv::Point2f(hole.front()), false) <= 0.0) {
+            continue;  // el agujero es de otra pieza del encuadre
+        }
         ++holeIndex;
         cv::Point2f center;
         float radius = 0.0F;
@@ -402,9 +426,35 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
         p.geometry = g;
         p.reason = isTheRingBore ? "Agujero central de la corona: la cota interior de la pieza."
                                  : "Agujero interno detectado en la máscara de la pieza.";
-        if (measureProposal(gray, fixture, mmPerPixel, p) && !alreadyCovered(proposals, p)) {
-            proposals.push_back(std::move(p));
+        if (!measureProposal(gray, fixture, mmPerPixel, p) || alreadyCovered(proposals, p)) {
+            continue;
         }
+        // Y NO PUEDE MEDIR MÁS QUE LA PIEZA QUE LO TIENE.
+        //
+        // Un agujero está DENTRO de la pieza, así que su diámetro no puede
+        // llegar al lado corto del rectángulo que la contiene. No es un criterio
+        // de calidad: es geometría, y una cota que lo incumple no está midiendo
+        // el agujero.
+        //
+        // Pasa de verdad. En `arandelas-4.png` el «Ø interior» salía 191,47 px
+        // con un «Ø exterior» de 191,52: el círculo se propone sobre el agujero
+        // (Ø 150 px en la máscara) y al medirlo la herramienta se va al borde de
+        // fuera. La avería de fondo es conocida y está aparcada por decisión del
+        // dueño —cada herramienta vuelve a umbralizar su propio contorno—, pero
+        // publicar el número no es lo mismo que arreglarla: un agujero que mide
+        // lo que la pieza entera es un imposible, y aquí ya hay regla escrita
+        // para eso —`NoProposedToolPublishesAnImpossibleNumber`—. No medir es
+        // una respuesta honesta; medir mal y decirlo con tres decimales, no.
+        const double toMeasureUnits = mmPerPixel > 0.0 ? mmPerPixel : 1.0;
+        const double fitsInside =
+            std::min(box.size.width, box.size.height) * toMeasureUnits;
+        if (p.kind == MeasuredKind::Length && p.measured >= fitsInside) {
+            if (dropped != nullptr) {
+                ++*dropped;
+            }
+            continue;
+        }
+        proposals.push_back(std::move(p));
     }
 
     // --- ¿ESTA PIEZA SE REPITE? RUEDA DENTADA Y ROSCA -----------------------
