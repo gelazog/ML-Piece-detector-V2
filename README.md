@@ -561,7 +561,10 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    la cifra: «*el contorno es una elipse de 1,25:1… el diámetro se queda un
    10 % por debajo del eje mayor*». El arreglo: pon la pieza debajo del objetivo,
    o corrige la perspectiva con un **marcador ArUco** de tamaño conocido junto a
-   ella (*Configurar ▸ Escala por marcador ArUco*). Ojo con los nombres: el
+   ella (*Configurar ▸ Escala por marcador ArUco*). Con el marcador puesto, el
+   diámetro se ajusta **sobre el plano real** y deja de salir corto: en las
+   pruebas, un disco de 60 mm medido con la cámara inclinada pasa de 71,7 mm a
+   60,3. Ojo con los nombres: el
    **tablero de ajedrez** no sirve para esto — ese corrige la **lente**, que es
    otro problema.
 

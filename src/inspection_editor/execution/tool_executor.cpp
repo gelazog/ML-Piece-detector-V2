@@ -789,8 +789,37 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
     result.derived.point = vision::toPieceCoords(fixture, cv::Point2f(
         static_cast<float>(cx), static_cast<float>(cy)));
     result.derived.radius = r;
-    result.detail = "D=" + fmtLen(result.measured, fmt) +
-                    ", R=" + fmtLen(r, fmt) +
+    // EL DIÁMETRO EN mm, AJUSTADO EN EL PLANO cuando hay marcador.
+    //
+    // `fmtLen` convierte con la escala constante, y sobre un plano inclinado esa
+    // escala no vale: es justo lo que el marcador ArUco viene a arreglar. Las
+    // longitudes entre dos puntos ya lo usaban (`fmtLenPts`), pero el diámetro
+    // salía de un radio, no de dos puntos, y se quedaba fuera — así que el
+    // programa recomendaba el marcador para enderezar una pieza torcida y luego
+    // publicaba el diámetro sin enderezar.
+    //
+    // Medido sobre una escena sintética con el marcador dentro, un disco de
+    // 60 mm y la cámara inclinada: por escala constante salía 68,09 mm con
+    // inclinación suave y 78,21 con inclinación fuerte; llevando los puntos del
+    // borde al plano y ajustando allí, 60,0 en los dos casos.
+    //
+    // Se ajusta en el PLANO en vez de convertir el radio: mapear un radio no
+    // significa nada —la perspectiva no conserva distancias— mientras que los
+    // puntos del borde sí se pueden mapear uno a uno, y en el plano el borde
+    // vuelve a ser una circunferencia.
+    std::string diameterText = fmtLen(result.measured, fmt);
+    std::string radiusText = fmtLen(r, fmt);
+    if (!fmt.imageToMm.empty() && fmt.unit != LengthUnit::Pixels) {
+        std::vector<cv::Point2f> onThePlane;
+        cv::perspectiveTransform(points, onThePlane, fmt.imageToMm);
+        const vision::CircleFit inMm = vision::fitCircleRobust(onThePlane);
+        if (inMm.valid && inMm.radius > 0.0) {
+            diameterText = formatMmPx(2.0 * inMm.radius, result.measured, fmt);
+            radiusText = formatMmPx(inMm.radius, r, fmt);
+        }
+    }
+    result.detail = "D=" + diameterText +
+                    ", R=" + radiusText +
                     // NO se llama "redondez": es la desviación radial máxima
                     // respecto al círculo de mínimos cuadrados, que es media
                     // banda y otro número distinto del de la norma. Llamarlo

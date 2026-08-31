@@ -2176,6 +2176,25 @@ de la confusión con todas las letras.
 | **Marcador ArUco** | la **perspectiva**: una homografía | **sí** |
 | Tablero de ajedrez | la **lente**, que no lleva rectas a rectas | no, es otro problema |
 
+**Y el consejo, comprobado de punta a punta**, destapó la mitad que faltaba: el
+marcador arreglaba las longitudes entre dos puntos —`fmtLenPts` mapea los dos al
+plano— pero **el diámetro del Círculo sale de un radio, no de dos puntos**, y se
+convertía con la escala constante. O sea que el programa recomendaba el marcador
+para enderezar una pieza torcida y luego publicaba el diámetro sin enderezar.
+
+Medido sobre una escena sintética con el marcador dentro y un disco de 60 mm:
+
+| inclinación | por escala constante | ajustando en el plano |
+|---|---|---|
+| de frente | 60,55 mm | 60,55 mm |
+| suave | 65,39 mm | **60,97 mm** |
+| fuerte | 71,68 mm | **60,31 mm** |
+
+La corrección no convierte el radio: mapear un radio no significa nada, porque la
+perspectiva no conserva distancias. Lo que sí se puede mapear son los **puntos
+del borde**, uno a uno, y en el plano el borde vuelve a ser una circunferencia —
+así que el círculo se ajusta allí.
+
 La primera versión del aviso mandaba a «calibrar el plano con el tablero», que es
 justo el que no vale. Sonaba bien y mandaba a otro sitio — y un consejo
 equivocado gasta el tiempo del operador y encima le deja creyendo que ya lo ha

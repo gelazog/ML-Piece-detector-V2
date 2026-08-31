@@ -139,6 +139,7 @@ add_executable(pci_gui_tests
   test_the_drawing_brings_its_own_ruler.cpp
   test_how_many_pieces_are_there.cpp
   test_a_washer_seen_at_an_angle.cpp
+  test_the_marker_straightens_the_measure.cpp
   test_mosaic_click_survives.cpp
   test_scale_dialog.cpp
   test_selfexplaining.cpp
