@@ -3264,10 +3264,26 @@ lados*»— y el propio titular, que es lo único que viaja al exportar. Ahí un
 30 se leía exactamente igual que un 17 de 30.
 
 Así que el nombre lleva su propia reserva: **«Polígono de 9 lados (recuento poco
-firme)»** cuando la meseta no llega al listón con el que se decidió. El listón es
-el mismo de siempre, `kPlateauRulesAbove`, y se escribe una sola vez en
-`vision::sideCountIsFirm` para que la pantalla y el clasificador no puedan
+firme)»** cuando la meseta no llega al listón. El listón se escribe una sola vez,
+en `vision::sideCountIsFirm`, para que la pantalla y el clasificador no puedan
 discrepar.
+
+**Y es `kCountIsTrustworthyAbove`, no `kPlateauRulesAbove`.** La primera versión
+usó la segunda —la media barrida— y esa constante lleva escrito al lado, con
+todas las letras, que no vale para esta pregunta: contesta «¿está este recuento
+tan claro que se le perdona un borde sucio?», y aplicada aquí deja fuera a los
+polígonos de muchos lados, porque cuantos más lados más estrecha es la ventana de
+epsilon donde sobreviven todos. Medido sobre dibujos exactos:
+
+| lados | 3 | 5 | 6 | 8 | 10 | 12 |
+|---|---|---|---|---|---|---|
+| meseta (de 30) | 30 | 30 | 30 | 22 | **14** | **9** |
+
+Con la media barrida, el decágono y el dodecágono —dibujos exactos, sin un píxel
+de ruido— salían rotulados «(recuento poco firme)». Sobre el banco de fotos el
+cambio casi no se nota (de 106 polígonos, 18 llevaban descargo y ahora 17), y eso
+es justo lo que lo hacía difícil de ver mirando fotos: **el fallo estaba en las
+piezas que el banco no tiene**, así que la prueba las dibuja.
 
 Lo que hay que cuidar es lo contrario: **la reserva no sale cuando no se ha
 medido**. Un polígono redondeado cuenta sus lados por otro camino —la

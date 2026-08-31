@@ -30,6 +30,7 @@
 #include <gtest/gtest.h>
 
 #include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 
 #include <cstdio>
 #include <filesystem>
@@ -160,4 +161,63 @@ TEST(ShapeReason, TheNameCarriesItsOwnReservation) {
     vision::ShapeClass ring;
     ring.kind = vision::ShapeKind::Ring;
     EXPECT_EQ(inspection::describeShape(ring), "Arandela");
+}
+
+// UN DODECÁGONO EXACTO NO ES UN «RECUENTO POCO FIRME».
+//
+// La reserva del nombre se decidía con `kPlateauRulesAbove`, la media barrida, y
+// esa constante lleva escrito al lado, con todas las letras, que NO vale para
+// esta pregunta: contesta «¿está este recuento tan claro que se le perdona un
+// borde sucio?», y aplicada aquí deja fuera a los polígonos de muchos lados,
+// porque cuantos más lados más estrecha es la ventana de epsilon donde
+// sobreviven todos.
+//
+// Medido sobre polígonos limpios dibujados a propósito:
+//
+//     lados     3    5    6    8   10   12
+//     meseta   30   30   30   22   14    9   (de 30)
+//
+// Con la media barrida, el decágono y el dodecágono —dibujos EXACTOS, sin un
+// píxel de ruido— salían rotulados «(recuento poco firme)». La vara de esta
+// pregunta es `kCountIsTrustworthyAbove`, que sale de un hueco medido entre los
+// polígonos de muchos lados (6/30) y las piezas redondas (3/30).
+//
+// Sobre el banco de fotos el cambio casi no se nota —de 106 polígonos, 18
+// llevaban descargo y ahora 17— y eso es justo lo que lo hacía difícil de ver
+// mirando fotos: el fallo estaba en las piezas que el banco no tiene. Por eso
+// esta prueba las dibuja.
+TEST(ShapeReason, ACleanPolygonOfManySidesCarriesNoReservation) {
+    for (int sides : {3, 5, 6, 8, 10, 12}) {
+        cv::Mat image(600, 600, CV_8UC1, cv::Scalar(230));
+        std::vector<cv::Point> corners;
+        corners.reserve(static_cast<std::size_t>(sides));
+        for (int i = 0; i < sides; ++i) {
+            const double angle = 2.0 * CV_PI * i / sides;
+            corners.emplace_back(static_cast<int>(300 + 240 * std::cos(angle)),
+                                 static_cast<int>(300 + 240 * std::sin(angle)));
+        }
+        std::vector<std::vector<cv::Point>> polygon{corners};
+        cv::fillPoly(image, polygon, cv::Scalar(40), cv::LINE_AA);
+        cv::Mat mask;
+        cv::threshold(image, mask, 128, 255, cv::THRESH_BINARY_INV);
+        std::vector<std::vector<cv::Point>> outer;
+        cv::findContours(mask, outer, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+        ASSERT_FALSE(outer.empty()) << sides;
+
+        const vision::ShapeClass shape = vision::classifyShape(outer.front(), mask);
+        ASSERT_EQ(shape.kind, vision::ShapeKind::Polygon)
+            << "el dibujo exacto de " << sides << " lados ya no se lee como polígono";
+        EXPECT_EQ(shape.sides, sides);
+        std::printf("  [limpio] %2d lados: meseta %2d de %2d, se llama «%s»\n", sides,
+                    shape.sideCountPlateau, shape.sideCountSweeps,
+                    inspection::describeShape(shape).c_str());
+        EXPECT_TRUE(vision::sideCountIsFirm(shape))
+            << "un polígono de " << sides
+            << " lados dibujado exacto sale con el recuento en duda (meseta "
+            << shape.sideCountPlateau << " de " << shape.sideCountSweeps << ")";
+        EXPECT_EQ(inspection::describeShape(shape).find("poco firme"), std::string::npos)
+            << "«" << inspection::describeShape(shape)
+            << "» sobre un dibujo exacto: la reserva está midiendo con la vara de otra "
+               "pregunta";
+    }
 }

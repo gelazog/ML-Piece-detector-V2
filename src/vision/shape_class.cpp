@@ -386,8 +386,30 @@ bool sideCountIsFirm(const ShapeClass& shape) {
     if (shape.sideCountSweeps <= 0) {
         return true;
     }
+    // CON `kCountIsTrustworthyAbove`, QUE ES LA VARA DE ESTA PREGUNTA.
+    //
+    // Aquí ponía `kPlateauRulesAbove`, la media barrida, y está avisado dos
+    // constantes más arriba con todas las letras: esa media barrida contesta
+    // «¿está este recuento tan claro que se le perdona un borde sucio?» y
+    // aplicada aquí deja fuera a los polígonos de muchos lados, porque cuantos
+    // más lados más estrecha es la ventana de epsilon donde sobreviven todos —
+    // un dodecágono limpio aguanta 10 de 30 y uno de 16 lados, 6 de 30.
+    //
+    // Lo que costaba, medido sobre polígonos limpios dibujados a propósito —que
+    // es donde se ve, porque el banco de fotos no tiene ninguno de muchos lados—:
+    //
+    //     lados     3    5    6    8   10   12
+    //     meseta   30   30   30   22   14    9   (de 30)
+    //
+    // Con la media barrida, el decágono (14/30) y el dodecágono (9/30) salían
+    // rotulados «Polígono de 12 lados (recuento poco firme)» siendo dibujos
+    // exactos. Con la vara de esta pregunta, ninguno de los seis lleva descargo.
+    //
+    // Sobre el banco el cambio casi no se nota —de 106 polígonos, 18 llevaban
+    // descargo y ahora 17— y eso es justo lo que hacía difícil verlo mirando
+    // fotos: el fallo estaba en las piezas que el banco no tiene.
     return static_cast<double>(shape.sideCountPlateau) >=
-           kPlateauRulesAbove * static_cast<double>(shape.sideCountSweeps);
+           kCountIsTrustworthyAbove * static_cast<double>(shape.sideCountSweeps);
 }
 
 StableSideCount stableSideCountOf(const std::vector<cv::Point>& contour) {
