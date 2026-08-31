@@ -2108,6 +2108,43 @@ exacta: 4 encontradas + 12 declaradas = 16, las que hay. Y bajando el mínimo al
 0,05 % salen **exactamente** las dieciséis, ni una mancha de ruido de propina —
 sin eso, decirle al operador que baje el ajuste sería mandarlo a un sitio peor.
 
+#### Una arandela vista de refilón salía como «Polígono de 8 lados»
+
+En la mesa las piezas redondas están tumbadas, pero las que caen lejos del centro
+del encuadre se ven en **perspectiva**: son elipses. Con una óptica normal eso es
+un 10-20 % de excentricidad sin que nada vaya mal, y en `arandelas-1.png` pasa en
+media docena de arandelas.
+
+Y a una elipse, **un octógono la explica mejor que una circunferencia**. Medido
+sobre esas piezas, cuánto se separa el punto peor:
+
+| del octógono | del círculo | de la elipse |
+|---|---|---|
+| 1,4 – 3,5 px | 2,4 – 6,2 px | **1,1 – 2,3 px** |
+
+Así que el clasificador no se estaba equivocando de regla: con las dos varas que
+tenía, el octógono ganaba de verdad. **Faltaba la tercera.** En pantalla eso era
+una arandela titulada «Polígono de 8 lados» con ocho «Lado N» y ocho «Ángulo N»
+entre sus cotas: dieciséis números que la pieza no tiene y que la arandela de al
+lado no repite.
+
+`worstDistanceToEllipse` es el hermano de `worstDistanceToCircle` —mismo cálculo
+radial, sobre el mismo contorno con el que se ajustó el polígono— y el factor va
+aparte del de la circunferencia porque los datos son otros. Sobre el banco
+entero, 156 piezas que salen polígono, elipse/polígono:
+
+- las siete que hay que dejar de llamar polígono: **0,42 a 0,80**
+- todas las demás: **1,04 en adelante**
+
+`kEllipseExplainsItBetterBelow = 0.9` cae en ese hueco. Con 0,8 dos de las siete
+se decidían por un pelo (0,794 y 0,799), que es como se acaba con un umbral que
+falla en la foto siguiente.
+
+Resultado sobre `arandelas-1.png`: de las manchas redondas, **trece se leen ahora
+como arandela y antes eran ocho**. Ninguna pieza que sí es polígono cambió de
+clase — la prueba dibuja un octógono exacto al lado, porque sin esa segunda mitad
+«no llamar polígono a nada» aprobaría igual.
+
 #### La foto peor del banco necesita los DOS ajustes, y ni así salen todas
 
 `arandelas-1.png` —**diecinueve** arandelas surtidas sobre un cartón rojo, más

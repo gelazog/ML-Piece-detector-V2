@@ -288,6 +288,28 @@ struct StableSideCount {
 // los tiene.
 inline constexpr double kRoundExplainsItBetterBelow = 0.8;
 
+// Y LO MISMO CON UNA ELIPSE, que es lo que se ve cuando una pieza redonda no
+// está justo debajo del objetivo.
+//
+// En la mesa las arandelas están todas tumbadas, pero las que caen lejos del
+// centro del encuadre se ven en perspectiva, y con una óptica normal eso son un
+// 15 % de excentricidad sin que nada vaya mal. A una elipse, un octógono la
+// explica MEJOR que una circunferencia — así que media docena de arandelas de
+// `arandelas-1.png` salían rotuladas «Polígono de 8 lados», con ocho «Lado N» y
+// ocho «Ángulo N» que sobre una arandela no significan nada.
+//
+// El factor no es el mismo 0,8 de arriba, y por eso está aparte. Medido sobre el
+// banco entero (156 piezas que salen polígono, con y sin clave de color),
+// elipse/polígono:
+//
+//   - las siete que hay que dejar de llamar polígono:  0,42 a 0,80
+//   - todas las demás:                                 1,04 en adelante
+//
+// El hueco va de 0,80 a 1,04 y 0,9 cae en medio, con holgura por los dos lados.
+// Con 0,8 dos de las siete se decidían por un pelo (0,794 y 0,799), que es como
+// se acaba con un umbral que falla en la foto siguiente.
+inline constexpr double kEllipseExplainsItBetterBelow = 0.9;
+
 [[nodiscard]] StableSideCount stableSideCountOf(const std::vector<cv::Point>& contour);
 
 // Los vértices de un polígono, AFINADOS contra el contorno.

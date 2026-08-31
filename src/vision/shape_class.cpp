@@ -299,6 +299,57 @@ PolygonFit fitPolygon(const std::vector<cv::Point>& contour, const ClassifyOptio
 // `minEnclosingCircle`, que es el radio del punto más lejano: con ese, un disco
 // perfecto con un píxel de rebaba mediría toda la rebaba como error de
 // circularidad y el círculo perdería contra cualquier polígono.
+// Cuánto se aparta el contorno de la mejor ELIPSE, en px.
+//
+// Es el hermano de `worstDistanceToCircle`, y hace falta por una razón muy de
+// este trabajo: **una arandela vista de refilón es una elipse**. En la mesa
+// están todas tumbadas, pero las que caen lejos del centro del encuadre se ven
+// en perspectiva, y con una óptica normal eso son un 15 % de excentricidad sin
+// que nada vaya mal.
+//
+// A una elipse, un octógono la explica mejor que una circunferencia — y por eso
+// media docena de arandelas de `arandelas-1.png` salían rotuladas «Polígono de 8
+// lados», con sus ocho «Lado N» y sus ocho «Ángulo N», que sobre una arandela no
+// significan nada. No era un fallo de la regla: sobre esas piezas el círculo se
+// aparta de verdad MÁS que el octógono.
+//
+// El cálculo: se lleva cada punto a los ejes de la elipse ajustada y se compara
+// su radio con el de la elipse en esa misma dirección. No es la distancia
+// perpendicular exacta —esa pide resolver un polinomio de cuarto grado por
+// punto— sino la radial, que es la misma aproximación que ya usa el hermano del
+// círculo y sirve igual para comparar dos ajustes entre sí.
+double worstDistanceToEllipse(const std::vector<cv::Point>& contour) {
+    // `fitEllipse` pide cinco puntos, y por debajo de eso no hay elipse que
+    // ajustar: se devuelve 0 y quien llama tiene que mirar el tamaño antes.
+    if (contour.size() < 5) {
+        return 0.0;
+    }
+    const cv::RotatedRect ellipse = cv::fitEllipse(contour);
+    const double semiMajor = ellipse.size.width / 2.0;
+    const double semiMinor = ellipse.size.height / 2.0;
+    if (semiMajor <= 0.0 || semiMinor <= 0.0) {
+        return 0.0;
+    }
+    const double radians = ellipse.angle * CV_PI / 180.0;
+    const double cosine = std::cos(radians);
+    const double sine = std::sin(radians);
+    double worst = 0.0;
+    for (const auto& point : contour) {
+        const double dx = point.x - ellipse.center.x;
+        const double dy = point.y - ellipse.center.y;
+        const double alongMajor = dx * cosine + dy * sine;
+        const double alongMinor = -dx * sine + dy * cosine;
+        const double howFarOut =
+            std::hypot(alongMajor / semiMajor, alongMinor / semiMinor);
+        if (howFarOut < 1e-9) {
+            continue;
+        }
+        const double radius = std::hypot(alongMajor, alongMinor);
+        worst = std::max(worst, std::abs(radius - radius / howFarOut));
+    }
+    return worst;
+}
+
 double worstDistanceToCircle(const std::vector<cv::Point>& contour) {
     if (contour.size() < 3) {
         return 0.0;
@@ -778,6 +829,17 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
     const bool circleFits = circleDeviation <= scaled.maxDeviationPx;
     const bool polygonFits = !polygon.vertices.empty();
 
+    // ¿LO EXPLICA MEJOR UNA ELIPSE? Entonces no son lados: es una pieza redonda
+    // vista de refilón. El porqué y los números están en
+    // `kEllipseExplainsItBetterBelow`.
+    // Sobre `dense`, el MISMO contorno con el que se ajustó el polígono. Con
+    // uno cada uno, la comparación no sería entre dos ajustes sino entre dos
+    // remuestreos.
+    const double ellipseDeviation = worstDistanceToEllipse(dense);
+    const bool ellipseExplainsItBetter =
+        polygonFits && polygon.deviation > 0.0 && ellipseDeviation > 0.0 &&
+        ellipseDeviation < kEllipseExplainsItBetterBelow * polygon.deviation;
+
     // La tierra de nadie: un contorno con MÁS lados de los que merece la pena
     // medir uno a uno, pero que todavía no cae dentro del ruido de una
     // circunferencia. Un polígono de 16 lados aterrizaba aquí y salía
@@ -825,7 +887,8 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
     const bool polygonisedCurve =
         !polygonFits && polygon.unlimitedSides > scaled.maxSides && roundEnoughForItsSize;
 
-    if (polygonFits && (!circleFits || polygon.deviation <= circleDeviation)) {
+    if (polygonFits && !ellipseExplainsItBetter &&
+        (!circleFits || polygon.deviation <= circleDeviation)) {
         shape.kind = ShapeKind::Polygon;
         shape.sides = static_cast<int>(polygon.vertices.size());
         shape.vertices = refinePolygonVertices(dense, polygon.vertices);
