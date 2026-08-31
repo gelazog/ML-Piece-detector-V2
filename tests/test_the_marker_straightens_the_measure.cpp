@@ -243,3 +243,119 @@ TEST(MarkerScale, TheTiltWarningSaysWhetherItIsBeingCorrected) {
         << correctedRoundness
         << " mm de falta de redondez: eso es la perspectiva sin deshacer, no la pieza";
 }
+
+// Y EL ÁREA, QUE ES LA QUE MÁS SE VA: UN 41 %.
+//
+// Una superficie en perspectiva no escala como una longitud —la escala entra al
+// cuadrado, y esa escala solo vale con la cámara de frente— y la Región ignoraba
+// la homografía por completo. O sea que con el marcador puesto la aplicación
+// decía «escala corregida» y publicaba un área con un 41 % de error.
+//
+// Sobre el disco de 60 mm (2827,4 mm² y 188,5 mm de perímetro), con la cámara
+// inclinada:
+//
+//     sin corregir     área 3980,9 mm² (+41 %)    perímetro 225,3 mm (+20 %)
+//     sobre el plano   área 2837,5 mm² (+0,4 %)   perímetro 189,7 mm (+0,6 %)
+//
+// La corrección va POR RAZÓN y no sustituyendo el estimador, y eso no es un
+// rodeo: la primera versión sumaba los tramos del contorno ya mapeado y con la
+// cámara DE FRENTE daba 199,8 mm donde el estimador de siempre da 188,5 — un 6 %
+// de más. Es la escalera del contorno digital, el sesgo por el que este proyecto
+// no usa `arcLength` sino Vossepoel–Smeulders. Midiendo la razón entre el mismo
+// contorno en el plano y en la imagen, la escalera se va —está en los dos— y
+// queda la escala media a lo largo de la pieza.
+TEST(MarkerScale, TheAreaAndThePerimeterAlsoComeFromThePlane) {
+    constexpr double kDiscAreaMm2 = 2827.4;   // pi * 30^2
+    constexpr double kDiscPerimeterMm = 188.5;  // pi * 60
+
+    const auto millimetresAfter = [](const std::string& detail, const char* label) {
+        const std::size_t at = detail.find(label);
+        return at == std::string::npos
+                   ? -1.0
+                   : std::atof(detail.c_str() + at + std::string(label).size());
+    };
+
+    for (const double tilt : {0.0, 0.30}) {
+        const cv::Mat scene = tiltedBy(tilt);
+        const auto scale = vision::detectMarkerScale(scene, 40.0);
+        ASSERT_TRUE(scale.has_value());
+
+        // El recuadro se traza sobre el disco tal como se ve.
+        cv::Mat mask;
+        cv::threshold(scene, mask, 128, 255, cv::THRESH_BINARY_INV);
+        std::vector<std::vector<cv::Point>> blobs;
+        cv::findContours(mask, blobs, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+        const std::vector<cv::Point>* disc = nullptr;
+        double biggest = 0.0;
+        for (const auto& blob : blobs) {
+            const double area = cv::contourArea(blob);
+            if (area > biggest && cv::boundingRect(blob).x > 300) {
+                biggest = area;
+                disc = &blob;
+            }
+        }
+        ASSERT_NE(disc, nullptr);
+        const cv::Rect box = cv::boundingRect(*disc);
+
+        inspection::ToolConfig region;
+        region.type = inspection::ToolType::Region;
+        region.name = "Área";
+        region.toleranceMin = 0.0;
+        region.toleranceMax = 1e12;
+        inspection::RegionGeometry geometry;
+        geometry.center = cv::Point2f(static_cast<float>(box.x + box.width / 2.0),
+                                      static_cast<float>(box.y + box.height / 2.0));
+        geometry.width = static_cast<float>(box.width * 1.3);
+        geometry.height = static_cast<float>(box.height * 1.3);
+        geometry.measure = inspection::RegionMeasure::Area;
+        geometry.darkPiece = true;
+        region.geometryJson = inspection::toJson(inspection::ToolGeometry{geometry});
+
+        const auto plain = inspection::runTool(scene, {}, region, scale->mmPerPixel,
+                                               inspection::LengthUnit::Millimeters);
+        const auto onThePlane =
+            inspection::runTool(scene, {}, region, scale->mmPerPixel,
+                                inspection::LengthUnit::Millimeters, scale->imageToMm);
+        ASSERT_TRUE(plain.isOk() && plain.value().ok) << plain.value().detail;
+        ASSERT_TRUE(onThePlane.isOk() && onThePlane.value().ok)
+            << onThePlane.value().detail;
+
+        const double areaPlain = millimetresAfter(plain.value().detail, "área=");
+        const double areaPlane = millimetresAfter(onThePlane.value().detail, "área=");
+        const double perimeterPlain = millimetresAfter(plain.value().detail, "perímetro=");
+        const double perimeterPlane =
+            millimetresAfter(onThePlane.value().detail, "perímetro=");
+        std::printf("  [marcador] inclinación %.2f: área %8.1f -> %8.1f mm² (verdad %.1f), "
+                    "perímetro %6.1f -> %6.1f mm (verdad %.1f)\n",
+                    tilt, areaPlain, areaPlane, kDiscAreaMm2, perimeterPlain,
+                    perimeterPlane, kDiscPerimeterMm);
+
+        // La unidad, que es la mitad del fallo que casi se cuela: un área
+        // corregida salía rotulada «mm» porque se estaba escribiendo con el
+        // formateador de longitudes.
+        EXPECT_NE(onThePlane.value().detail.find("mm²"), std::string::npos)
+            << "el área corregida sale sin unidad de superficie: «"
+            << onThePlane.value().detail << "»";
+
+        EXPECT_LT(std::abs(areaPlane - kDiscAreaMm2) / kDiscAreaMm2, 0.03)
+            << "con inclinación " << tilt << " el área sobre el plano da " << areaPlane
+            << " mm² para un disco de " << kDiscAreaMm2;
+        EXPECT_LT(std::abs(perimeterPlane - kDiscPerimeterMm) / kDiscPerimeterMm, 0.03)
+            << "con inclinación " << tilt << " el perímetro sobre el plano da "
+            << perimeterPlane << " mm para un disco de " << kDiscPerimeterMm;
+
+        if (tilt < 0.01) {
+            // De frente, corregir no puede cambiar nada. Aquí es donde se vio
+            // que sumar los tramos mapeados metía un 6 % de escalera.
+            EXPECT_NEAR(perimeterPlane, perimeterPlain, 0.5)
+                << "de frente, la corrección mueve el perímetro: está cambiando el "
+                   "estimador y no solo la escala";
+            EXPECT_NEAR(areaPlane, areaPlain, 1.0);
+        } else {
+            // Y con inclinación, sin corregir tiene que seguir fallando: si no,
+            // la corrección no estaría haciendo nada.
+            EXPECT_GT(std::abs(areaPlain - kDiscAreaMm2) / kDiscAreaMm2, 0.2)
+                << "el área sin corregir ya acierta con la cámara inclinada";
+        }
+    }
+}

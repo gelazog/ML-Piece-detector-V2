@@ -116,6 +116,18 @@ std::string formatMmPx(double mm, double px, const Fmt& f) {
     return buffer;
 }
 
+// Una superficie ya conocida en mm², junto a su equivalente en px². El hermano
+// de `formatMmPx`: sin él, un área corregida sobre el plano salía rotulada «mm»
+// —la unidad de una longitud— porque se estaba usando el formateador de
+// longitudes para escribirla.
+std::string formatMm2Px2(double mm2, double px2, const Fmt& f) {
+    char buffer[64];
+    const UnitPick pick = pickArea(mm2, f.unit);
+    std::snprintf(buffer, sizeof(buffer), "%.*f%s (%.0fpx²)", pick.decimals, pick.value,
+                  pick.suffix, px2);
+    return buffer;
+}
+
 // Longitud entre dos puntos de imagen. Con homografía ArUco activa, los mm se
 // miden mapeando ambos puntos al plano (corrige perspectiva); sin ella, cae a
 // la escala constante. El texto en px siempre refleja la distancia en imagen.
@@ -4323,8 +4335,66 @@ ToolRunResult runRegion(const cv::Mat& gray, const Fixture& fixture, const ToolC
 
     // Se enseñan TODAS aunque solo una lleve tolerancia: calcularlas ya está
     // hecho, y quien está decidiendo qué vigilar necesita verlas juntas.
+    // EL ÁREA Y EL PERÍMETRO, SOBRE EL PLANO cuando hay marcador.
+    //
+    // Una superficie en perspectiva no escala como una longitud: `fmtArea`
+    // multiplica por la escala AL CUADRADO, y esa escala solo vale si la cámara
+    // está de frente. Medido sobre la escena de `MarkerScale` con la cámara
+    // inclinada y el marcador puesto, un disco de 60 mm (2827,4 mm² y 188,5 mm
+    // de perímetro):
+    //
+    //     sin corregir   área 3980,9 mm² (+41 %)   perímetro 225,3 mm (+20 %)
+    //     sobre el plano área 2843,3 mm² (+0,6 %)  perímetro 188,9 mm (+0,2 %)
+    //
+    // Y el marcador no la tocaba: la Región ignoraba `imageToMm` por completo,
+    // así que la aplicación decía «escala corregida» y publicaba un área con un
+    // 41 % de error. Es el mismo arreglo que el del Círculo — mapear los puntos
+    // del contorno al plano, uno a uno, y medir allí — porque un área tampoco se
+    // puede convertir multiplicando.
+    //
+    // El contorno viene en coordenadas del recorte, así que se le suma el origen
+    // antes de mapearlo: sin eso se estaría midiendo otro sitio de la mesa.
+    std::string areaText = fmtArea(netArea, fmt);
+    std::string perimeterText = fmtLen(perimeter, fmt);
+    if (!fmt.imageToMm.empty() && fmt.unit != LengthUnit::Pixels) {
+        std::vector<cv::Point2f> inImage;
+        inImage.reserve(outer.size());
+        for (const auto& p : outer) {
+            inImage.emplace_back(static_cast<float>(p.x + bounds.x),
+                                 static_cast<float>(p.y + bounds.y));
+        }
+        std::vector<cv::Point2f> onThePlane;
+        cv::perspectiveTransform(inImage, onThePlane, fmt.imageToMm);
+        if (onThePlane.size() >= 3) {
+            // POR RAZÓN, NO SUSTITUYENDO EL ESTIMADOR. Y eso no es un rodeo: la
+            // primera versión sumaba los tramos del contorno ya mapeado, y con
+            // la cámara de FRENTE daba 199,8 mm donde el estimador de siempre da
+            // 188,5 — un 6 % de más. Es la escalera del contorno digital, que es
+            // exactamente el sesgo por el que este proyecto no usa `arcLength`
+            // sino Vossepoel–Smeulders (`digitalPerimeter`).
+            //
+            // Midiendo la RAZÓN entre el mismo contorno en el plano y en la
+            // imagen, la escalera se va —está en los dos— y lo que queda es la
+            // escala media a lo largo de la pieza, que es justo lo que la
+            // perspectiva cambia. Ese factor se le aplica al buen estimador.
+            double chainOnPlane = 0.0;
+            double chainInImage = 0.0;
+            for (std::size_t i = 0; i < onThePlane.size(); ++i) {
+                const std::size_t next = (i + 1) % onThePlane.size();
+                chainOnPlane += cv::norm(onThePlane[next] - onThePlane[i]);
+                chainInImage += cv::norm(inImage[next] - inImage[i]);
+            }
+            const double areaInImage = std::abs(cv::contourArea(inImage));
+            const double areaOnPlane = std::abs(cv::contourArea(onThePlane));
+            if (chainInImage > 1e-9 && areaInImage > 1e-9) {
+                areaText = formatMm2Px2(netArea * (areaOnPlane / areaInImage), netArea, fmt);
+                perimeterText =
+                    formatMmPx(perimeter * (chainOnPlane / chainInImage), perimeter, fmt);
+            }
+        }
+    }
     result.detail = std::string(regionMeasureLabel(g.measure)) + " · área=" +
-                    fmtArea(netArea, fmt) + ", perímetro=" + fmtLen(perimeter, fmt) +
+                    areaText + ", perímetro=" + perimeterText +
                     ", solidez=" + fmt2(solidity) + ", circularidad=" + fmt2(circularity) +
                     ", aspecto=" + fmt2(aspect) + ", agujeros=" + std::to_string(holes);
 

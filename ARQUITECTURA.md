@@ -2210,6 +2210,32 @@ El «no es de fiar» tampoco es un rodeo: el texto viejo afirmaba una dirección
 no siempre se cumple. Medido en la misma escena, con la cámara muy inclinada y
 sin corregir, el disco de 60 mm sale de **91 mm** — largo, no corto.
 
+##### Y el área, que es la que más se va: un 41 %
+
+Una superficie en perspectiva no escala como una longitud —la escala entra al
+cuadrado— y la Región **ignoraba la homografía por completo**. Con el marcador
+puesto, la aplicación decía «escala corregida» y publicaba un área con un 41 % de
+error. Sobre el disco de 60 mm, con la cámara inclinada:
+
+| | área | perímetro |
+|---|---|---|
+| sin corregir | 3980,9 mm² (**+41 %**) | 225,3 mm (+20 %) |
+| sobre el plano | 2837,5 mm² (+0,4 %) | 189,7 mm (+0,6 %) |
+| verdad | 2827,4 mm² | 188,5 mm |
+
+La corrección va **por razón y no sustituyendo el estimador**, y eso no es un
+rodeo: la primera versión sumaba los tramos del contorno ya mapeado y con la
+cámara **de frente** daba 199,8 mm donde el estimador de siempre da 188,5 — un
+6 % de más. Es la escalera del contorno digital, el sesgo por el que este
+proyecto no usa `arcLength` sino Vossepoel–Smeulders. Midiendo la **razón** entre
+el mismo contorno en el plano y en la imagen, la escalera se va —está en los
+dos— y queda la escala media a lo largo de la pieza, que es lo único que la
+perspectiva cambia.
+
+De paso, un área corregida salía rotulada «mm» porque se estaba escribiendo con
+el formateador de longitudes; ahora hay un `formatMm2Px2` y la prueba mira la
+unidad además del número.
+
 La primera versión del aviso mandaba a «calibrar el plano con el tablero», que es
 justo el que no vale. Sonaba bien y mandaba a otro sitio — y un consejo
 equivocado gasta el tiempo del operador y encima le deja creyendo que ya lo ha
