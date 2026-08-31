@@ -724,8 +724,9 @@ void DetectionPage::setBackgroundColour(const cv::Vec3b& background) {
         tr("Tu mesa tiene color (%1, saturación %2). Ahora mismo la pieza se separa por lo "
            "CLARA que es, y ahí se pierde lo que de verdad la distingue del fondo: el "
            "tono. Sobre un cartón rojo, una arandela de latón tiene casi la misma "
-           "claridad que la mesa — medido sobre una foto de veinte arandelas surtidas, "
-           "por claridad salen 7 y por color 20.")
+           "claridad que la mesa — medido sobre una foto de diecinueve arandelas "
+           "surtidas: por claridad se encuentran 4 y por color 11, y bajando además el "
+           "área mínima al 0,1 %, 17.")
             .arg(QColor(background[2], background[1], background[0]).name().toUpper())
             .arg(colour, 0, 'f', 2));
     colourHint_->setStyleSheet(theme::textStyle(theme::kWarn));

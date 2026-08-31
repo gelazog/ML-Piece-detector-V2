@@ -27,6 +27,7 @@
 #include <gtest/gtest.h>
 
 #include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 
 #include <cstdio>
 #include <filesystem>
@@ -131,32 +132,47 @@ TEST(PieceCount, WhatTheMinimumAreaLeavesOutIsCountedAndRecoverable) {
         << "bajando el área mínima tienen que salir las dieciséis y ninguna más";
 }
 
-// LA FOTO PEOR DEL BANCO NECESITA LOS DOS AJUSTES, Y CADA UNO SIN EL OTRO NO
-// LLEGA.
+// LA FOTO PEOR DEL BANCO NECESITA LOS DOS AJUSTES, Y NI ASÍ SALEN TODAS.
 //
-// `arandelas-1.png` son veinte arandelas surtidas sobre un cartón ROJO, con su
-// barra de 20 mm. Es la foto donde la detección de fábrica peor lo hace, y
-// mirarla pieza por pieza contesta por qué — con números, que es lo que faltaba:
+// `arandelas-1.png` son DIECINUEVE arandelas surtidas sobre un cartón rojo, más
+// una barra de escala de 20 mm con su rótulo. El recuento sale de dibujar las
+// detecciones encima de la foto y contarlas una a una — la primera versión de
+// esta prueba decía «veinte arandelas» y era falso: veinte son las MANCHAS que
+// encuentra, y dos de ellas son la barra y el rótulo. El número cuadraba por
+// casualidad, que es la peor forma de que cuadre.
 //
-//   | clave de color | área mínima | piezas |
-//   |----------------|-------------|--------|
+// Mirada pieza por pieza, con números:
+//
+//   | clave de color | área mínima | manchas |
+//   |----------------|-------------|---------|
 //   | apagada        | 0,50 % (fábrica) |  5 |
 //   | apagada        | 0,05 %      |  9 |
 //   | por color      | 0,50 %      | 11 |
-//   | por color      | 0,10 %      | **20** |
+//   | por color      | 0,10 %      | 20 |
 //
-// O sea: bajar el área mínima sola llega a nueve y se atasca, porque lo que
-// pierde a las otras once no es el tamaño — es que sobre un cartón rojo una
-// arandela de latón tiene casi la misma CLARIDAD que la mesa, y la segmentación
-// por claridad no las separa. Y la clave de color sola llega a once, porque las
-// pequeñas siguen sin pasar el área mínima.
+// Y esas veinte manchas son: **17 arandelas enteras**, un trozo de la de
+// plástico traslúcido, la barra de escala y su rótulo.
 //
-// Las dos cosas ya están en la aplicación y las dos se avisan por su lado: el
-// aviso «tu mesa tiene color» con su botón, y el «+N pequeñas» del recuento con
-// su ajuste. Lo que no había era la comprobación de que la cadena entera llega
-// hasta las veinte — y sin eso, cualquiera de los dos avisos podría dejar de
-// servir sin que nada fallara.
-TEST(PieceCount, TheWorstPhotoNeedsBothKnobsAndTheChainReachesTwenty) {
+// Las dos que faltan tienen nombre y motivo, y los dos motivos ya estaban
+// escritos en el proyecto:
+//
+//   - la de **plástico traslúcido**: se ve el fondo a través de ella, así que no
+//     hay color que la separe. Está documentada como límite conocido y aquí se
+//     confirma — de ella sale un trozo de 50x22 px, no la arandela;
+//   - el **aro de cobre**: naranja sobre rojo. La clave de color mide distancia
+//     al color del fondo, y el naranja está cerca del rojo.
+//
+// Lo que fija esta prueba:
+//
+//   1. Que ninguno de los dos ajustes llega solo. Bajar el área mínima se atasca
+//      en nueve, porque lo que pierde a las demás no es el tamaño: sobre un
+//      cartón rojo una arandela de latón tiene casi la misma CLARIDAD que la
+//      mesa. Y la clave de color sola llega a once, porque las pequeñas siguen
+//      sin pasar el mínimo.
+//   2. Que juntos encuentran las diecisiete, y que las tres manchas que no son
+//      arandelas se distinguen por su forma: la barra es 5,9 veces más larga que
+//      alta y la más alargada de las arandelas no llega a 1,05.
+TEST(PieceCount, TheWorstPhotoNeedsBothKnobsAndEvenThenTwoAreMissing) {
     const std::filesystem::path path{
         "C:/Users/furro/Pictures/IMG-MC/arandelas-1.png"};
     std::error_code ec;
@@ -165,50 +181,75 @@ TEST(PieceCount, TheWorstPhotoNeedsBothKnobsAndTheChainReachesTwenty) {
     }
     const cv::Mat image = cv::imread(path.string(), cv::IMREAD_COLOR);
     ASSERT_FALSE(image.empty());
-    constexpr int kWashersInThePhoto = 20;
+    constexpr int kWashersInThePhoto = 19;
+    constexpr int kWashersItFinds = 17;
 
-    const auto count = [&image](vision::SegmentationOptions::BackgroundKey key,
-                                double minArea) {
+    using Key = vision::SegmentationOptions::BackgroundKey;
+    const auto blobs = [&image](Key key, double minArea) {
         vision::PipelineConfig config;
         config.minAreaFraction = minArea;
         config.segmentation.recoverHighlightsBy = 12;
         config.segmentation.backgroundKey = key;
         auto found = vision::analyzeFrames(image, config);
-        return found.isOk() ? static_cast<int>(found.value().size()) : -1;
+        return found.isOk() ? found.value() : std::vector<vision::PieceAnalysis>{};
     };
-    using Key = vision::SegmentationOptions::BackgroundKey;
 
-    const int byLightness = count(Key::Off, 0.005);
-    const int byLightnessFiner = count(Key::Off, 0.0005);
-    const int byColour = count(Key::Auto, 0.005);
-    const int both = count(Key::Auto, 0.001);
-    std::printf("  [rojo] por claridad %d (y %d bajando el mínimo diez veces), "
-                "por color %d, con los dos %d de %d\n",
-                byLightness, byLightnessFiner, byColour, both, kWashersInThePhoto);
+    const int byLightness = static_cast<int>(blobs(Key::Off, 0.005).size());
+    const int byLightnessFiner = static_cast<int>(blobs(Key::Off, 0.0005).size());
+    const int byColour = static_cast<int>(blobs(Key::Auto, 0.005).size());
+    const auto withBoth = blobs(Key::Auto, 0.001);
 
-    // Y el aviso que lleva al operador a la clave de color tiene que dispararse
-    // en esta foto: el fondo es rojo de sobra.
+    // De las manchas, cuáles tienen forma de arandela. Una arandela es redonda:
+    // su caja es casi cuadrada. La barra de escala es 5,9 veces más larga que
+    // alta, el rótulo 2,9 y el trozo de la traslúcida 2,3 — no hay nada entre
+    // 1,05 y 2,3, así que el corte no es delicado.
+    int roundish = 0;
+    double worstRound = 0.0;
+    for (const auto& piece : withBoth) {
+        const cv::Rect box = cv::boundingRect(piece.contour.points);
+        const double ratio = static_cast<double>(std::max(box.width, box.height)) /
+                             std::max(std::min(box.width, box.height), 1);
+        if (ratio < 1.5) {
+            ++roundish;
+            worstRound = std::max(worstRound, ratio);
+        }
+    }
+    std::printf("  [rojo] por claridad %d (y %d con el mínimo al 0,05 %%), por color %d; "
+                "con los dos %d manchas, de ellas %d redondas (la peor %.2f)\n",
+                byLightness, byLightnessFiner, byColour,
+                static_cast<int>(withBoth.size()), roundish, worstRound);
+
+    // El aviso que lleva al operador a la clave de color tiene que dispararse en
+    // esta foto: el fondo es rojo de sobra.
     const double colourful =
         vision::backgroundColourfulness(vision::estimateBackgroundColour(image));
     EXPECT_GT(colourful, 0.15)
         << "el cartón rojo ya no se ve colorido (" << colourful
         << "): entonces el aviso que manda a separar por color no salta, y esta foto "
-           "se queda en cinco piezas sin que nadie diga por qué";
+           "se queda en cinco manchas sin que nadie diga por qué";
 
-    // Ninguno de los dos ajustes llega solo. Si algún día uno de ellos llegara,
-    // esta prueba falla y hay que volver a mirar: sería una mejora, no un fallo,
-    // pero cambia el consejo que se le da al operador.
-    EXPECT_LT(byLightnessFiner, kWashersInThePhoto)
-        << "bajar el área mínima sola ya llega a las veinte: el aviso de la clave de "
-           "color deja de hacer falta en esta foto y hay que revisarlo";
-    EXPECT_LT(byColour, kWashersInThePhoto)
-        << "la clave de color sola ya llega a las veinte: entonces sobra el consejo de "
-           "bajar además el área mínima";
+    // Ninguno de los dos ajustes llega solo a las diecisiete.
+    EXPECT_LT(byLightnessFiner, kWashersItFinds)
+        << "bajar el área mínima sola ya encuentra las arandelas: el aviso de la clave "
+           "de color deja de hacer falta en esta foto y hay que revisarlo";
+    EXPECT_LT(byColour, kWashersItFinds)
+        << "la clave de color sola ya las encuentra: entonces sobra el consejo de bajar "
+           "además el área mínima";
 
-    // Y juntos sí.
-    EXPECT_EQ(both, kWashersInThePhoto)
-        << "con la clave de color y el área mínima al 0,1 % tienen que salir las veinte "
-           "arandelas de la foto, y salen " << both;
+    // Y juntos encuentran diecisiete de las diecinueve.
+    EXPECT_EQ(roundish, kWashersItFinds)
+        << "con la clave de color y el área mínima al 0,1 % salen " << roundish
+        << " manchas redondas y tienen que salir " << kWashersItFinds << " de las "
+        << kWashersInThePhoto << " arandelas de la foto";
+    EXPECT_LT(worstRound, 1.5)
+        << "alguna de las manchas contadas como arandela es alargada: puede ser la "
+           "barra de escala colándose en el recuento";
+    // Y que las dos que faltan sigan faltando por su motivo, no porque se hayan
+    // arreglado sin querer: si algún día salieran, hay que actualizar el límite
+    // documentado de la arandela traslúcida.
+    EXPECT_LT(kWashersItFinds, kWashersInThePhoto)
+        << "ya salen las diecinueve: quita este descargo y actualiza el límite conocido "
+           "de la arandela de plástico traslúcido";
 }
 
 // «0,5 %» NO ES UNA UNIDAD CON LA QUE SE PUEDA DECIDIR.

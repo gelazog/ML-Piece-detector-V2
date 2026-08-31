@@ -2045,7 +2045,7 @@ contra suposiciones que nadie había comprobado.
 
 | Fichero | Qué es | Piezas | Agujeros de la mayor |
 |---|---|---|---|
-| `arandelas-1.png` | ~20 arandelas variadas sobre fondo rojo, con barra de «20 mm» | ~20 | 1 |
+| `arandelas-1.png` | **19** arandelas variadas sobre fondo rojo, con barra de «20 mm» y su rótulo | 19 | 1 |
 | `arandelas-2.png` | **lámina de catálogo** de arandelas planas: rótulos, «ID/OD», regla dibujada | 0 | — |
 | `arandelas-3.jpg` | ~18 arandelas variadas: planas, dentadas, de lengüeta | ~18 | 1 |
 | `arandelas-4.png` | 4 anillos separadores (taladro central + 6 agujeros) y 12 tornillos | 16 | **7** |
@@ -2097,7 +2097,7 @@ El banco tampoco tenía un recuento contrastado: se sabía cuántas piezas
 | `tornillos-1.png` | 3 | **3** | 0 |
 | `tornillo-ojo-4.png` | 2 | **2** | 7 |
 | `arandelas-4.png` | 16 | 4 | **12** |
-| `arandelas-1.png` | 20 | 5 | 14 |
+| `arandelas-1.png` | 19 | 5 | 14 |
 
 Acertar cien tuercas de cien no estaba comprobado y no es poca cosa. Lo otro
 tampoco es un fallo: el área mínima de fábrica —el 0,5 % de la imagen— existe
@@ -2108,27 +2108,40 @@ exacta: 4 encontradas + 12 declaradas = 16, las que hay. Y bajando el mínimo al
 0,05 % salen **exactamente** las dieciséis, ni una mancha de ruido de propina —
 sin eso, decirle al operador que baje el ajuste sería mandarlo a un sitio peor.
 
-#### La foto peor del banco necesita los DOS ajustes
+#### La foto peor del banco necesita los DOS ajustes, y ni así salen todas
 
-`arandelas-1.png` —veinte arandelas surtidas sobre un cartón rojo— es donde la
-detección de fábrica peor lo hace, y mirarla pieza por pieza contesta por qué:
+`arandelas-1.png` —**diecinueve** arandelas surtidas sobre un cartón rojo, más
+una barra de escala de 20 mm y su rótulo— es donde la detección de fábrica peor
+lo hace:
 
-| Clave de color | Área mínima | Piezas |
+| Clave de color | Área mínima | Manchas |
 |---|---|---|
 | apagada | 0,50 % (fábrica) | 5 |
 | apagada | 0,05 % | 9 |
 | por color | 0,50 % | 11 |
 | **por color** | **0,10 %** | **20** |
 
-Bajar el área mínima sola llega a nueve **y se atasca**: lo que pierde a las once
-restantes no es el tamaño, es que sobre un cartón rojo una arandela de latón
-tiene casi la misma *claridad* que la mesa. Y la clave de color sola llega a
-once, porque las pequeñas siguen sin pasar el mínimo.
+**Y esas veinte manchas no son veinte arandelas.** Son diecisiete arandelas
+enteras, un trozo de la de plástico traslúcido, la barra de escala y su rótulo.
+La primera versión de esta sección decía «las veinte» y era falso: el número
+cuadraba por casualidad, que es la peor forma de que cuadre. Se vio dibujando
+las detecciones sobre la foto y contándolas una a una.
+
+Las dos que faltan tienen nombre y motivo, y los dos motivos ya estaban escritos:
+la de **plástico traslúcido** —se ve el fondo a través, así que no hay color que
+la separe; está documentada como límite conocido y aquí se confirma— y el **aro
+de cobre**, naranja sobre rojo, que es poca distancia de color.
+
+Bajar el área mínima sola llega a nueve **y se atasca**: lo que pierde a las
+demás no es el tamaño, es que sobre un cartón rojo una arandela de latón tiene
+casi la misma *claridad* que la mesa. Y la clave de color sola llega a once,
+porque las pequeñas siguen sin pasar el mínimo.
 
 Las dos cosas ya estaban y las dos se avisan por su lado —«tu mesa tiene color»
 con su botón, y el «+N pequeñas» del recuento con su ajuste—, pero **nadie había
-comprobado que la cadena entera llega hasta las veinte**. Sin eso, cualquiera de
-los dos avisos podía dejar de servir sin que nada fallara.
+comprobado que la cadena entera llega**. La prueba separa ahora las arandelas de
+lo que no lo es por su forma: la barra es 5,9 veces más larga que alta y la más
+alargada de las arandelas no llega a 1,2.
 
 #### Y el número se lee sin pasar el ratón
 

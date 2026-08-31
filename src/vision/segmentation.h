@@ -99,15 +99,25 @@ struct SegmentationOptions {
     //
     // Lo primero que hacía esta función era tirar el color —`cvtColor` a gris—,
     // y ahí se pierde justo lo que separa una arandela de latón de un cartón
-    // rojo: el TONO. En claridad son casi la misma cosa. Medido sobre esa foto,
-    // con el rojo del fondo en gris 116:
+    // rojo: el TONO. En claridad son casi la misma cosa.
     //
-    //     por claridad     7 piezas, 11,4 % del cuadro
-    //     por color       20 piezas, 22,9 % del cuadro
+    // Medido sobre `arandelas-1.png` —DIECINUEVE arandelas surtidas sobre cartón
+    // rojo, contadas dibujando las detecciones encima de la foto—, con el área
+    // mínima de fábrica:
     //
-    // Y las trece que aparecen son exactamente las que faltaban: la de caucho
-    // negro, la de fibra marrón, la de fibra gris, el aro dentado de latón, el
-    // anillo de cobre y las pequeñas de latón.
+    //     por claridad     4 manchas
+    //     por color       11 manchas
+    //
+    // y bajando además el área mínima al 0,1 %, veinte manchas, de las que
+    // DIECISIETE son arandelas enteras. Las que aparecen al encender el color
+    // son las que en claridad se confunden con la mesa: la de caucho negro, la
+    // de fibra marrón, la de fibra gris, el aro dentado de latón y las pequeñas
+    // de latón.
+    //
+    // (Este comentario decía antes «7 y 20 piezas». Ninguno de los dos se
+    // sostiene hoy —el pipeline ha cambiado— y sobre todo el «20» eran MANCHAS,
+    // con la barra de escala y su rótulo dentro. Queda dicho para que no vuelva
+    // a colarse un recuento de manchas como si fuera de piezas.)
     //
     // Cómo: se mide la distancia de cada píxel al color del fondo en Lab —que
     // separa la claridad del tono, que es el problema— y esa distancia se
