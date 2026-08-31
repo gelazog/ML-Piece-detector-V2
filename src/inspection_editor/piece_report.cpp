@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <string>
 
 #include "vision/geometry_features.h"
@@ -17,6 +18,14 @@ namespace {
 // ni estado ni tolerancia. Se construye pasando por `ToolRunResult` para que la
 // conversión de unidades sea LA MISMA que la de las cotas — dos caminos
 // distintos hacia el mismo milímetro acabarían dando dos milímetros distintos.
+// Un número con dos decimales, para escribirlo en un aviso. `std::to_string` da
+// seis y «1.250000:1» no lo lee nadie.
+std::string roundTo2(double value) {
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer), "%.2f", value);
+    return buffer;
+}
+
 MeasurementRow fact(const std::string& name, double value, MeasuredKind kind,
                     double mmPerPixel, LengthUnit unit, const std::string& detail = {}) {
     ToolRunResult reading;
@@ -279,6 +288,47 @@ PieceReport measureWholePiece(const cv::Mat& gray, const cv::Mat& mask,
             "de ESTE contorno y guardadas repetirian el valor de hoy. Sirven para "
             "apuntar la pieza, no para rechazar la siguiente. Si hace falta vigilarla, "
             "dibuja a mano la cota que la juzgue.");
+    }
+
+    // Y EL AVISO DE QUE LA PIEZA SE ESTÁ VIENDO DE REFILÓN.
+    //
+    // Una pieza redonda que no está justo debajo del objetivo se ve como una
+    // elipse, y entonces publica DOS números equivocados a la vez:
+    //
+    //   - el **diámetro**, que sale del círculo ajustado y se queda entre los
+    //     dos ejes de la elipse — hasta un 12,8 % por debajo del eje mayor en el
+    //     banco de fotos;
+    //   - la **redondez**, que mide la inclinación de la cámara y no la pieza:
+    //     una arandela perfecta sale con 4 a 9 px de falta de redondez.
+    //
+    // Los dos van al parte, así que callarlo es peor que no medir. El listón y
+    // los números están en `vision::kSeenAtAnAngleAbove`; salta en 7 de las 70
+    // piezas redondas del banco, no en todas.
+    //
+    // No se corrige el número por dentro a propósito: el diámetro de una elipse
+    // no está definido, y elegir el eje mayor sería decidir por el operador que
+    // su pieza es redonda y está torcida, cuando puede ser ovalada de verdad. Lo
+    // que sí se puede es decirlo, con la cifra y con el arreglo — que es físico:
+    // poner la pieza debajo, o calibrar el plano con el tablero.
+    const bool isRound = report.shape.kind == vision::ShapeKind::Circle ||
+                         report.shape.kind == vision::ShapeKind::Ring;
+    if (isRound && report.shape.ellipseAspect >= vision::kSeenAtAnAngleAbove &&
+        contour.outer.size() >= 5) {
+        const cv::RotatedRect fitted = cv::fitEllipse(contour.outer);
+        const double major = std::max(fitted.size.width, fitted.size.height);
+        const int shortBy =
+            major > 0.0 && report.shape.outerDiameter > 0.0
+                ? static_cast<int>(std::lround(100.0 * (major - report.shape.outerDiameter) /
+                                               major))
+                : 0;
+        report.warnings.push_back(
+            "El contorno es una elipse de " + roundTo2(report.shape.ellipseAspect) +
+            ":1. O la pieza es ovalada, o se esta viendo de refilon; en los dos casos el "
+            "diametro que se publica —el del circulo ajustado— se queda un " +
+            std::to_string(shortBy) +
+            " % por debajo del eje mayor, y la redondez esta midiendo esa inclinacion y "
+            "no la pieza. Pon la pieza debajo del objetivo, o calibra el plano con el "
+            "tablero.");
     }
 
     report.ok = true;

@@ -112,6 +112,16 @@ struct ShapeClass {
     // propia reserva.
     int sideCountPlateau = 0;
     int sideCountSweeps = 0;
+
+    // CUÁNTO SE PARECE EL CONTORNO A UNA ELIPSE Y NO A UN CÍRCULO: eje mayor
+    // partido por eje menor de la elipse ajustada. 1,00 = redondo perfecto.
+    //
+    // Se rellena siempre que hay puntos para ajustarla, no solo en las piezas
+    // redondas, porque la usa quien decide si son lados o es perspectiva. Y sale
+    // aquí porque una pieza redonda vista de refilón publica DOS números
+    // equivocados —el diámetro se queda corto y la redondez mide la inclinación—
+    // y el informe tiene que poder avisarlo.
+    double ellipseAspect = 0.0;
 };
 
 // ¿El recuento de lados está fuera de duda? Es el mismo listón con el que se
@@ -309,6 +319,23 @@ inline constexpr double kRoundExplainsItBetterBelow = 0.8;
 // Con 0,8 dos de las siete se decidían por un pelo (0,794 y 0,799), que es como
 // se acaba con un umbral que falla en la foto siguiente.
 inline constexpr double kEllipseExplainsItBetterBelow = 0.9;
+
+// CUÁNDO UNA PIEZA REDONDA SE ESTÁ VIENDO DE REFILÓN LO BASTANTE COMO PARA
+// DECIRLO.
+//
+// El diámetro que se publica es el de la circunferencia ajustada, y sobre una
+// elipse esa circunferencia se queda entre los dos ejes. Medido sobre las 70
+// piezas redondas del banco, comparando el Ø publicado con el eje mayor:
+//
+//   | elipse (mayor/menor) | 1,02 | 1,05 | 1,08 | 1,16 | 1,22 | 1,25 | 1,32 |
+//   |----------------------|------|------|------|------|------|------|------|
+//   | el Ø se queda corto  | 2,1 %| 2,4 %| 4,1 %| 7,1 %| 9,1 %|10,1 %|12,8 %|
+//
+// Por debajo de 1,10 el error se queda en el 5 %, que es del orden de lo que ya
+// mueve la propia segmentación; por encima crece deprisa. Ahí va el listón, y
+// con él el aviso salta en 7 de las 70 — no en todas, que es lo que lo haría
+// inútil.
+inline constexpr double kSeenAtAnAngleAbove = 1.10;
 
 [[nodiscard]] StableSideCount stableSideCountOf(const std::vector<cv::Point>& contour);
 

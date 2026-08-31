@@ -2145,6 +2145,32 @@ como arandela y antes eran ocho**. Ninguna pieza que sí es polígono cambió de
 clase — la prueba dibuja un octógono exacto al lado, porque sin esa segunda mitad
 «no llamar polígono a nada» aprobaría igual.
 
+#### Y de refilón se equivocan DOS números, así que se dice
+
+Reconocer la arandela era la mitad. La otra: una pieza redonda vista en
+perspectiva publica dos números malos a la vez.
+
+- El **diámetro** sale del círculo ajustado, que sobre una elipse se queda entre
+  los dos ejes. Medido sobre las 70 piezas redondas del banco:
+
+  | elipse (mayor/menor) | 1,02 | 1,05 | 1,08 | 1,16 | 1,22 | 1,25 | 1,32 |
+  |---|---|---|---|---|---|---|---|
+  | el Ø se queda corto | 2,1 % | 2,4 % | 4,1 % | 7,1 % | 9,1 % | 10,1 % | **12,8 %** |
+
+- La **redondez** mide la inclinación de la cámara y no la pieza: arandelas que
+  son redondas salen con 4 a 9 px de falta de redondez.
+
+Los dos van al parte, así que callarlo es peor que no medir. **No se corrige el
+número por dentro a propósito**: el diámetro de una elipse no está definido, y
+elegir el eje mayor sería decidir por el operador que su pieza es redonda y está
+torcida, cuando puede ser ovalada de verdad. Lo que sí se puede es decirlo, con
+la cifra y con el arreglo — que aquí es físico: poner la pieza debajo del
+objetivo, o calibrar el plano con el tablero.
+
+El listón está en 1,10 porque por debajo el error se queda en el 5 %, del orden
+de lo que ya mueve la segmentación. Con él, el aviso salta en **7 de las 70**
+piezas redondas del banco: en las que hace falta y no en todas.
+
 #### La foto peor del banco necesita los DOS ajustes, y ni así salen todas
 
 `arandelas-1.png` —**diecinueve** arandelas surtidas sobre un cartón rojo, más

@@ -554,6 +554,14 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    sino una casualidad que cupo en la tolerancia. Con un solo número los dos
    casos se leían igual.
 
+   **Si la pieza se ve de refilón, te lo dice.** Una pieza redonda que no está
+   justo debajo del objetivo se ve como una elipse, y entonces el diámetro que
+   se publica sale corto —hasta un 13 % en las fotos de prueba— y la redondez
+   mide la inclinación de la cámara en vez de la pieza. El informe lo avisa con
+   la cifra: «*el contorno es una elipse de 1,25:1… el diámetro se queda un
+   10 % por debajo del eje mayor*». El arreglo es físico: pon la pieza debajo
+   del objetivo o calibra el plano con el tablero.
+
    **Si ninguna cota puede juzgar la pieza, te lo dice.** Hay dos clases de
    cota: las que vuelven a medir en cada inspección —un diámetro, la redondez,
    el paso de una rosca— y las que repiten el valor de hoy porque salen de la

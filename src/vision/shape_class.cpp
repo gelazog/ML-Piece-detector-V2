@@ -836,6 +836,12 @@ ShapeClass classifyShape(const std::vector<cv::Point>& contour, const cv::Mat& m
     // uno cada uno, la comparación no sería entre dos ajustes sino entre dos
     // remuestreos.
     const double ellipseDeviation = worstDistanceToEllipse(dense);
+    if (dense.size() >= 5) {
+        const cv::RotatedRect fitted = cv::fitEllipse(dense);
+        const double major = std::max(fitted.size.width, fitted.size.height);
+        const double minor = std::min(fitted.size.width, fitted.size.height);
+        shape.ellipseAspect = minor > 0.0F ? major / minor : 0.0;
+    }
     const bool ellipseExplainsItBetter =
         polygonFits && polygon.deviation > 0.0 && ellipseDeviation > 0.0 &&
         ellipseDeviation < kEllipseExplainsItBetterBelow * polygon.deviation;

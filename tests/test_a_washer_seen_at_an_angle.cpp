@@ -29,7 +29,9 @@
 
 #include <opencv2/imgproc.hpp>
 
+#include <algorithm>
 #include <cmath>
+#include <string>
 #include <cstdio>
 #include <vector>
 
@@ -112,4 +114,66 @@ TEST(ShapeClass, ARealOctagonKeepsItsSides) {
         << "un octógono dibujado exacto ha dejado de tener lados: la regla de la elipse "
            "se ha llevado por delante a los polígonos de verdad";
     EXPECT_EQ(shape.sides, 8);
+}
+
+// Y SE DICE, PORQUE LOS DOS NÚMEROS QUE PUBLICA VAN AL PARTE.
+//
+// Reconocerla como arandela era la mitad del trabajo. La otra mitad: una pieza
+// redonda vista de refilón publica dos números equivocados a la vez.
+//
+//   - El **diámetro** sale del círculo ajustado, que sobre una elipse se queda
+//     entre los dos ejes. Medido sobre las 70 piezas redondas del banco, el Ø se
+//     queda hasta un **12,8 %** por debajo del eje mayor, y la cuenta sigue a la
+//     excentricidad: 1,05 → 2,4 % · 1,16 → 7,1 % · 1,32 → 12,8 %.
+//   - La **redondez** mide la inclinación de la cámara y no la pieza: arandelas
+//     que son redondas salen con 4 a 9 px de falta de redondez.
+//
+// No se corrige el número por dentro a propósito: el diámetro de una elipse no
+// está definido, y elegir el eje mayor sería decidir por el operador que su
+// pieza es redonda y está torcida, cuando puede ser ovalada de verdad. Lo que sí
+// se puede es decirlo con la cifra y con el arreglo, que es físico.
+//
+// El listón (1,10) deja el aviso en 7 de las 70 piezas redondas del banco. Un
+// aviso que saltara en las setenta se aprende a ignorar en dos días, y eso ya
+// está escrito en este proyecto más de una vez.
+TEST(PieceReport, ARoundPieceSeenAtAnAngleSaysSo) {
+    // La misma arandela de arriba, con 12,5 % de excentricidad.
+    cv::Mat drawing(300, 340, CV_8UC1, cv::Scalar(0));
+    cv::ellipse(drawing, cv::Point(170, 150), cv::Size(90, 80), 0.0, 0.0, 360.0,
+                cv::Scalar(255), cv::FILLED, cv::LINE_AA);
+    cv::ellipse(drawing, cv::Point(170, 150), cv::Size(36, 32), 0.0, 0.0, 360.0,
+                cv::Scalar(0), cv::FILLED, cv::LINE_AA);
+    const cv::Mat mask = maskOf(drawing);
+
+    // La imagen para medir: la pieza clara sobre fondo oscuro, como la máscara.
+    const auto report = inspection::measureWholePiece(drawing, mask, {}, 0.0,
+                                                      inspection::LengthUnit::Auto,
+                                                      drawing.size());
+    ASSERT_TRUE(report.ok) << report.problem;
+    for (const auto& warning : report.warnings) {
+        std::printf("  [refilón] aviso: %s\n", warning.c_str());
+    }
+    const bool saysIt = std::any_of(
+        report.warnings.begin(), report.warnings.end(), [](const std::string& warning) {
+            return warning.find("elipse") != std::string::npos;
+        });
+    EXPECT_TRUE(saysIt)
+        << "la pieza se ve de refilón, publica un diámetro corto y una redondez que mide "
+           "la inclinación, y el informe no lo dice";
+
+    // Y una pieza redonda de verdad no lleva ese aviso: si saltara siempre, se
+    // aprendería a ignorar y no serviría cuando hace falta.
+    cv::Mat flat(300, 340, CV_8UC1, cv::Scalar(0));
+    cv::circle(flat, cv::Point(170, 150), 85, cv::Scalar(255), cv::FILLED, cv::LINE_AA);
+    cv::circle(flat, cv::Point(170, 150), 34, cv::Scalar(0), cv::FILLED, cv::LINE_AA);
+    const auto straight = inspection::measureWholePiece(flat, maskOf(flat), {}, 0.0,
+                                                        inspection::LengthUnit::Auto,
+                                                        flat.size());
+    ASSERT_TRUE(straight.ok) << straight.problem;
+    const bool quiet = std::none_of(
+        straight.warnings.begin(), straight.warnings.end(), [](const std::string& warning) {
+            return warning.find("elipse") != std::string::npos;
+        });
+    EXPECT_TRUE(quiet) << "el aviso salta sobre una arandela dibujada redonda: así se "
+                          "aprende a ignorarlo";
 }
