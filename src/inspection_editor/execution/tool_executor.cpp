@@ -171,8 +171,29 @@ std::string fmtArea(double px2, const Fmt& f) {
 // y una silueta a contraluz da varios cientos).
 void appendConditionWarnings(std::string& detail, const Fmt& fmt, double meanEdgeStrength) {
     if (fmt.scaleQuality >= 0.0 && fmt.scaleQuality < 0.75) {
+        // Y LO QUE SE DICE DEPENDE DE SI LA INCLINACIÓN SE ESTÁ CORRIGIENDO.
+        //
+        // «Los diámetros salen cortos» era cierto cuando los mm salían de una
+        // escala constante. Desde que el Círculo se ajusta sobre el plano del
+        // marcador, con la homografía puesta ya no salen cortos —medido: un
+        // disco de 60 mm con la cámara muy inclinada pasa de 71,7 a 60,3— así
+        // que repetirlo sería avisar de algo que la propia herramienta acaba de
+        // arreglar, y eso enseña a no leer los avisos.
+        //
+        // Sin homografía el aviso sigue haciendo falta, pero tampoco decía la
+        // verdad entera: afirmaba «salen cortos», y el signo depende de dónde
+        // caiga la pieza en la perspectiva. Medido en la misma escena, con la
+        // cámara muy inclinada y sin corregir, el disco de 60 mm sale de 91 mm
+        // —largo, no corto—. Ahora dice que no es de fiar, que es lo que se
+        // sostiene siempre, y dónde se enciende la corrección.
+        const bool correcting = !fmt.imageToMm.empty() && fmt.unit != LengthUnit::Pixels;
         detail += " ⚠ cámara inclinada respecto al plano (calidad " +
-                  fmt2(fmt.scaleQuality) + "): los diámetros salen cortos";
+                  fmt2(fmt.scaleQuality) + "): ";
+        detail += correcting
+                      ? "las medidas se corrigen sobre el plano del marcador, pero cuanto "
+                        "más inclinada, menos fino el resultado"
+                      : "el diámetro no es de fiar — enciende Configurar ▸ Escala por "
+                        "marcador ArUco para corregirlo";
     }
     if (meanEdgeStrength > 0.0 && meanEdgeStrength < 25.0) {
         detail += " ⚠ borde de poco contraste (" + fmt2(meanEdgeStrength) +
@@ -809,6 +830,7 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
     // vuelve a ser una circunferencia.
     std::string diameterText = fmtLen(result.measured, fmt);
     std::string radiusText = fmtLen(r, fmt);
+    std::string roundnessText = fmtLen(roundness, fmt);
     if (!fmt.imageToMm.empty() && fmt.unit != LengthUnit::Pixels) {
         std::vector<cv::Point2f> onThePlane;
         cv::perspectiveTransform(points, onThePlane, fmt.imageToMm);
@@ -816,6 +838,24 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
         if (inMm.valid && inMm.radius > 0.0) {
             diameterText = formatMmPx(2.0 * inMm.radius, result.measured, fmt);
             radiusText = formatMmPx(inMm.radius, r, fmt);
+            // Y LA DESVIACIÓN RADIAL, EN EL MISMO SITIO QUE EL DIÁMETRO.
+            //
+            // Si el diámetro se ajusta en el plano y la desviación se convierte
+            // con la escala constante, la misma línea mezcla dos sistemas: en la
+            // escena de prueba salía «D=58,6 mm» junto a «desv. radial máx.=11,0
+            // mm», que sobre un disco perfecto no es un defecto de la pieza sino
+            // la perspectiva sin deshacer.
+            double onPlane = 0.0;
+            const double band = 3.0 * std::max(inMm.rmsResidual, 1e-6);
+            for (const auto& mapped : onThePlane) {
+                const double off = std::abs(std::hypot(mapped.x - inMm.center.x,
+                                                       mapped.y - inMm.center.y) -
+                                            inMm.radius);
+                if (off <= band) {
+                    onPlane = std::max(onPlane, off);
+                }
+            }
+            roundnessText = formatMmPx(onPlane, roundness, fmt);
         }
     }
     result.detail = "D=" + diameterText +
@@ -825,7 +865,7 @@ ToolRunResult runCircle(const cv::Mat& gray, const Fixture& fixture,
                     // banda y otro número distinto del de la norma. Llamarlo
                     // redondez invitaba a apuntarlo en un informe como si fuera
                     // la cota del plano. Para esa está la herramienta Redondez.
-                    ", desv. radial máx.=" + fmtLen(roundness, fmt);
+                    ", desv. radial máx.=" + roundnessText;
     if (discarded > 0) {
         // Decirlo importa: un borde con muchos puntos descartados puede seguir
         // dando un diámetro perfecto y estar midiendo solo media pieza.

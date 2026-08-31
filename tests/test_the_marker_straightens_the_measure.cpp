@@ -140,3 +140,106 @@ TEST(MarkerScale, ItStraightensTheDiameterAndNotOnlyTheRulers) {
         }
     }
 }
+
+// Y EL AVISO DE «CÁMARA INCLINADA» TIENE QUE DECIR LO QUE PASA AHORA.
+//
+// El texto decía «los diámetros salen cortos», y era cierto mientras los mm
+// salían de una escala constante. Desde que el Círculo se ajusta sobre el plano
+// del marcador ya NO salen cortos con la homografía puesta —el disco de 60 mm de
+// la prueba de arriba pasa de 71,7 a 60,3—, así que repetirlo sería avisar de
+// algo que la propia herramienta acaba de arreglar. Un aviso que dice lo que no
+// pasa enseña a no leer los avisos.
+//
+// Las dos mitades: con el plano puesto, el aviso habla de precisión y no de un
+// error que ya no está; sin el plano, sigue diciendo que salen cortos y además
+// dónde se enciende la corrección.
+TEST(MarkerScale, TheTiltWarningSaysWhetherItIsBeingCorrected) {
+    // Inclinación fuerte, para que la calidad del marcador baje del listón.
+    const cv::Mat scene = tiltedBy(0.60);
+    const auto scale = vision::detectMarkerScale(scene, 40.0);
+    ASSERT_TRUE(scale.has_value()) << "sin marcador no hay calidad que juzgar";
+    ASSERT_LT(scale->quality, 0.75)
+        << "con esta inclinación el marcador todavía se ve bien (calidad "
+        << scale->quality << "): sube la inclinación o esta prueba no comprueba nada";
+
+    inspection::ToolConfig circle;
+    circle.type = inspection::ToolType::Circle;
+    circle.name = "Ø";
+    circle.toleranceMin = 0.0;
+    circle.toleranceMax = 1e9;
+    // La geometría se traza SOBRE EL DISCO YA DEFORMADO, buscándolo en la
+    // imagen en vez de escribir aquí un centro y un radio: con la cámara muy
+    // inclinada el disco se va de donde estaba, y una circunferencia trazada de
+    // memoria se queda sin borde que medir (6 rayos de 72, y la prueba falla por
+    // el sitio equivocado).
+    cv::Mat mask;
+    cv::threshold(scene, mask, 128, 255, cv::THRESH_BINARY_INV);
+    std::vector<std::vector<cv::Point>> blobs;
+    cv::findContours(mask, blobs, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+    const std::vector<cv::Point>* disc = nullptr;
+    double biggest = 0.0;
+    for (const auto& blob : blobs) {
+        const double area = cv::contourArea(blob);
+        // A la derecha del marcador, que también es oscuro.
+        if (area > biggest && cv::boundingRect(blob).x > 300) {
+            biggest = area;
+            disc = &blob;
+        }
+    }
+    ASSERT_NE(disc, nullptr) << "no se encuentra el disco en la escena inclinada";
+    const cv::RotatedRect seen = cv::fitEllipse(*disc);
+
+    inspection::CircleGeometry geometry;
+    geometry.center = seen.center;
+    geometry.radius = (seen.size.width + seen.size.height) / 4.0F;
+    geometry.searchBand = geometry.radius * 0.6F;
+    geometry.rayCount = 72;
+    circle.geometryJson = inspection::toJson(inspection::ToolGeometry{geometry});
+
+    const auto withPlane = inspection::runTool(
+        scene, {}, circle, scale->mmPerPixel, inspection::LengthUnit::Millimeters,
+        scale->imageToMm, nullptr, scale->quality);
+    const auto withoutPlane =
+        inspection::runTool(scene, {}, circle, scale->mmPerPixel,
+                            inspection::LengthUnit::Millimeters, cv::Mat(), nullptr,
+                            scale->quality);
+    ASSERT_TRUE(withPlane.isOk() && withPlane.value().ok) << withPlane.value().detail;
+    ASSERT_TRUE(withoutPlane.isOk() && withoutPlane.value().ok)
+        << withoutPlane.value().detail;
+    std::printf("  [marcador] con plano:  %s\n", withPlane.value().detail.c_str());
+    std::printf("  [marcador] sin plano:  %s\n", withoutPlane.value().detail.c_str());
+
+    EXPECT_NE(withPlane.value().detail.find("inclinada"), std::string::npos)
+        << "con la cámara muy inclinada no se avisa de nada";
+    EXPECT_EQ(withPlane.value().detail.find("no es de fiar"), std::string::npos)
+        << "se sigue avisando de que el diámetro no es de fiar cuando ya se está "
+           "corrigiendo sobre el plano: «" << withPlane.value().detail << "»";
+    EXPECT_NE(withoutPlane.value().detail.find("no es de fiar"), std::string::npos)
+        << "sin corregir, el aviso tiene que seguir diciendo lo que pasa: «"
+        << withoutPlane.value().detail << "»";
+    EXPECT_NE(withoutPlane.value().detail.find("ArUco"), std::string::npos)
+        << "el aviso dice el problema y no dónde se arregla: «"
+        << withoutPlane.value().detail << "»";
+
+    // Y LA DESVIACIÓN RADIAL TAMBIÉN SE CORRIGE, o la misma línea mezclaría dos
+    // sistemas: un diámetro medido en el plano junto a una falta de redondez
+    // medida en la imagen. El disco está dibujado perfecto, así que en el plano
+    // su desviación tiene que ser pequeña; en la imagen es la perspectiva.
+    const auto millimetresAfter = [](const std::string& detail, const char* label) {
+        const std::size_t at = detail.find(label);
+        return at == std::string::npos
+                   ? -1.0
+                   : std::atof(detail.c_str() + at + std::string(label).size());
+    };
+    const double correctedRoundness =
+        millimetresAfter(withPlane.value().detail, "desv. radial máx.=");
+    const double rawRoundness =
+        millimetresAfter(withoutPlane.value().detail, "desv. radial máx.=");
+    std::printf("  [marcador] desviación radial: %.2f mm sin corregir, %.2f corregida\n",
+                rawRoundness, correctedRoundness);
+    ASSERT_GT(rawRoundness, 0.0);
+    EXPECT_LT(correctedRoundness, rawRoundness / 4.0)
+        << "el disco está dibujado perfecto y, con el plano puesto, sigue publicando "
+        << correctedRoundness
+        << " mm de falta de redondez: eso es la perspectiva sin deshacer, no la pieza";
+}

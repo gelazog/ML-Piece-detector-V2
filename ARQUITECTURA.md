@@ -2193,7 +2193,22 @@ Medido sobre una escena sintética con el marcador dentro y un disco de 60 mm:
 La corrección no convierte el radio: mapear un radio no significa nada, porque la
 perspectiva no conserva distancias. Lo que sí se puede mapear son los **puntos
 del borde**, uno a uno, y en el plano el borde vuelve a ser una circunferencia —
-así que el círculo se ajusta allí.
+así que el círculo se ajusta allí. Y con él **la desviación radial**, o la misma
+línea mezclaría dos sistemas: un diámetro medido en el plano al lado de una falta
+de redondez medida en la imagen. Sobre el disco perfecto de la prueba, esa
+desviación pasa de **11,01 mm a 0,50** — once milímetros que no eran de la pieza
+sino de la perspectiva sin deshacer.
+
+**Y el aviso de «cámara inclinada» tuvo que cambiar con ello.** Decía «los
+diámetros salen cortos», que era cierto mientras los mm venían de una escala
+constante; con la homografía puesta ya no salen cortos, así que repetirlo sería
+avisar de algo que la herramienta acaba de arreglar. Ahora hay dos textos: con el
+plano habla de precisión —cuanto más inclinada, menos fino— y sin el plano dice
+que el diámetro **no es de fiar** y dónde se enciende la corrección.
+
+El «no es de fiar» tampoco es un rodeo: el texto viejo afirmaba una dirección que
+no siempre se cumple. Medido en la misma escena, con la cámara muy inclinada y
+sin corregir, el disco de 60 mm sale de **91 mm** — largo, no corto.
 
 La primera versión del aviso mandaba a «calibrar el plano con el tablero», que es
 justo el que no vale. Sonaba bien y mandaba a otro sitio — y un consejo
