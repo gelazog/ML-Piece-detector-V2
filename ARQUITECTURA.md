@@ -2164,8 +2164,24 @@ Los dos van al parte, así que callarlo es peor que no medir. **No se corrige el
 número por dentro a propósito**: el diámetro de una elipse no está definido, y
 elegir el eje mayor sería decidir por el operador que su pieza es redonda y está
 torcida, cuando puede ser ovalada de verdad. Lo que sí se puede es decirlo, con
-la cifra y con el arreglo — que aquí es físico: poner la pieza debajo del
-objetivo, o calibrar el plano con el tablero.
+la cifra y con el arreglo.
+
+**Y nombrando el arreglo correcto**, que aquí es fácil de errar: hay **tres**
+cosas que se llaman «calibrar» y la cabecera de `vision/lens_calibration.h` avisa
+de la confusión con todas las letras.
+
+| Se llama | Qué corrige | ¿Sirve aquí? |
+|---|---|---|
+| Escala (mm por píxel) | cuántos mm mide un píxel — un número | no, no sabe de inclinaciones |
+| **Marcador ArUco** | la **perspectiva**: una homografía | **sí** |
+| Tablero de ajedrez | la **lente**, que no lleva rectas a rectas | no, es otro problema |
+
+La primera versión del aviso mandaba a «calibrar el plano con el tablero», que es
+justo el que no vale. Sonaba bien y mandaba a otro sitio — y un consejo
+equivocado gasta el tiempo del operador y encima le deja creyendo que ya lo ha
+arreglado. La prueba comprueba las dos mitades: que el aviso nombra el marcador,
+y que **esa entrada existe en los menús** de la ventana real, buscada por su
+texto y no en una lista escrita aparte que se quedaría vieja al renombrarla.
 
 El listón está en 1,10 porque por debajo el error se queda en el 5 %, del orden
 de lo que ya mueve la segmentación. Con él, el aviso salta en **7 de las 70**

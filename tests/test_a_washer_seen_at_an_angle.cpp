@@ -36,7 +36,10 @@
 #include <vector>
 
 #include "inspection_editor/piece_report.h"
+#include "ui/main_window.h"
 #include "vision/shape_class.h"
+
+#include <QAction>
 
 using namespace pci;
 
@@ -176,4 +179,61 @@ TEST(PieceReport, ARoundPieceSeenAtAnAngleSaysSo) {
         });
     EXPECT_TRUE(quiet) << "el aviso salta sobre una arandela dibujada redonda: así se "
                           "aprende a ignorarlo";
+}
+
+// Y EL ARREGLO QUE NOMBRA EL AVISO TIENE QUE SER EL QUE SIRVE.
+//
+// En esta aplicación hay TRES cosas que se llaman «calibrar», y la cabecera de
+// `vision/lens_calibration.h` avisa de la confusión con todas las letras:
+//
+//   - la ESCALA (mm por píxel) es un número, y no sabe de inclinaciones;
+//   - el MARCADOR ArUco corrige la PERSPECTIVA — es una homografía;
+//   - el TABLERO de ajedrez corrige la LENTE, que no lleva rectas a rectas.
+//     Ninguna homografía deshace eso, y ninguna corrección de lente endereza una
+//     perspectiva.
+//
+// La primera versión del aviso de arriba mandaba a «calibrar el plano con el
+// tablero», que es justo el que no vale para esto. Sonaba bien y mandaba a otro
+// sitio — y un consejo equivocado gasta el tiempo del operador y encima le deja
+// creyendo que ya lo ha arreglado.
+//
+// Esta prueba comprueba las dos mitades: que el aviso nombra el marcador, y que
+// el camino que nombra EXISTE en los menús. Un aviso que manda a un sitio que no
+// está es peor que no avisar.
+TEST(PieceReport, TheTiltWarningNamesTheCalibrationThatFixesIt) {
+    cv::Mat drawing(300, 340, CV_8UC1, cv::Scalar(0));
+    cv::ellipse(drawing, cv::Point(170, 150), cv::Size(90, 80), 0.0, 0.0, 360.0,
+                cv::Scalar(255), cv::FILLED, cv::LINE_AA);
+    cv::ellipse(drawing, cv::Point(170, 150), cv::Size(36, 32), 0.0, 0.0, 360.0,
+                cv::Scalar(0), cv::FILLED, cv::LINE_AA);
+    const auto report =
+        inspection::measureWholePiece(drawing, maskOf(drawing), {}, 0.0,
+                                      inspection::LengthUnit::Auto, drawing.size());
+    ASSERT_TRUE(report.ok) << report.problem;
+    std::string tilt;
+    for (const auto& warning : report.warnings) {
+        if (warning.find("elipse") != std::string::npos) {
+            tilt = warning;
+        }
+    }
+    ASSERT_FALSE(tilt.empty()) << "no hay aviso de perspectiva que comprobar";
+    EXPECT_NE(tilt.find("ArUco"), std::string::npos)
+        << "el aviso no nombra el marcador, que es lo único que corrige la perspectiva: «"
+        << tilt << "»";
+
+    // Y el camino que nombra existe. Se busca la acción por su texto en los
+    // menús de la ventana real, no en una lista escrita aparte: una lista aparte
+    // se queda vieja el día que alguien renombre la entrada.
+    pci::ui::MainWindow window;
+    bool found = false;
+    for (auto* action : window.findChildren<QAction*>()) {
+        if (action->text().contains(QStringLiteral("ArUco"))) {
+            found = true;
+            std::printf("  [refilón] el aviso manda a «%s»\n",
+                        action->text().toStdString().c_str());
+        }
+    }
+    EXPECT_TRUE(found)
+        << "el aviso manda a «Escala por marcador ArUco» y esa entrada no está en ningún "
+           "menú: mandar a un sitio que no existe es peor que no avisar";
 }

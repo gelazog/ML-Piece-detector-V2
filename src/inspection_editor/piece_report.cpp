@@ -308,8 +308,21 @@ PieceReport measureWholePiece(const cv::Mat& gray, const cv::Mat& mask,
     // No se corrige el número por dentro a propósito: el diámetro de una elipse
     // no está definido, y elegir el eje mayor sería decidir por el operador que
     // su pieza es redonda y está torcida, cuando puede ser ovalada de verdad. Lo
-    // que sí se puede es decirlo, con la cifra y con el arreglo — que es físico:
-    // poner la pieza debajo, o calibrar el plano con el tablero.
+    // que sí se puede es decirlo, con la cifra y con el arreglo.
+    //
+    // Y NOMBRANDO EL ARREGLO CORRECTO, que aquí es fácil de errar: en esta
+    // aplicación hay TRES cosas que se llaman «calibrar», y la cabecera de
+    // `vision/lens_calibration.h` avisa de la confusión con todas las letras.
+    //
+    //   - la escala (mm por píxel) es un número, y no sabe de inclinaciones;
+    //   - el **marcador ArUco** corrige la PERSPECTIVA — es una homografía, y es
+    //     lo que hace falta aquí;
+    //   - el tablero de ajedrez corrige la LENTE, que no lleva rectas a rectas.
+    //     Ninguna homografía deshace eso, y ninguna corrección de lente endereza
+    //     una perspectiva.
+    //
+    // La primera versión de este aviso mandaba «calibrar el plano con el
+    // tablero», que es justo el que no vale. Suena bien y manda a otro sitio.
     const bool isRound = report.shape.kind == vision::ShapeKind::Circle ||
                          report.shape.kind == vision::ShapeKind::Ring;
     if (isRound && report.shape.ellipseAspect >= vision::kSeenAtAnAngleAbove &&
@@ -327,8 +340,10 @@ PieceReport measureWholePiece(const cv::Mat& gray, const cv::Mat& mask,
             "diametro que se publica —el del circulo ajustado— se queda un " +
             std::to_string(shortBy) +
             " % por debajo del eje mayor, y la redondez esta midiendo esa inclinacion y "
-            "no la pieza. Pon la pieza debajo del objetivo, o calibra el plano con el "
-            "tablero.");
+            "no la pieza. Pon la pieza debajo del objetivo, o corrige la perspectiva con "
+            "un marcador ArUco de tamano conocido junto a ella (Configurar > Escala por "
+            "marcador ArUco). El tablero de ajedrez no sirve para esto: ese corrige la "
+            "lente, que es otro problema.");
     }
 
     report.ok = true;

@@ -559,8 +559,11 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    se publica sale corto —hasta un 13 % en las fotos de prueba— y la redondez
    mide la inclinación de la cámara en vez de la pieza. El informe lo avisa con
    la cifra: «*el contorno es una elipse de 1,25:1… el diámetro se queda un
-   10 % por debajo del eje mayor*». El arreglo es físico: pon la pieza debajo
-   del objetivo o calibra el plano con el tablero.
+   10 % por debajo del eje mayor*». El arreglo: pon la pieza debajo del objetivo,
+   o corrige la perspectiva con un **marcador ArUco** de tamaño conocido junto a
+   ella (*Configurar ▸ Escala por marcador ArUco*). Ojo con los nombres: el
+   **tablero de ajedrez** no sirve para esto — ese corrige la **lente**, que es
+   otro problema.
 
    **Si ninguna cota puede juzgar la pieza, te lo dice.** Hay dos clases de
    cota: las que vuelven a medir en cada inspección —un diámetro, la redondez,
