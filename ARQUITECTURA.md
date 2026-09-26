@@ -2840,6 +2840,15 @@ circunferencia explica esta nube de puntos de borde. Dos decisiones ahí:
   a 30° de arco Kasa se desvía **10,3 px (5 %)** y Taubin **0,92 px (0,46 %)**;
   a 90°, 0,23 frente a 0,12; con medio círculo o más los dos aciertan. Cuesta
   lo mismo, así que no hay razón para el sesgo.
+- **Taubin, y no un ajuste geométrico encima.** Se midió si refinar con
+  Levenberg-Marquardt (distancia real al círculo) mejoraba algo: radio 50 px,
+  2000 arcos de 36 puntos por caso, ruido de 0,1 a 1 px. No mejora. En media
+  circunferencia o más la diferencia es de centésimas de píxel (σ=1 px, 360°:
+  +0,011 px Taubin, +0,002 px geométrico); en arcos de 60° a 90°, el geométrico
+  sesga un poco **más** (σ=0,5 px, 60°: Taubin +0,162 px, geométrico +0,167). Solo a 30° con
+  1 px de ruido baja la dispersión, y ahí los dos están perdidos (±104 y ±78
+  px). No compensa un bucle iterativo: se queda Taubin. Kasa, en esos mismos
+  casos, sesga −2,08 px a 60° y −21,6 px a 30°.
 - **Reponderación robusta.** El borde de una pieza real trae puntos que no son
   del círculo: una rebaba, un reflejo, un rayo que enganchó el borde
   equivocado. Se reponderan con la biponderada de Tukey midiendo la dispersión
@@ -4721,6 +4730,26 @@ El marcador ArUco reporta además un **indicador de calidad** (0–1) basado en 
 uniformidad de sus lados y diagonales: mide cuán perpendicular está la cámara al
 plano. Con la cámara muy inclinada, una escala única deja de ser fiable lejos
 del marcador y el indicador lo dice.
+
+**Las esquinas del marcador, al subpíxel.** El detector de OpenCV, con sus
+parámetros por defecto, no refina las esquinas: devuelve los vértices del
+polígono sobre la imagen umbralizada, que caen hacia dentro del cuadrado negro.
+El marcador salía pequeño y la escala mm/px, **siempre larga**. Con
+`CORNER_REFINE_SUBPIX`, en escenas sintéticas (200 poses, ruido σ=6):
+
+| Lado del marcador | Sesgo de la escala antes | Después |
+|---|---|---|
+| 60 px | +1,23 % | +0,50 % |
+| 120 px | +0,60 % | +0,18 % |
+| 240 px | +0,30 % | +0,09 % |
+
+El error de esquina baja de 0,70 px a unos 0,2 px, y la variación entre
+fotogramas de la misma escena (120 px), de 0,090 % a 0,022 %. En
+`sample_images/aruco_4x4_id0.png`, cuyo cuadrado mide 600 px exactos, el lado
+pasa de 599,0 a 599,9 px. No cuesta tiempo medible (6,1 frente a 5,9 ms en
+1280×960). `CORNER_REFINE_CONTOUR` también se probó y era peor que no refinar.
+Las fotos del banco no llevan marcador, así que las cifras salen de escenas con
+la verdad conocida (`test_marker_corners_are_subpixel.cpp`).
 
 ### No todo lo que se mide es una longitud
 

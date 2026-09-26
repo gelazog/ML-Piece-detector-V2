@@ -68,6 +68,7 @@ add_executable(pci_tests
   test_frame_utils.cpp
   test_inspection.cpp
   test_lens_distortion.cpp
+  test_marker_corners_are_subpixel.cpp
   test_measure_units.cpp
   test_measurement_report.cpp
   test_ml.cpp

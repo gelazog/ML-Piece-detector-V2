@@ -19,6 +19,21 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### La escala del marcador ArUco salía siempre larga
+
+`detectMarkerScale` usaba el detector de OpenCV con sus parámetros por defecto,
+que no refinan las esquinas: entrega los vértices del polígono umbralizado,
+medio píxel hacia dentro del cuadrado negro. El marcador salía pequeño y la
+escala mm/px, grande. No se veía porque el error es chico (0,3–1,2 % según el
+tamaño del marcador) y siempre del mismo lado, y porque la única prueba con
+imagen real comparaba el marcador con el contorno segmentado, que se equivoca
+igual: las dos vías «coincidían» en 599 px sobre un cuadrado de 600.
+
+Con `CORNER_REFINE_SUBPIX` el sesgo baja de +1,23 % a +0,50 % con 60 px y de
++0,60 % a +0,18 % con 120 px, y la variación entre fotogramas de 0,090 % a
+0,022 %, sin coste medible. `CORNER_REFINE_CONTOUR` se probó y era peor que no
+refinar. Lo vigila `test_marker_corners_are_subpixel.cpp`.
+
 ### Los textos sonaban a manual escrito por una IA
 
 Queja del dueño: «las descripciones todas parecen IA». Tenía razón, y no por

@@ -35,7 +35,23 @@ std::optional<MarkerScale> detectMarkerScale(const cv::Mat& image, double marker
     // (que ya está limitado a uno en vuelo) — no satura.
     static const cv::aruco::Dictionary dict =
         cv::aruco::getPredefinedDictionary(cv::aruco::DICT_4X4_50);
-    const cv::aruco::ArucoDetector detector(dict);
+    // ESQUINAS AL SUBPÍXEL. Por defecto OpenCV entrega las esquinas del
+    // polígono aproximado sobre la imagen umbralizada, que caen hacia dentro
+    // del cuadrado negro: el marcador sale pequeño y la escala mm/px, grande.
+    // Medido en escenas sintéticas (200 poses, borde suavizado, ruido σ=6):
+    // con un marcador de 60 px el sesgo de la escala era +1,23 % y pasa a
+    // +0,50 %; con 120 px, de +0,60 % a +0,18 %; con 240 px, de +0,30 % a
+    // +0,09 %. El error medio de esquina baja de 0,70 px a 0,18-0,24 px, y la
+    // desviación entre fotogramas de la misma escena (120 px, ruido σ=6), de
+    // 0,090 % a 0,022 %. No cuesta tiempo medible (6,1 ms frente a 5,9 ms en
+    // 1280x960). CORNER_REFINE_CONTOUR se probó y era peor que no refinar.
+    // Ver tests/test_marker_corners_are_subpixel.cpp.
+    static const cv::aruco::DetectorParameters params = [] {
+        cv::aruco::DetectorParameters p;
+        p.cornerRefinementMethod = cv::aruco::CORNER_REFINE_SUBPIX;
+        return p;
+    }();
+    const cv::aruco::ArucoDetector detector(dict, params);
 
     std::vector<std::vector<cv::Point2f>> corners;
     std::vector<int> ids;
