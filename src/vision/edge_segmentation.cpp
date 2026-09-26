@@ -236,12 +236,10 @@ ClippingCheck checkThresholdClipping(const cv::Mat& image) {
     }
     check.loosenedBy = kLoosenThresholdBy;
 
-    cv::Mat gray;
-    if (image.channels() == 3) {
-        cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
-    } else {
-        gray = image;
-    }
+    // `toGray` y no «si tiene 3 canales convierte, si no úsala tal cual»: con
+    // BGRA eso trabajaba sobre cuatro canales como si fueran gris (ver
+    // `vision/gray.h` y tests/test_bgra_is_not_gray.cpp).
+    const cv::Mat gray = toGray(image);
 
     // El umbral que elige Otsu es el que usa el modo automático, que es el que
     // hay que juzgar. Con umbral manual el operador ya ha decidido y esto sigue

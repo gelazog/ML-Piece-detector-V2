@@ -1,4 +1,5 @@
 #include "vision/plane_scale.h"
+#include "vision/gray.h"
 
 #include <opencv2/imgproc.hpp>
 #include <opencv2/objdetect/aruco_detector.hpp>
@@ -25,12 +26,10 @@ std::optional<MarkerScale> detectMarkerScale(const cv::Mat& image, double marker
         return std::nullopt;
     }
 
-    cv::Mat gray;
-    if (image.channels() == 3) {
-        cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
-    } else {
-        gray = image;
-    }
+    // `toGray` y no «si tiene 3 canales convierte, si no úsala tal cual»: con
+    // BGRA eso trabajaba sobre cuatro canales como si fueran gris (ver
+    // `vision/gray.h` y tests/test_bgra_is_not_gray.cpp).
+    const cv::Mat gray = toGray(image);
 
     // Diccionario pequeño y robusto; una sola detección por frame analizado
     // (que ya está limitado a uno en vuelo) — no satura.

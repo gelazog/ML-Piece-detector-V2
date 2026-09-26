@@ -19,6 +19,28 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### BGRA tratada como gris en seis sitios que no pasaban por `toGray`
+
+`vision/gray.h` nació para acabar con las copias de «pasar a gris» después de
+que una de ellas devolviera una imagen de cuatro canales sin convertir. La
+auditoría de código de septiembre encontró que la mitad del trabajo seguía sin
+hacer: seis funciones tenían su propia versión.
+
+| Función | Con BGRA hacía |
+|---|---|
+| `sharpnessOf`, `computeQualityMetrics` | el Laplaciano de cuatro canales: excepción de OpenCV |
+| `checkThresholdClipping` | Otsu sobre cuatro canales: excepción |
+| `detectMarkerScale` | lo mismo, aunque el detector ArUco lo tolera |
+| `findBoard` | **rechazaba**: la calibración decía «no hay tablero» con el tablero delante |
+| `runTool` | **rechazaba** con «formato no soportado» |
+
+Invisible porque las pruebas y el banco usan gris o BGR, y BGRA solo llega de
+algunas fuentes. La prueba (`tests/test_bgra_is_not_gray.cpp`) es la más simple
+posible: la misma escena en BGR y en BGRA tiene que dar el mismo número en cada
+función. Antes de arreglarlo fallaban cuatro de las cinco.
+
+---
+
 ### «Solo mide una en automático», y la bandeja salía verde
 
 La página de Piezas ofrece dos modos y el automático dice, con esas palabras,

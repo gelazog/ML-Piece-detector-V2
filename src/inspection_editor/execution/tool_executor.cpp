@@ -1,4 +1,5 @@
 #include "inspection_editor/execution/tool_executor.h"
+#include "vision/gray.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -4559,12 +4560,10 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
     if (image.empty()) {
         return ResultT::err("Imagen vacía");
     }
-    cv::Mat gray;
-    if (image.channels() == 3) {
-        cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
-    } else if (image.channels() == 1) {
-        gray = image;
-    } else {
+    // `toGray` también convierte BGRA, que antes se rechazaba con «formato no
+    // soportado» teniendo una imagen perfectamente válida delante.
+    const cv::Mat gray = vision::toGray(image);
+    if (gray.empty()) {
         return ResultT::err("Formato de imagen no soportado");
     }
 

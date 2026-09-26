@@ -1,4 +1,5 @@
 #include "vision/quality_metrics.h"
+#include "vision/gray.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -16,11 +17,10 @@ double sharpnessOf(const cv::Mat& image, const cv::Rect& roi) {
         return 0.0;  // demasiado pequeño para que la varianza signifique nada
     }
 
-    cv::Mat gray;
-    if (image.channels() == 3) {
-        cv::cvtColor(image(box), gray, cv::COLOR_BGR2GRAY);
-    } else {
-        gray = image(box);
+    // `toGray`: con BGRA esto calculaba el Laplaciano de cuatro canales.
+    const cv::Mat gray = toGray(image(box));
+    if (gray.empty()) {
+        return 0.0;
     }
     cv::Mat laplacian;
     cv::Laplacian(gray, laplacian, CV_64F);
@@ -37,11 +37,12 @@ domain::QualityMetrics computeQualityMetrics(const cv::Mat& image,
         return metrics;
     }
 
-    cv::Mat gray;
-    if (image.channels() == 3) {
-        cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
-    } else {
-        gray = image;
+    // `toGray` y no «si tiene 3 canales convierte, si no úsala tal cual»: con
+    // BGRA eso trabajaba sobre cuatro canales como si fueran gris (ver
+    // `vision/gray.h` y tests/test_bgra_is_not_gray.cpp).
+    const cv::Mat gray = toGray(image);
+    if (gray.empty()) {
+        return metrics;
     }
 
     // Nitidez: varianza del Laplaciano (bajo = borroso).

@@ -134,6 +134,7 @@ add_executable(pci_gui_tests
   test_measurements_panel.cpp
   test_dead_controls.cpp
   test_toolbar_weight.cpp
+  test_bgra_is_not_gray.cpp
   test_holes_belong_to_the_piece.cpp
   test_shape_reason_shows_its_evidence.cpp
   test_the_drawing_brings_its_own_ruler.cpp

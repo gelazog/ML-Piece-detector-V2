@@ -1,4 +1,5 @@
 #include "vision/lens_calibration.h"
+#include "vision/gray.h"
 
 #include <opencv2/calib3d.hpp>
 #include <opencv2/imgproc.hpp>
@@ -46,12 +47,10 @@ std::optional<BoardView> findBoard(const cv::Mat& image, const BoardSpec& spec) 
     if (image.empty() || !spec.isValid()) {
         return std::nullopt;
     }
-    cv::Mat gray;
-    if (image.channels() == 1) {
-        gray = image;
-    } else if (image.channels() == 3) {
-        cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
-    } else {
+    // `toGray` también convierte BGRA, que antes se rechazaba: la calibración
+    // decía «no hay tablero» con el tablero delante.
+    const cv::Mat gray = toGray(image);
+    if (gray.empty()) {
         return std::nullopt;
     }
 
