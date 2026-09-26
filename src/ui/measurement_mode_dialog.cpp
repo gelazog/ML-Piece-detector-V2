@@ -21,7 +21,7 @@ MeasurementModeDialog::MeasurementModeDialog(const repositories::PieceMeasuremen
                                              const QString& pieceName, QWidget* parent)
     : QDialog(parent), fixedPoint_(current.board.fixedPoint) {
     setWindowTitle(pieceName.isEmpty() ? tr("Modo de medición")
-                                       : tr("Modo de medición — %1").arg(pieceName));
+                                       : tr("Modo de medición: %1").arg(pieceName));
 
     auto* root = new QVBoxLayout(this);
 
@@ -48,8 +48,8 @@ MeasurementModeDialog::MeasurementModeDialog(const repositories::PieceMeasuremen
     auto* boardLayout = new QVBoxLayout(boardBox);
 
     boardLayout->addWidget(
-        new QLabel(tr("<b>Automático</b> — el cero se recalcula en cada frame:"), boardBox));
-    originBounds_ = new QRadioButton(tr("Centro de la pie&za (contorno) — recomendado"), boardBox);
+        new QLabel(tr("<b>Automático</b>: el cero se recalcula en cada imagen."), boardBox));
+    originBounds_ = new QRadioButton(tr("Centro de la pie&za (contorno), recomendado"), boardBox);
     originBounds_->setToolTip(
         tr("Centro geométrico del contorno: el punto que se ve centrado en la pieza.\n"
            "Es el centrado automático correcto para poner el cero sobre ella."));

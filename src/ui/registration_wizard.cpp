@@ -68,9 +68,9 @@ void RegistrationWizard::buildUi(const QString& fixedPieceName) {
             tr("Estás añadiendo un acabado admisible de «%1», no una pieza nueva. "
                "Comparte herramientas, tolerancias e historial con la que ya "
                "existe.\n\n"
-               "Hace falta registrarlo aparte y no mezclarlo con el anterior: dos "
-               "acabados en la misma referencia no dan falsos NG, dejan de vigilar "
-               "— la media se coloca entre los dos y deja pasar defectos que antes "
+               "Regístralo aparte: dos acabados en la misma referencia no dan "
+               "falsos NG, sino que dejan de vigilar, porque la media se "
+               "coloca entre los dos y deja pasar defectos que antes "
                "detectaba.")
                 .arg(fixedPieceName),
             this);
@@ -258,7 +258,7 @@ void RegistrationWizard::onFilesClicked() {
     feedbackLabel_->setStyleSheet(QString());
     feedbackLabel_->setText(lastReason.isEmpty()
                                 ? tr("%1 imagen(es) aceptadas").arg(accepted)
-                                : tr("%1 aceptadas — último rechazo: %2")
+                                : tr("%1 aceptadas; último rechazo: %2")
                                       .arg(accepted)
                                       .arg(lastReason));
     updateProgress();
@@ -335,7 +335,7 @@ void RegistrationWizard::onFinishClicked() {
         QMessageBox::information(
             this, tr("Acabado registrado"),
             tr("Acabado «%1» registrado con %2 capturas (referencia v%3).\n\n"
-               "A partir de ahora una pieza es buena si se parece a CUALQUIERA de "
+               "A partir de ahora una pieza es buena si se parece a cualquiera de "
                "los acabados registrados.")
                 .arg(name)
                 .arg(session_->count())

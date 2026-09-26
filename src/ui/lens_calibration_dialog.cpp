@@ -68,12 +68,10 @@ LensCalibrationDialog::LensCalibrationDialog(QWidget* parent) : QDialog(parent) 
 
     auto* intro = new QLabel(
         tr("Imprime un tablero de ajedrez, pégalo a algo rígido y enséñaselo a la cámara "
-           "desde varios sitios y con varias inclinaciones.\n\n"
-           "LO IMPORTANTE es llevarlo a las ESQUINAS del encuadre, no solo al centro. La "
+           "desde varios sitios y ángulos.\n\n"
+           "Llévalo también a las esquinas del encuadre, no solo al centro. La "
            "curvatura de la lente crece hacia el borde: si el cálculo no ve nunca una "
-           "esquina, la adivina — y no avisa de que la está adivinando. Medido, una "
-           "calibración hecha solo por el centro deja el borde un 35 % desviado, que es "
-           "peor que no corregir nada."),
+           "esquina, la adivina sin avisar."),
         this);
     intro->setWordWrap(true);
     root->addWidget(intro);
@@ -102,7 +100,7 @@ LensCalibrationDialog::LensCalibrationDialog(QWidget* parent) : QDialog(parent) 
     innerRows_->setRange(3, 30);
     innerRows_->setValue(6);
     const QString cornerTip =
-        tr("Se cuentan las esquinas INTERIORES, no los cuadros: un tablero de 10x7\n"
+        tr("Se cuentan las esquinas interiores, no los cuadros: un tablero de 10x7\n"
            "cuadros tiene 9x6 esquinas interiores. Es el error más común al calibrar.");
     innerCols_->setToolTip(cornerTip);
     innerRows_->setToolTip(cornerTip);
@@ -112,7 +110,7 @@ LensCalibrationDialog::LensCalibrationDialog(QWidget* parent) : QDialog(parent) 
     squareMm_->setValue(20.0);
     squareMm_->setSuffix(tr(" mm"));
     squareMm_->setToolTip(
-        tr("Mide un cuadro del tablero YA IMPRESO con una regla. Casi ninguna\n"
+        tr("Mide un cuadro del tablero ya impreso con una regla. Casi ninguna\n"
            "impresora saca el tamaño exacto que decía el fichero."));
     boardForm->addRow(tr("Esquinas interiores en horizontal:"), innerCols_);
     boardForm->addRow(tr("Esquinas interiores en vertical:"), innerRows_);

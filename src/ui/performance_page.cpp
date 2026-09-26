@@ -16,9 +16,8 @@ PerformancePage::PerformancePage(vision::WorkingZoneMode mode, bool hasFixedZone
     auto* root = new QVBoxLayout(this);
     auto* intro = new QLabel(
         tr("Dónde busca el programa la pieza en cada imagen. Si la pieza ocupa una "
-           "esquina, mirar la imagen entera es tirar el resto del trabajo: sobre "
-           "1280×720 con una pieza de 180×140, recortar va unas seis veces más "
-           "rápido."),
+           "esquina, mirar la imagen entera desperdicia tiempo: recortar la zona "
+           "acelera bastante el análisis."),
         this);
     intro->setWordWrap(true);
     root->addWidget(intro);
@@ -29,12 +28,8 @@ PerformancePage::PerformancePage(vision::WorkingZoneMode mode, bool hasFixedZone
     automatic_ = new QRadioButton(tr("Zona automática (más rápida)"), this);
     automatic_->setToolTip(
         tr("Sigue a la pieza con un recorte que se ajusta a su tamaño.\n"
-           "Ante cualquier duda —se pierde la pieza, toca el borde del recorte o\n"
-           "cambia de tamaño de golpe— vuelve solo a la imagen entera y lo dice.\n"
-           "\n"
-           "Ponía «recomendado» y se le quitó: el recorte se asienta en el 11 % del\n"
-           "cuadro, y una pieza que aparezca fuera NO se ve. Es la opción rápida\n"
-           "cuando hay una pieza que no cambia de sitio, no la opción segura."));
+           "Si la pierde o cambia de tamaño de golpe, vuelve sola a la imagen "
+           "entera y lo avisa. Es rápida, no la opción más segura."));
     fixed_ = new QRadioButton(tr("Zona de detección fija"), this);
     fixed_->setToolTip(
         tr("Usa el rectángulo que dibujaste con «Zona de detección».\n"
@@ -48,11 +43,8 @@ PerformancePage::PerformancePage(vision::WorkingZoneMode mode, bool hasFixedZone
     free_ = new QRadioButton(tr("Zona libre"), this);
     free_->setToolTip(
         tr("Usa el contorno que dibujaste con «Zona libre», que no tiene por qué\n"
-           "ser un rectángulo.\n"
-           "Es la respuesta para lo que un rectángulo no puede separar: el borde del\n"
-           "útil pegado a la pieza, la sombra de un lado, la pieza de al lado en\n"
-           "diagonal. Recorta igual de rápido —por dentro sigue usando la envolvente—\n"
-           "y además descarta lo que quede fuera del contorno."));
+           "ser un rectángulo. Sirve para dejar fuera el borde del útil, una "
+           "sombra o la pieza de al lado."));
     free_->setEnabled(hasFreeZone);
     if (!hasFreeZone) {
         free_->setToolTip(free_->toolTip() +
@@ -87,9 +79,8 @@ PerformancePage::PerformancePage(vision::WorkingZoneMode mode, bool hasFixedZone
     auto* timingLayout = new QVBoxLayout(timingBox);
     measureStages_ = new QCheckBox(tr("Medir el reparto por etapas"), timingBox);
     measureStages_->setToolTip(
-        tr("Cronometra cada etapa del análisis. Va apagado por defecto porque "
-           "esto corre en CADA frame: apagado no cuesta ni una llamada al reloj. "
-           "Enciéndelo solo mientras miras, y apágalo al terminar."));
+        tr("Cronometra cada etapa del análisis. Enciéndelo solo mientras "
+           "miras, y apágalo al terminar."));
     timingLayout->addWidget(measureStages_);
 
     stageBreakdown_ = new QLabel(tr("Sin medir."), timingBox);
@@ -208,7 +199,7 @@ void PerformancePage::setZoneStatus(const cv::Rect& activeZone, const cv::Size& 
     if (activeZone.area() <= 0 || frameSize.area() <= 0) {
         status_->setText(reason.isEmpty()
                              ? tr("Procesando la imagen entera.")
-                             : tr("Procesando la imagen entera — %1.").arg(reason));
+                             : tr("Procesando la imagen entera: %1.").arg(reason));
         return;
     }
     const double fraction =

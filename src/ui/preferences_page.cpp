@@ -55,10 +55,9 @@ PreferencesPage::PreferencesPage(int autoIntervalMs, double kSigma, bool passTri
     passCheck_->setObjectName(QStringLiteral("passTriggerCheck"));
     passCheck_->setChecked(passTrigger);
     passCheck_->setToolTip(
-        tr("Para vídeo y cámara en marcha. En vez de medir cada N ms, se mide\n"
-           "cuando la escena está quieta y ninguna pieza toca el borde — y no se\n"
-           "vuelve a medir hasta que el encuadre se vacía.\n\n"
-           "Así cada pieza que cruza se mide UNA vez, entera."));
+        tr("Para vídeo y cámara en marcha. Mide cuando la escena está quieta "
+           "y ninguna pieza toca el borde, así cada pieza se mide una sola "
+           "vez."));
     form->addRow(passCheck_);
 
     settleSpin_ = new QSpinBox(this);
@@ -80,9 +79,8 @@ PreferencesPage::PreferencesPage(int autoIntervalMs, double kSigma, bool passTri
     rearmSpin_->setSuffix(tr(" ms"));
     rearmSpin_->setValue(rearmMs);
     rearmSpin_->setToolTip(
-        tr("Cuánto tiene que estar VACÍO el encuadre para volver a medir. Es lo\n"
-           "que separa una pieza de la siguiente: sin esto, la misma pieza se\n"
-           "mediría una vez por fotograma mientras cruza."));
+        tr("Cuánto tiene que estar vacío el encuadre para volver a medir. "
+           "Separa una pieza de la siguiente."));
     form->addRow(tr("   Rearme al vaciarse:"), rearmSpin_);
 
     // Los dos tiempos solo significan algo con el disparo encendido. Dejarlos

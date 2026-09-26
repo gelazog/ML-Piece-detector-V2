@@ -95,12 +95,8 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
 
     autoThreshold_ = new QCheckBox(tr("Automático (Otsu)"), this);
     autoThreshold_->setToolTip(
-        tr("El programa elige solo el nivel de gris que separa la pieza del\n"
-           "fondo, mirando el histograma de cada imagen (método de Otsu).\n\n"
-           "Es lo que quieres casi siempre: se adapta si cambia la luz.\n\n"
-           "Desactívalo solo si la pieza y el fondo se parecen tanto que la\n"
-           "elección automática baila entre fotogramas — entonces fija tú el\n"
-           "umbral con la barra de abajo."));
+        tr("Elige solo el corte entre pieza y fondo, según cada imagen.\n"
+           "Déjalo activado salvo que parpadee entre fotos."));
     autoThreshold_->setChecked(current.manualThreshold < 0);
     cutForm->addRow(tr("Umbral:"), autoThreshold_);
 
@@ -145,25 +141,16 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     useColourButton_ = new QPushButton(tr("Separar por color"), this);
     useColourButton_->setObjectName(QStringLiteral("useColourButton"));
     useColourButton_->setToolTip(
-        tr("Enciende la clave de color de fondo con el color que la aplicación\n"
-           "acaba de medir en tu mesa.\n"
-           "\n"
-           "Es lo mismo que elegir «Sí, y el color del fondo lo busca solo» en el\n"
-           "desplegable de arriba: el botón está aquí para no tener que buscarlo\n"
-           "después de leer el aviso."));
+        tr("Separa la pieza por su color, usando el color de tu mesa."));
     useColourButton_->setVisible(false);
     useColourButton_->setAutoDefault(false);
     separateForm->addRow(useColourButton_);
     useEdgesButton_ = new QPushButton(tr("Separar por el canto"), this);
     useEdgesButton_->setObjectName(QStringLiteral("useEdgesButton"));
     useEdgesButton_->setToolTip(
-        tr("Pasa a separar la pieza por su CANTO en vez de por el nivel de gris.\n\n"
-           "Aparece solo cuando el programa ha mirado la imagen y ha visto que\n"
-           "no hay un gris que sirva de corte: pasa cuando la pieza tiene\n"
-           "brillos más claros que el fondo y sombras más oscuras a la vez,\n"
-           "como una tuerca metálica sobre una mesa clara.\n\n"
-           "En escenas fáciles NO es mejor: por eso es un botón que aparece\n"
-           "cuando hace falta y no el método por defecto."));
+        tr("Separa la pieza por su canto en vez de por el nivel de gris.\n"
+           "Aparece cuando la pieza tiene reflejos claros y sombras oscuras a "
+           "la vez, y ningún corte de gris sirve para separarla."));
     useEdgesButton_->setVisible(false);
     separateForm->addRow(useEdgesButton_);
 
@@ -180,15 +167,9 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     clipCheckButton_ = new QPushButton(tr("Comprobar el corte"), this);
     clipCheckButton_->setObjectName(QStringLiteral("clipCheckButton"));
     clipCheckButton_->setToolTip(
-        tr("Afloja el umbral unos niveles y mira cuánta pieza aparece.\n\n"
-           "Si aparece mucha, es que el corte cae DENTRO de la pieza y no en su\n"
-           "borde: hay partes suyas casi tan claras como la mesa —una cabeza\n"
-           "cromada, un canto pulido— y se están quedando fuera.\n\n"
-           "Eso hace que las medidas salgan CORTAS sin que nada avise, porque un\n"
-           "contorno recortado es perfectamente limpio: no hay nada sucio, hay\n"
-           "pieza que falta.\n\n"
-           "No hace falta saber cuánto mide la pieza de verdad: se compara la\n"
-           "imagen consigo misma."));
+        tr("Afloja el umbral y mira cuánta pieza más aparece.\n"
+           "Si aparece mucha, el corte está dejando fuera parte de la pieza y "
+           "las medidas saldrán cortas sin que nada lo avise."));
     connect(clipCheckButton_, &QPushButton::clicked, this,
             &DetectionPage::clippingCheckRequested);
     cutForm->addRow(clipCheckButton_);
@@ -208,20 +189,9 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     // Nace apagado y está medido por qué: no gana siempre.
     splitTouching_ = new QCheckBox(tr("Separar piezas que se tocan"), this);
     splitTouching_->setToolTip(
-        tr("Cuando dos piezas se rozan, el contorno exterior las devuelve como\n"
-           "UNA. Con esto, cada mancha se mira por dentro: se busca el «corazón»\n"
-           "de cada pieza —la zona más alejada del fondo— y se corta por el\n"
-           "cuello que las une.\n\n"
-           "Medido sobre imágenes reales, con esto encendido:\n"
-           "  · dos engranajes engranados:   1 → 2 piezas   LO ARREGLA\n"
-           "  · tres tornillos en fila:      3 → 3          igual\n"
-           "  · bandeja de cien tuercas:   100 → 100        igual\n"
-           "  · un tornillo largo solo:      1 → 2          LO ROMPE\n\n"
-           "Un tornillo largo tiene la cabeza y el vástago lo bastante distintos\n"
-           "como para parecer dos piezas. Por eso es una opción y no viene de\n"
-           "fábrica: enciéndela si tus piezas se tocan, déjala apagada si son\n"
-           "alargadas con cabeza.\n\n"
-           "Cuesta entre 3 y 16 ms por análisis."));
+        tr("Separa piezas que se tocan, cortando por el cuello que las une.\n"
+           "No la actives con piezas alargadas con cabeza: puede partir una "
+           "sola en dos."));
     shapeForm->addRow(splitTouching_);
 
     // RECUPERAR LO QUE EL BRILLO SE LLEVA.
@@ -232,23 +202,9 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     // silueta no es la que se ve— y separarlas obligaría a buscar en dos sitios.
     recoverGlare_ = new QCheckBox(tr("Recuperar zonas con brillo"), this);
     recoverGlare_->setToolTip(
-        tr("El reflejo de una pieza metálica sube hasta el nivel del fondo, el\n"
-           "corte de gris lo deja fuera, y la pieza sale MORDIDA o partida en\n"
-           "trozos. No es un fallo del brillo: es que un corte único supone que\n"
-           "la pieza cae entera de un lado, y sobre metal eso es falso.\n\n"
-           "Con esto se corta dos veces. El corte de siempre da las SEMILLAS —lo\n"
-           "que es pieza con seguridad—; un corte aflojado doce niveles dice\n"
-           "hasta dónde PODRÍA llegar; y se conserva solo lo aflojado que TOQUE\n"
-           "una semilla.\n\n"
-           "Por eso no deja entrar el fondo: la mesa aflojada tampoco toca\n"
-           "ninguna semilla. Sube el brillo de la cara de la pieza, que está\n"
-           "pegado a ella, y no la sombra pegada a la mesa.\n\n"
-           "Medido sobre las fotos reales, con esto encendido:\n"
-           "  · tres tornillos cincados:   5 → 3 piezas   LO ARREGLA\n"
-           "  · un tornillo galvanizado:   2 → 1          LO ARREGLA\n"
-           "  · bandeja de cien tuercas: 100 → 100        igual\n"
-           "  · un engranaje:              1 → 1          igual\n\n"
-           "Nace apagado porque cambia lo que se mide."));
+        tr("Recupera el borde de piezas metálicas que el brillo deja mordidas "
+           "o partidas en trozos. Cambia lo que se mide, así que nace "
+           "apagado."));
     shapeForm->addRow(recoverGlare_);
 
     // SEPARAR POR EL COLOR DEL FONDO.
@@ -266,42 +222,16 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     backgroundKey_->addItem(tr("Color del fondo (automático)"));
     backgroundKey_->addItem(tr("Color del fondo (manual)"));
     backgroundKey_->setToolTip(
-        tr("Separa la pieza por lo distinto que es su COLOR del color del fondo,\n"
-           "en vez de por lo claro u oscuro que sea.\n"
-           "\n"
-           "Sirve cuando el fondo tiene color. Sobre un cartón rojo, una arandela\n"
-           "de latón tiene casi la misma CLARIDAD que el fondo —el rojo cae en\n"
-           "gris 116, un gris medio— y lo único que las separa es el tono.\n"
-           "\n"
-           "Medido sobre esa foto, con una veintena de arandelas de acero, latón,\n"
-           "cobre, caucho, fibra y plástico:\n"
-           "  · por claridad:   7 piezas, 11 %% del cuadro\n"
-           "  · por color:     20 piezas, 23 %%\n"
-           "\n"
-           "Las trece que aparecen son las que no son cromadas.\n"
-           "\n"
-           "Sobre fondo blanco no cambia nada: el engranaje, el cáncamo y la\n"
-           "bandeja de cien tuercas dan las mismas piezas por los dos caminos.\n"
-           "\n"
-           "«Lo busca solo» toma la mediana del marco de la imagen, que es fondo\n"
-           "casi siempre. Dilo tú si el puesto tiene piezas pegadas al borde o si\n"
-           "quieres que no dependa de lo que haya en la escena.\n"
-           "\n"
-           "Nace apagado porque cambia lo que se mide."));
+        tr("Separa la pieza por su color en vez de por su claridad.\n"
+           "Sirve cuando el fondo tiene color y se confunde en gris con la "
+           "pieza. «Lo busca solo» toma el color del marco de la imagen."));
     separateForm->addRow(tr("Separar por:"), backgroundKey_);
 
     backgroundColour_ = new QPushButton(this);
     backgroundColour_->setObjectName(QStringLiteral("backgroundColour"));
     backgroundColour_->setToolTip(
-        tr("Abre la imagen para que señales un trozo de mesa vacío y tome de ahí el\n"
-           "color del fondo. Solo se usa con «lo elijo yo».\n"
-           "\n"
-           "Antes esto abría la rueda de colores, y ahí hay que ADIVINAR el color de\n"
-           "la propia mesa: nadie sabe de memoria el rojo de su cartón. El color está\n"
-           "delante, en la foto — lo que faltaba era poder apuntarlo.\n"
-           "\n"
-           "La ventana enseña, con cada recuadro, qué piezas saldrían. Elegir mal no\n"
-           "da un error: da una detección peor, y meses después."));
+        tr("Señala un trozo vacío de la mesa en la imagen para tomar de ahí el "
+           "color del fondo. Solo se usa con «lo elijo yo»."));
     separateForm->addRow(QString(), backgroundColour_);
     connect(backgroundKey_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this](int index) {
@@ -342,18 +272,9 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
             static_cast<int>(vision::SegmentationOptions::BackgroundKey::Auto));
     });
     method_->setToolTip(
-        tr("«Por nivel» busca un corte de gris que deje la pieza a un lado y el\n"
-           "fondo al otro. Es lo que funciona casi siempre.\n"
-           "\n"
-           "«Por el canto» no mira el nivel sino el borde, y hace falta cuando la\n"
-           "pieza tiene a la vez reflejos más claros y sombras más oscuras que la\n"
-           "mesa: entonces NINGÚN corte único la separa — el que recoge unas\n"
-           "partes deja fuera a otras.\n"
-           "\n"
-           "Medido sobre una foto de siete tuercas metálicas: por nivel salen seis\n"
-           "piezas, con tres fundidas por puentes de sombra; por el canto salen\n"
-           "las siete enteras. En una pieza oscura sobre fondo claro es al revés,\n"
-           "así que no es «mejor»: es para otra escena."));
+        tr("«Por nivel» separa por un corte de gris; es lo que funciona casi "
+           "siempre. «Por el canto» mira el borde, y hace falta cuando la "
+           "pieza tiene a la vez reflejos claros y sombras oscuras."));
     separateForm->addRow(tr("Método:"), method_);
 
     polarity_ = new QComboBox(this);
@@ -362,15 +283,9 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     polarity_->addItem(tr("Pieza clara sobre fondo oscuro"));
     polarity_->setCurrentIndex(static_cast<int>(current.polarity));
     polarity_->setToolTip(
-        tr("Cuál de los dos lados del corte de gris es la PIEZA.\n\n"
-           "«Automática» decide mirando el borde del encuadre: lo que toca el\n"
-           "marco se toma por fondo. Acierta casi siempre y es lo que quieres\n"
-           "salvo que la pieza llegue cortada por el borde.\n\n"
-           "Fíjala a mano cuando el resultado sale invertido —se mide el hueco\n"
-           "en vez de la pieza— o cuando la pieza toca el canto del encuadre y\n"
-           "la decisión automática la confunde con el fondo.\n\n"
-           "Solo se aplica separando «por nivel de gris»: por el canto no hay\n"
-           "corte que orientar."));
+        tr("Cuál de los dos lados del corte de gris es la pieza.\n"
+           "«Automática» acierta casi siempre; fíjala a mano si el resultado "
+           "sale invertido o la pieza toca el borde del encuadre."));
     separateForm->addRow(tr("Polaridad:"), polarity_);
 
     blur_ = new QSpinBox(this);
@@ -501,16 +416,9 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     subpixel_->setObjectName(QStringLiteral("subpixelCheck"));
     subpixel_->setChecked(subpixelEdges);
     subpixel_->setToolTip(
-        tr("El borde de una pieza no es un escalón: la intensidad cambia a lo largo de\n"
-           "varios píxeles. Medido sobre una foto real, esa rampa ocupaba 15 px, y un\n"
-           "umbral coloca el borde en cualquier punto de ella según la iluminación.\n\n"
-           "Con esto, cada punto del contorno se coloca donde el brillo cruza la mitad\n"
-           "entre el nivel de dentro y el de fuera EN ESE PUNTO, interpolando entre\n"
-           "píxeles. Medido sobre un borde de posición conocida, el error pasa de\n"
-           "0,417 px a 0,025 px.\n\n"
-           "OJO: cambia dónde está el borde, así que cambian el área, el perímetro y\n"
-           "todas las cotas de la pieza a la vez. Si ya tienes tolerancias ajustadas,\n"
-           "revísalas después de encenderlo."));
+        tr("Coloca cada punto del borde interpolando entre píxeles, en vez de\n"
+           "dejarlo en el más cercano. Cambia el área, el perímetro y las\n"
+           "cotas: revisa tus tolerancias si ya las tenías ajustadas."));
     pieceForm->addRow(tr("Precisión:"), subpixel_);
 
     rootLayout->addWidget(separateBox);
@@ -721,12 +629,9 @@ void DetectionPage::setBackgroundColour(const cv::Vec3b& background) {
     // Con la cifra y con el color, para que el operador pueda comprobarlo
     // mirando su propia mesa en vez de creerse una corazonada.
     colourHint_->setText(
-        tr("Tu mesa tiene color (%1, saturación %2). Ahora mismo la pieza se separa por lo "
-           "CLARA que es, y ahí se pierde lo que de verdad la distingue del fondo: el "
-           "tono. Sobre un cartón rojo, una arandela de latón tiene casi la misma "
-           "claridad que la mesa — medido sobre una foto de diecinueve arandelas "
-           "surtidas: por claridad se encuentran 4 y por color 11, y bajando además el "
-           "área mínima al 0,1 %, 17.")
+        tr("Tu mesa tiene color (%1, saturación %2). Ahora mismo la pieza se separa por "
+           "lo clara que es, y se pierde el tono, que es lo que de verdad la distingue "
+           "del fondo.")
             .arg(QColor(background[2], background[1], background[0]).name().toUpper())
             .arg(colour, 0, 'f', 2));
     colourHint_->setStyleSheet(theme::textStyle(theme::kWarn));
@@ -766,16 +671,13 @@ void DetectionPage::setSceneReading(const vision::SceneReading& reading) {
     if (reading.piecesStraddleTheBackground) {
         sceneHint_->setText(
             tr("En esta imagen, el %1 % es más claro que la mesa y el %2 % más oscuro. "
-               "Ningún umbral por nivel puede separar las dos cosas a la vez: el corte "
-               "que recoge unas partes deja fuera a otras.")
+               "Ningún corte por nivel separa las dos cosas a la vez.")
                 .arg(100.0 * reading.brighterThanBackground, 0, 'f', 1)
                 .arg(100.0 * reading.darkerThanBackground, 0, 'f', 1));
     } else {
         sceneHint_->setText(
-            tr("El corte de gris está pasando por dentro de la pieza: aflojarlo un poco "
-               "cambia la silueta un %1 %. Eso es material que se queda fuera, y por eso "
-               "una pieza brillante sale partida en trozos o medida corta. Segmentar por "
-               "el borde no depende del nivel de gris.")
+            tr("El corte de gris pasa por dentro de la pieza: aflojarlo cambia la "
+               "silueta un %1 %. Prueba a separar por el canto.")
                 .arg(100.0 * reading.thresholdSwing, 0, 'f', 1));
     }
     sceneHint_->setStyleSheet(theme::textStyle(theme::kWarn));

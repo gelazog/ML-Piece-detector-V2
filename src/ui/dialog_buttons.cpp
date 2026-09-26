@@ -29,8 +29,7 @@ const ButtonText kTexts[] = {
     {QDialogButtonBox::Ok, "&Aceptar",
      "Guarda los cambios y cierra la ventana."},
     {QDialogButtonBox::Apply, "A&plicar",
-     "Guarda los cambios y DEJA LA VENTANA ABIERTA, para seguir probando.\n\n"
-     "Es la diferencia con Aceptar, que guarda y cierra."},
+     "Guarda los cambios y deja la ventana abierta, para seguir probando."},
     {QDialogButtonBox::Cancel, "&Cancelar",
      "Cierra sin guardar. Lo que hubieras cambiado se descarta."},
     {QDialogButtonBox::Close, "C&errar",

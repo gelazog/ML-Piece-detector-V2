@@ -182,7 +182,7 @@ BackgroundPatchDialog::BackgroundPatchDialog(const cv::Mat& frame,
     auto* layout = new QVBoxLayout(this);
 
     auto* howto = new QLabel(
-        tr("Arrastra un recuadro sobre un trozo de mesa VACÍO. En verde, lo que quedaría "
+        tr("Arrastra un recuadro sobre un trozo de mesa vacío. En verde, lo que quedaría "
            "como pieza."),
         this);
     howto->setObjectName(QStringLiteral("howto"));

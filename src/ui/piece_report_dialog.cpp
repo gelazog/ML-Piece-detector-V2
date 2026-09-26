@@ -64,7 +64,7 @@ PieceReportDialog::PieceReportDialog(inspection::PieceReport report,
     // primero, las cotas de abajo parecen llovidas del cielo; sin lo segundo,
     // no se sabe si son de la cámara o de una imagen abierta hace media hora.
     auto* headline = new QLabel(
-        tr("<b>%1</b> — medido sobre %2")
+        tr("<b>%1</b>, medido sobre %2")
             .arg(QString::fromStdString(report_.headline), sourceLabel),
         this);
     headline->setWordWrap(true);
@@ -181,10 +181,9 @@ PieceReportDialog::PieceReportDialog(inspection::PieceReport report,
     watch->setObjectName(QStringLiteral("watchButton"));
     watch->setEnabled(!report_.watchable.empty());
     watch->setToolTip(
-        tr("Convierte las cotas en herramientas de la pieza, con sus tolerancias ya\n"
-           "sugeridas, para que cada inspección las compruebe.\n\n"
-           "Medir y vigilar son dos decisiones distintas: por eso esto no pasa solo\n"
-           "cada vez que consultas las medidas."));
+        tr("Convierte las cotas en herramientas de la pieza, con sus "
+           "tolerancias ya sugeridas, para que cada inspección las "
+           "compruebe."));
     buttons->addWidget(watch);
     buttons->addStretch(1);
 
@@ -333,7 +332,7 @@ QWidget* PieceReportDialog::buildToolsTab() {
             box->setObjectName(QStringLiteral("toolSwitch"));
             box->setChecked(tool.config.enabled);
             box->setToolTip(tr("Si lo desmarcas, esta cota deja de medirse y deja de\n"
-                               "pesar en el veredicto. La herramienta NO se borra:\n"
+                               "pesar en el veredicto. La herramienta no se borra:\n"
                                "vuelve en cuanto la marques."));
             tree->setItemWidget(use, 0, box);
             toolSwitches_.push_back({box, index});
@@ -345,9 +344,9 @@ QWidget* PieceReportDialog::buildToolsTab() {
                 verdict = tr("No cuenta: la has desmarcado.");
             } else if (!tool.result.ok && !tool.result.detail.empty()) {
                 verdict =
-                    tr("NO CUMPLE — %1").arg(QString::fromStdString(tool.result.detail));
+                    tr("NO CUMPLE: %1").arg(QString::fromStdString(tool.result.detail));
             } else if (!tool.result.ok) {
-                verdict = tr("NO CUMPLE — mide %1 y se admite entre %2 y %3")
+                verdict = tr("NO CUMPLE: mide %1 y se admite entre %2 y %3")
                               .arg(tool.result.measured, 0, 'f', 2)
                               .arg(tool.config.toleranceMin, 0, 'f', 2)
                               .arg(tool.config.toleranceMax, 0, 'f', 2);
@@ -390,14 +389,14 @@ QWidget* PieceReportDialog::buildToolsTab() {
                 // LAS OTRAS NO LLEVAN VEREDICTO, y no es un olvido: nadie ha
                 // declarado tolerancia para ellas. Poner «Cumple» sobre una banda
                 // que no existe seria inventarse una conformidad.
-                child->setText(3, tr("Sin tolerancia declarada — marcala para vigilarla."));
+                child->setText(3, tr("Sin tolerancia declarada: marcala para vigilarla."));
                 for (int column = 1; column < 4; ++column) {
                     child->setForeground(column, QBrush(theme::color(theme::kInkOff)));
                 }
 
                 auto* add = new QCheckBox(tree);
                 add->setToolTip(
-                    tr("Anade esta medida como cota nueva sobre la MISMA figura,\n"
+                    tr("Anade esta medida como cota nueva sobre la misma figura,\n"
                        "sin volver a dibujarla. Tendras que declararle su\n"
                        "tolerancia igual que a cualquier otra."));
                 tree->setItemWidget(child, 0, add);
@@ -531,7 +530,7 @@ QWidget* PieceReportDialog::buildCatalogueTab() {
                      "encuentra el rasgo que mide. Puedes dibujarla tú.");
         } else {
             state = tr("a mano");
-            why = tr("Esta cota exige señalar DÓNDE se mide —qué tramo, qué cara— y\n"
+            why = tr("Esta cota exige señalar dónde se mide (qué tramo, qué cara) y\n"
                      "adivinarlo daría un número sobre un sitio que nadie eligió.\n"
                      "Se dibuja a mano.");
             ++byHand;

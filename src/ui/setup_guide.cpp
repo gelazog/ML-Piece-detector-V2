@@ -31,8 +31,8 @@ QString setupHint(SetupStep step, bool canFocus) {
             return {};
         case SetupStep::Focus:
             return QObject::tr(
-                "Primero, el enfoque: Configurar ▸ Configurar…, pestaña Cámara e imagen, "
-                "barra que sube cuanto más nítida está la pieza.");
+                "Enfoca la pieza: Configurar ▸ Cámara e imagen, y sube la barra "
+                "de nitidez lo que puedas.");
         case SetupStep::Calibrate:
             // Sobre un fichero, «enfoca la pieza» manda a hacer lo imposible: la
             // nitidez es la que se grabó. El paso es el mismo —hay que
@@ -40,18 +40,17 @@ QString setupHint(SetupStep step, bool canFocus) {
             // hacer, o el operador deja de leer el resto.
             if (!canFocus) {
                 return QObject::tr(
-                    "Pulsa C para calibrar la escala de esta imagen. Hasta entonces se mide "
-                    "en píxeles — mira los indicadores de abajo a la derecha, que dicen en "
-                    "todo momento si estás midiendo en condiciones.");
+                    "Pulsa C para calibrar la escala de esta imagen. Hasta entonces "
+                    "mides en píxeles; mira los indicadores de abajo a la derecha.");
             }
             return QObject::tr(
-                "Para empezar: enfoca la pieza y pulsa C para calibrar la escala. Hasta "
-                "entonces se mide en píxeles — mira los indicadores de abajo a la "
-                "derecha, que dicen en todo momento si estás midiendo en condiciones.");
+                "Enfoca la pieza y pulsa C para calibrar la escala. Hasta "
+                "entonces mides en píxeles; mira los indicadores de abajo a la "
+                "derecha.");
         case SetupStep::Register:
             return QObject::tr(
-                "Ya mides en milímetros. Falta registrar una pieza buena (Pieza ▸ "
-                "Registrar con asistente…) para poder comparar contra ella.");
+                "Ya mides en milímetros. Registra una pieza buena en Pieza ▸ "
+                "Registrar con asistente… para poder comparar contra ella.");
     }
     return {};
 }

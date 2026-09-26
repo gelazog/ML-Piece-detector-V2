@@ -71,13 +71,12 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
         const QString why =
             inputs.sourceKind == camera::SourceKind::Camera
                 ? tr("Inicia la cámara para ajustar su brillo, exposición, enfoque y "
-                     "resolución.\n\nLos controles se preguntan a la propia cámara al "
-                     "abrirla, así que hasta entonces no se sabe cuáles admite: mostrar "
-                     "deslizadores que no harían nada sería peor que no mostrarlos.")
+                     "resolución. Los controles se leen de la propia cámara al "
+                     "abrirla, así que hasta entonces no se sabe cuáles admite.")
                 : camera::whyNotAdjustable(inputs.sourceKind) +
-                      tr("\n\nTodo lo demás —detección, zona de trabajo, herramientas, "
-                         "medición automática e inspección— funciona igual que con la "
-                         "cámara.");
+                      tr("\n\nEl resto (detección, zona de trabajo, herramientas, "
+                         "medición automática e inspección) funciona igual que con "
+                         "la cámara.");
         auto* label = new QLabel(why, placeholder);
         label->setWordWrap(true);
         layout->addWidget(label);
@@ -111,14 +110,12 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
     QPushButton* scaleButton = nullptr;
     tabs_->addTab(
         wizardTab(tr("La escala convierte los píxeles en milímetros. Se calibra "
-                     "marcando dos puntos de una distancia conocida sobre una foto "
-                     "de la pieza, o indicando la distancia de la cámara y su campo "
-                     "de visión.\n\nComo hay que hacer clic sobre la imagen, se "
-                     "ajusta en un asistente y no en un formulario."),
+                     "marcando dos puntos de una distancia conocida en una foto de "
+                     "la pieza, o indicando la distancia de la cámara y su campo "
+                     "de visión."),
                   tr("Calibrar la escala…"), &scaleButton, this,
-                  tr("Abre el asistente de escala: marcas dos puntos de una\n"
-                     "distancia conocida sobre la imagen y escribes cuánto mide.\n\n"
-                     "Sin esto todas las medidas salen en píxeles.")),
+                  tr("Abre el asistente de escala. Sin calibrar, las medidas "
+                     "salen en píxeles.")),
         tr("Escala"));
     connect(scaleButton, &QPushButton::clicked, this,
             &ConfigureDialog::scaleWizardRequested);
@@ -136,8 +133,8 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
                      "cambiar. La lista completa, con sus valores por defecto, se "
                      "edita en su propia tabla."),
                   tr("Editar los atajos…"), &shortcutsButton, this,
-                  tr("Abre la tabla de teclas para cambiar cualquier atajo.\n\n"
-                     "Los cambios se guardan con la máquina, no con la pieza.")),
+                  tr("Abre la tabla para cambiar cualquier atajo. Se guarda en "
+                     "esta máquina.")),
         tr("Atajos"));
     connect(shortcutsButton, &QPushButton::clicked, this,
             &ConfigureDialog::shortcutsRequested);

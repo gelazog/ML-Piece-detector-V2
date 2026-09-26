@@ -77,14 +77,14 @@ CalibrationDialog::CalibrationDialog(const QImage& snapshot,
     // cotas de la pieza.
     stateLabel->setText(current.valid()
                             ? tr("Escala actual: %1").arg(perPixelText(current.mmPerPixel))
-                            : tr("Sin calibrar — las medidas están en píxeles."));
+                            : tr("Sin calibrar: las medidas están en píxeles."));
     sideLayout->addWidget(stateLabel);
 
     auto* methodA = new QGroupBox(tr("Método A: objeto de referencia (recomendado)"), this);
     auto* formA = new QFormLayout(methodA);
     auto* help = new QLabel(
         tr("Coloca una regla u objeto de tamaño conocido sobre la superficie y haz "
-           "DOS CLICS sobre los extremos de una distancia conocida."),
+           "dos clics sobre los extremos de una distancia conocida."),
         methodA);
     help->setWordWrap(true);
     formA->addRow(help);
@@ -95,9 +95,8 @@ CalibrationDialog::CalibrationDialog(const QImage& snapshot,
     knownLength_->setDecimals(3);
     knownLength_->setValue(last.knownLength > 0.0 ? last.knownLength : 100.0);
     knownLength_->setToolTip(
-        tr("Lo que mide DE VERDAD la distancia que acabas de marcar con los dos\n"
-           "clics. Se recuerda para la próxima vez: si el puesto tiene una regla\n"
-           "fija, se escribe una sola vez."));
+        tr("Lo que mide de verdad la distancia que acabas de marcar con los dos\n"
+           "clics. Se recuerda para la próxima vez."));
     knownUnit_ = new QComboBox(methodA);
     for (const auto& unit : kKnownUnits) {
         knownUnit_->addItem(QString::fromUtf8(unit.label));
@@ -106,11 +105,8 @@ CalibrationDialog::CalibrationDialog(const QImage& snapshot,
         last.unitIndex >= 0 && last.unitIndex < unitCount() ? last.unitIndex : 0);
     knownUnit_->setToolTip(
         tr("En qué unidad estás dando la longitud. El programa la pasa a\n"
-           "milímetros por dentro; las medidas se siguen mostrando en la unidad\n"
-           "que elijas en Medida ▸ Unidad de medida.\n\n"
-           "Está aquí para que nadie tenga que convertir a mano: un error de\n"
-           "conversión aquí sale como un error en TODAS las cotas de la pieza, y\n"
-           "encima silencioso — las medidas salen, solo que mal."));
+           "milímetros por dentro y sigue mostrando las medidas en la unidad\n"
+           "que elijas en Medida ▸ Unidad de medida."));
     auto* knownRow = new QHBoxLayout();
     knownRow->addWidget(knownLength_, 1);
     knownRow->addWidget(knownUnit_);

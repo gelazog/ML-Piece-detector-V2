@@ -59,16 +59,14 @@ CameraImagePage::CameraImagePage(
     resolutionRow->addWidget(new QLabel(tr("Resolución:"), this));
     resolutionCombo_ = new QComboBox(this);
     resolutionCombo_->setToolTip(
-        tr("Resoluciones que esta cámara acepta de verdad.\n"
-           "Más resolución = más detalle y medidas más finas, pero más CPU por\n"
-           "frame. Al cambiarla, la calibración en mm deja de ser válida (se\n"
-           "avisa) y la zona de detección y el cero fijado se reajustan solos."));
+        tr("Resoluciones que esta cámara acepta de verdad. Más resolución da "
+           "más detalle, pero también más carga. Al cambiarla, la calibración "
+           "en mm deja de ser válida y se avisa."));
     resolutionRow->addWidget(resolutionCombo_, 1);
     probeButton_ = new QPushButton(tr("Buscar…"), this);
     probeButton_->setToolTip(
-        tr("Pregunta a la cámara resolución por resolución.\n"
-           "Tarda unos segundos y el vídeo se detiene mientras dura, por eso el\n"
-           "resultado se recuerda y no hace falta repetirlo."));
+        tr("Pregunta a la cámara qué resoluciones admite. Tarda unos segundos "
+           "y el vídeo se detiene mientras dura."));
     resolutionRow->addWidget(probeButton_);
     root->addLayout(resolutionRow);
 
@@ -180,8 +178,7 @@ CameraImagePage::CameraImagePage(
     readoutRow->addWidget(sharpnessLabel_, 1);
     auto* resetPeak = new QPushButton(tr("Reiniciar máximo"), focusBox);
     resetPeak->setToolTip(
-        tr("Olvida el mejor valor visto. Hazlo al cambiar de pieza o de luz: un\n"
-           "máximo viejo e inalcanzable deja la barra siempre a media altura."));
+        tr("Olvida el mejor valor visto. Hazlo al cambiar de pieza o de luz."));
     readoutRow->addWidget(resetPeak);
     focusLayout->addLayout(readoutRow);
     connect(resetPeak, &QPushButton::clicked, this, &CameraImagePage::resetSharpnessPeak);
@@ -197,12 +194,8 @@ CameraImagePage::CameraImagePage(
     auto* restoreRow = new QHBoxLayout();
     auto* restore = new QPushButton(tr("Volver a los ajustes de medición"), this);
     restore->setToolTip(
-        tr("Olvida los valores que hayas dejado puestos en esta cámara y deja que\n"
-           "el programa los elija otra vez midiendo: apaga los automáticos que\n"
-           "pueda sustituir y busca la exposición más larga que aún dé la\n"
-           "velocidad máxima.\n\n"
-           "Tarda unos segundos porque prueba de verdad, y si el resultado sale\n"
-           "peor que el automático lo deshace y te dice por qué."));
+        tr("Olvida los ajustes de esta cámara y deja que el programa los "
+           "elija de nuevo midiendo. Tarda unos segundos."));
     restoreRow->addStretch(1);
     restoreRow->addWidget(restore);
     root->addLayout(restoreRow);

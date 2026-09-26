@@ -20,9 +20,9 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
     auto* root = new QVBoxLayout(this);
     auto* intro = new QLabel(
         tr("Cuántas piezas debería haber en la imagen. Si aparecen más o menos, la "
-           "inspección da NG diciendo cuántas esperaba y cuántas ve — sin necesidad "
-           "de tener ninguna herramienta dibujada.\n\nEl número se guarda con la "
-           "pieza seleccionada, no con la máquina."),
+           "inspección da NG y dice cuántas esperaba y cuántas ve, aunque no haya "
+           "ninguna herramienta dibujada.\n\nEl número se guarda con la pieza "
+           "seleccionada, no con la máquina."),
         this);
     intro->setWordWrap(true);
     root->addWidget(intro);
@@ -38,17 +38,14 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
     // prueba buscando la palabra «Manual», que había desaparecido.
     automatic_->setObjectName(QStringLiteral("automaticCountRadio"));
     automatic_->setToolTip(
-        tr("El programa cuenta las que haya y NO se queja del número: mide\n"
-           "todas, y ninguna cantidad da NG por sí sola.\n\n"
+        tr("El programa cuenta las piezas que haya y no se queja del número.\n"
            "Para cuando la cantidad cambia de una bandeja a otra."));
     root->addWidget(automatic_);
     manual_ = new QRadioButton(tr("Número exacto:"), this);
     manual_->setObjectName(QStringLiteral("manualCountRadio"));
     manual_->setToolTip(
-        tr("Tú dices cuántas tiene que haber. Si aparecen más o menos, es NG\n"
-           "diciendo cuántas esperaba y cuántas ve.\n\n"
-           "Con UNA pieza, además, el programa deja de enumerar: mide la mayor\n"
-           "y una sombra o un reflejo ya no se cuentan como una segunda pieza."));
+        tr("Tú dices cuántas tiene que haber. Si aparecen más o menos, da NG y "
+           "dice cuántas esperaba y cuántas ve."));
 
     auto* manualRow = new QHBoxLayout();
     manualRow->addWidget(manual_);
@@ -61,14 +58,9 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
     expected_->setRange(1, vision::kMaxPieces);
     expected_->setSuffix(tr(" piezas"));
     expected_->setToolTip(
-        tr("Cuántas piezas tiene que haber en el encuadre. Si aparecen más o\n"
-           "menos, la inspección da NG diciendo cuántas esperaba y cuántas ve,\n"
-           "sin necesidad de tener ninguna herramienta dibujada.\n\n"
-           "Además el programa se queda con las N MAYORES: una sombra o un\n"
-           "reflejo de más deja de contar como pieza.\n\n"
-           "Llega hasta 256, que es el tope del detector.\n\n"
-           "El número se guarda con la pieza seleccionada, no con la máquina:\n"
-           "«seis tornillos en bandeja» es una propiedad del trabajo."));
+        tr("Cuántas piezas tiene que haber en el encuadre. El programa se "
+           "queda con las más grandes: una sombra o un reflejo de más no "
+           "cuenta como pieza."));
     expected_->setValue(expectedPieces > 0 ? expectedPieces : 1);
     manualRow->addWidget(expected_);
 
@@ -85,12 +77,8 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
     useDetected_ = new QPushButton(tr("Usar el recuento detectado"), this);
     useDetected_->setObjectName(QStringLiteral("useDetected"));
     useDetected_->setToolTip(
-        tr("Pone en el campo de al lado EL MISMO número que dice el aviso de\n"
-           "abajo: las piezas que la cámara está viendo ahora mismo.\n\n"
-           "Coloca las piezas como deben ir y pulsa aquí.\n\n"
-           "Si el número que ves no es el que hay de verdad —una sombra o un\n"
-           "reflejo contando como pieza— lo que hay que arreglar es la\n"
-           "detección, no este campo."));
+        tr("Copia en el campo de al lado las piezas que la cámara ve ahora "
+           "mismo. Coloca las piezas como deben ir y pulsa aquí."));
     manualRow->addWidget(useDetected_);
     manualRow->addStretch(1);
     root->addLayout(manualRow);
@@ -105,15 +93,9 @@ PiecesPage::PiecesPage(int expectedPieces, QWidget* parent) : QWidget(parent) {
     // acordarse de abrir y cerrar un panel cada vez.
     mosaic_ = new QCheckBox(tr("Ver todas las piezas en mosaico"), this);
     mosaic_->setToolTip(
-        tr("Abre un panel con cada pieza del encuadre recortada y numerada,\n"
-           "todas al mismo tamaño. Con una bandeja llena es la única forma\n"
-           "de ver si a alguna le falta algo: en el vídeo cada pieza ocupa\n"
-           "unos pocos píxeles.\n\n"
-           "Pulsar una la ENFOCA: pasa a ser la que miden las herramientas,\n"
-           "la que compara el panel de registrada/actual y la que se\n"
-           "remarca en el vídeo.\n\n"
-           "Con una sola pieza en el encuadre no enseña nada: el vídeo ya\n"
-           "la da entera y más grande."));
+        tr("Abre un panel con cada pieza recortada y numerada, todas al "
+           "mismo tamaño. Pulsar una la selecciona para medirla y para "
+           "compararla con la pieza registrada."));
     root->addWidget(mosaic_);
 
     status_ = new QLabel(this);

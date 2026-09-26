@@ -180,10 +180,10 @@ InspectionResultDialog::InspectionResultDialog(
                          .arg(position.angleDeg, 0, 'f', 1)
                          .arg(position.maxAngleDeg, 0, 'f', 1);
         }
-        auto* label = new QLabel(tr("Posición en el tablero: %1 — %2")
+        auto* label = new QLabel(tr("Posición en el tablero: %1, %2")
                                      .arg(parts.join(QStringLiteral(", ")),
                                           position.ok ? tr("dentro de tolerancia")
-                                                      : tr("FUERA DE TOLERANCIA")),
+                                                      : tr("fuera de tolerancia")),
                                  this);
         label->setWordWrap(true);
         if (!position.ok) {

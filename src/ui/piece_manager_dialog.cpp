@@ -208,7 +208,7 @@ void PieceManagerDialog::onDeleteClicked() {
     const QString name = list_->currentItem()->text();
     const auto answer = QMessageBox::warning(
         this, tr("Eliminar pieza"),
-        tr("¿Eliminar '%1' con TODAS sus referencias, herramientas e historial?\n"
+        tr("¿Eliminar '%1' con todas sus referencias, herramientas e historial?\n"
            "Esta acción no se puede deshacer.")
             .arg(name),
         QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);

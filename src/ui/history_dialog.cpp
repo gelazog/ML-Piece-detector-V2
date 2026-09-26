@@ -146,7 +146,7 @@ void HistoryDialog::reload() {
     }
 
     const int total = static_cast<int>(entries.size());
-    summaryLabel_->setText(tr("%1 inspección(es) mostradas — %2 OK / %3 NG")
+    summaryLabel_->setText(tr("%1 inspección(es) mostradas: %2 OK / %3 NG")
                                .arg(total)
                                .arg(okCount)
                                .arg(total - okCount));
@@ -273,7 +273,7 @@ void HistoryDialog::exportCsv() {
     QMessageBox done(QMessageBox::Information, tr("Informe del turno"),
                      QString::fromStdString(domain::shiftReportText(rows, summary)),
                      QMessageBox::Ok, this);
-    QString note = tr("Guardado en %1 — %2 inspecciones de %3, con sus motivos.")
+    QString note = tr("Guardado en %1: %2 inspecciones de %3, con sus motivos.")
                        .arg(path)
                        .arg(rows.size())
                        .arg(periodName);
@@ -281,10 +281,9 @@ void HistoryDialog::exportCsv() {
         // Se dice, y no se calla. Un informe recortado da un rendimiento
         // calculado sobre PARTE del periodo con pinta de ser el del periodo
         // entero, y quien lo lea no tiene forma de notarlo.
-        note += tr("\n\nATENCIÓN: había %1 inspecciones más en ese periodo y no caben en un "
-                   "solo informe. Estas son las %2 últimas, así que el rendimiento de "
-                   "arriba es el de ese tramo y no el del periodo completo. Pide un "
-                   "periodo más corto para cubrirlo entero.")
+        note += tr("\n\nHabía %1 inspecciones más en ese periodo y no caben en un "
+                   "solo informe. Estas son las %2 últimas: pide un periodo más "
+                   "corto para cubrirlo entero.")
                     .arg(discarded)
                     .arg(rows.size());
         done.setIcon(QMessageBox::Warning);
