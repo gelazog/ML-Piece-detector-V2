@@ -19,6 +19,25 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Los textos sonaban a manual escrito por una IA
+
+Queja del dueño: «las descripciones todas parecen IA». Tenía razón, y no por
+una frase suelta: los tooltips eran párrafos de cinco frases que empezaban
+repitiendo el nombre de la herramienta («Calibre — mide…»), justificaban
+decisiones de diseño, enfatizaban con MAYÚSCULAS («OJO», «NO LLEVA DATUM»),
+metían rayas como inciso y citaban cifras de las pruebas («un 18,5 % más
+pequeña») que al operador no le dicen qué tocar.
+
+Se reescribieron en tres tandas (descripciones de las 32 herramientas, los
+diálogos y la ventana principal con el panel de medidas) siguiendo una guía
+corta: el tooltip dice qué hace el control en una o dos frases, verbo primero;
+lo que de verdad necesita explicación va a Shift+F1 (`setWhatsThis`). La
+descripción más larga de herramienta bajó de 901 a 369 caracteres.
+
+Las pruebas que buscaban palabras concretas se respetaron. La única que se
+invirtió exigía justo el defecto: que la descripción **empezara** por el nombre
+de la herramienta. Ahora exige que no lo haga.
+
 ### Con Windows en modo oscuro el texto casi desaparecía
 
 `main.cpp` no fijaba estilo ni paleta, así que el estilo nativo de Qt seguía el
