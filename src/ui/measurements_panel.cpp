@@ -347,11 +347,24 @@ void MeasurementsPanel::rebuild() {
     // llamada a `rebuild` reutiliza esas coordenadas de celda, y una prueba
     // que pregunta en el mismo instante «¿ya no está `pieceCell_1_2`?» lo
     // encontraba igual —vivo, aunque ya no en pantalla— porque el bucle de
-    // eventos nunca había girado. Se borra aquí a mano, con `delete` y no con
-    // `deleteLater`, para que un rebuild sea inmediato de verdad.
+    // eventos nunca había girado.
+    //
+    // Y NO SE HACE CON UN `delete` A PELO, que fue la primera versión: la tabla
+    // guarda cada widget de celda en un mapa suyo, y borrarlo por fuera dejaba
+    // ahí un puntero colgando. En cuanto algo preguntaba por el tamaño de las
+    // columnas —ajustarlas a su contenido lo hace—, el programa se caía con un
+    // fallo de segmentación.
+    //
+    // Lo correcto es sacarlo de la tabla (`removeCellWidget`, que lo quita del
+    // mapa y lo borra al volver al bucle) y soltarlo del árbol de widgets en el
+    // acto (`setParent(nullptr)`), que es lo que hace que `findChild` ya no lo
+    // encuentre en esta misma llamada.
     for (int r = 0; r < table_->rowCount(); ++r) {
         for (int c = 0; c < table_->columnCount(); ++c) {
-            delete table_->cellWidget(r, c);
+            if (QWidget* old = table_->cellWidget(r, c); old != nullptr) {
+                table_->removeCellWidget(r, c);
+                old->setParent(nullptr);
+            }
         }
     }
 
@@ -583,23 +596,27 @@ void MeasurementsPanel::rebuild() {
         // BORRAR, con la papelera en su propia columna y no en un menú.
         // Quien borra es la ventana, que tiene el deshacer.
         auto* remove = rowButton(QStringLiteral("deleteButton_%1").arg(toolId), QStringLiteral("✕"),
-                                 tr("Quitar esta cota de la pieza.\n\n"
-                                    "Se puede deshacer con Ctrl+Z, como cualquier otro\n"
-                                    "borrado de herramientas."),
+                                 tr("Quita esta cota. Se deshace con Ctrl+Z."),
                                  false);
         connect(remove, &QToolButton::clicked, this,
                 [this, toolId] { emit deleteRequested(toolId); });
         table_->setCellWidget(row, deleteColumn, remove);
     }
 
-    table_->resizeColumnsToContents();
-    if (!multiMode) {
-        // Solo en modo «una pieza» hay una columna de valor que merece
-        // repartirse el ancho sobrante; en modo «Todas», con varias columnas de
-        // pieza, forzar un estiramiento rompería la lectura y por eso ahí se
-        // deja que la tabla haga scroll horizontal en su lugar.
-        table_->horizontalHeader()->setSectionResizeMode(kSingleColValue, QHeaderView::Stretch);
-    }
+    // EL ANCHO SOBRANTE SE LO QUEDA LA COLUMNA «COTA», EN LOS DOS MODOS.
+    //
+    // Antes solo se estiraba la columna de valor en modo «una pieza», y en modo
+    // «Todas» la tabla se quedaba estrecha a la izquierda con un hueco en blanco
+    // a la derecha del panel. Además, el estiramiento se ponía por NÚMERO de
+    // columna y no se quitaba al cambiar de modo: la columna 2, que en «una
+    // pieza» es el valor, en «Todas» es «Pieza 1», y se quedaba estirada ella.
+    //
+    // Todo se ajusta primero a su contenido y después solo «Cota» se estira: es
+    // la única cuyo texto puede ser largo, y las de pieza o de valor se leen
+    // mejor juntas que repartidas.
+    auto* header = table_->horizontalHeader();
+    header->setSectionResizeMode(QHeaderView::ResizeToContents);
+    header->setSectionResizeMode(kColCota, QHeaderView::Stretch);
 
     // EL VEREDICTO (punto A): busca la PRIMERA cota que no cumple, recorriendo
     // `results_` tal cual llega —pieza 0 entera, luego la 1, luego la 2—, así

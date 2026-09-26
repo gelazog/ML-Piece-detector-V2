@@ -39,6 +39,7 @@
 #include <QLabel>
 #include <QTest>
 #include <QToolButton>
+#include <QHeaderView>
 #include <QTableWidget>
 
 #include <cstdio>
@@ -469,4 +470,40 @@ TEST(MeasurementsPanel, ToleranceIsCompactWithPlusMinusWhenSymmetric) {
     // Y la unidad no está repetida: solo debe aparecer una vez en la celda.
     EXPECT_EQ(tolerance.count(QStringLiteral("mm")), 1)
         << "la unidad de la tolerancia está repetida: " << tolerance.toStdString();
+}
+
+// EL HUECO EN BLANCO A LA DERECHA, Y LA COLUMNA QUE SE QUEDABA ESTIRADA.
+//
+// Mirando la captura del panel rediseñado, en modo «Todas» la tabla se quedaba
+// estrecha a la izquierda y el resto del panel en blanco: solo se estiraba una
+// columna en el modo de una pieza. Y ese estiramiento se ponía por NÚMERO de
+// columna sin quitarse al cambiar de modo, así que la columna 2 —el valor en
+// «una pieza», «Pieza 1» en «Todas»— se quedaba estirada al volver.
+//
+// Ahora la única que se estira es «Cota», en los dos modos, y la prueba lo
+// comprueba después de pasar de un modo al otro y volver.
+TEST(MeasurementsPanel, OnlyTheCotaColumnTakesTheSpareWidthInBothModes) {
+    ui::MeasurementsPanel panel;
+    panel.setResults({measuring(1, "Ancho", 42.0, true, 0), measuring(1, "Ancho", 41.0, true, 1),
+                      measuring(1, "Ancho", 43.0, true, 2)},
+                     {}, 0.0, LengthUnit::Pixels);
+    auto* table = panel.findChild<QTableWidget*>(QStringLiteral("measurementsTable"));
+    ASSERT_NE(table, nullptr);
+    const auto stretched = [table] {
+        QList<int> columns;
+        for (int c = 0; c < table->columnCount(); ++c) {
+            if (table->horizontalHeader()->sectionResizeMode(c) == QHeaderView::Stretch) {
+                columns << c;
+            }
+        }
+        return columns;
+    };
+    EXPECT_EQ(stretched(), QList<int>{1}) << "en «Todas» no se estira solo «Cota»";
+
+    panel.setChosenPiece(0);  // una sola pieza
+    EXPECT_EQ(stretched(), QList<int>{1}) << "en «una pieza» no se estira solo «Cota»";
+
+    panel.setChosenPiece(-1);  // y de vuelta a «Todas»
+    EXPECT_EQ(stretched(), QList<int>{1})
+        << "al volver a «Todas» se quedó estirada otra columna del modo anterior";
 }

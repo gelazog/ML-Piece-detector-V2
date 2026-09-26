@@ -19,6 +19,26 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### El panel de medidas repetía cada cota por pieza y la papelera borraba de más
+
+Queja del dueño: «el panel de mediciones está confuso». Con tres piezas y cinco
+cotas salían quince filas, y el ojo y la ✕ de cada fila actuaban sobre la
+herramienta entera aunque aparecieran repetidos por pieza: borrar desde la fila
+de la pieza 3 quitaba la cota de las tres. Con una sola pieza delante no se veía.
+
+Ahora una cota es una fila, con una columna por pieza cuando hay varias; el ojo y
+la ✕ van una vez por cota; la tolerancia se escribe «15,00 ± 0,25»; el estado,
+«✓ 0,25» o «✕ +0,15», con la frase entera en el emergente; y arriba hay un
+veredicto que dice qué pieza falla y por qué cota, en vez de un recuento.
+
+Al juntarlo salieron dos cosas más. La tabla no ocupaba el ancho del panel y el
+estiramiento de columnas se ponía por número sin quitarse al cambiar de modo; y
+al rehacer la tabla se borraban los widgets de celda con un `delete` directo,
+que dejaba un puntero colgando dentro de la tabla: en cuanto algo medía las
+columnas, el programa se caía. Ahora se sacan con `removeCellWidget`.
+
+---
+
 ### Capturar y medir fotos solo funcionaba con la cámara en vivo
 
 Queja del dueño: «la toma de mediciones no funciona con las diferentes
