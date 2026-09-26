@@ -1381,8 +1381,11 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
 
     // Indicadores de estado con punto verde/rojo (S4): cámara, BD y modelo ONNX.
     camIndicator_ = new QLabel(this);
+    camIndicator_->setObjectName(QStringLiteral("camIndicator"));
     dbIndicator_ = new QLabel(this);
+    dbIndicator_->setObjectName(QStringLiteral("dbIndicator"));
     modelIndicator_ = new QLabel(this);
+    modelIndicator_->setObjectName(QStringLiteral("modelIndicator"));
     statusBar()->addPermanentWidget(camIndicator_);
     statusBar()->addPermanentWidget(dbIndicator_);
     statusBar()->addPermanentWidget(modelIndicator_);
@@ -3582,13 +3585,28 @@ void MainWindow::updateStatusIndicators() {
     updateGatedCommands();
     updateEdgeBrushAvailability();
     // Punto de color + leyenda por indicador (rich text: sin assets externos).
-    auto set = [](QLabel* label, const QString& caption, bool ok, const QString& okText,
-                  const QString& badText) {
-        const QString color =
-            ok ? QString(theme::kGood) : QString(theme::kBad);
-        label->setText(QStringLiteral("<span style='color:%1'>&#9679;</span> %2")
-                           .arg(color, caption));
-        label->setToolTip(ok ? okText : badText);
+    //
+    // ANTES, LA PALABRA ERA LA MISMA EN LOS DOS ESTADOS.
+    //
+    // «BD» en rojo y «BD» en verde: la única diferencia visible era el punto
+    // de color, y el tooltip —que llevaba la palabra de verdad, «conectada» o
+    // «no disponible»— no se ve sin pasar el ratón por encima. Eso incumple
+    // WCAG 1.4.1 (la información no puede depender solo del color) y un
+    // operador daltónico deutan, que es el más común, ve el mismo punto gris
+    // en los dos casos.
+    //
+    // Ahora cada indicador lleva además una palabra corta de estado —«BD ✓» /
+    // «BD ✕»— que no depende del ratón, y un nombre accesible con la frase
+    // completa para un lector de pantalla.
+    auto set = [](QLabel* label, const QString& caption, bool ok, const QString& okWord,
+                  const QString& badWord, const QString& okText, const QString& badText) {
+        const QString color = ok ? QString(theme::kGood) : QString(theme::kBad);
+        const QString word = ok ? okWord : badWord;
+        const QString text = ok ? okText : badText;
+        label->setText(QStringLiteral("<span style='color:%1'>&#9679;</span> %2 %3")
+                           .arg(color, caption, word));
+        label->setToolTip(text);
+        label->setAccessibleName(QStringLiteral("%1: %2").arg(caption, text));
     };
 
     // El indicador dice QUÉ fuente está viva, no solo que hay una. «Cám» en
@@ -3597,30 +3615,30 @@ void MainWindow::updateStatusIndicators() {
     // significado.
     switch (sourceKind_) {
         case camera::SourceKind::Camera:
-            set(camIndicator_, tr("Cám"), streaming_, tr("Cámara: transmitiendo"),
-                tr("Cámara: detenida"));
+            set(camIndicator_, tr("Cám"), streaming_, tr("✓"), tr("✕ parada"),
+                tr("Cámara: transmitiendo"), tr("Cámara: detenida"));
             break;
         case camera::SourceKind::Photo:
-            set(camIndicator_, tr("Foto"), streaming_,
+            set(camIndicator_, tr("Foto"), streaming_, tr("✓"), tr("✕ sin fuente"),
                 tr("Fuente: una foto congelada de esta cámara. La escala calibrada sigue "
                    "valiendo."),
                 tr("Sin fuente"));
             break;
         case camera::SourceKind::Image:
-            set(camIndicator_, tr("Img"), streaming_,
+            set(camIndicator_, tr("Img"), streaming_, tr("✓"), tr("✕ sin fuente"),
                 tr("Fuente: una imagen de archivo. Todo se mide igual que en vivo."),
                 tr("Sin fuente"));
             break;
         case camera::SourceKind::Video:
-            set(camIndicator_, tr("Víd"), streaming_,
+            set(camIndicator_, tr("Víd"), streaming_, tr("✓"), tr("✕ sin fuente"),
                 tr("Fuente: un vídeo de archivo, en bucle."), tr("Sin fuente"));
             break;
     }
-    set(dbIndicator_, tr("BD"), repos_.pieces != nullptr,
+    set(dbIndicator_, tr("BD"), repos_.pieces != nullptr, tr("✓"), tr("✕ caída"),
         tr("Base de datos: conectada"),
         tr("Base de datos: no disponible (sin persistencia)"));
-    set(modelIndicator_, tr("ONNX"), static_cast<bool>(repos_.embedFn),
-        tr("Modelo de embeddings: cargado"),
+    set(modelIndicator_, tr("ONNX"), static_cast<bool>(repos_.embedFn), tr("✓"),
+        tr("✕ no cargado"), tr("Modelo de embeddings: cargado"),
         tr("Modelo ONNX: no disponible (inspección solo con herramientas)"));
 }
 
