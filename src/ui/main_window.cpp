@@ -511,6 +511,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // mirando»— y porque es lo que se pulsa justo después de ver pasar la pieza
     // buena.
     freezeButton_ = new QPushButton(tr("Capturar foto"), central);
+    freezeButton_->setObjectName(QStringLiteral("freezeButton"));
     freezeButton_->setEnabled(false);
     freezeButton_->setToolTip(
         tr("Congela el frame actual y trabaja sobre esa foto: con el vídeo en vivo la\n"
@@ -3962,9 +3963,35 @@ void MainWindow::toggleFrozenPhoto() {
         updateCalibrationLabel();
         return;
     }
-    if (sourceKind_ != camera::SourceKind::Camera || lastFrame_.isNull()) {
-        statusBar()->showMessage(
-            tr("Solo se puede capturar una foto del vídeo en vivo de la cámara."));
+    if (lastFrame_.isNull()) {
+        statusBar()->showMessage(tr("Todavía no hay imagen que capturar."));
+        return;
+    }
+    // CON UN VÍDEO O UNA IMAGEN TAMBIÉN SE CAPTURA.
+    //
+    // Antes esto contestaba «solo se puede capturar una foto del vídeo en vivo
+    // de la cámara», y con un vídeo grabado no había forma de juntar en la tira
+    // los frames buenos para medirlos después. Queja del dueño: «la toma de foto
+    // solo funciona con la cámara en vivo».
+    //
+    // Con un fichero no hace falta cambiar de fuente —la cámara había que
+    // soltarla porque seguía mandando frames—: basta con guardar en la tira lo
+    // que se ve. Y el vídeo se pausa, para que la foto sea la que se está
+    // mirando y no la de medio segundo después.
+    if (sourceKind_ == camera::SourceKind::Video || sourceKind_ == camera::SourceKind::Image) {
+        if (auto* video = dynamic_cast<camera::VideoFileSource*>(fileSource_.get());
+            video != nullptr && !video->isPaused()) {
+            video->setPaused(true);
+            playPauseButton_->setText(tr("Seguir"));
+            updateEdgeBrushAvailability();
+        }
+        captureTray_.add(lastFrame_, currentSourceLabel());
+        refreshCaptureList();
+        statusBar()->showMessage(tr("Foto guardada en Capturas. Elígela ahí para medirla."));
+        return;
+    }
+    if (sourceKind_ != camera::SourceKind::Camera) {
+        statusBar()->showMessage(tr("Todavía no hay imagen que capturar."));
         return;
     }
 
@@ -4092,6 +4119,9 @@ bool MainWindow::startFileSourceAtPath(camera::SourceKind kind, const QString& p
         cameraCombo_->setCurrentIndex(0);
     }
     startStopButton_->setText(tr("Cerrar"));
+    // Capturar también vale con un fichero abierto: guarda el frame en la tira.
+    freezeButton_->setText(tr("Capturar foto"));
+    freezeButton_->setEnabled(true);
     // El desplegable NO se apaga: cambiar de fuente se decide mirando lo que
     // hay. Apagarlo dejaba «Abrir imagen…» inalcanzable con la cámara en
     // marcha, sin decir por qué — el operador veía la opción y no podía
@@ -4229,6 +4259,7 @@ void MainWindow::buildCaptureDock() {
     column->addWidget(captureCountLabel_);
 
     captureList_ = new QListWidget(panel);
+    captureList_->setObjectName(QStringLiteral("captureList"));
     captureList_->setViewMode(QListView::IconMode);
     captureList_->setIconSize(QSize(112, 84));
     captureList_->setResizeMode(QListView::Adjust);
@@ -4458,11 +4489,56 @@ void MainWindow::onCaptureChosen(int row) {
     // imagen. Así todo lo que ya funciona —medir, dibujar, inspeccionar— vale
     // igual sin un camino nuevo que mantener.
     const Capture& capture = captureTray_.at(row);
+
+    // ANTES DE PONER LA CAPTURA, SE RETIRA LO QUE HABÍA.
+    //
+    // Aquí se creaba la fuente nueva encima de la que estuviera, sin pararla, y
+    // eso rompía las dos situaciones en que se usa la tira:
+    //
+    //   - con la cámara en vivo, sus frames seguían llegando a `onFrame` y
+    //     pisaban la captura al instante: se medía la cámara, no la foto;
+    //   - con un vídeo o una imagen abiertos, reemplazar el puntero destruía la
+    //     fuente en marcha, y su aviso de «detenida» llegaba a `onStreamStopped`,
+    //     que desmontaba la fuente NUEVA.
+    //
+    // Queja del dueño: «la toma de mediciones no funciona con las diferentes
+    // capturas, más que en cámara en vivo».
+    const bool fromCamera = sourceKind_ == camera::SourceKind::Camera;
+    const bool photoFromCamera = sourceKind_ == camera::SourceKind::Photo &&
+                                 freezeButton_->text() == tr("Volver al vídeo");
+    if (fromCamera) {
+        disconnect(cameraFrames_);
+    }
+    if (fileSource_ != nullptr) {
+        // Desconectada ANTES de pararla: su `stopped` ya no le toca a nadie.
+        disconnect(fileSource_.get(), nullptr, this, nullptr);
+        fileSource_->stop();
+        fileSource_.release()->deleteLater();
+    }
     fileSource_ = std::make_unique<camera::StillImageSource>(
         capture.image, capture.source, camera::SourceKind::Photo);
     connect(fileSource_.get(), &camera::FrameSource::frameReady, this, &MainWindow::onFrame);
-    connect(fileSource_.get(), &camera::FrameSource::stopped, this,
-            &MainWindow::onStreamStopped);
+    const bool backToCamera = fromCamera || photoFromCamera;
+    if (backToCamera) {
+        // Como al congelar: la cámara sigue conectada y se vuelve con el botón.
+        // Sin `stopped`: parar la foto para volver no puede cerrar la cámara.
+        freezeButton_->setText(tr("Volver al vídeo"));
+        freezeButton_->setEnabled(true);
+    } else {
+        // Venía de un fichero: la captura pasa a ser la fuente, y «Cerrar» la
+        // cierra como cerraría la imagen.
+        connect(fileSource_.get(), &camera::FrameSource::stopped, this,
+                &MainWindow::onStreamStopped);
+        for (int i = 0; i < cameraCombo_->count(); ++i) {
+            if (cameraCombo_->itemData(i).isValid() &&
+                cameraCombo_->itemData(i).toInt() == kSourceOpenedFile) {
+                cameraCombo_->setItemText(
+                    i, tr("Captura %1").arg(capture.taken.toString(QStringLiteral("HH:mm:ss"))));
+            }
+        }
+        freezeButton_->setText(tr("Capturar foto"));
+        freezeButton_->setEnabled(false);
+    }
     sourceKind_ = camera::SourceKind::Photo;
     streaming_ = true;
     showVideoBar(false);

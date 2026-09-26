@@ -19,6 +19,31 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Capturar y medir fotos solo funcionaba con la cámara en vivo
+
+Queja del dueño: «la toma de mediciones no funciona con las diferentes
+capturas, más que en cámara en vivo, al igual que la toma de foto». Eran dos
+fallos del mismo recorrido.
+
+**Capturar foto se negaba con un fichero abierto.** Contestaba «solo se puede
+capturar una foto del vídeo en vivo de la cámara», y el botón estaba apagado con
+un vídeo o una imagen. De un vídeo grabado no había forma de juntar en la tira
+los frames buenos para medirlos después. Ahora, con un fichero, capturar guarda
+en la tira el frame que se ve —y pausa el vídeo, para que la foto sea esa y no
+la de medio segundo después—.
+
+**Elegir una captura de la tira la ponía encima de la fuente que había, sin
+pararla.** Con la cámara en vivo, sus frames seguían llegando y pisaban la foto:
+se medía la cámara, no la captura. Con un vídeo abierto, reemplazar el puntero
+destruía la fuente en marcha y su aviso de «detenida» desmontaba la nueva. Ahora
+se retira la fuente anterior —desconectada antes de pararla— y, si venía de la
+cámara, «Volver al vídeo» funciona como al congelar.
+
+La prueba hace el recorrido entero: abrir un vídeo, capturar, elegir la captura
+y dibujar un círculo; la medida tiene que salir en el panel.
+
+---
+
 ### Un ajuste escrito mientras la inspección guardaba se perdía o rompía la conexión
 
 El programa abre una sola conexión SQLite y la comparte entre el hilo de la
