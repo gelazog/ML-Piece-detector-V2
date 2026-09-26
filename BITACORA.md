@@ -19,6 +19,24 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Un ajuste escrito mientras la inspección guardaba se perdía o rompía la conexión
+
+El programa abre una sola conexión SQLite y la comparte entre el hilo de la
+interfaz y el de inspección, y SQLite no distingue hilos dentro de una misma
+conexión. Un ajuste escrito por la interfaz mientras la inspección tenía un
+`BEGIN…COMMIT` abierto se colaba dentro de esa transacción ajena y **desaparecía
+sin error** si acababa en `ROLLBACK`; si la interfaz abría su propia transacción,
+SQLite respondía «cannot start a transaction within a transaction».
+
+Invisible porque cada escritura por separado funcionaba en las pruebas, que nunca
+las lanzaban a la vez desde dos hilos reales. Ahora `Db` lleva un mutex recursivo
+y `Db::Transaction` (RAII) lo retiene desde `BEGIN` hasta `COMMIT`/`ROLLBACK`: el
+otro hilo espera en vez de colarse. Además, `busy_timeout` de 3 s. La prueba usa
+dos hilos reales —uno con una transacción larga que termina en `ROLLBACK`, otro
+escribiendo un ajuste— y sin el arreglo falla 5 de 5 veces con los dos síntomas.
+
+---
+
 ### Una excepción al procesar una captura cerraba el programa con el asistente abierto
 
 El asistente de registro procesa cada captura en el pool de hilos y recoge el
