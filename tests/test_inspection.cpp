@@ -2436,14 +2436,22 @@ TEST(ToolCoherence, EveryToolHasItsOwnNameAndExplainsHowToDrawIt) {
         EXPECT_NE(name, "unknown") << label << " no tiene nombre para la base de datos";
 
         // El tooltip es lo único que le dice al operador QUÉ mide y CÓMO se
-        // traza: uno de una línea no sirve de nada. Y tiene que empezar por el
-        // nombre de la herramienta, que es como está escrito el resto.
+        // traza: uno de una línea no sirve de nada.
+        //
+        // Antes se exigía justo lo contrario de esta segunda comprobación: que
+        // la descripción EMPEZARA repitiendo el nombre de la herramienta
+        // («Calibre — mide...»). Queja del dueño al ver las 32 descripciones:
+        // «el texto parece IA en todos los apartados... se repite el nombre de
+        // la herramienta». El nombre ya se ve en el rótulo del botón, justo
+        // encima; repetirlo no informa de nada. La guía de textos de la
+        // interfaz lo prohíbe ahora, así que la prueba pasa a exigir lo que de
+        // verdad hace falta: que no lo repita.
         EXPECT_GT(description.size(), 80U) << label << ": descripción demasiado corta";
-        EXPECT_EQ(description.rfind(label, 0), 0U)
-            << label << ": la descripción no empieza nombrando la herramienta — «"
+        EXPECT_NE(description.compare(0, label.size(), label), 0)
+            << label << ": la descripción vuelve a empezar nombrando la herramienta «"
             << description.substr(0, 40) << "»";
         EXPECT_NE(description.find('\n'), std::string::npos)
-            << label << ": la descripción no explica cómo dibujarla";
+            << label << ": la descripción no separa qué mide de cómo se traza";
 
         labels.push_back(label);
         names.push_back(name);
@@ -4178,7 +4186,9 @@ TEST(Straightness, ItSaysThatOnlyTheProjectedStraightnessIsMeasurable) {
     EXPECT_NE(result.value().detail.find("proyectada en el plano"), std::string::npos)
         << result.value().detail;
     const std::string description = toolTypeDescription(ToolType::Straightness);
-    EXPECT_NE(description.find("PROYECTADA"), std::string::npos);
+    // La guía de textos de la interfaz quitó las MAYÚSCULAS de énfasis; lo que
+    // importa sigue comprobándose, solo que en minúsculas.
+    EXPECT_NE(description.find("proyectada"), std::string::npos);
     EXPECT_NE(description.find("Borde liso"), std::string::npos)
         << "la descripción tiene que avisar de que el número sube al cambiar de "
            "herramienta sin que la pieza empeore";
@@ -4314,7 +4324,9 @@ TEST(Roundness, TheDescriptionWarnsThatItOnlyWorksFaceOn) {
     // círculo, y ahí no hay redondez que medir por mucho que la herramienta se
     // deje dibujar encima.
     const std::string description = toolTypeDescription(ToolType::Roundness);
-    EXPECT_NE(description.find("SOLO VALE DE FRENTE"), std::string::npos);
+    // Sin MAYÚSCULAS de énfasis (guía de textos de la interfaz); la frase sigue
+    // ahí, con mayúscula solo de inicio de frase.
+    EXPECT_NE(description.find("Solo vale de frente"), std::string::npos);
     EXPECT_NE(description.find("tangentes"), std::string::npos);
 
     const auto result = runTool(lobedDisc(120.0, 3, 2.0), kIdentity, roundnessOver());
@@ -4656,7 +4668,8 @@ TEST(TruePosition, TheDescriptionSaysWhenItCannotBeHonest) {
     // no se resuelve en el plano y no hay marco que valga.
     const std::string description = toolTypeDescription(ToolType::Position);
     EXPECT_NE(description.find("plano de la imagen"), std::string::npos);
-    EXPECT_NE(description.find("DIÁMETRO"), std::string::npos);
+    // Minúscula: la guía de textos quitó las MAYÚSCULAS de énfasis.
+    EXPECT_NE(description.find("diámetro"), std::string::npos);
 }
 
 // ---------------------------------------------------------------------------
@@ -4747,7 +4760,8 @@ TEST(CentreOffset, ItRefusesToCallItselfConcentricity) {
     // no puede es viajar con el nombre de una cota retirada, porque acabaría
     // copiado en un informe como si fuera esa cota.
     const std::string description = toolTypeDescription(ToolType::CentreOffset);
-    EXPECT_NE(description.find("NO ES CONCENTRICIDAD"), std::string::npos) << description;
+    // Sin MAYÚSCULAS de énfasis (guía de textos de la interfaz).
+    EXPECT_NE(description.find("No es la concentricidad"), std::string::npos) << description;
     EXPECT_NE(description.find("Posición verdadera"), std::string::npos)
         << "tiene que decir a dónde ir para la cota formal";
     EXPECT_NE(description.find("2018"), std::string::npos)

@@ -139,8 +139,7 @@ const std::vector<MeasureRecipe>& factoryRecipes() {
         // que mide el espesor entre las dos, que es lo que pide un plano.
         recipes.push_back({"Cuadrada o rectangular",
                            "Largo, ancho, el espesor entre caras enfrentadas y los cuatro "
-                           "ángulos —que son los que dicen si la pieza está a escuadra—, "
-                           "más el área.",
+                           "ángulos, que dicen si la pieza está a escuadra, más el área.",
                            PieceFamily::FourSided,
                            optionsWith({ToolType::Ruler, ToolType::Caliper, ToolType::Angle,
                                         ToolType::Polygon, ToolType::Region})});

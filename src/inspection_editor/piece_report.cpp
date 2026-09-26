@@ -285,7 +285,7 @@ PieceReport measureWholePiece(const cv::Mat& gray, const cv::Mat& mask,
     if (nothingRechecks) {
         report.warnings.push_back(
             "Ninguna de estas cotas vuelve a medir: todas salen de la descomposicion "
-            "de ESTE contorno y guardadas repetirian el valor de hoy. Sirven para "
+            "de este contorno y guardadas repetirian el valor de hoy. Sirven para "
             "apuntar la pieza, no para rechazar la siguiente. Si hace falta vigilarla, "
             "dibuja a mano la cota que la juzgue.");
     }
@@ -336,14 +336,11 @@ PieceReport measureWholePiece(const cv::Mat& gray, const cv::Mat& mask,
                 : 0;
         report.warnings.push_back(
             "El contorno es una elipse de " + roundTo2(report.shape.ellipseAspect) +
-            ":1. O la pieza es ovalada, o se esta viendo de refilon; en los dos casos el "
-            "diametro que se publica —el del circulo ajustado— se queda un " +
-            std::to_string(shortBy) +
-            " % por debajo del eje mayor, y la redondez esta midiendo esa inclinacion y "
-            "no la pieza. Pon la pieza debajo del objetivo, o corrige la perspectiva con "
-            "un marcador ArUco de tamano conocido junto a ella (Configurar > Escala por "
-            "marcador ArUco). El tablero de ajedrez no sirve para esto: ese corrige la "
-            "lente, que es otro problema.");
+            ":1. La pieza puede ser ovalada o estar vista de refilón, y el diámetro "
+            "publicado sale " + std::to_string(shortBy) +
+            " % corto. Ponla debajo del objetivo, o corrige la perspectiva con un "
+            "marcador ArUco de tamaño conocido junto a ella (Configurar > Escala por "
+            "marcador ArUco).");
     }
 
     report.ok = true;

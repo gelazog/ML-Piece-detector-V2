@@ -99,9 +99,9 @@ AutoMeasureDialog::AutoMeasureDialog(std::vector<AutoProposal> proposals, double
         auto* saveRecipe = new QPushButton(tr("Guardar como receta…"), this);
         saveRecipe->setObjectName(QStringLiteral("saveRecipeButton"));
         saveRecipe->setToolTip(
-            tr("Guarda las clases que tengas marcadas con un nombre tuyo —«la mía\n"
-               "de bridas»— para no volver a marcarlas. Aparecerá en esta lista y se\n"
-               "puede asignar a una pieza como cualquier otra."));
+            tr("Guarda las clases que tengas marcadas con un nombre tuyo, para no "
+               "volver a marcarlas. Aparecerá en esta lista, lista para asignar a "
+               "una pieza."));
         recipeRow->addWidget(saveRecipe);
         recipeRow->addStretch(1);
         layout->addLayout(recipeRow);
@@ -161,9 +161,9 @@ AutoMeasureDialog::AutoMeasureDialog(std::vector<AutoProposal> proposals, double
             box->setObjectName(QStringLiteral("typeCheck.") +
                                QString::fromLatin1(toolTypeName(type)));
             box->setChecked(true);
-            box->setToolTip(tr("Si lo desmarcas, la medición automática deja de\n"
-                               "proponer cotas de esta clase — y el tope de\n"
-                               "propuestas se reparte entre las que sí quieres."));
+            box->setToolTip(tr("Si lo desmarcas, la medición automática deja de "
+                               "proponer cotas de esta clase, y reparte el tope de "
+                               "propuestas entre las que sí quieres."));
             filterRow->addWidget(box);
             typeBoxes_.push_back(box);
             boxTypes_.push_back(type);

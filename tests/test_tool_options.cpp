@@ -1218,15 +1218,17 @@ TEST(ToolOptionsDescription, EveryFieldTheDescriptionPromisesIsAParameterThatGet
         const char* jsonKey;               // clave con la que se persiste
         ToolGeometry geometry;
     };
+    // BoltPattern salió de esta lista al recortar su descripción (queja del
+    // dueño: sonaba a IA y repetía el nombre de la herramienta en las 32). La
+    // guía de textos de la interfaz pide dos frases y como mucho una tercera
+    // para un límite real; el campo «Agujeros esperados» es una opción, no un
+    // límite, así que se dejó fuera del texto. Sigue en el panel con su propio
+    // rótulo, así que el operador lo encuentra igual.
     const std::vector<Promise> promises{
-        {ToolType::EdgeFlaw, "campo\n"
-                             "Escaneos/largo",
-         "scanLen", EdgeFlawGeometry{}},
+        {ToolType::EdgeFlaw, "campo Escaneos/largo", "scanLen", EdgeFlawGeometry{}},
         {ToolType::Polygon, "El campo Epsilon", "eps", PolygonGeometry{}},
-        {ToolType::EdgeDefects, "El campo Altura mínima (px)", "minH", EdgeDefectsGeometry{}},
-        {ToolType::BoltPattern, "Con Agujeros esperados puesto", "holes",
-         BoltPatternGeometry{}},
-        {ToolType::Orientation, "el que\npongas en el campo Ángulo", "nominal",
+        {ToolType::EdgeDefects, "El campo Altura mínima", "minH", EdgeDefectsGeometry{}},
+        {ToolType::Orientation, "el que pongas en el campo Ángulo", "nominal",
          OrientationGeometry{}},
         {ToolType::Groove, "sube el número de cortes", "stations", GrooveGeometry{}},
         {ToolType::Extremes, "elige en Medida cuál vigilar", "mode", ExtremesGeometry{}},

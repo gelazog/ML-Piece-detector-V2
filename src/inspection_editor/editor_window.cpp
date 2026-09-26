@@ -183,12 +183,9 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     paramSpin_ = new QSpinBox(this);
     paramSpin_->setRange(1, 1000);
     paramSpin_->setToolTip(
-        tr("Parámetro de muestreo de la herramienta seleccionada.\n"
-           "En doce herramientas (Círculo, Arco, Redondez, Engranaje, Borde\n"
-           "liso, Rebabas, Rectitud, Orientación, Eje, Eje medio, Ranura y\n"
-           "Rosca) son sus PUNTOS DE MEDIDA: más puntos, medida más estable\n"
-           "pero más lenta. Calibre usa la banda (px) y Blob el área mínima\n"
-           "(px²), que no son puntos."));
+        tr("Parámetro de muestreo de la herramienta seleccionada: en la "
+           "mayoría son sus puntos de medida, más estables pero más lentos "
+           "cuantos más."));
     form->addRow(paramLabel_, paramSpin_);
 
     // Construcciones geométricas (X1). Los tres desplegables solo se habilitan
@@ -481,15 +478,14 @@ void EditorWindow::syncPanelFromSelection() {
                     paramSpin_->setObjectName(QStringLiteral("spinCaliperBanda"));
                     paramSpin_->setRange(1, 1000);
                     paramSpin_->setToolTip(
-                        tr("Grosor perpendicular promediado del calibre (px)."));
+                        tr("Grosor perpendicular que se promedia al medir."));
                     paramSpin_->setValue(static_cast<int>(g.bandWidth));
                     paramSpin_->setEnabled(true);
                 } else if constexpr (std::is_same_v<T, BlobGeometry>) {
                     paramLabel_->setText(tr("Área mín (px²):"));
                     paramSpin_->setObjectName(QStringLiteral("spinBlobAreaMinima"));
                     paramSpin_->setRange(1, 1000);
-                    paramSpin_->setToolTip(
-                        tr("Área mínima para contar una mancha como blob (px²)."));
+                    paramSpin_->setToolTip(tr("Área mínima para que una mancha cuente."));
                     paramSpin_->setValue(static_cast<int>(g.minArea));
                     paramSpin_->setEnabled(true);
                 } else if (pointSpec.editable) {
@@ -862,15 +858,15 @@ void EditorWindow::onToolCreated(const ToolGeometry& geometry) {
     if (measured.isOk() && (measured.value().ok || measured.value().measured > 0.0)) {
         suggestTolerances(tool.geometry, measured.value().measured,
                           tool.config.toleranceMin, tool.config.toleranceMax);
-        statusLabel_->setText(tr("%1 midió %2 — tolerancias sugeridas [%3, %4]; "
-                                 "ajústalas si hace falta y Guardar")
+        statusLabel_->setText(tr("%1 midió %2. Tolerancia sugerida [%3, %4]: "
+                                 "ajústala si hace falta y pulsa Guardar.")
                                   .arg(QString::fromStdString(tool.config.name))
                                   .arg(measured.value().measured, 0, 'f', 1)
                                   .arg(tool.config.toleranceMin, 0, 'f', 1)
                                   .arg(tool.config.toleranceMax, 0, 'f', 1));
     } else {
         statusLabel_->setText(
-            tr("%1 creada, pero no midió sobre esta imagen (%2) — ajusta su posición")
+            tr("%1 creada, pero no midió en esta imagen (%2). Ajusta su posición.")
                 .arg(QString::fromStdString(tool.config.name),
                      QString::fromStdString(measured.isOk() ? measured.value().detail
                                                             : measured.error().message)));

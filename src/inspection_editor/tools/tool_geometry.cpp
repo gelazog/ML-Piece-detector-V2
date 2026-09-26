@@ -142,23 +142,21 @@ const char* categoryLabel(ToolCategory category) {
 const char* categoryDescription(ToolCategory category) {
     switch (category) {
         case ToolCategory::BasicShape:
-            return "Figuras básicas — qué forma tiene la pieza y qué hay dentro:\n"
-                   "área, perímetro, simetría, lados, manchas y defectos del borde.";
+            return "Qué forma tiene la pieza y qué hay dentro: área, perímetro, "
+                   "simetría, lados, manchas y defectos del borde.";
         case ToolCategory::InLine:
-            return "Medición en línea — la cota directa, la que aparece en un plano:\n"
-                   "distancias, diámetros, radios y ángulos.";
+            return "La cota directa, la que aparece en un plano: distancias, "
+                   "diámetros, radios y ángulos.";
         case ToolCategory::Construction:
-            return "Construcciones — puntos y rectas derivados de otras herramientas\n"
-                   "(punto medio, intersección, bisectriz, eje medio). No miden por sí\n"
-                   "solas: existen para servir de referencia a las de GD&T.";
+            return "Puntos y rectas calculados a partir de otras herramientas "
+                   "(punto medio, intersección, bisectriz, eje medio), para usarlos "
+                   "de referencia en el GD&T.";
         case ToolCategory::Gdt:
-            return "GD&T — tolerancias geométricas medidas contra una referencia\n"
-                   "declarada: rectitud, redondez, paralelismo, posición verdadera.\n"
-                   "Sobre una silueta 2D hay cotas que no se pueden dar, y se dice.";
+            return "Tolerancias geométricas medidas contra una referencia declarada: "
+                   "rectitud, redondez, paralelismo, posición verdadera.";
         case ToolCategory::TurnedAndExtremes:
-            return "Máximos, mínimos y piezas torneadas — la medida más grande y la\n"
-                   "más pequeña en cualquier dirección, y lo propio del torno:\n"
-                   "diámetros, chaflanes, roscas y engranajes.";
+            return "La medida más grande y la más pequeña en cualquier dirección, y "
+                   "lo propio del torno: diámetros, chaflanes, roscas y engranajes.";
     }
     return "";
 }
@@ -616,273 +614,193 @@ const char* toolTypeLabel(ToolType type) {
 const char* toolTypeDescription(ToolType type) {
     switch (type) {
         case ToolType::Caliper:
-            return "Calibre — mide la distancia entre dos bordes (px).\n"
-                   "Dibuja una línea que CRUCE perpendicularmente los dos bordes a medir\n"
-                   "(p. ej. de lado a lado del ancho de un brazo o una ranura).";
+            return "Distancia entre dos bordes.\n"
+                   "Traza una línea que cruce perpendicularmente los dos bordes a "
+                   "medir, por ejemplo de lado a lado de un brazo o una ranura.";
         case ToolType::Circle:
-            return "Círculo — mide el diámetro y la redondez de un contorno circular.\n"
-                   "Arrastra desde el CENTRO del círculo (o agujero) hasta su borde;\n"
+            return "Diámetro y redondez de un contorno circular.\n"
+                   "Arrastra desde el centro del círculo o agujero hasta su borde; "
                    "el borde se busca en una banda alrededor de ese radio.";
         case ToolType::PointToLine:
-            return "Punto-Línea — mide la distancia perpendicular de un borde a una\n"
-                   "línea de referencia. Dibuja la línea de referencia; el escaneo que\n"
-                   "localiza el borde queda perpendicular en su punto medio\n"
-                   "(muévelo con Mover/Elegir si hace falta).";
+            return "Distancia perpendicular de un borde a una línea de referencia.\n"
+                   "Dibuja la línea de referencia; el escaneo que localiza el borde "
+                   "queda perpendicular en su punto medio.";
         case ToolType::EdgeFlaw:
-            return "Borde liso — detecta irregularidades (muescas, rebabas, golpes) en\n"
-                   "un borde que debería ser recto. Dibuja una línea SOBRE el borde a\n"
-                   "vigilar; se mide la desviación máxima respecto a la recta ideal.\n"
-                   "OJO: solo ve lo que cae dentro del largo de escaneo (campo\n"
-                   "Escaneos/largo); una muesca más profunda que esa ventana pasa\n"
-                   "desapercibida — súbelo si esperas defectos grandes.";
+            return "Irregularidades (muescas, rebabas, golpes) en un borde que "
+                   "debería ser recto.\n"
+                   "Dibuja una línea sobre el borde a vigilar; se mide la desviación "
+                   "máxima respecto a la recta ideal.\n"
+                   "Solo ve lo que cae dentro del campo Escaneos/largo: sube ese "
+                   "valor si esperas defectos grandes.";
         case ToolType::Blob:
-            return "Blob — cuenta manchas, agujeros o elementos dentro de una región.\n"
-                   "Arrastra un rectángulo sobre la zona a vigilar; por defecto busca\n"
-                   "elementos oscuros sobre fondo claro (área mínima 20 px²).";
+            return "Cuenta manchas, agujeros o elementos dentro de una región.\n"
+                   "Arrastra un rectángulo sobre la zona a vigilar; por defecto "
+                   "busca elementos oscuros sobre fondo claro.";
         case ToolType::Ruler:
-            return "Regla — distancia directa entre dos puntos fijos de la pieza\n"
-                   "(no busca bordes: mide exactamente lo que trazas). Con la escala\n"
-                   "calibrada, la medida sale en mm/cm. Ideal para medir al vuelo.";
+            return "Distancia directa entre dos puntos fijos de la pieza: no busca "
+                   "bordes, mide exactamente lo que trazas.\n"
+                   "Con la escala calibrada, la medida sale en unidades reales.";
         case ToolType::LineToLine:
-            return "Línea-Línea — ángulo entre dos líneas de referencia.\n"
-                   "Traza la primera línea y luego la segunda (dos arrastres); mide el\n"
-                   "ángulo entre ambas en grados y también su separación. Útil para\n"
-                   "verificar paralelismo o el ángulo entre dos bordes de la pieza.";
+            return "Ángulo entre dos líneas de referencia, y también su "
+                   "separación.\n"
+                   "Traza primero una línea y luego la otra: dos arrastres.";
         case ToolType::Angle:
-            return "Ángulo — mide el ángulo de una esquina en grados.\n"
-                   "Arrastra del VÉRTICE al extremo del primer lado y luego marca el\n"
-                   "extremo del segundo lado; se mide el ángulo interior (0°..180°)\n"
-                   "con tolerancia en grados. Ideal para chaflanes y esquinas.";
+            return "Grados que forma una esquina entre sus dos lados.\n"
+                   "Arrastra del vértice al extremo del primer lado y marca el "
+                   "extremo del segundo; se mide el ángulo interior.";
         case ToolType::PolyBlob:
-            return "Blob poligonal — cuenta manchas dentro de una región de forma\n"
-                   "libre. Haz clic para ir marcando los vértices del polígono y\n"
-                   "cierra haciendo clic sobre el primero. Igual que el Blob pero\n"
-                   "para zonas irregulares que un rectángulo no cubre bien.";
+            return "Cuenta manchas dentro de una región de forma libre.\n"
+                   "Haz clic para marcar los vértices del polígono y cierra sobre "
+                   "el primero.";
         case ToolType::Position:
-            return "Posición — vigila DÓNDE cae un rasgo respecto al cero del tablero\n"
-                   "de referencia (Ver ▸ Tablero). Marca el rasgo con un clic-arrastre;\n"
-                   "se mide su desviación (radial, en X o en Y) y se compara con las\n"
-                   "tolerancias. Con el cero en la pieza la desviación es fija: usa el\n"
-                   "centro de la imagen o un punto fijado para que signifique algo.\n"
-                   "CON REFERENCIA es la posición verdadera de la norma: elige el datum\n"
-                   "primario en Referencia (una recta: orienta el marco) y el secundario\n"
-                   "en 2ª referencia (fija el origen). Entonces la medida es el DIÁMETRO\n"
-                   "DE ZONA, 2·raíz(dx²+dy²), medido en ese marco — y no cambia aunque\n"
-                   "la pieza llegue girada, porque todo se mide dentro del marco.\n"
-                   "Solo es honesta si los datums se resuelven en el plano de la imagen:\n"
-                   "una cara perpendicular a la cámara no da datum, y entonces no mide.";
+            return "Dónde cae un rasgo respecto a una referencia.\n"
+                   "Marca el rasgo con un clic y arrastre; se mide su desviación y "
+                   "se compara con la tolerancia.\n"
+                   "Con datum declarado, la medida es el diámetro de zona en ese "
+                   "marco, y solo vale si ese datum se resuelve en el plano de la "
+                   "imagen.";
         case ToolType::Arc:
-            return "Arco — mide el RADIO de una esquina redondeada o un redondeo.\n"
-                   "Marca tres puntos SOBRE el arco: los dos extremos y uno\n"
-                   "intermedio, igual que al comprobarlo con una plantilla de radios.\n"
-                   "El Círculo no sirve aquí: pide un centro y un contorno cerrado,\n"
-                   "y en una esquina no hay ninguno de los dos.";
+            return "Radio de una esquina redondeada o un redondeo.\n"
+                   "Marca tres puntos sobre el arco: los dos extremos y uno "
+                   "intermedio, igual que con una plantilla de radios.\n"
+                   "El Círculo no sirve aquí: pide un centro y un contorno cerrado, "
+                   "y una esquina no tiene ninguno de los dos.";
         case ToolType::Shaft:
-            return "Eje / Diámetro — para piezas de torno vistas de perfil.\n"
-                   "Traza el EJE a lo largo de la pieza, por el medio; se exploran\n"
-                   "los dos bordes y se miden de una vez el DIÁMETRO, la CONICIDAD\n"
-                   "(si no es cilíndrica) y la RECTITUD. Un calíper mide en un solo\n"
-                   "punto y ahí no se distingue un cilindro de un cono.";
+            return "Diámetro, conicidad y rectitud de una pieza de torno vista de "
+                   "perfil, las tres a la vez.\n"
+                   "Traza el eje a lo largo de la pieza, por el medio; se exploran "
+                   "los dos bordes.";
         case ToolType::Thread:
-            return "Rosca — mide PASO, diámetro exterior y de fondo, y ángulo de\n"
-                   "flanco de un tornillo visto DE PERFIL. Traza el eje a lo largo\n"
-                   "de la parte roscada: el perfil se repite una vez por vuelta, y\n"
-                   "de ese periodo sale el paso. Con la escala calibrada propone\n"
-                   "además la designación métrica (M6×1, M8×1.25...).\n"
+            return "Paso, diámetro exterior y de fondo, y ángulo de flanco de un "
+                   "tornillo visto de perfil.\n"
+                   "Traza el eje a lo largo de la parte roscada; el paso sale del "
+                   "periodo con que se repite el perfil.\n"
                    "Necesita ver varias vueltas y buen contraste de borde.";
         case ToolType::Gear:
-            return "Engranaje — cuenta los DIENTES y mide diámetro de cabeza, de\n"
-                   "raíz, módulo y excentricidad. La rueda debe verse DE CARA.\n"
-                   "Arrastra del centro del engranaje hacia fuera, pasando la punta\n"
-                   "de los dientes; el perfil radial se repite una vez por diente.\n"
-                   "El módulo exige calibración px→mm: sin escala real no existe.";
+            return "Cuenta los dientes y mide diámetro de cabeza, de raíz, módulo "
+                   "y excentricidad.\n"
+                   "Arrastra del centro hacia fuera, pasando la punta de los "
+                   "dientes; la rueda debe verse de cara.\n"
+                   "El módulo necesita calibración de escala: sin ella no se "
+                   "calcula.";
         case ToolType::ConstructedPoint:
-            return "Punto construido — NO mide: calcula un punto a partir de otras\n"
-                   "herramientas para que sirva de referencia. Punto medio de dos,\n"
-                   "corte de dos rectas, proyección de un punto sobre una recta o\n"
-                   "centro de un círculo. Colócalo con un clic (solo fija dónde se\n"
-                   "escribe) y elige la construcción y sus dos referencias.";
+            return "No mide: calcula un punto a partir de otras herramientas para "
+                   "usarlo de referencia.\n"
+                   "Colócalo con un clic y elige la construcción (punto medio, "
+                   "corte de rectas, proyección o centro de un círculo) y sus "
+                   "referencias.";
         case ToolType::ConstructedLine:
-            return "Recta construida — NO mide: calcula una recta a partir de otras\n"
-                   "herramientas para usarla como DATUM. Por dos puntos, bisectriz de\n"
-                   "dos rectas (si son paralelas, la recta media), o paralela y\n"
-                   "perpendicular a una recta por un punto. Es lo que le falta al\n"
-                   "GD&T para medir contra algo declarado y no contra un supuesto.";
+            return "No mide: calcula una recta a partir de otras herramientas para "
+                   "usarla de datum.\n"
+                   "Colócala con un clic y elige la construcción (por dos puntos, "
+                   "bisectriz, paralela o perpendicular a una recta) y sus "
+                   "referencias.";
         case ToolType::MedianAxis:
-            return "Eje medio — la línea que va por el CENTRO de una pieza alargada,\n"
-                   "a media distancia entre sus dos flancos. Es el datum natural de una\n"
-                   "pieza de torno. Traza el eje a lo largo de la pieza, por el medio:\n"
-                   "da igual que quede descentrado, porque lo que se calcula es el punto\n"
-                   "medio entre los bordes reales, no la línea que dibujaste. Mide su\n"
-                   "RECTITUD y avisa de la desalineación entre la mitad de un tramo y la\n"
-                   "otra, que es lo que delata dos diámetros que no son coaxiales.";
+            return "La línea que pasa por el centro de una pieza alargada, a media "
+                   "distancia entre sus dos flancos.\n"
+                   "Traza el eje a lo largo de la pieza, por el medio: da igual que "
+                   "quede descentrado, porque se calcula el punto medio entre los "
+                   "bordes reales.\n"
+                   "Mide también la rectitud entre un tramo y el siguiente.";
         case ToolType::Region:
-            return "Región — describe la FORMA de lo que hay dentro del recuadro.\n"
-                   "Arrastra un rectángulo sobre la pieza y elige qué medir: área,\n"
-                   "perímetro, solidez, circularidad, relación de aspecto o número de\n"
-                   "agujeros. Cada Región vigila UNA cosa con su tolerancia, así que\n"
-                   "pon una por cada medida que te importe y deja fuera las demás.\n"
-                   "Referencias medidas de la circularidad: un círculo da 0,99 y un\n"
-                   "cuadrado 0,82 (el valor exacto de un cuadrado es 0,785; la\n"
-                   "diferencia es el sesgo conocido de medir un borde recto sobre una\n"
-                   "rejilla de píxeles). Lo que separa una forma de otra es de sobra.";
+            return "Describe la forma de lo que hay dentro del recuadro: área, "
+                   "perímetro, solidez, circularidad, relación de aspecto o número "
+                   "de agujeros.\n"
+                   "Arrastra un rectángulo sobre la pieza y elige qué medir en el "
+                   "campo Medida.";
         case ToolType::Symmetry:
-            return "Simetría — busca el mejor EJE DE SIMETRÍA de la silueta y da un\n"
-                   "grado de 0 a 1 (1 = perfectamente simétrica). Arrastra un\n"
-                   "rectángulo sobre la pieza. Sirve para pillar una pieza montada del\n"
-                   "revés o con un rasgo que no debería estar: son los casos en los que\n"
-                   "la simetría cae y ninguna cota se entera.\n"
-                   "NO es la simetría de GD&T —esa se retiró de la norma en 2018—,\n"
-                   "es un descriptor de forma; y el eje que encuentra se puede usar\n"
-                   "como referencia de otras herramientas.";
+            return "Busca el eje de simetría de la silueta y da un grado de 0 a 1, "
+                   "donde 1 es perfectamente simétrica.\n"
+                   "Arrastra un rectángulo sobre la pieza.\n"
+                   "No es la simetría de GD&T, retirada de la norma en 2018: es un "
+                   "descriptor de forma.";
         case ToolType::Polygon:
-            return "Lados — cuenta los LADOS de un perfil poligonal y mide cada uno\n"
-                   "y sus ángulos interiores. Para el hexágono de una tuerca o un\n"
-                   "perfil recto. Arrastra un rectángulo sobre la pieza.\n"
-                   "El campo Epsilon (en milésimas del perímetro) decide cuánto se\n"
-                   "simplifica el contorno: súbelo si cuenta lados de más, bájalo si\n"
-                   "se come alguno. Va en fracción del perímetro y no en píxeles a\n"
-                   "propósito, para que el recuento no cambie al acercar la cámara.\n"
-                   "Si el recuento no aguanta al doblar y al partir ese valor, la\n"
-                   "figura no es un polígono claro (un círculo, por ejemplo) y lo dice\n"
-                   "en vez de dar un número que cambiaría solo.";
+            return "Cuenta los lados de un perfil poligonal y mide cada uno y sus "
+                   "ángulos interiores.\n"
+                   "Arrastra un rectángulo sobre la pieza. El campo Epsilon, en "
+                   "milésimas del perímetro, decide cuánto se simplifica el "
+                   "contorno.\n"
+                   "Si el recuento no es estable, la figura no es un polígono claro "
+                   "y lo dice en vez de dar un número que cambiaría solo.";
         case ToolType::EdgeDefects:
-            return "Rebabas y mellas — cuenta y mide los defectos de un borde UNO A\n"
-                   "UNO, en vez de dar una sola desviación máxima como el Borde liso.\n"
-                   "Traza una línea SOBRE el borde a vigilar. De cada defecto da su\n"
-                   "altura, su extensión y si es rebaba (material de más, hacia fuera)\n"
-                   "o mella (material de menos, hacia dentro).\n"
-                   "El campo Altura mínima (px) dice a partir de qué desviación algo\n"
-                   "cuenta como defecto: la medida es «cuántos defectos mayores que\n"
-                   "esto», que es una pregunta con respuesta.\n"
-                   "Un borde con una mella grande y otro con veinte pequeñas dan la\n"
-                   "misma lectura con el Borde liso, y no son la misma pieza.";
+            return "Cuenta y mide los defectos de un borde uno a uno, con su "
+                   "altura, su extensión y si es rebaba o mella.\n"
+                   "Traza una línea sobre el borde a vigilar.\n"
+                   "El campo Altura mínima decide a partir de qué desviación algo "
+                   "cuenta como defecto.";
         case ToolType::Clearance:
-            return "Holgura — la separación MÁS CORTA entre dos figuras, y dónde\n"
-                   "está. Arrastra un recuadro que abarque las dos: se miden las dos\n"
-                   "figuras mayores que haya dentro.\n"
-                   "No es lo que da un Caliper: el calíper mide donde cruzaste tú, y\n"
-                   "el sitio donde la pieza está más apretada casi nunca es ese.\n"
-                   "Si solo se ve una figura, puede que las dos se estén TOCANDO:\n"
-                   "en cuanto se tocan, la silueta las une y ya no son dos. Cuánto se\n"
-                   "solapan dos piezas no es una medida que una silueta 2D contenga.";
+            return "La separación más corta entre dos figuras, y dónde está.\n"
+                   "Arrastra un recuadro que abarque las dos: se miden las dos "
+                   "figuras mayores que haya dentro.";
         case ToolType::Straightness:
-            return "Rectitud (zona mínima) — el valor DE LA NORMA: la anchura de la\n"
-                   "banda más estrecha de dos rectas paralelas que contiene todo el\n"
-                   "borde. Traza una línea sobre el borde a vigilar.\n"
-                   "NO LLEVA DATUM, y no es un olvido: es una tolerancia de FORMA, y\n"
-                   "la norma las define contra el propio elemento. Si buscas el\n"
-                   "desplegable de referencia, no lo hay porque no toca.\n"
-                   "OJO al comparar con el Borde liso: aquel da la desviación máxima\n"
-                   "respecto a la recta media, que es media banda. Este número saldrá\n"
-                   "MAYOR sin que la pieza haya empeorado — son dos cosas distintas, y\n"
-                   "la que aparece en un plano es esta.\n"
-                   "Límite de la óptica: esto es la rectitud PROYECTADA en el plano de\n"
-                   "la imagen. Lo que se tuerza hacia la cámara o en contra no se ve, y\n"
-                   "ninguna cámara sola puede verlo.";
+            return "La anchura de la banda más estrecha de dos rectas paralelas "
+                   "que contiene el borde: es el valor de la norma, y no lleva "
+                   "datum porque es una tolerancia de forma.\n"
+                   "Traza una línea sobre el borde a vigilar.\n"
+                   "Es mayor que la desviación que da Borde liso sin que la pieza "
+                   "empeore, y es la rectitud proyectada en el plano de la imagen: "
+                   "lo que se tuerza hacia la cámara no se ve.";
         case ToolType::Roundness:
-            return "Redondez (zona mínima) — el valor DE LA NORMA: la separación\n"
-                   "radial entre los dos círculos CONCÉNTRICOS más juntos que\n"
-                   "contienen el borde. Arrastra del centro al borde, como el Círculo.\n"
-                   "NO LLEVA DATUM: es una tolerancia de FORMA y la norma la define\n"
-                   "contra el propio elemento, no contra una referencia.\n"
-                   "Se dan los dos números: el de zona mínima (el del plano) y el de\n"
-                   "mínimos cuadrados (el que dan casi todas las máquinas de medir, y\n"
-                   "con el que el operador va a comparar). El primero nunca es mayor.\n"
-                   "SOLO VALE DE FRENTE. La silueta de un cilindro visto de perfil no\n"
-                   "es un círculo: son dos tangentes, y ahí no hay redondez que medir\n"
-                   "por mucho que la herramienta se deje dibujar encima.";
+            return "La separación radial entre los dos círculos concéntricos más "
+                   "juntos que contienen el borde: es el valor de la norma, y "
+                   "tampoco lleva datum.\n"
+                   "Arrastra del centro al borde, como el Círculo.\n"
+                   "Solo vale de frente: la silueta de un cilindro visto de perfil "
+                   "son dos tangentes, no un círculo.";
         case ToolType::Orientation:
-            return "Orientación — paralelismo, perpendicularidad y angularidad, que\n"
-                   "son la misma medida con distinto ángulo nominal (0, 90 o el que\n"
-                   "pongas en el campo Ángulo).\n"
-                   "NO devuelve un ángulo: devuelve una DISTANCIA, la anchura de la\n"
-                   "banda —orientada según el datum— que contiene todo el borde. Un\n"
-                   "borde puede ir paralelo de media y estar tan ondulado que no quepa\n"
-                   "en la banda del plano; el ángulo no lo vería.\n"
-                   "Necesita un DATUM: elige en Referencia la herramienta que da la\n"
-                   "recta contra la que se mide. Sin datum no mide, porque una\n"
-                   "orientación sin decir respecto a qué no significa nada.";
+            return "Paralelismo, perpendicularidad y angularidad: la misma medida "
+                   "con distinto ángulo nominal, el que pongas en el campo "
+                   "Ángulo.\n"
+                   "Traza una línea sobre el borde a vigilar.\n"
+                   "Necesita un datum: elige en Referencia la recta contra la que "
+                   "se mide; sin él no mide.";
         case ToolType::CentreOffset:
-            return "Desviación de centros — la distancia entre los centros de dos\n"
-                   "elementos circulares. Responde a «¿están estos dos agujeros\n"
-                   "centrados uno con otro?», que es una pregunta legítima.\n"
-                   "ESTO NO ES CONCENTRICIDAD ISO/ASME. La concentricidad se retiró de\n"
-                   "la norma en 2018 por inverificable de forma repetible; para la cota\n"
-                   "formal usa Posición verdadera con su marco de referencia.\n"
-                   "Elige los dos círculos en Referencia y 2ª referencia. Vale también\n"
-                   "un punto construido. Los dos tienen que verse DE FRENTE: el centro\n"
-                   "de un cilindro visto de perfil no está donde parece.";
+            return "La distancia entre los centros de dos elementos circulares: "
+                   "responde a si dos agujeros están centrados entre sí.\n"
+                   "Elige los dos círculos en Referencia y 2ª referencia; también "
+                   "vale un punto construido.\n"
+                   "No es la concentricidad de la norma, retirada en 2018: para la "
+                   "cota formal usa Posición verdadera.";
         case ToolType::BoltPattern:
-            return "Patrón de agujeros — la cota de una brida. Arrastra un recuadro\n"
-                   "que abarque la pieza entera: se encuentran los agujeros, se ajusta\n"
-                   "el círculo primitivo y se mide cuánto se sale cada uno de su sitio.\n"
-                   "No hay que declarar DATUM: la referencia es el propio círculo\n"
-                   "primitivo ajustado a los agujeros que se ven. Eso mide el patrón\n"
-                   "CONTRA SÍ MISMO — si todo el patrón está desplazado respecto a un\n"
-                   "borde de la pieza, esta herramienta no se entera; para eso está\n"
-                   "Posición con su marco de referencia.\n"
-                   "La medida es la desviación del PEOR agujero, en diámetro de zona, y\n"
-                   "el detalle dice cuál es. Con Agujeros esperados puesto, que falte\n"
-                   "uno es el defecto y se dice.\n"
-                   "La referencia es el propio patrón: su círculo primitivo ajustado y\n"
-                   "su reparto angular. Girar la brida entera no cambia nada, que es lo\n"
-                   "que se quiere aquí. Para medir contra un datum de fuera, usa\n"
-                   "Posición verdadera en el agujero que te interese.";
+            return "La cota de una brida: encuentra los agujeros, ajusta el "
+                   "círculo primitivo y mide cuánto se sale cada uno de su sitio.\n"
+                   "Arrastra un recuadro que abarque toda la pieza.\n"
+                   "No lleva datum externo: mide el patrón contra su propio "
+                   "círculo primitivo; para compararlo con un borde de la pieza, "
+                   "usa Posición verdadera.";
         case ToolType::Profile:
-            return "Perfil de línea — cuánto se separa el contorno de la pieza del que\n"
-                   "DEBERÍA tener. Es la tolerancia GD&T más honesta para una silueta,\n"
-                   "porque está definida sobre una línea y no sobre una superficie.\n"
-                   "No hay que declarar DATUM: el nominal se guarda en coordenadas de\n"
-                   "PIEZA, así que el fixture ya lo alinea antes de comparar.\n"
-                   "El nominal se captura del contorno de la pieza BUENA al dibujar la\n"
-                   "herramienta, y se queda guardado dentro de la plantilla. Colócala\n"
-                   "con un clic sobre la pieza de referencia; si la pieza que tienes\n"
-                   "delante no es la buena, el nominal que captures tampoco lo será.\n"
-                   "Da la zona bilateral 2·máx|d| y, por separado, cuánto material\n"
-                   "sobra y cuánto falta — que son dos averías distintas.\n"
-                   "No necesita alinear nada: la pieza ya viene alineada por su fixture.";
+            return "Cuánto se separa el contorno de la pieza del que debería "
+                   "tener, con el nominal guardado en coordenadas de pieza.\n"
+                   "Colócala con un clic sobre la pieza de referencia: el nominal "
+                   "se captura de su contorno y queda guardado en la plantilla.\n"
+                   "No lleva datum aparte: el fixture ya alinea la pieza antes de "
+                   "comparar.";
         case ToolType::Extremes:
-            return "Máx./mín. — la medida más grande y la más pequeña de la pieza EN\n"
-                   "CUALQUIER DIRECCIÓN, no en la que acertaras a trazar. Arrastra un\n"
-                   "recuadro sobre la pieza y elige en Medida cuál vigilar.\n"
-                   "Anchura mínima: la banda más estrecha que contiene la pieza. Es la\n"
-                   "cota de «¿pasa por la ranura?».\n"
-                   "Diámetro máximo: los dos puntos más separados. Es «¿cuánto hueco\n"
-                   "necesita?».\n"
-                   "Las dos se dan siempre en el detalle, con su dirección. No salen de\n"
-                   "minAreaRect: ese minimiza el ÁREA, y ni su lado corto es la anchura\n"
-                   "mínima ni su diagonal es el diámetro.";
+            return "La medida más grande y la más pequeña de la pieza en "
+                   "cualquier dirección, no en la que trazaste.\n"
+                   "Arrastra un recuadro sobre la pieza y elige en Medida cuál "
+                   "vigilar: anchura mínima o diámetro máximo.";
         case ToolType::Chamfer:
-            return "Chaflán — el ángulo del bisel y sus dos catetos, que es como lo\n"
-                   "escribe un plano: «1 × 45°». Arrastra un recuadro que abarque la\n"
-                   "esquina achaflanada CON un trozo de las dos caras a los lados: se\n"
-                   "ajustan las tres rectas y se cortan entre sí.\n"
-                   "Los catetos se miden desde la ESQUINA VIRTUAL —donde se cortarían\n"
-                   "las dos caras si no hubiera chaflán—, que es de donde los mide el\n"
-                   "plano. Ahí no hay ningún punto de la pieza: hay que construirla.\n"
-                   "Elige en Medida cuál de los tres números lleva la tolerancia; los\n"
-                   "tres se dan siempre en el detalle, junto con el ángulo del bisel\n"
-                   "con CADA cara — el plano acota desde una de las dos y hay que poder\n"
-                   "comparar con la que sea.";
+            return "El ángulo del bisel y sus dos catetos, medidos desde la "
+                   "esquina virtual donde se cortarían las caras sin el chaflán.\n"
+                   "Arrastra un recuadro que abarque la esquina con un trozo de "
+                   "las dos caras.\n"
+                   "Elige en Medida cuál de los tres números lleva la tolerancia; "
+                   "los tres se dan siempre en el detalle.";
         case ToolType::Fillet:
-            return "Radio de acuerdo — el radio del redondeo de transición y, lo que\n"
-                   "de verdad importa, SI EMPALMA TANGENTE con las caras vecinas.\n"
-                   "Arrastra un recuadro que abarque el acuerdo con un trozo de las dos\n"
-                   "caras; el recuadro selecciona qué tramos se miran, no recorta.\n"
-                   "Un acuerdo que no entra tangente es un defecto de mecanizado —un\n"
-                   "salto, una herramienta mal compensada— y el radio por sí solo no lo\n"
-                   "delata: dos piezas con el mismo radio y distinta tangencia no son\n"
-                   "la misma pieza. La desviación se da en grados; 0 es perfecto.";
+            return "El radio del redondeo de transición y si empalma tangente con "
+                   "las caras vecinas.\n"
+                   "Arrastra un recuadro que abarque el acuerdo con un trozo de "
+                   "las dos caras.\n"
+                   "La desviación de tangencia se da en grados, donde 0 es "
+                   "perfecto.";
         case ToolType::Groove:
-            return "Ranura — el ancho, la profundidad y el diámetro de FONDO de una\n"
-                   "entalla en una pieza de torno: la cota de un anillo de retención.\n"
-                   "Traza el eje a lo largo de la pieza pasando por la ranura, igual\n"
-                   "que con el Eje torneado.\n"
-                   "El ancho se mide CONTANDO cortes, así que el paso axial es su\n"
-                   "resolución: una ranura más estrecha que unos pocos cortes NO SE\n"
-                   "MIDE y se dice, en vez de devolver un número redondeado al paso.\n"
-                   "Si pasa eso, sube el número de cortes.";
+            return "Ancho, profundidad y diámetro de fondo de una entalla en una "
+                   "pieza de torno, como la de un anillo de retención.\n"
+                   "Traza el eje a lo largo de la pieza pasando por la ranura, "
+                   "igual que en Eje / Diámetro.\n"
+                   "El ancho se mide contando cortes: si sale un aviso, sube el "
+                   "número de cortes.";
     }
     return "";
 }

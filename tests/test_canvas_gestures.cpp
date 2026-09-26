@@ -1782,9 +1782,16 @@ TEST(ToolHelpLine, WithRoomTheWholeTextIsVisibleWithoutScrolling) {
 TEST(ToolHelpLine, WithoutRoomItScrollsInsteadOfCutting) {
     // Y sin sitio no se recorta: se desplaza. Un panel bajo es lo normal en una
     // pantalla de línea, y ahí es donde el corte hacía daño.
+    //
+    // 320 px de alto dejaba de bastar el día que las 32 descripciones se
+    // reescribieron más cortas (queja del dueño: sonaban a IA y repetían el
+    // nombre de la herramienta): la más larga pasó de 901 a 369 caracteres, y
+    // a 320 px ya cabía entera sin desplazarse. El panel más bajo sigue
+    // siendo el caso real que hay que cubrir, así que se aprieta el hueco en
+    // vez de aflojar la prueba.
     ToolPalette palette;
     palette.show();
-    palette.resize(240, 320);
+    palette.resize(240, 240);
 
     auto* scroll = palette.findChild<QScrollArea*>();
     ASSERT_NE(scroll, nullptr);
@@ -1803,7 +1810,7 @@ TEST(ToolHelpLine, WithoutRoomItScrollsInsteadOfCutting) {
 
     auto* bar = scroll->verticalScrollBar();
     ASSERT_NE(bar, nullptr);
-    std::printf("  [ayuda] con el panel a 320 px: hueco %d px, texto %d px, desplazable %d\n",
+    std::printf("  [ayuda] con el panel a 240 px: hueco %d px, texto %d px, desplazable %d\n",
                 scroll->viewport()->height(), help->height(), bar->maximum());
     EXPECT_GT(bar->maximum(), 0) << "no hay nada que desplazar: el texto se está cortando";
     // Y el texto sigue estando ENTERO: desplazarse no es recortar.

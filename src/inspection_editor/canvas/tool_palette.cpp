@@ -117,8 +117,8 @@ void ToolPalette::buildPanel() {
     selectButton_->setChecked(true);
     selectButton_->setStyleSheet(checkedStyle());
     selectButton_->setToolTip(
-        tr("Mover/Elegir — clic para seleccionar; arrastra para mover; arrastra en\n"
-           "vacío para un marco de selección múltiple."));
+        tr("Clic para seleccionar. Arrastra para mover, o arrastra en vacío para "
+           "un marco de selección múltiple."));
     connect(selectButton_, &QToolButton::clicked, this, [this] { activate(std::nullopt); });
 
     // Borrar va JUNTO A MOVER/ELEGIR, y no suelto debajo del panel, porque es la
