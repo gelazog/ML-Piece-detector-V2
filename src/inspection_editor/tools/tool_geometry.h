@@ -541,6 +541,44 @@ struct MeasureChoices {
 // silencio, que es un pecado que esta capa ya cometía en otro sitio.
 bool setMeasureChoice(ToolGeometry& geometry, int value);
 
+// Cuántos puntos se lanzan para medir (rayos, escaneos o cortes), para las
+// doce herramientas que exploran su geometría con un número fijo de muestras.
+//
+// El operador no podía tocar este número: lo fijaba la propuesta automática o
+// el valor de fábrica, y el código se limitaba a recortarlo en silencio a un
+// rango razonable dentro del ejecutor (`tool_executor.cpp`). Con pocos puntos
+// se mide más rápido y con más se mide más fino y más estable, y esa es
+// justamente la decisión que le toca al operador — según la pieza, según si
+// hace falta ir rápido o ir fino — y no al programador que escribió el valor
+// por defecto.
+//
+// `minValue`/`maxValue` son EL MISMO rango que aplica el ejecutor al
+// clampear: si aquí se ofreciera uno más ancho, el panel dejaría escribir un
+// valor que el ejecutor recortaría después sin avisar, y el operador vería un
+// número en pantalla que no es el que pidió.
+struct PointCountSpec {
+    bool editable = false;  // false = esta herramienta no tiene este parámetro
+    int minValue = 1;
+    int maxValue = 1;
+    int value = 0;
+};
+[[nodiscard]] PointCountSpec pointCountOf(const ToolGeometry& geometry);
+// Deja puesto `value` en el campo de puntos de esta herramienta. False si la
+// herramienta no tiene ese parámetro. No recorta al rango de `pointCountOf`
+// —a diferencia de `setMeasureChoice`, aquí cualquier entero es un valor
+// válido de fábrica, solo que puede ser poco sensato—: el rango lo hace
+// cumplir el QSpinBox del panel, y `tool_executor.cpp` vuelve a recortar por
+// seguridad al medir, así que un valor fuera de rango nunca llega a correr
+// sin control aunque llegara por una plantilla escrita a mano.
+bool setPointCount(ToolGeometry& geometry, int value);
+// Qué es «un punto» en esta herramienta —rayo, escaneo, corte—, para el
+// rótulo y el tooltip del panel. Nunca vacío si `pointCountOf` da editable.
+[[nodiscard]] const char* pointCountNoun(ToolType type);
+// Tooltip breve con el compromiso medido: más puntos, medida más estable pero
+// más lenta. Los números vienen de `tests/test_point_count_tuning.cpp`, que es
+// donde se miden y donde hay que corregirlos si algún día cambian.
+[[nodiscard]] std::string pointCountTooltip(ToolType type);
+
 // Nombres de las construcciones para la interfaz y para el JSON. Igual que con
 // las herramientas, una sola lista: el desplegable del panel y el fichero de
 // plantilla tienen que decir lo mismo.

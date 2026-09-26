@@ -450,6 +450,117 @@ bool setMeasureChoice(ToolGeometry& geometry, int value) {
         geometry);
 }
 
+// Rango de puntos de cada herramienta. TIENE QUE COINCIDIR con el clamp que
+// aplica `runXxx` en tool_executor.cpp — están duplicados a propósito (el
+// ejecutor no depende de este fichero de modelo de más arriba en el árbol de
+// inclusión) y es `tests/test_point_count_tuning.cpp` quien vigila que no
+// diverjan: mide el número de puntos de verdad usados en cada extremo del
+// rango y falla si el ejecutor recorta a otro sitio distinto de este.
+PointCountSpec pointCountOf(const ToolGeometry& geometry) {
+    return std::visit(
+        [](const auto& g) -> PointCountSpec {
+            using T = std::decay_t<decltype(g)>;
+            if constexpr (std::is_same_v<T, CircleGeometry>) {
+                return {true, 8, 360, g.rayCount};
+            } else if constexpr (std::is_same_v<T, ArcGeometry>) {
+                return {true, 5, 180, g.rayCount};
+            } else if constexpr (std::is_same_v<T, RoundnessGeometry>) {
+                return {true, 12, 720, g.rayCount};
+            } else if constexpr (std::is_same_v<T, GearGeometry>) {
+                return {true, 180, 3600, g.rayCount};
+            } else if constexpr (std::is_same_v<T, EdgeFlawGeometry>) {
+                return {true, 3, 200, g.scanCount};
+            } else if constexpr (std::is_same_v<T, EdgeDefectsGeometry>) {
+                return {true, 8, 400, g.scanCount};
+            } else if constexpr (std::is_same_v<T, StraightnessGeometry>) {
+                return {true, 5, 400, g.scanCount};
+            } else if constexpr (std::is_same_v<T, OrientationGeometry>) {
+                return {true, 5, 400, g.scanCount};
+            } else if constexpr (std::is_same_v<T, ShaftGeometry>) {
+                return {true, 5, 200, g.stations};
+            } else if constexpr (std::is_same_v<T, MedianAxisGeometry>) {
+                return {true, 5, 200, g.stations};
+            } else if constexpr (std::is_same_v<T, GrooveGeometry>) {
+                return {true, 12, 400, g.stations};
+            } else if constexpr (std::is_same_v<T, ThreadGeometry>) {
+                return {true, 40, 1000, g.stations};
+            } else {
+                return {};
+            }
+        },
+        geometry);
+}
+
+bool setPointCount(ToolGeometry& geometry, int value) {
+    return std::visit(
+        [value](auto& g) -> bool {
+            using T = std::decay_t<decltype(g)>;
+            if constexpr (std::is_same_v<T, CircleGeometry> ||
+                          std::is_same_v<T, ArcGeometry> ||
+                          std::is_same_v<T, RoundnessGeometry> ||
+                          std::is_same_v<T, GearGeometry>) {
+                g.rayCount = value;
+                return true;
+            } else if constexpr (std::is_same_v<T, EdgeFlawGeometry> ||
+                                 std::is_same_v<T, EdgeDefectsGeometry> ||
+                                 std::is_same_v<T, StraightnessGeometry> ||
+                                 std::is_same_v<T, OrientationGeometry>) {
+                g.scanCount = value;
+                return true;
+            } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
+                                 std::is_same_v<T, MedianAxisGeometry> ||
+                                 std::is_same_v<T, GrooveGeometry> ||
+                                 std::is_same_v<T, ThreadGeometry>) {
+                g.stations = value;
+                return true;
+            } else {
+                return false;
+            }
+        },
+        geometry);
+}
+
+const char* pointCountNoun(ToolType type) {
+    switch (type) {
+        case ToolType::Circle:
+        case ToolType::Arc:
+        case ToolType::Roundness:
+        case ToolType::Gear:
+            return "rayos";
+        case ToolType::EdgeFlaw:
+        case ToolType::EdgeDefects:
+        case ToolType::Straightness:
+        case ToolType::Orientation:
+            return "escaneos";
+        case ToolType::Shaft:
+        case ToolType::MedianAxis:
+        case ToolType::Groove:
+        case ToolType::Thread:
+            return "cortes";
+        default:
+            return "";
+    }
+}
+
+std::string pointCountTooltip(ToolType type) {
+    const char* noun = pointCountNoun(type);
+    if (noun[0] == '\0') {
+        return {};
+    }
+    // Medido en tests/test_point_count_tuning.cpp sobre un fotograma de
+    // 1920x1080: pasar de 18 a 180 puntos cuesta entre 5 y 8,5 veces más
+    // (según la herramienta; no es lineal puro, hay trabajo fijo además del
+    // que crece con cada punto). Con ruido de cámara normal, el Ø de un disco
+    // de Ø conocida apenas se movió al bajar de 360 a 8 rayos (0,15 % -> 0,18
+    // % de error); lo que sí se pierde con pocos puntos es ROBUSTEZ: un solo
+    // defecto local pesa más entre 8 muestras que entre 180, y en Redondez
+    // pocos rayos pueden no ver la forma entera (ver Redondez más abajo).
+    return std::string("Puntos de medida (") + noun +
+           "): cuántas veces se explora el contorno.\n"
+           "Medido: de 18 a 180 puntos, entre 5x y 8,5x más lento y apenas "
+           "cambia el Ø medio; con pocos puntos, un defecto local pesa más.";
+}
+
 const char* operandKindLabel(OperandKind kind) {
     switch (kind) {
         // "con punto" y no "punto" porque un Círculo vale donde se pide un
@@ -1431,14 +1542,20 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
             case ToolType::EdgeFlaw: {
                 EdgeFlawGeometry g;
                 auto x0 = f("x0"), y0 = f("y0"), x1 = f("x1"), y1 = f("y1");
-                auto len = f("scanLen"), scans = f("scans");
-                for (const auto* v : {&x0, &y0, &x1, &y1, &len, &scans}) {
+                auto len = f("scanLen");
+                for (const auto* v : {&x0, &y0, &x1, &y1, &len}) {
                     if (!v->isOk()) return ResultT::err(v->error().message);
                 }
                 g.p0 = {static_cast<float>(x0.value()), static_cast<float>(y0.value())};
                 g.p1 = {static_cast<float>(x1.value()), static_cast<float>(y1.value())};
                 g.scanLength = static_cast<float>(len.value());
-                g.scanCount = static_cast<int>(scans.value());
+                // "scans" era obligatorio y las once herramientas hermanas ya
+                // tratan su número de puntos como opcional (`numberOr`): una
+                // plantilla antigua sin este campo rompía la carga entera en
+                // vez de medir con el valor de fábrica, que es lo que hacen
+                // todas las demás. Encontrado al escribir el panel editable de
+                // puntos de medida (tests/test_point_count_tuning.cpp).
+                g.scanCount = static_cast<int>(reader.numberOr("scans", g.scanCount));
                 return ResultT::ok(g);
             }
             case ToolType::Ruler: {

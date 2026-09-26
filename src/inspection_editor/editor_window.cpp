@@ -183,11 +183,12 @@ EditorWindow::EditorWindow(const QImage& reference, const vision::Fixture& fixtu
     paramSpin_ = new QSpinBox(this);
     paramSpin_->setRange(1, 1000);
     paramSpin_->setToolTip(
-        tr("Cantidad de puntos de muestreo de la herramienta:\n"
-           "Calibre: grosor de banda promediada (px)\n"
-           "Círculo: rayos de búsqueda del borde\n"
-           "Borde liso: escaneos perpendiculares\n"
-           "Blob: área mínima de cada mancha (px²)"));
+        tr("Parámetro de muestreo de la herramienta seleccionada.\n"
+           "En doce herramientas (Círculo, Arco, Redondez, Engranaje, Borde\n"
+           "liso, Rebabas, Rectitud, Orientación, Eje, Eje medio, Ranura y\n"
+           "Rosca) son sus PUNTOS DE MEDIDA: más puntos, medida más estable\n"
+           "pero más lenta. Calibre usa la banda (px) y Blob el área mínima\n"
+           "(px²), que no son puntos."));
     form->addRow(paramLabel_, paramSpin_);
 
     // Construcciones geométricas (X1). Los tres desplegables solo se habilitan
@@ -464,28 +465,44 @@ void EditorWindow::syncPanelFromSelection() {
             tolMmLabel_->clear();
         }
 
-        // Parámetro de muestreo según el tipo de herramienta.
+        // Parámetro de muestreo según el tipo de herramienta. Doce
+        // herramientas comparten el mismo parámetro —cuántos puntos se
+        // lanzan para medir— y ese lo decide el MODELO (`pointCountOf`), no
+        // esta ventana: es la misma razón por la que `measureChoicesOf` vive
+        // en tool_geometry y no aquí. Solo Calibre (banda) y Blob (área
+        // mínima) siguen siendo casos propios, porque su número no es un
+        // recuento de puntos.
+        const PointCountSpec pointSpec = pointCountOf(tool.geometry);
         std::visit(
-            [this](const auto& g) {
+            [this, &pointSpec, &tool](const auto& g) {
                 using T = std::decay_t<decltype(g)>;
                 if constexpr (std::is_same_v<T, CaliperGeometry>) {
                     paramLabel_->setText(tr("Banda (px):"));
+                    paramSpin_->setObjectName(QStringLiteral("spinCaliperBanda"));
+                    paramSpin_->setRange(1, 1000);
+                    paramSpin_->setToolTip(
+                        tr("Grosor perpendicular promediado del calibre (px)."));
                     paramSpin_->setValue(static_cast<int>(g.bandWidth));
-                    paramSpin_->setEnabled(true);
-                } else if constexpr (std::is_same_v<T, CircleGeometry>) {
-                    paramLabel_->setText(tr("Rayos:"));
-                    paramSpin_->setValue(g.rayCount);
-                    paramSpin_->setEnabled(true);
-                } else if constexpr (std::is_same_v<T, EdgeFlawGeometry>) {
-                    paramLabel_->setText(tr("Escaneos:"));
-                    paramSpin_->setValue(g.scanCount);
                     paramSpin_->setEnabled(true);
                 } else if constexpr (std::is_same_v<T, BlobGeometry>) {
                     paramLabel_->setText(tr("Área mín (px²):"));
+                    paramSpin_->setObjectName(QStringLiteral("spinBlobAreaMinima"));
+                    paramSpin_->setRange(1, 1000);
+                    paramSpin_->setToolTip(
+                        tr("Área mínima para contar una mancha como blob (px²)."));
                     paramSpin_->setValue(static_cast<int>(g.minArea));
                     paramSpin_->setEnabled(true);
+                } else if (pointSpec.editable) {
+                    paramLabel_->setText(tr("Puntos de medida:"));
+                    paramSpin_->setObjectName(QStringLiteral("spinPuntosMedida"));
+                    paramSpin_->setRange(pointSpec.minValue, pointSpec.maxValue);
+                    paramSpin_->setToolTip(
+                        QString::fromStdString(pointCountTooltip(typeOf(tool.geometry))));
+                    paramSpin_->setValue(pointSpec.value);
+                    paramSpin_->setEnabled(true);
                 }
-                // PointToLine no tiene parámetro de muestreo editable.
+                // PointToLine y el resto sin número de puntos se quedan sin
+                // parámetro editable aquí (paramSpin_ ya está deshabilitado).
             },
             tool.geometry);
         syncConstructionPanel(&tool);
@@ -991,20 +1008,20 @@ void EditorWindow::onPanelEdited() {
     }
     if (paramSpin_->isEnabled()) {
         const int value = paramSpin_->value();
-        std::visit(
-            [value](auto& g) {
-                using T = std::decay_t<decltype(g)>;
-                if constexpr (std::is_same_v<T, CaliperGeometry>) {
-                    g.bandWidth = static_cast<float>(value);
-                } else if constexpr (std::is_same_v<T, CircleGeometry>) {
-                    g.rayCount = value;
-                } else if constexpr (std::is_same_v<T, EdgeFlawGeometry>) {
-                    g.scanCount = value;
-                } else if constexpr (std::is_same_v<T, BlobGeometry>) {
-                    g.minArea = static_cast<float>(value);
-                }
-            },
-            tool.geometry);
+        // Los doce que solo tienen puntos de medida los escribe el modelo
+        // (`setPointCount`); Calibre y Blob siguen siendo casos propios.
+        if (!setPointCount(tool.geometry, value)) {
+            std::visit(
+                [value](auto& g) {
+                    using T = std::decay_t<decltype(g)>;
+                    if constexpr (std::is_same_v<T, CaliperGeometry>) {
+                        g.bandWidth = static_cast<float>(value);
+                    } else if constexpr (std::is_same_v<T, BlobGeometry>) {
+                        g.minArea = static_cast<float>(value);
+                    }
+                },
+                tool.geometry);
+        }
         canvas_->update();
     }
     applyConstructionPanel(tool);

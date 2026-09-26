@@ -1174,9 +1174,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         liveParamSpin_->setRange(1, 1000);
         liveParamSpin_->setEnabled(false);
         liveParamSpin_->setToolTip(
-            tr("Cantidad de puntos de muestreo de la herramienta seleccionada:\n"
-               "Calibre: grosor de banda (px) · Círculo: rayos · Borde liso: escaneos\n"
-               "· Blob: área mínima (px²)"));
+            tr("Parámetro de muestreo de la herramienta seleccionada.\n"
+               "En doce herramientas son sus PUNTOS DE MEDIDA: más puntos,\n"
+               "medida más estable pero más lenta. Calibre usa la banda (px)\n"
+               "y Blob el área mínima (px²), que no son puntos."));
         paramRow->addWidget(liveParamSpin_, 1);
         panelLayout->addLayout(paramRow);
 
@@ -6503,27 +6504,35 @@ void MainWindow::onLiveSelectionChanged(int index) {
         return;
     }
     QSignalBlocker blocker(liveParamSpin_);
+    // Doce herramientas comparten "puntos de medida" y lo decide el MODELO
+    // (`pointCountOf`), igual que en el editor de plantilla: una sola fuente
+    // de verdad para el rango y el rótulo, o los dos paneles podrían acabar
+    // ofreciendo un rango distinto para la misma herramienta.
+    const auto& selectedTool = liveTools_[static_cast<std::size_t>(index)];
+    const inspection::PointCountSpec pointSpec = inspection::pointCountOf(selectedTool.geometry);
     std::visit(
-        [this](const auto& g) {
+        [this, &pointSpec, &selectedTool](const auto& g) {
             using T = std::decay_t<decltype(g)>;
             if constexpr (std::is_same_v<T, inspection::CaliperGeometry>) {
                 liveParamLabel_->setText(tr("Banda (px):"));
+                liveParamSpin_->setObjectName(QStringLiteral("spinCaliperBanda"));
+                liveParamSpin_->setRange(1, 1000);
+                liveParamSpin_->setToolTip(
+                    tr("Grosor perpendicular promediado del calibre (px)."));
                 liveParamSpin_->setValue(static_cast<int>(g.bandWidth));
-                liveParamSpin_->setEnabled(true);
-            } else if constexpr (std::is_same_v<T, inspection::CircleGeometry>) {
-                liveParamLabel_->setText(tr("Rayos:"));
-                liveParamSpin_->setValue(g.rayCount);
-                liveParamSpin_->setEnabled(true);
-            } else if constexpr (std::is_same_v<T, inspection::EdgeFlawGeometry>) {
-                liveParamLabel_->setText(tr("Escaneos:"));
-                liveParamSpin_->setValue(g.scanCount);
                 liveParamSpin_->setEnabled(true);
             } else if constexpr (std::is_same_v<T, inspection::BlobGeometry>) {
                 liveParamLabel_->setText(tr("Área mín:"));
+                liveParamSpin_->setObjectName(QStringLiteral("spinBlobAreaMinima"));
+                liveParamSpin_->setRange(1, 1000);
+                liveParamSpin_->setToolTip(
+                    tr("Área mínima para contar una mancha como blob (px²)."));
                 liveParamSpin_->setValue(static_cast<int>(g.minArea));
                 liveParamSpin_->setEnabled(true);
             } else if constexpr (std::is_same_v<T, inspection::PositionGeometry>) {
                 liveParamLabel_->setText(tr("Eje:"));
+                liveParamSpin_->setObjectName(QStringLiteral("spinPosicionEje"));
+                liveParamSpin_->setRange(1, 1000);
                 liveParamSpin_->setToolTip(
                     tr("Eje sobre el que se juzga la desviación:\n"
                        "1 = radial (distancia al cero)\n"
@@ -6544,13 +6553,24 @@ void MainWindow::onLiveSelectionChanged(int index) {
                                    inspection::regionMeasureLabel(measures[i])));
                 }
                 liveParamLabel_->setText(tr("Medida:"));
+                liveParamSpin_->setObjectName(QStringLiteral("spinRegionMedida"));
+                liveParamSpin_->setRange(1, 1000);
                 liveParamSpin_->setToolTip(tip);
                 liveParamSpin_->setValue(static_cast<int>(g.measure) + 1);
                 liveParamSpin_->setEnabled(true);
+            } else if (pointSpec.editable) {
+                liveParamLabel_->setText(tr("Puntos de medida:"));
+                liveParamSpin_->setObjectName(QStringLiteral("spinPuntosMedida"));
+                liveParamSpin_->setRange(pointSpec.minValue, pointSpec.maxValue);
+                liveParamSpin_->setToolTip(QString::fromStdString(
+                    inspection::pointCountTooltip(inspection::typeOf(selectedTool.geometry))));
+                liveParamSpin_->setValue(pointSpec.value);
+                liveParamSpin_->setEnabled(true);
             }
-            // Punto-Línea no tiene parámetro de muestreo editable.
+            // Punto-Línea y el resto sin número de puntos se quedan sin
+            // parámetro editable aquí (el spin ya está deshabilitado).
         },
-        liveTools_[static_cast<std::size_t>(index)].geometry);
+        selectedTool.geometry);
 }
 
 void MainWindow::onLiveParamChanged(int value) {
@@ -6559,29 +6579,30 @@ void MainWindow::onLiveParamChanged(int value) {
         index >= static_cast<int>(liveTools_.size())) {
         return;
     }
-    std::visit(
-        [value](auto& g) {
-            using T = std::decay_t<decltype(g)>;
-            if constexpr (std::is_same_v<T, inspection::CaliperGeometry>) {
-                g.bandWidth = static_cast<float>(value);
-            } else if constexpr (std::is_same_v<T, inspection::CircleGeometry>) {
-                g.rayCount = value;
-            } else if constexpr (std::is_same_v<T, inspection::EdgeFlawGeometry>) {
-                g.scanCount = value;
-            } else if constexpr (std::is_same_v<T, inspection::BlobGeometry>) {
-                g.minArea = static_cast<float>(value);
-            } else if constexpr (std::is_same_v<T, inspection::PositionGeometry>) {
-                g.axis = (value == 2)   ? inspection::PositionAxis::X
-                         : (value == 3) ? inspection::PositionAxis::Y
-                                        : inspection::PositionAxis::Radial;
-            } else if constexpr (std::is_same_v<T, inspection::RegionGeometry>) {
-                const auto& measures = inspection::allRegionMeasures();
-                const int index = std::clamp(value, 1,
-                                             static_cast<int>(measures.size())) - 1;
-                g.measure = measures[static_cast<std::size_t>(index)];
-            }
-        },
-        liveTools_[static_cast<std::size_t>(index)].geometry);
+    auto& geometry = liveTools_[static_cast<std::size_t>(index)].geometry;
+    // Los doce con puntos de medida los escribe el modelo; Calibre, Blob,
+    // Posición y Región siguen siendo casos propios de este panel.
+    if (!inspection::setPointCount(geometry, value)) {
+        std::visit(
+            [value](auto& g) {
+                using T = std::decay_t<decltype(g)>;
+                if constexpr (std::is_same_v<T, inspection::CaliperGeometry>) {
+                    g.bandWidth = static_cast<float>(value);
+                } else if constexpr (std::is_same_v<T, inspection::BlobGeometry>) {
+                    g.minArea = static_cast<float>(value);
+                } else if constexpr (std::is_same_v<T, inspection::PositionGeometry>) {
+                    g.axis = (value == 2)   ? inspection::PositionAxis::X
+                             : (value == 3) ? inspection::PositionAxis::Y
+                                            : inspection::PositionAxis::Radial;
+                } else if constexpr (std::is_same_v<T, inspection::RegionGeometry>) {
+                    const auto& measures = inspection::allRegionMeasures();
+                    const int index = std::clamp(value, 1,
+                                                 static_cast<int>(measures.size())) - 1;
+                    g.measure = measures[static_cast<std::size_t>(index)];
+                }
+            },
+            geometry);
+    }
     commitUndoState();
     video_->update();
 }
