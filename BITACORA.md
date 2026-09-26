@@ -19,6 +19,22 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Con Windows en modo oscuro el texto casi desaparecía
+
+`main.cpp` no fijaba estilo ni paleta, así que el estilo nativo de Qt seguía el
+tema del sistema mientras los colores de `theme.h` —pensados para fondo claro—
+se pintaban encima sin cambiar. Medido: el texto normal quedaba a 1,05:1 de
+contraste, contra el mínimo de 4,5:1. Invisible porque las pruebas siempre corren
+con el tema claro. Ahora el arranque fija Fusion y una paleta clara hecha con los
+tokens (`theme::applyApplicationLook`).
+
+En la misma línea, los indicadores Cám / BD / Modelo decían la misma palabra
+caídos que conectados y se distinguían solo por el color del punto, que un
+operador daltónico no puede leer. Ahora llevan su estado escrito («BD ✓», «BD ✕
+caída»).
+
+---
+
 ### El panel de medidas repetía cada cota por pieza y la papelera borraba de más
 
 Queja del dueño: «el panel de mediciones está confuso». Con tres piezas y cinco
