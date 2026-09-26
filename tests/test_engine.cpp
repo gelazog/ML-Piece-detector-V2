@@ -9,6 +9,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -1145,6 +1146,102 @@ TEST_F(EngineTest, AutomaticWithASinglePieceLooksExactlyAsBefore) {
     EXPECT_FALSE(outcome.value().verdict.count.evaluated)
         << "en automático no se juzga el recuento: no hay número que cumplir";
     EXPECT_TRUE(outcome.value().verdict.ok);
+}
+
+// UNA BANDEJA EN COLOR SE PASA A GRIS UNA VEZ POR FOTOGRAMA, NO POR PIEZA.
+//
+// Por qué existe: el motor llama a `runTools` una vez por pieza con el MISMO
+// fotograma en color, y cada llamada lo convertía a gris —y dentro, una vez por
+// herramienta—. Con cien tuercas y diez calibres eran mil conversiones de un
+// fotograma de 1080p para medir mil cortes de unos pocos píxeles. Ninguna
+// prueba lo veía porque ninguna medía el motor con muchas piezas en color.
+//
+// Se compara la MISMA bandeja en color y ya en gris: lo que separa las dos
+// cifras es exactamente lo que cuesta convertir, y con la conversión compartida
+// tiene que ser poco.
+TEST_F(EngineTest, AHundredPiecesInColourCostAboutTheSameAsInGrey) {
+    auto& pieces = *pieces_;
+    auto& tools = *tools_;
+    auto& history = *history_;
+    auto pieceId = pieces.createPiece("bandeja de cien");
+    ASSERT_TRUE(pieceId.isOk());
+    auto measurement = pieces.loadMeasurement(pieceId.value());
+    ASSERT_TRUE(measurement.isOk());
+    measurement.value().expectedPieces = 0;  // automático: mide todas las que haya
+    ASSERT_TRUE(pieces.saveMeasurement(pieceId.value(), measurement.value()).isOk());
+
+    // Diez calibres cruzando cada barra a lo largo, a alturas distintas.
+    for (int i = 0; i < 10; ++i) {
+        inspection::ToolConfig caliper;
+        caliper.type = inspection::ToolType::Caliper;
+        caliper.name = "ancho " + std::to_string(i);
+        const auto y = static_cast<float>(-27 + i * 6);
+        caliper.geometryJson = inspection::toJson(inspection::ToolGeometry(
+            inspection::CaliperGeometry{{-100.0F, y}, {100.0F, y}, 4.0F}));
+        caliper.toleranceMin = 140.0;
+        caliper.toleranceMax = 160.0;
+        ASSERT_TRUE(tools.save(pieceId.value(), caliper, "principal").isOk());
+    }
+
+    // Cien barras de 150x90 en una rejilla de 10x10 sobre un fotograma de 1080p.
+    cv::Mat gray(1080, 1920, CV_8UC1, cv::Scalar(20));
+    for (int row = 0; row < 10; ++row) {
+        for (int col = 0; col < 10; ++col) {
+            cv::rectangle(gray, cv::Rect(21 + col * 192, 9 + row * 108, 150, 90),
+                          cv::Scalar(220), cv::FILLED);
+        }
+    }
+    cv::Mat bgr;
+    cv::cvtColor(gray, bgr, cv::COLOR_GRAY2BGR);
+
+    engine::InspectionEngine engine(nullptr, pieces, tools, history);
+    // El mínimo de varias vueltas, no la media: una vuelta solo puede salir más
+    // lenta de lo que cuesta el código, nunca más rápida. Quince y no seis:
+    // con `ctest -j 4` compitiendo por los mismos núcleos que otros mil
+    // pruebas, seis vueltas (cinco útiles) a veces no bastaban para que
+    // entrara una ventana limpia — se vio fallar una vez de ocho bajo esa
+    // carga con el cociente en 1,57x contra un límite de 1,5x+5.
+    const auto fastest = [&](const cv::Mat& frame, std::vector<double>* measured) {
+        double best = 1e300;
+        for (int r = 0; r < 15; ++r) {
+            const auto started = std::chrono::steady_clock::now();
+            auto outcome = engine.inspect(frame, pieceId.value());
+            const double ms = std::chrono::duration<double, std::milli>(
+                                  std::chrono::steady_clock::now() - started)
+                                  .count();
+            EXPECT_TRUE(outcome.isOk()) << outcome.error().message;
+            if (!outcome.isOk()) {
+                return 0.0;
+            }
+            EXPECT_EQ(outcome.value().piecesFound, 100);
+            EXPECT_EQ(outcome.value().toolResults.size(), 1000U);
+            if (r > 0) {  // la primera vuelta es calentamiento
+                best = std::min(best, ms);
+            }
+            measured->clear();
+            for (const auto& result : outcome.value().toolResults) {
+                measured->push_back(result.measured);
+            }
+        }
+        return best;
+    };
+    std::vector<double> fromGray;
+    std::vector<double> fromColour;
+    const double grayMs = fastest(gray, &fromGray);
+    const double colourMs = fastest(bgr, &fromColour);
+    std::printf("  100 piezas x 10 calibres, 1080p: gris %.1f ms, color %.1f ms (%.2fx)\n",
+                grayMs, colourMs, colourMs / grayMs);
+
+    // Las mismas mil cifras, en el mismo orden.
+    ASSERT_EQ(fromGray.size(), fromColour.size());
+    for (std::size_t i = 0; i < fromGray.size(); ++i) {
+        EXPECT_DOUBLE_EQ(fromGray[i], fromColour[i]) << "medida " << i;
+    }
+    // Margen ancho: se caza la forma —el color costando un múltiplo del gris—,
+    // no un milisegundo. El análisis del fotograma también convierte, y eso
+    // cabe de sobra en el 50 % más 5 ms.
+    EXPECT_LT(colourMs, grayMs * 1.5 + 5.0)
+        << "el color cuesta mucho más que el gris: ¿se convierte el fotograma por pieza?";
 }
 
 // LAS OPCIONES DEL MOTOR SE PUEDEN CAMBIAR CON UNA INSPECCIÓN EN VUELO.

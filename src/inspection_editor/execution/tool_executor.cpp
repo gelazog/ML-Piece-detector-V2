@@ -4527,13 +4527,21 @@ ToolRunResult runMedianAxis(const cv::Mat& gray, const Fixture& fixture,
     return result;
 }
 
-}  // namespace
-
-core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture& fixture,
-                                    const ToolConfig& config, double mmPerPixel,
-                                    LengthUnit unit, const cv::Mat& imageToMm,
-                                    const vision::BoardFrame* board, double scaleQuality,
-                                    const DerivedElements* references) {
+// Cuerpo real de `runTool`, sobre una imagen que YA está en gris (o el motivo
+// por el que no lo está). Separado de `runTool` para que `runTools` pueda
+// convertir el fotograma UNA VEZ por tanda y pasar el mismo gris a cada
+// herramienta, en vez de que cada una repita `vision::toGray` sobre el
+// fotograma entero — con veinte herramientas en paralelo eran veinte
+// conversiones del mismo fotograma. Ver el comentario de cabecera de
+// `runTools` y `ParallelTools.AColourFrameGivesExactlyTheSameNumbersAsItsGrey`.
+core::Result<ToolRunResult> runToolOnGray(const cv::Mat& gray, bool imageEmpty,
+                                          bool formatUnsupported,
+                                          const vision::Fixture& fixture,
+                                          const ToolConfig& config, double mmPerPixel,
+                                          LengthUnit unit, const cv::Mat& imageToMm,
+                                          const vision::BoardFrame* board,
+                                          double scaleQuality,
+                                          const DerivedElements* references) {
     using ResultT = core::Result<ToolRunResult>;
     const Fmt fmt{mmPerPixel, unit, imageToMm, scaleQuality};
 
@@ -4557,13 +4565,12 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
         }
     }
 
-    if (image.empty()) {
+    if (imageEmpty) {
         return ResultT::err("Imagen vacía");
     }
     // `toGray` también convierte BGRA, que antes se rechazaba con «formato no
     // soportado» teniendo una imagen perfectamente válida delante.
-    const cv::Mat gray = vision::toGray(image);
-    if (gray.empty()) {
+    if (formatUnsupported) {
         return ResultT::err("Formato de imagen no soportado");
     }
 
@@ -4714,16 +4721,38 @@ core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture&
     }
 }
 
+}  // namespace
+
+core::Result<ToolRunResult> runTool(const cv::Mat& image, const vision::Fixture& fixture,
+                                    const ToolConfig& config, double mmPerPixel,
+                                    LengthUnit unit, const cv::Mat& imageToMm,
+                                    const vision::BoardFrame* board, double scaleQuality,
+                                    const DerivedElements* references) {
+    const bool imageEmpty = image.empty();
+    // `toGray` también convierte BGRA, que antes se rechazaba con «formato no
+    // soportado» teniendo una imagen perfectamente válida delante.
+    const cv::Mat gray = imageEmpty ? cv::Mat() : vision::toGray(image);
+    const bool formatUnsupported = !imageEmpty && gray.empty();
+    return runToolOnGray(gray, imageEmpty, formatUnsupported, fixture, config, mmPerPixel,
+                         unit, imageToMm, board, scaleQuality, references);
+}
+
 namespace {
 
 // Ejecuta una herramienta y la convierte SIEMPRE en un resultado: un error de
 // configuración es un NG con su motivo, no una excepción que tumbe la tanda.
-ToolRunResult runOrExplain(const cv::Mat& image, const vision::Fixture& fixture,
-                           const ToolConfig& config, double mmPerPixel, LengthUnit unit,
-                           const cv::Mat& imageToMm, const vision::BoardFrame* board,
-                           double scaleQuality, const DerivedElements& references) {
-    auto result = runTool(image, fixture, config, mmPerPixel, unit, imageToMm, board,
-                          scaleQuality, &references);
+//
+// Recibe el gris (y por qué no lo hay, si no lo hay) YA CALCULADO por
+// `runTools`: llamar aquí a `runTool` volvería a convertir el fotograma
+// entero por cada herramienta de la tanda, que es exactamente el coste que
+// esta función existe para evitar.
+ToolRunResult runOrExplain(const cv::Mat& gray, bool imageEmpty, bool formatUnsupported,
+                           const vision::Fixture& fixture, const ToolConfig& config,
+                           double mmPerPixel, LengthUnit unit, const cv::Mat& imageToMm,
+                           const vision::BoardFrame* board, double scaleQuality,
+                           const DerivedElements& references) {
+    auto result = runToolOnGray(gray, imageEmpty, formatUnsupported, fixture, config,
+                                mmPerPixel, unit, imageToMm, board, scaleQuality, &references);
     if (result.isOk()) {
         return std::move(result.value());
     }
@@ -4743,6 +4772,18 @@ std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture&
                                     LengthUnit unit, const cv::Mat& imageToMm,
                                     const vision::BoardFrame* board, double scaleQuality,
                                     bool parallel) {
+    // El fotograma se pasa a gris UNA SOLA VEZ aquí, no dentro de cada
+    // herramienta: `runTool` convertía el fotograma ENTERO por cada
+    // herramienta —también dentro del `parallel_for_` de más abajo—, y con
+    // veinte herramientas eso eran veinte conversiones de la misma imagen
+    // para medir veinte cortes de unos pocos píxeles. Medido con 20
+    // herramientas repartidas: 1080p pasó de 26,1 ms a 15,7 ms; 1440p, de
+    // 40,9 a 18,7. Ver `ParallelTools.AColourFrameGivesExactlyTheSameNumbersAsItsGrey`
+    // y `ToolsCost.AColourFrameCostsAboutTheSameAsAGreyOne`.
+    const bool imageEmpty = image.empty();
+    const cv::Mat gray = imageEmpty ? cv::Mat() : vision::toGray(image);
+    const bool formatUnsupported = !imageEmpty && gray.empty();
+
     // Las herramientas se ejecutan en ORDEN DE DEPENDENCIA —primero las que
     // pueden ser referencia, después las que la consumen— pero los resultados
     // se devuelven en el orden en que el operador las tiene en la lista. Si se
@@ -4795,7 +4836,8 @@ std::vector<ToolRunResult> runTools(const cv::Mat& image, const vision::Fixture&
         // carrera de datos evidente, y no hace falta para nada.
         std::vector<ToolRunResult> wave(ready.size());
         const auto runOne = [&](std::size_t index) {
-            wave[index] = runOrExplain(image, fixture, *ready[index], mmPerPixel, unit,
+            wave[index] = runOrExplain(gray, imageEmpty, formatUnsupported, fixture,
+                                       *ready[index], mmPerPixel, unit,
                                        imageToMm, board, scaleQuality, references);
         };
         if (parallel && ready.size() > 1) {

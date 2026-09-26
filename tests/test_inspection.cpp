@@ -5826,22 +5826,43 @@ std::vector<ToolConfig> bigTemplate(int count) {
     return tools;
 }
 
-// Milisegundos por pasada, con calentamiento: la primera paga cachés que las
-// demás no, y contarla mezclaría dos cosas distintas.
-double msPerRun(const cv::Mat& gray, const std::vector<ToolConfig>& tools, bool parallel,
+// Milisegundos de la pasada MÁS RÁPIDA, con calentamiento: la primera paga
+// cachés que las demás no, y contarla mezclaría dos cosas distintas.
+//
+// El MÍNIMO y no la media. Una pasada solo puede salir más LENTA de lo que
+// cuesta el código —otro proceso le quita el núcleo, el sistema pagina—, nunca
+// más rápida. La media se lleva esos tropiezos dentro y con `ctest -j 4` hay
+// cuatro bancos peleando por los mismos núcleos; el mínimo es la cifra que
+// menos depende de lo que esté haciendo la máquina a la vez.
+double msPerRun(const cv::Mat& image, const std::vector<ToolConfig>& tools, bool parallel,
                 int repeats) {
-    (void)runTools(gray, kIdentity, tools, 0.0, LengthUnit::Auto, cv::Mat(), nullptr, -1.0,
+    (void)runTools(image, kIdentity, tools, 0.0, LengthUnit::Auto, cv::Mat(), nullptr, -1.0,
                    parallel);
-    const auto started = std::chrono::steady_clock::now();
+    double best = 1e300;
     for (int r = 0; r < repeats; ++r) {
-        const auto results = runTools(gray, kIdentity, tools, 0.0, LengthUnit::Auto,
+        const auto started = std::chrono::steady_clock::now();
+        const auto results = runTools(image, kIdentity, tools, 0.0, LengthUnit::Auto,
                                       cv::Mat(), nullptr, -1.0, parallel);
+        const double ms = std::chrono::duration<double, std::milli>(
+                              std::chrono::steady_clock::now() - started)
+                              .count();
+        best = std::min(best, ms);
         EXPECT_EQ(results.size(), tools.size());
     }
-    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
-                                                     started)
-               .count() /
-           repeats;
+    return best;
+}
+
+// La pieza quieta en un fotograma del tamaño de una cámara de verdad y EN
+// COLOR, que es como llega del motor y de la ventana. Mismo dibujo que
+// `stillPiece` en la misma esquina, para que las herramientas de
+// `bigTemplate` caigan sobre lo mismo.
+cv::Mat stillPieceInColour(cv::Size size) {
+    cv::Mat gray(size, CV_8UC1, cv::Scalar(225));
+    cv::rectangle(gray, cv::Rect(120, 220, 660, 160), cv::Scalar(35), cv::FILLED);
+    cv::circle(gray, cv::Point(300, 300), 45, cv::Scalar(225), cv::FILLED);
+    cv::Mat bgr;
+    cv::cvtColor(gray, bgr, cv::COLOR_GRAY2BGR);
+    return bgr;
 }
 
 }  // namespace
@@ -5905,21 +5926,9 @@ TEST(ToolsCost, TheSameQuestionWithToolsTheSizeOfTheRealOnes) {
         // hay, y que crece lineal con las herramientas. Con el reparto entre
         // hilos encendido mediria el trabajo mas el numero de nucleos de esta
         // maquina, que es otra pregunta — esa la responde `ParallelTools`.
+        // El mínimo de las vueltas, no la media: ver `msPerRun`.
         constexpr bool kSerial = false;
-        (void)runTools(gray, kIdentity, tools, 0.0, LengthUnit::Auto, cv::Mat(), nullptr,
-                       -1.0, kSerial);
-
-        constexpr int kRepeats = 10;
-        const auto started = std::chrono::steady_clock::now();
-        for (int r = 0; r < kRepeats; ++r) {
-            const auto results = runTools(gray, kIdentity, tools, 0.0, LengthUnit::Auto,
-                                          cv::Mat(), nullptr, -1.0, kSerial);
-            EXPECT_EQ(results.size(), tools.size());
-        }
-        const double ms = std::chrono::duration<double, std::milli>(
-                              std::chrono::steady_clock::now() - started)
-                              .count() /
-                          kRepeats;
+        const double ms = msPerRun(gray, tools, kSerial, 10);
         std::printf("  %20d | %12.2f | %.1f %%\n", count, ms, ms / 33.3 * 100.0);
         if (count == 10) {
             atTen = ms;
@@ -6040,5 +6049,104 @@ TEST(ParallelTools, HowMuchItActuallySavesOnAStillPiece) {
     if (std::thread::hardware_concurrency() >= 4) {
         EXPECT_GT(bestSpeedup, 1.5)
             << "repartir entre hilos no gano nada: revisa si algo esta serializando";
+    }
+}
+
+// ---------------------------------------------------------------------------
+// UN FOTOGRAMA EN COLOR SE PASA A GRIS UNA VEZ, NO UNA POR HERRAMIENTA
+//
+// Por qué existen estas pruebas: `runTool` convierte la imagen a gris, y
+// `runTools` la llamaba con la imagen EN COLOR para cada herramienta — también
+// dentro del reparto entre hilos. Veinte herramientas eran veinte conversiones
+// del fotograma entero, y en el motor, además, una tanda por cada pieza de la
+// bandeja. Los bancos de arriba no lo podían ver: todos usan imágenes GRISES,
+// donde la conversión no hace nada. Pero lo que llega de la cámara es color.
+//
+// Medido en esta máquina antes del arreglo, 20 herramientas repartidas (mínimo
+// de 15 vueltas): ver el párrafo de ARQUITECTURA.md; la cifra que importa es
+// que en color costaba 1,7× (1080p) y 2,2× (1440p) lo mismo que en gris.
+// ---------------------------------------------------------------------------
+
+TEST(ParallelTools, AColourFrameGivesExactlyTheSameNumbersAsItsGrey) {
+    // Lo primero, otra vez: convertir una sola vez no puede cambiar ni una
+    // cifra. Se compara el fotograma en COLOR con su propio gris, en serie y
+    // repartido, y también en BGRA — que `toGray` acepta y antes se rechazaba.
+    const cv::Mat bgr = stillPieceInColour({1920, 1080});
+    cv::Mat gray;
+    cv::cvtColor(bgr, gray, cv::COLOR_BGR2GRAY);
+    cv::Mat bgraMutable;
+    cv::cvtColor(bgr, bgraMutable, cv::COLOR_BGR2BGRA);
+    const cv::Mat bgra = bgraMutable;
+    const auto tools = bigTemplate(20);
+
+    for (const bool parallel : {false, true}) {
+        const auto fromGray = runTools(gray, kIdentity, tools, 0.0, LengthUnit::Auto,
+                                       cv::Mat(), nullptr, -1.0, parallel);
+        for (const cv::Mat* colour : {&bgr, &bgra}) {
+            const auto fromColour = runTools(*colour, kIdentity, tools, 0.0, LengthUnit::Auto,
+                                             cv::Mat(), nullptr, -1.0, parallel);
+            ASSERT_EQ(fromGray.size(), fromColour.size());
+            for (std::size_t i = 0; i < fromGray.size(); ++i) {
+                const std::string where = fromGray[i].name + " (" +
+                                          std::to_string(colour->channels()) + " canales, " +
+                                          (parallel ? "repartido" : "en serie") + ")";
+                EXPECT_EQ(fromGray[i].name, fromColour[i].name) << where;
+                EXPECT_DOUBLE_EQ(fromGray[i].measured, fromColour[i].measured) << where;
+                EXPECT_EQ(fromGray[i].ok, fromColour[i].ok) << where;
+                EXPECT_EQ(fromGray[i].detail, fromColour[i].detail) << where;
+            }
+        }
+    }
+}
+
+TEST(ToolsCost, AColourFrameCostsAboutTheSameAsAGreyOne) {
+    // La misma plantilla, el mismo dibujo, y lo único que cambia es si el
+    // fotograma llega en color o ya en gris. Con la conversión compartida la
+    // diferencia es UNA conversión del fotograma (≈1 ms a 1440p); con la de
+    // antes era una por herramienta y el color costaba el doble.
+    std::printf("  resolucion |  reparto  | gris      | color     | color/gris\n");
+    const auto tools = bigTemplate(20);
+    for (const cv::Size size : {cv::Size(1920, 1080), cv::Size(2560, 1440)}) {
+        const cv::Mat bgr = stillPieceInColour(size);
+        cv::Mat gray;
+        cv::cvtColor(bgr, gray, cv::COLOR_BGR2GRAY);
+        for (const bool parallel : {true, false}) {
+            // Más vueltas que en los demás bancos de este fichero: con
+            // `ctest -j 4` compitiendo por los mismos núcleos que otros mil
+            // pruebas, quince vueltas a veces no bastaban para que ENTRARA una
+            // ventana limpia — el mínimo salía tan cargado como la media.
+            constexpr int kRepeats = 30;
+            const double grayMs = msPerRun(gray, tools, parallel, kRepeats);
+            const double colourMs = msPerRun(bgr, tools, parallel, kRepeats);
+            const double ratio = colourMs / grayMs;
+            std::printf("  %4dx%-5d | %9s | %6.2f ms | %6.2f ms | %.2fx\n", size.width,
+                        size.height, parallel ? "repartido" : "en serie", grayMs, colourMs,
+                        ratio);
+            // Solo se juzga EN SERIE, y por la misma razón escrita arriba en
+            // `TheSameQuestionWithToolsTheSizeOfTheRealOnes`: repartido mide
+            // ADEMÁS cuántos núcleos libres había en ese instante para
+            // `cv::parallel_for_`. Repitiendo este mismo banco bajo
+            // `ctest -j 4` real (compitiendo con los otros ~1400): en serie
+            // el cociente nunca superó 1,08x; repartido llegó a 2,12x sin
+            // tocar una línea de código, solo porque a esa vuelta le tocaron
+            // menos núcleos libres.
+            if (parallel) {
+                continue;
+            }
+            // Margen calibrado con números, no supuesto. Midiendo este mismo
+            // banco EN SERIE con el código de ANTES del arreglo (una
+            // conversión del fotograma por herramienta) bajo `ctest -j 4`
+            // real, el cociente color/gris salió entre 1,57x y 2,04x según la
+            // resolución. Con el arreglo puesto, repitiendo el banco bajo la
+            // misma carga, en serie nunca superó 1,08x. 1,8x deja ese ruido
+            // con margen de sobra y sigue por debajo del fallo real a 1440p;
+            // no es infalible a 1080p (que con el fallo rondaba 1,57x), pero
+            // esa combinación ya la cubre el banco de 100 piezas de
+            // `EngineTest` con un margen enorme (~6x medido, límite 1,5x+5).
+            EXPECT_LT(ratio, 1.8)
+                << size.width << "x" << size.height
+                << ": el color cuesta mucho más que el gris — ¿se vuelve a convertir el "
+                   "fotograma en cada herramienta?";
+        }
     }
 }
