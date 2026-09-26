@@ -1,15 +1,22 @@
 #include "ui/measurements_panel.h"
 
 #include <QComboBox>
+#include <QFont>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QMouseEvent>
+#include <QRegularExpression>
 #include <QSignalBlocker>
+#include <QStringList>
 #include <QTableWidget>
 #include <QToolButton>
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <cmath>
+#include <functional>
+#include <map>
 #include <set>
 
 #include "ui/theme.h"
@@ -17,41 +24,174 @@
 namespace pci::ui {
 namespace {
 
-constexpr int kColumnEye = 0;
-constexpr int kColumnPiece = 1;
-constexpr int kColumnName = 2;
-constexpr int kColumnValue = 3;
-constexpr int kColumnBand = 4;
-constexpr int kColumnState = 5;
-constexpr int kColumnDelete = 6;
+using inspection::LengthUnit;
+using inspection::MeasuredKind;
+using inspection::ToolConfig;
+using inspection::ToolRunResult;
 
-// La banda declarada, tal como se escribe en la plantilla. Sin ella, un número
-// en una tabla no dice si cumple por poco o por mucho: sólo se ve el veredicto,
-// que es la respuesta sin el porqué.
-QString bandText(const inspection::ToolConfig& config, double mmPerPixel,
-                 inspection::LengthUnit unit, inspection::MeasuredKind kind) {
-    // La banda se guarda en las mismas unidades que la medida, así que se
-    // formatea con el mismo camino: se arma un resultado de mentira con cada
-    // extremo y se le pide a `formatMeasure` que lo escriba. Escribirlo aquí a
-    // mano sería la quinta copia de la regla de unidades, y las otras cuatro se
-    // equivocaron igual.
-    const auto write = [&](double value) {
-        inspection::ToolRunResult fake;
-        fake.kind = kind;
-        fake.measured = value;
-        return QString::fromStdString(
-            inspection::formatMeasure(fake, mmPerPixel, unit, true));
-    };
-    // Un máximo de 1e9 es el «sin tope» que pone el editor cuando la tolerancia
-    // no se ha tocado. Escribirlo como «1000000000 px» sería ruido.
+// COLUMNAS DEL MODO «UNA PIEZA» (1 pieza, o una elegida en el desplegable):
+// una fila por cota, con su valor y su tolerancia en columnas propias.
+constexpr int kColEye = 0;
+constexpr int kColCota = 1;
+constexpr int kSingleColValue = 2;
+constexpr int kSingleColTolerance = 3;
+constexpr int kSingleColState = 4;
+constexpr int kSingleColumnCount = 6;  // + [x]
+
+// EL NÚMERO Y SU SUFIJO, por separado.
+//
+// `formatMeasure` ya escribe «15.00mm», «90.0°» o «0.930»: un número pegado a
+// su unidad. Para componer «15.00mm ± 0.25» —la unidad UNA vez, no una por
+// cada mitad de la banda— hace falta poder quedarse solo con el número de la
+// segunda cifra. Sin esto, la tolerancia compacta habría sido la SEXTA copia
+// de la regla de unidades escribiendo el número a mano.
+struct NumSuffix {
+    QString numberText;
+    double value = 0.0;
+    bool ok = false;
+};
+
+NumSuffix splitNumber(const QString& text) {
+    static const QRegularExpression re(QStringLiteral("^(-?[0-9]+(?:\\.[0-9]+)?)"));
+    const auto match = re.match(text);
+    if (!match.hasMatch()) {
+        return {};
+    }
+    NumSuffix result;
+    result.numberText = match.captured(1);
+    result.value = result.numberText.toDouble();
+    result.ok = true;
+    return result;
+}
+
+QString formatValue(MeasuredKind kind, double value, double mmPerPixel, LengthUnit unit) {
+    ToolRunResult fake;
+    fake.kind = kind;
+    fake.measured = value;
+    return QString::fromStdString(inspection::formatMeasure(fake, mmPerPixel, unit, true));
+}
+
+// LA TOLERANCIA, COMPACTA (punto D del rediseño).
+//
+// Antes: «14.75mm … 15.25mm», la unidad escrita dos veces para decir una sola
+// banda. Si la banda se puede escribir como centro más/menos una distancia SIN
+// perder precisión al redondear —que es el caso normal, una banda declarada
+// como «15 ± 0,25»—, se escribe así, con la unidad una vez. Si redondear el
+// centro y la mitad NO reconstruye los mismos extremos que se guardaron —lo
+// que pasa con bandas que no nacieron de un valor nominal más una tolerancia,
+// por ejemplo 14.70…15.13, donde el centro redondeado se pasa de la cuenta al
+// reconstruir el extremo alto—, se enseña el rango tal cual, que es lo único
+// que no miente.
+QString toleranceText(const ToolConfig& config, double mmPerPixel, LengthUnit unit,
+                      MeasuredKind kind) {
+    const auto write = [&](double value) { return formatValue(kind, value, mmPerPixel, unit); };
     const bool openTop = config.toleranceMax >= 1e8;
     if (config.toleranceMin <= 0.0 && openTop) {
-        return QStringLiteral("—");
+        return QString();  // sin tolerancia: la columna se deja en blanco, no en «—»
     }
     if (openTop) {
         return QStringLiteral("≥ %1").arg(write(config.toleranceMin));
     }
-    return QStringLiteral("%1 … %2").arg(write(config.toleranceMin), write(config.toleranceMax));
+    const double lo = config.toleranceMin;
+    const double hi = config.toleranceMax;
+    const QString loStr = write(lo);
+    const QString hiStr = write(hi);
+    const double center = (lo + hi) / 2.0;
+    const double half = (hi - lo) / 2.0;
+    const QString centerStr = write(center);
+    const NumSuffix loNum = splitNumber(loStr);
+    const NumSuffix hiNum = splitNumber(hiStr);
+    const NumSuffix centerNum = splitNumber(centerStr);
+    const NumSuffix halfNum = splitNumber(write(half));
+    if (loNum.ok && hiNum.ok && centerNum.ok && halfNum.ok) {
+        constexpr double kEps = 1e-6;
+        const bool reconstructsLo = std::abs((centerNum.value - halfNum.value) - loNum.value) < kEps;
+        const bool reconstructsHi = std::abs((centerNum.value + halfNum.value) - hiNum.value) < kEps;
+        if (reconstructsLo && reconstructsHi) {
+            return QStringLiteral("%1 ± %2").arg(centerStr, halfNum.numberText);
+        }
+    }
+    return QStringLiteral("%1 – %2").arg(loStr, hiStr);
+}
+
+// EL VEREDICTO DE UNA COTA, calculado una sola vez y leído desde tres sitios:
+// la celda de estado del modo «una pieza», la celda de cada pieza del modo
+// «Todas», y la línea de veredicto de arriba. Antes de esto la cuenta del
+// margen —«¿qué es OK a secas?»— vivía escrita a mano en un único sitio; ahora
+// hacen falta tres lecturas de la misma cuenta y no se iba a escribir tres
+// veces.
+struct RowVerdict {
+    bool ok = false;
+    bool informative = false;
+    bool noNumber = false;
+    bool hasBand = false;
+    QString shortMark;  // «✓ 0.25» / «✕ +0.15» / «✓ Cumple» / «No mide» / «referencia»
+    QString tooltip;    // la frase completa, para quien no se fía del símbolo
+    QString shortNote;  // «margen 0.25mm» / «se pasa 0.15mm», para la celda de pieza y el veredicto
+};
+
+RowVerdict evaluate(const ToolRunResult& result, const ToolConfig* config, double mmPerPixel,
+                    LengthUnit unit) {
+    RowVerdict v;
+    v.informative = result.informative;
+    if (result.informative) {
+        // Una construcción no mide nada dentro o fuera de tolerancia: solo
+        // calcula un elemento para que otra herramienta lo use. Ponerle un
+        // veredicto enseñaría a no fiarse de los veredictos.
+        v.shortMark = QObject::tr("referencia");
+        v.tooltip = QObject::tr("Es una construcción: no mide nada que pueda cumplir o no. "
+                                "Solo calcula un elemento para que otra herramienta lo use.");
+        v.shortNote = QString::fromStdString(result.detail);
+        return v;
+    }
+    v.ok = result.ok;
+    if (!result.ok && result.measured == 0.0) {
+        // La otra mitad de «varias herramientas no muestran medidas»: el
+        // motivo por el que no hay número, no un hueco.
+        v.noNumber = true;
+        v.shortMark = QObject::tr("No mide");
+        v.tooltip = QString::fromStdString(result.detail);
+        v.shortNote = QString::fromStdString(result.detail);
+        return v;
+    }
+    if (config != nullptr && config->toleranceMax < 1e8) {
+        const double toLow = result.measured - config->toleranceMin;
+        const double toHigh = config->toleranceMax - result.measured;
+        const double margin = std::min(toLow, toHigh);
+        const QString amount = formatValue(result.kind, std::abs(margin), mmPerPixel, unit);
+        const NumSuffix split = splitNumber(amount);
+        const QString number = split.ok ? split.numberText : amount;
+        v.hasBand = true;
+        if (result.ok) {
+            v.shortMark = QStringLiteral("✓ %1").arg(number);
+            v.tooltip = QObject::tr("Cumple, margen %1").arg(amount);
+            v.shortNote = QObject::tr("margen %1").arg(amount);
+        } else {
+            v.shortMark = QStringLiteral("✕ +%1").arg(number);
+            v.tooltip = QObject::tr("No cumple, se pasa %1").arg(amount);
+            v.shortNote = QObject::tr("se pasa %1").arg(amount);
+        }
+        return v;
+    }
+    v.shortMark = result.ok ? QStringLiteral("✓ %1").arg(QObject::tr("Cumple"))
+                            : QStringLiteral("✕ %1").arg(QObject::tr("No cumple"));
+    v.tooltip = v.shortMark;
+    v.shortNote = result.ok ? QObject::tr("cumple") : QObject::tr("no cumple");
+    return v;
+}
+
+// La frase corta que nombra el fallo en la línea de veredicto: «no mide» es
+// más corto que repetir el detalle entero —que puede ser una frase larga como
+// «Se necesitan 2 bordes y se detectaron 0»— y el titular tiene que caber en
+// una línea.
+QString headlinePhrase(const RowVerdict& v) {
+    if (v.noNumber) {
+        return QObject::tr("no mide");
+    }
+    if (v.hasBand) {
+        return v.shortNote;
+    }
+    return QObject::tr("no cumple");
 }
 
 // UN BOTÓN DE FILA: el ojo y la papelera.
@@ -59,8 +199,10 @@ QString bandText(const inspection::ToolConfig& config, double mmPerPixel,
 // Planos y sin marco para que la tabla siga leyéndose como una tabla —catorce
 // botones con relieve serían catorce llamadas de atención—, pero con 24 px de
 // lado, que es el mínimo cómodo con ratón a 60 cm.
-QToolButton* rowButton(const QString& glyph, const QString& tip, bool checkable) {
+QToolButton* rowButton(const QString& objectName, const QString& glyph, const QString& tip,
+                      bool checkable) {
     auto* button = new QToolButton();
+    button->setObjectName(objectName);
     button->setText(glyph);
     button->setToolTip(tip);
     button->setAutoRaise(true);
@@ -69,16 +211,83 @@ QToolButton* rowButton(const QString& glyph, const QString& tip, bool checkable)
     return button;
 }
 
+// UNA CELDA QUE SE PUEDE PULSAR, con nombre propio.
+//
+// «Pulsar una fila sigue seleccionando la herramienta»: con las celdas hechas
+// de texto de tabla eso lo daba gratis `itemSelectionChanged`, pero un
+// `QTableWidgetItem` no admite `setObjectName` —y todas las celdas lo
+// necesitan para que las pruebas las encuentren por nombre, nunca por texto,
+// porque con el nuevo orden (informativas al final) el número de fila de una
+// cota ya no es fijo—. De ahí este widget: una etiqueta con nombre que avisa
+// cuando se pulsa.
+class ClickableCell : public QLabel {
+public:
+    using QLabel::QLabel;
+    std::function<void()> onClicked;
+
+protected:
+    void mousePressEvent(QMouseEvent* event) override {
+        QLabel::mousePressEvent(event);
+        if (onClicked) {
+            onClicked();
+        }
+    }
+};
+
+ClickableCell* makeCell(QTableWidget* table, int row, int column, const QString& objectName,
+                        const QString& text, const QString& tooltip, const char* ink,
+                        std::function<void()> onClicked) {
+    auto* cell = new ClickableCell(text);
+    cell->setObjectName(objectName);
+    cell->setToolTip(tooltip);
+    cell->setContentsMargins(6, 2, 6, 2);
+    cell->setStyleSheet(theme::textStyle(ink));
+    cell->onClicked = std::move(onClicked);
+    table->setCellWidget(row, column, cell);
+    return cell;
+}
+
+// UNA FILA, agrupada por herramienta y no por pieza. Es el corazón del punto
+// B: con esto, tres piezas por cinco cotas dan CINCO filas, no quince.
+struct RowData {
+    std::int64_t toolId = -1;
+    std::string name;
+    MeasuredKind kind = MeasuredKind::Length;
+    bool informative = false;
+    // De qué pieza es cada resultado de esta cota. Con una sola pieza tiene una
+    // entrada; con varias, una por cada una — es lo que llena las columnas
+    // «Pieza 1», «Pieza 2»… del modo «Todas».
+    std::map<int, const ToolRunResult*> byPiece;
+};
+
 }  // namespace
 
 MeasurementsPanel::MeasurementsPanel(QWidget* parent) : QWidget(parent) {
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(4, 4, 4, 4);
 
-    // QUÉ PIEZA SE SUPERVISA, arriba del todo.
+    // EL VEREDICTO, ARRIBA DEL TODO (punto A).
     //
-    // Va primero porque decide qué significa todo lo de abajo, que es la misma
-    // regla que ya sigue la pestaña de piezas: el modo antes que sus ajustes.
+    // Queja del taller: el resumen iba abajo y pequeño —«11 cumplen, 1 no.»— y
+    // no decía QUÉ pieza fallaba ni POR QUÉ cota. Ahora es lo primero que se
+    // lee, grande y en el color del veredicto, con el texto diciendo lo mismo
+    // que el color por si el color no llega —daltonismo, una foto en blanco y
+    // negro, una pantalla mal calibrada en el taller—.
+    verdict_ = new QLabel(this);
+    verdict_->setObjectName(QStringLiteral("measurementsVerdict"));
+    verdict_->setWordWrap(true);
+    verdict_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    QFont verdictFont = verdict_->font();
+    verdictFont.setBold(true);
+    verdictFont.setPointSizeF(verdictFont.pointSizeF() * 1.25);
+    verdict_->setFont(verdictFont);
+    root->addWidget(verdict_);
+
+    // QUÉ PIEZA SE SUPERVISA, debajo del veredicto.
+    //
+    // Va antes que la tabla porque decide qué significa todo lo de abajo, que
+    // es la misma regla que ya sigue la pestaña de piezas: el modo antes que
+    // sus ajustes.
     auto* pieceRow = new QHBoxLayout();
     pieceRow->addWidget(new QLabel(tr("Pieza:"), this));
     pieceBox_ = new QComboBox(this);
@@ -99,37 +308,13 @@ MeasurementsPanel::MeasurementsPanel(QWidget* parent) : QWidget(parent) {
         emit pieceChosen(piece);
     });
 
-    table_ = new QTableWidget(0, 7, this);
+    table_ = new QTableWidget(0, kSingleColumnCount, this);
     table_->setObjectName(QStringLiteral("measurementsTable"));
-    table_->setHorizontalHeaderLabels({QString(), tr("Pieza"), tr("Cota"), tr("Valor"),
-                                       tr("Banda"), tr("Estado"), QString()});
     table_->verticalHeader()->setVisible(false);
     table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table_->setSelectionBehavior(QAbstractItemView::SelectRows);
     table_->setSelectionMode(QAbstractItemView::SingleSelection);
-    table_->horizontalHeader()->setSectionResizeMode(kColumnValue, QHeaderView::Stretch);
     root->addWidget(table_, 1);
-
-    // PULSAR UNA FILA REMARCA ESA COTA sobre la imagen.
-    //
-    // Con catorce cotas encima de la pieza, saber cuál es cuál a ojo no se puede.
-    // La tabla y el dibujo son la misma información en dos sitios, así que
-    // señalar en uno tiene que señalar en el otro.
-    connect(table_, &QTableWidget::itemSelectionChanged, this, [this] {
-        const int row = table_->currentRow();
-        if (row < 0 || table_->item(row, kColumnName) == nullptr) {
-            return;
-        }
-        const auto toolId = table_->item(row, kColumnName)->data(Qt::UserRole).toLongLong();
-        if (toolId >= 0) {
-            emit toolChosen(toolId);
-        }
-    });
-
-    summary_ = new QLabel(this);
-    summary_->setObjectName(QStringLiteral("measurementsSummary"));
-    summary_->setWordWrap(true);
-    root->addWidget(summary_);
 }
 
 int MeasurementsPanel::rowCount() const { return table_->rowCount(); }
@@ -142,9 +327,9 @@ void MeasurementsPanel::setChosenPiece(int pieceIndex) {
     rebuild();
 }
 
-void MeasurementsPanel::setResults(const std::vector<inspection::ToolRunResult>& results,
-                                   const std::vector<inspection::ToolConfig>& configs,
-                                   double mmPerPixel, inspection::LengthUnit unit) {
+void MeasurementsPanel::setResults(const std::vector<ToolRunResult>& results,
+                                   const std::vector<ToolConfig>& configs, double mmPerPixel,
+                                   LengthUnit unit) {
     results_ = results;
     configs_ = configs;
     mmPerPixel_ = mmPerPixel;
@@ -153,6 +338,23 @@ void MeasurementsPanel::setResults(const std::vector<inspection::ToolRunResult>&
 }
 
 void MeasurementsPanel::rebuild() {
+    // BORRAR LOS WIDGETS DE CELDA A MANO, antes de nada.
+    //
+    // `QTableWidget` sustituye el widget de una celda cuando se pone otro
+    // encima, pero lo hace con `deleteLater()`: el objeto viejo sigue vivo
+    // hasta que el bucle de eventos vuelve a girar. Cambiar de modo «Todas»
+    // (columnas de pieza) a modo «una pieza» (columna de valor) en la MISMA
+    // llamada a `rebuild` reutiliza esas coordenadas de celda, y una prueba
+    // que pregunta en el mismo instante «¿ya no está `pieceCell_1_2`?» lo
+    // encontraba igual —vivo, aunque ya no en pantalla— porque el bucle de
+    // eventos nunca había girado. Se borra aquí a mano, con `delete` y no con
+    // `deleteLater`, para que un rebuild sea inmediato de verdad.
+    for (int r = 0; r < table_->rowCount(); ++r) {
+        for (int c = 0; c < table_->columnCount(); ++c) {
+            delete table_->cellWidget(r, c);
+        }
+    }
+
     // Qué piezas hay, para el desplegable. Se rehace con cada análisis porque el
     // encuadre cambia: una pieza que se fue no puede quedarse en la lista.
     std::set<int> pieces;
@@ -178,43 +380,114 @@ void MeasurementsPanel::rebuild() {
         pieceBox_->setEnabled(pieces.size() > 1);
     }
 
-    std::vector<const inspection::ToolRunResult*> shown;
+    if (results_.empty()) {
+        table_->setColumnCount(kSingleColumnCount);
+        table_->setRowCount(0);
+        verdict_->setStyleSheet(theme::textStyle(theme::kInkMuted));
+        verdict_->setText(tr("Sin herramientas dibujadas: no hay nada que medir todavía."));
+        return;
+    }
+
+    // UNA FILA POR COTA, no por pieza×cota (punto B). Se agrupa por
+    // `toolId` en el orden en el que aparece primero, y por eso hace falta un
+    // mapa aparte de índice: `results_` trae la pieza 0 entera y luego la 1 y
+    // luego la 2, así que agrupar por posición repetiría exactamente el fallo
+    // que esto arregla.
+    std::vector<RowData> all;
+    std::map<std::int64_t, std::size_t> indexOf;
     for (const auto& result : results_) {
-        if (chosenPiece_ < 0 || result.pieceIndex == chosenPiece_) {
-            shown.push_back(&result);
+        const auto it = indexOf.find(result.toolId);
+        if (it == indexOf.end()) {
+            RowData row;
+            row.toolId = result.toolId;
+            row.name = result.name;
+            row.kind = result.kind;
+            row.informative = result.informative;
+            row.byPiece.emplace(result.pieceIndex, &result);
+            indexOf.emplace(result.toolId, all.size());
+            all.push_back(std::move(row));
+        } else {
+            all[it->second].byPiece.emplace(result.pieceIndex, &result);
+        }
+    }
+    // LAS INFORMATIVAS AL FINAL (punto F): una construcción no se juzga, y
+    // mezclada entre las cotas que sí cumplen o no invita a leerla como si
+    // también contara.
+    std::vector<const RowData*> ordered;
+    for (const auto& row : all) {
+        if (!row.informative) {
+            ordered.push_back(&row);
+        }
+    }
+    for (const auto& row : all) {
+        if (row.informative) {
+            ordered.push_back(&row);
+        }
+    }
+
+    // MODO «UNA PIEZA»: 1 pieza en total, o una elegida en el desplegable.
+    // MODO «TODAS»: «Todas» elegida y hay más de una pieza — solo entonces
+    // tiene sentido una columna por pieza.
+    const bool multiMode = chosenPiece_ < 0 && pieces.size() > 1;
+    const int effectivePiece = chosenPiece_ >= 0 ? chosenPiece_ : (pieces.empty() ? 0 : *pieces.begin());
+
+    // En modo «una pieza» solo entran las filas que de verdad tienen un
+    // resultado para esa pieza — no debería faltar ninguna, pero una tabla que
+    // dibuja un puntero nulo es peor que una fila de menos.
+    std::vector<const RowData*> display;
+    if (multiMode) {
+        display = ordered;
+    } else {
+        for (const RowData* row : ordered) {
+            if (row->byPiece.find(effectivePiece) != row->byPiece.end()) {
+                display.push_back(row);
+            }
         }
     }
 
     const QSignalBlocker quiet(table_);
-    table_->setRowCount(static_cast<int>(shown.size()));
-    // La columna de la pieza sólo dice algo cuando se ven todas.
-    table_->setColumnHidden(kColumnPiece, chosenPiece_ >= 0);
+    const int firstPieceColumn = 3;
+    const int columnCount =
+        multiMode ? firstPieceColumn + static_cast<int>(pieces.size()) + 1 : kSingleColumnCount;
+    const int deleteColumn = columnCount - 1;
+    table_->setColumnCount(columnCount);
+    {
+        QStringList headers;
+        headers << QString() << tr("Cota");
+        if (multiMode) {
+            headers << tr("Tolerancia");
+            for (const int piece : pieces) {
+                headers << tr("Pieza %1").arg(piece + 1);
+            }
+        } else {
+            headers << tr("Valor") << tr("Tolerancia") << tr("Estado");
+        }
+        headers << QString();
+        table_->setHorizontalHeaderLabels(headers);
+    }
+    table_->setRowCount(static_cast<int>(display.size()));
 
-    int ok = 0;
-    int failing = 0;
-    int withoutANumber = 0;
-    for (int row = 0; row < static_cast<int>(shown.size()); ++row) {
-        const inspection::ToolRunResult& result = *shown[static_cast<std::size_t>(row)];
-        const auto config = std::find_if(
+    for (int row = 0; row < static_cast<int>(display.size()); ++row) {
+        const RowData& data = *display[static_cast<std::size_t>(row)];
+        const std::int64_t toolId = data.toolId;
+        const auto configIt = std::find_if(
             configs_.begin(), configs_.end(),
-            [&result](const inspection::ToolConfig& c) { return c.id == result.toolId; });
-        const bool visible = std::find(hidden_.begin(), hidden_.end(), result.toolId) ==
-                             hidden_.end();
+            [toolId](const ToolConfig& c) { return c.id == toolId; });
+        const ToolConfig* config = configIt != configs_.end() ? &*configIt : nullptr;
+        const char* ink = data.informative ? theme::kInkOff : theme::kInk;
 
-        // EL OJO: si esta cota se dibuja sobre la pieza.
-        //
-        // Ocultarla no la deja de medir —sigue en la tabla, con su veredicto—,
-        // así que apagar el dibujo no puede confundirse con apagar la cota. Eso
-        // último ya existe y es otra cosa: el interruptor del informe.
-        auto* eye = rowButton(visible ? QStringLiteral("👁") : QStringLiteral("—"),
+        // EL OJO: si esta cota se dibuja sobre la pieza (punto C: una vez por
+        // cota, ya no una vez por pieza×cota).
+        const bool visible = std::find(hidden_.begin(), hidden_.end(), toolId) == hidden_.end();
+        auto* eye = rowButton(QStringLiteral("eyeButton_%1").arg(toolId),
+                              visible ? QStringLiteral("\U0001F441") : QStringLiteral("—"),
                               tr("Dibujar esta cota sobre la pieza.\n\n"
                                  "Apagarla no deja de medirla: sigue aquí con su veredicto.\n"
                                  "Sirve para no tapar la imagen cuando hay muchas."),
                               true);
         eye->setChecked(visible);
-        const std::int64_t toolId = result.toolId;
         connect(eye, &QToolButton::toggled, this, [this, toolId, eye](bool on) {
-            eye->setText(on ? QStringLiteral("👁") : QStringLiteral("—"));
+            eye->setText(on ? QStringLiteral("\U0001F441") : QStringLiteral("—"));
             auto at = std::find(hidden_.begin(), hidden_.end(), toolId);
             if (on && at != hidden_.end()) {
                 hidden_.erase(at);
@@ -223,110 +496,158 @@ void MeasurementsPanel::rebuild() {
             }
             emit overlayVisibilityChanged(toolId, on);
         });
-        table_->setCellWidget(row, kColumnEye, eye);
+        table_->setCellWidget(row, kColEye, eye);
 
-        auto* piece = new QTableWidgetItem(QString::number(result.pieceIndex + 1));
-        piece->setTextAlignment(Qt::AlignCenter);
-        table_->setItem(row, kColumnPiece, piece);
+        // Pulsar la fila (por cualquier celda de texto) selecciona la
+        // herramienta sobre la imagen (punto G).
+        const auto selectThisTool = [this, row, toolId] {
+            table_->selectRow(row);
+            emit toolChosen(toolId);
+        };
 
-        auto* name = new QTableWidgetItem(QString::fromStdString(result.name));
-        // El id viaja EN LA FILA: emparejar por posición se rompió una vez en el
-        // informe de pieza —«Ø» apagaba «alto»— al reordenar la tabla.
-        name->setData(Qt::UserRole, QVariant::fromValue<qlonglong>(result.toolId));
-        table_->setItem(row, kColumnName, name);
+        makeCell(table_, row, kColCota, QStringLiteral("cotaCell_%1").arg(toolId),
+                QString::fromStdString(data.name), QString::fromStdString(data.name), ink,
+                selectThisTool);
 
-        // EL VALOR, O EL MOTIVO POR EL QUE NO LO HAY.
-        //
-        // Ninguna herramienta se calla —está medido sobre las 32— pero esa
-        // explicación no se leía en ningún sitio mientras se trabaja. Ocupa la
-        // celda del valor porque es lo que responde a la pregunta que se estaba
-        // haciendo.
-        auto* value = new QTableWidgetItem(
-            result.ok || result.measured != 0.0
-                ? QString::fromStdString(
-                      inspection::formatMeasure(result, mmPerPixel_, unit_, true))
-                : QString::fromStdString(result.detail));
-        value->setToolTip(QString::fromStdString(result.detail));
-        table_->setItem(row, kColumnValue, value);
+        const QString toleranceStr =
+            config != nullptr ? toleranceText(*config, mmPerPixel_, unit_, data.kind) : QString();
+        const int toleranceColumn = multiMode ? 2 : kSingleColTolerance;
+        makeCell(table_, row, toleranceColumn, QStringLiteral("toleranceCell_%1").arg(toolId),
+                toleranceStr, toleranceStr, ink, selectThisTool);
 
-        table_->setItem(row, kColumnBand,
-                        new QTableWidgetItem(config != configs_.end()
-                                                 ? bandText(*config, mmPerPixel_, unit_,
-                                                            result.kind)
-                                                 : QStringLiteral("—")));
+        if (!multiMode) {
+            const auto it = data.byPiece.find(effectivePiece);
+            const ToolRunResult& result = *it->second;
+            const RowVerdict v = evaluate(result, config, mmPerPixel_, unit_);
 
-        // «¿QUÉ ES OK A SECAS?» — pregunta literal del taller, y tenía razón.
-        //
-        // «OK» dice que cumple y no dice por cuánto, que es lo que hace falta
-        // para saber si la pieza va justa o sobrada. Ahora la celda dice el
-        // estado EN PALABRAS y, cuando hay banda, cuánto margen queda —o cuánto
-        // se pasa—. El veredicto sigue yendo también en color, pero el color no
-        // es lo único: en blanco y negro, o con un daltónico delante, el texto
-        // sigue ahí.
-        QString state;
-        if (result.informative) {
-            state = tr("—");  // una construcción no juzga nada
-        } else if (!result.ok && result.measured == 0.0) {
-            state = tr("No mide");
-        } else if (config != configs_.end() && config->toleranceMax < 1e8) {
-            const double toLow = result.measured - config->toleranceMin;
-            const double toHigh = config->toleranceMax - result.measured;
-            const double margin = std::min(toLow, toHigh);
-            inspection::ToolRunResult asLength = result;
-            asLength.measured = std::abs(margin);
-            const QString amount = QString::fromStdString(
-                inspection::formatMeasure(asLength, mmPerPixel_, unit_, true));
-            state = result.ok ? tr("Cumple, margen %1").arg(amount)
-                              : tr("No cumple, se pasa %1").arg(amount);
+            // EL VALOR, O EL MOTIVO POR EL QUE NO LO HAY.
+            const QString valueStr =
+                result.ok || result.measured != 0.0
+                    ? QString::fromStdString(
+                          inspection::formatMeasure(result, mmPerPixel_, unit_, true))
+                    : QString::fromStdString(result.detail);
+            makeCell(table_, row, kSingleColValue, QStringLiteral("valueCell_%1").arg(toolId),
+                    valueStr, QString::fromStdString(result.detail), ink, selectThisTool);
+
+            // ESTADO COMPACTO (punto E): «✓ 0,25» / «✕ +0,15», con la frase
+            // completa en el tooltip para quien no se fía del símbolo.
+            const char* stateInk = data.informative ? theme::kInkOff : (v.ok ? theme::kGood : theme::kBad);
+            makeCell(table_, row, kSingleColState, QStringLiteral("stateCell_%1").arg(toolId),
+                    v.shortMark, v.tooltip, stateInk, selectThisTool);
         } else {
-            state = result.ok ? tr("Cumple") : tr("No cumple");
+            int column = firstPieceColumn;
+            for (const int piece : pieces) {
+                const QString objectName =
+                    QStringLiteral("pieceCell_%1_%2").arg(toolId).arg(piece);
+                const auto it = data.byPiece.find(piece);
+                const auto selectThisPiece = [this, row, toolId, piece] {
+                    table_->selectRow(row);
+                    emit toolChosen(toolId);
+                    emit pieceChosen(piece);
+                };
+                if (it == data.byPiece.end()) {
+                    makeCell(table_, row, column, objectName, QString(), QString(), ink,
+                            selectThisPiece);
+                } else {
+                    const ToolRunResult& result = *it->second;
+                    const RowVerdict v = evaluate(result, config, mmPerPixel_, unit_);
+                    QString text;
+                    QString tooltip;
+                    const char* cellInk = theme::kInk;
+                    if (data.informative) {
+                        text = result.ok || result.measured != 0.0
+                                  ? QString::fromStdString(inspection::formatMeasure(
+                                        result, mmPerPixel_, unit_, true))
+                                  : QString::fromStdString(result.detail);
+                        tooltip = QString::fromStdString(result.detail);
+                        cellInk = theme::kInkOff;
+                    } else if (v.noNumber) {
+                        text = QStringLiteral("✕ %1").arg(tr("No mide"));
+                        tooltip = v.tooltip;
+                        cellInk = theme::kBad;
+                    } else {
+                        const QString mark = v.ok ? QStringLiteral("✓") : QStringLiteral("✕");
+                        text = QStringLiteral("%1 %2").arg(
+                            mark, QString::fromStdString(
+                                      inspection::formatMeasure(result, mmPerPixel_, unit_, true)));
+                        tooltip = v.shortNote;
+                        cellInk = v.ok ? theme::kGood : theme::kBad;
+                    }
+                    makeCell(table_, row, column, objectName, text, tooltip, cellInk,
+                            selectThisPiece);
+                }
+                ++column;
+            }
         }
-        auto* verdict = new QTableWidgetItem(state);
-        if (!result.informative) {
-            verdict->setForeground(QColor(result.ok ? theme::kGood : theme::kBad));
-        }
-        table_->setItem(row, kColumnState, verdict);
 
-        // BORRAR, con la papelera en su propia columna y no en un menú: «que
-        // puedas borrar si quieres la medida, por si se satura de más». Quien
-        // borra es la ventana, que tiene el deshacer.
-        auto* remove = rowButton(QStringLiteral("✕"),
+        // BORRAR, con la papelera en su propia columna y no en un menú.
+        // Quien borra es la ventana, que tiene el deshacer.
+        auto* remove = rowButton(QStringLiteral("deleteButton_%1").arg(toolId), QStringLiteral("✕"),
                                  tr("Quitar esta cota de la pieza.\n\n"
                                     "Se puede deshacer con Ctrl+Z, como cualquier otro\n"
                                     "borrado de herramientas."),
                                  false);
         connect(remove, &QToolButton::clicked, this,
                 [this, toolId] { emit deleteRequested(toolId); });
-        table_->setCellWidget(row, kColumnDelete, remove);
+        table_->setCellWidget(row, deleteColumn, remove);
+    }
 
-        if (result.informative) {
+    table_->resizeColumnsToContents();
+    if (!multiMode) {
+        // Solo en modo «una pieza» hay una columna de valor que merece
+        // repartirse el ancho sobrante; en modo «Todas», con varias columnas de
+        // pieza, forzar un estiramiento rompería la lectura y por eso ahí se
+        // deja que la tabla haga scroll horizontal en su lugar.
+        table_->horizontalHeader()->setSectionResizeMode(kSingleColValue, QHeaderView::Stretch);
+    }
+
+    // EL VEREDICTO (punto A): busca la PRIMERA cota que no cumple, recorriendo
+    // `results_` tal cual llega —pieza 0 entera, luego la 1, luego la 2—, así
+    // que «la primera» es la primera que de verdad se ve al leer de arriba a
+    // abajo la tabla sin filtrar.
+    struct Failure {
+        int pieceIndex = 0;
+        QString cota;
+        QString phrase;
+    };
+    std::vector<Failure> failures;
+    for (const auto& result : results_) {
+        if (result.informative || result.ok) {
             continue;
         }
-        if (result.ok) {
-            ++ok;
-        } else {
-            ++failing;
-        }
-        if (!result.ok && result.measured == 0.0) {
-            ++withoutANumber;
-        }
+        const auto configIt = std::find_if(
+            configs_.begin(), configs_.end(),
+            [&result](const ToolConfig& c) { return c.id == result.toolId; });
+        const RowVerdict v =
+            evaluate(result, configIt != configs_.end() ? &*configIt : nullptr, mmPerPixel_, unit_);
+        failures.push_back({result.pieceIndex, QString::fromStdString(result.name), headlinePhrase(v)});
     }
-    table_->resizeColumnsToContents();
-    table_->horizontalHeader()->setSectionResizeMode(kColumnValue, QHeaderView::Stretch);
 
-    if (results_.empty()) {
-        summary_->setText(tr("Sin herramientas dibujadas: no hay nada que medir todavía."));
-        return;
+    QString verdictText;
+    const bool good = failures.empty();
+    if (pieces.size() <= 1) {
+        verdictText = good ? tr("✓ Cumple")
+                          : tr("✕ No cumple — %1 %2")
+                                .arg(failures.front().cota, failures.front().phrase);
+    } else {
+        std::set<int> failingPieces;
+        for (const auto& f : failures) {
+            failingPieces.insert(f.pieceIndex);
+        }
+        verdictText =
+            good ? tr("✓ %1 piezas — todas cumplen").arg(pieces.size())
+                : tr("✕ %1 de %2 no cumple — pieza %3: %4 %5")
+                      .arg(failingPieces.size())
+                      .arg(pieces.size())
+                      .arg(failures.front().pieceIndex + 1)
+                      .arg(failures.front().cota, failures.front().phrase);
     }
-    // El resumen cuenta las que NO dan número aparte de las que no cumplen. Son
-    // dos cosas distintas y llevan a hacer cosas distintas: una cota fuera de
-    // banda es un problema de la pieza; una que no mide es un problema del
-    // trazo, del encuadre o de la referencia que le falta.
-    QString text = tr("%1 cumplen, %2 no.").arg(ok).arg(failing);
-    if (withoutANumber > 0) {
-        text += tr(" %1 no llegan a medir: mira el motivo en su fila.").arg(withoutANumber);
+    if (!good && failures.size() > 1) {
+        verdictText += tr(" (+%1 más)").arg(failures.size() - 1);
     }
-    summary_->setText(text);
+    verdict_->setStyleSheet(good ? theme::noticeStyle(theme::kGood, theme::kGoodField)
+                                : theme::noticeStyle(theme::kBad, theme::kBadField));
+    verdict_->setText(verdictText);
 }
 
 }  // namespace pci::ui

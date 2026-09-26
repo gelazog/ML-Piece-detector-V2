@@ -22,22 +22,22 @@ namespace pci::ui {
 // pisan— y con varias piezas se rompe del todo, porque el lienzo escribe los
 // números de UNA sola pieza.
 //
-// Segunda tanda de peticiones, ya con el panel delante:
+// SEGUNDA QUEJA, ya con la tabla delante: «el panel de mediciones está
+// confuso». Con «Todas» la misma cota salía repetida una vez por pieza —15
+// filas para 5 cotas y 3 piezas—, el ojo y la ✕ vivían en cada una de esas
+// filas aunque actuaran sobre la HERRAMIENTA entera (borrar desde la fila de
+// la pieza 3 borraba la cota en las tres), la banda ocupaba media fila con la
+// unidad repetida tres veces, y el resumen de abajo no decía qué pieza fallaba
+// ni por qué cota. Este fichero es el rediseño: UNA fila por cota, nunca por
+// pieza×cota, con el ojo y la ✕ una sola vez, y un veredicto arriba que nombra
+// la pieza y la cota que falla en vez de contar OK/NG a secas.
 //
-//   - «si presiona alguna medida, que la remarque más» → pulsar una fila
-//     selecciona esa herramienta en la imagen;
-//   - «un ojo para hacer visible o invisible las medidas, para saturar menos» →
-//     cada fila decide si su cota se dibuja encima de la pieza;
-//   - «que puedas borrar si quieres la medida, por si se satura de más»;
-//   - «si hay más piezas, la opción de supervisar por piezas y que sea un
-//     selectbox» → un desplegable elige la pieza, y esa elección es LA MISMA que
-//     usan las flechas y el mosaico, no un estado aparte;
-//   - «¿qué es OK a secas?» → la columna dice «Cumple» o «No cumple» **con el
-//     margen que queda**, que es lo que contesta de verdad la pregunta.
-//
-// Este panel no toca nada: enseña y AVISA. Quien manda sobre las herramientas es
-// la ventana, igual que con el interruptor del informe de pieza — un panel que
-// borrara por su cuenta se saltaría el deshacer que ya existe.
+// La API pública no cambia —`toolChosen`, `overlayVisibilityChanged`,
+// `deleteRequested`, `pieceChosen`, `setResults`, `setChosenPiece`,
+// `rowCount`— porque la ventana ya la usa y tocarla sería un cambio aparte del
+// que se pidió. Lo que cambia es la forma de la tabla, no quién manda sobre
+// las herramientas: este panel sigue sin borrar ni ocultar por su cuenta,
+// avisa y deja que la ventana lo haga, que es la que tiene el deshacer.
 class MeasurementsPanel : public QWidget {
     Q_OBJECT
 
@@ -58,7 +58,9 @@ public:
     // ellos: es una sola elección con tres mandos.
     void setChosenPiece(int pieceIndex);
 
-    // Cuántas filas hay ahora mismo, para poder comprobarlo.
+    // Cuántas filas hay ahora mismo: una por COTA (herramienta), no una por
+    // pieza×cota. Con tres piezas y cinco cotas esto vale 5, no 15 — es
+    // precisamente lo que este rediseño vino a arreglar.
     [[nodiscard]] int rowCount() const;
 
 signals:
@@ -72,6 +74,8 @@ signals:
     // Borrar esa herramienta. El panel no la borra: lo pide.
     void deleteRequested(std::int64_t toolId);
     // Elegir qué pieza se supervisa, con el mismo significado que las flechas.
+    // En modo «Todas» también se dispara al pulsar la celda de una pieza
+    // concreta dentro de una fila.
     void pieceChosen(int pieceIndex);
 
 private:
@@ -79,7 +83,7 @@ private:
 
     QComboBox* pieceBox_ = nullptr;
     QTableWidget* table_ = nullptr;
-    QLabel* summary_ = nullptr;
+    QLabel* verdict_ = nullptr;
 
     std::vector<inspection::ToolRunResult> results_;
     std::vector<inspection::ToolConfig> configs_;
