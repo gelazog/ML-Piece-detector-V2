@@ -286,6 +286,7 @@ private:
     // porque varios diálogos ofrecían «Frame actual de la cámara» aunque la
     // fuente fuera una foto, un fichero o un vídeo: nombrar una fuente que no es
     // la que hay le dice al operador que va a usar algo distinto de lo que ve.
+    void updateStartButtonText();
     [[nodiscard]] QString currentSourceLabel() const;
     // ¿Va alguien a leer CUÁNTAS piezas se ven? La pieza espera más de una, o
     // el panel Configurar está abierto. Se pregunta en dos sitios —al montar el

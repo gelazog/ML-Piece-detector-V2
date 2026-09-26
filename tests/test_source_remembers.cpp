@@ -20,6 +20,7 @@
 #include <gtest/gtest.h>
 
 #include <QApplication>
+#include <QPushButton>
 #include <QMetaObject>
 #include <QComboBox>
 #include <QDir>
@@ -102,4 +103,45 @@ TEST(SourceRemembers, ClosingAnImageLeavesTheSourceOnOpenImage) {
         << "tras cerrar una imagen la fuente queda en «" << after.toStdString()
         << "». Nadie lo eligió: es lo que pasa al quitar la entrada del fichero del "
            "desplegable, y lo siguiente que hace el operador es abrir otra imagen.";
+}
+
+// Y EL BOTÓN DICE LO QUE VA A HACER.
+//
+// Tras cerrar la imagen el desplegable se queda en «Abrir imagen…» (la prueba
+// de arriba), pero el botón de al lado se quedaba rotulado «Iniciar». Pulsarlo
+// abre un diálogo de fichero —es lo que hace con esa fuente elegida—, y «Iniciar»
+// no lo anuncia: el operador lo pulsaba esperando volver a lo de antes y se
+// encontraba con que no había imagen que medir.
+//
+// El rótulo lo ponía bien el desplegable al cambiarlo a mano; al cerrar, se
+// cambia con las señales bloqueadas y el rótulo se quedaba sin actualizar.
+TEST(SourceRemembers, AfterClosingAnImageTheButtonSaysItWillOpenAFile) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QImage photo(200, 150, QImage::Format_RGB888);
+    photo.fill(QColor(240, 240, 240));
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("pieza.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    ui::MainWindow window;
+    window.resize(900, 600);
+    window.show();
+    auto* combo = sourceCombo(window);
+    ASSERT_NE(combo, nullptr);
+    ASSERT_TRUE(waitForSources(combo));
+    auto* start = window.findChild<QPushButton*>(QStringLiteral("startStopButton"));
+    ASSERT_NE(start, nullptr) << "el botón de arrancar no tiene nombre";
+
+    ASSERT_TRUE(window.startFileSourceAtPath(camera::SourceKind::Image, path));
+    QApplication::processEvents(QEventLoop::AllEvents, 50);
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onStartStopClicked"));
+    QApplication::processEvents(QEventLoop::AllEvents, 50);
+
+    std::printf("  [fuente] tras cerrar: desplegable «%s», botón «%s»\n",
+                combo->currentText().toStdString().c_str(),
+                start->text().toStdString().c_str());
+    EXPECT_EQ(start->text(), QStringLiteral("Abrir…"))
+        << "con «" << combo->currentText().toStdString() << "» elegido, el botón dice «"
+        << start->text().toStdString()
+        << "», y lo que va a hacer es abrir un diálogo de fichero";
 }

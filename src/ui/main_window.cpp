@@ -471,6 +471,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     cameraCombo_->setSizeAdjustPolicy(QComboBox::AdjustToContentsOnFirstShow);
     cameraLayout->addWidget(cameraCombo_);
     startStopButton_ = new QPushButton(tr("Iniciar"), central);
+    startStopButton_->setObjectName(QStringLiteral("startStopButton"));
     // El botón MÁS pulsado de la ventana y no decía nada. Su rótulo además
     // cambia solo —«Iniciar», «Detener», «Abrir…»— según la fuente elegida, así
     // que leerlo no basta para saber qué va a pasar.
@@ -503,10 +504,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             onStartStopClicked();  // detiene; la nueva arranca al terminar
             return;
         }
-        const QVariant choice = cameraCombo_->currentData();
-        const bool opensAFile = choice.isValid() && (choice.toInt() == kSourceOpenImage ||
-                                                     choice.toInt() == kSourceOpenVideo);
-        startStopButton_->setText(opensAFile ? tr("Abrir…") : tr("Iniciar"));
+        updateStartButtonText();
     });
 
     // Congelar. Va junto al de arrancar porque es la misma decisión —«qué estoy
@@ -3923,6 +3921,19 @@ void MainWindow::onStartStopClicked() {
     }
 }
 
+// El botón de arrancar dice lo que va a hacer: con «Abrir imagen…» o «Abrir
+// vídeo…» elegido, lo siguiente es un diálogo de fichero, y «Iniciar» no lo
+// anuncia. Un solo sitio para decidirlo, porque había dos y uno se olvidaba.
+void MainWindow::updateStartButtonText() {
+    if (streaming_) {
+        return;  // en marcha dice «Detener», y eso lo pone quien arranca
+    }
+    const QVariant choice = cameraCombo_->currentData();
+    const bool opensAFile = choice.isValid() && (choice.toInt() == kSourceOpenImage ||
+                                                 choice.toInt() == kSourceOpenVideo);
+    startStopButton_->setText(opensAFile ? tr("Abrir…") : tr("Iniciar"));
+}
+
 QString MainWindow::currentSourceLabel() const {
     switch (sourceKind_) {
         case camera::SourceKind::Camera: return tr("Frame actual de la cámara");
@@ -5405,7 +5416,15 @@ void MainWindow::onStreamStopped() {
     }
     autoInspectButton_->setChecked(false);
     stopLiveCapture();
-    startStopButton_->setText(tr("Iniciar"));
+    // EL ROTULO SIGUE AL DESPLEGABLE, TAMBIÉN AQUÍ.
+    //
+    // Aquí ponía «Iniciar» a secas. Pero justo arriba el desplegable se deja en
+    // «Abrir imagen…» —con las señales bloqueadas, así que su propio manejador
+    // no llega a cambiar el rótulo—, y el botón decía «Iniciar» sobre una
+    // acción que abre un diálogo de fichero. Queja del taller: cerrar la
+    // imagen, darle a «Iniciar» esperando volver a lo de antes, y encontrarse
+    // con que no hay imagen que medir.
+    updateStartButtonText();
     // Siempre habilitado: aunque no haya ninguna cámara, se puede abrir una
     // imagen o un vídeo.
     startStopButton_->setEnabled(true);
