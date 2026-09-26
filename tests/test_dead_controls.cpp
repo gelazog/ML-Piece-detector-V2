@@ -49,6 +49,9 @@ namespace {
 // parecerse a otro.
 bool worksWithNothingLoaded(const QString& text) {
     static const QStringList kFine = {
+        // Abrir un fichero es justo lo que se hace con nada cargado. «Abrir
+        // reciente» no entra: con la lista vacía está apagado.
+        QStringLiteral("Abrir imagen o vídeo…"),
         // Poner a punto la máquina: nada de esto necesita una pieza delante.
         QStringLiteral("Configurar…"),
         QStringLiteral("Buscar cámaras de nuevo"),

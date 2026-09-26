@@ -3,6 +3,7 @@
 #include <QElapsedTimer>
 #include <QFutureWatcher>
 #include <QMainWindow>
+#include <QStringList>
 #include <QTimer>
 
 #include <cstdint>
@@ -44,6 +45,7 @@ class QAbstractButton;
 class QDockWidget;
 class QLabel;
 class QListWidget;
+class QMenu;
 class QProgressDialog;
 class QPushButton;
 class QSlider;
@@ -84,6 +86,15 @@ public:
     // acababa contando una sombra como segunda pieza.
     void declareExpectedPieces(int expected);
 
+    // Abrir un fichero decidiendo por su extensión si es imagen o vídeo. Es lo
+    // que hay detrás de «Abrir imagen o vídeo…», de soltar un fichero sobre la
+    // ventana y de la lista de recientes. Con otra fuente en marcha, la para y
+    // abre el fichero cuando ha terminado de pararse.
+    //
+    // Devuelve false si no se va a abrir —formato no admitido o fichero que ya
+    // no existe—, y entonces lo ha dicho en la barra de estado.
+    bool openFile(const QString& path);
+
 public:
     // Los servicios pueden venir vacíos: la app funciona sin persistencia
     // si la BD no pudo abrirse (error ya loggeado por quien la abrió).
@@ -114,6 +125,7 @@ private slots:
     void onUndo();
     void onRedo();
     void onShowShortcuts();
+    void onOpenFileClicked();  // «Abrir imagen o vídeo…» (Ctrl+O)
     void onAnchorButtonToggled(bool enabled);
     void onAnchorPicked(const cv::Point2f& imagePoint);
     void onPieceSelectionChanged(int index);
@@ -177,6 +189,9 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
     void moveEvent(QMoveEvent* event) override;
     void changeEvent(QEvent* event) override;  // maximizar/restaurar
+    // Soltar un fichero sobre la ventana lo abre, como en cualquier programa.
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
 
 private:
     void setControlsEnabled(bool enabled);
@@ -277,6 +292,14 @@ private:
     // diálogo de fichero, que no es un error y no debe dejar la ventana a
     // medio arrancar.
     bool startFileSource(pci::camera::SourceKind kind);
+    // El diálogo de abrir, empezando en la carpeta de la última fuente y
+    // recordándola. Vacío si se cancela.
+    QString askForSourceFile(const QString& title, const QString& filter);
+    // Recientes: se apuntan al abrir cualquier fichero y se guardan en los
+    // ajustes, una ruta por línea.
+    void rememberRecentFile(const QString& path);
+    void storeRecentFiles();
+    void rebuildRecentMenu();
     // Congelar el frame actual y trabajar sobre él, o soltarlo y volver al
     // vídeo. La cámara NO se cierra al congelar: se deja de escuchar y se
     // vuelve a escuchar, para que volver cueste cero y no haya que resondear
@@ -501,6 +524,11 @@ private:
     // antes de que la anterior suelte la cámara es la forma más rápida de
     // quedarse sin ninguna.
     std::optional<int> pendingSourceChoice_;
+    // Lo mismo para un fichero concreto (menú, recientes, soltar): se abre en
+    // `onStreamStopped`, cuando la fuente anterior ya ha soltado.
+    QString pendingOpenPath_;
+    QStringList recentFiles_;
+    QMenu* recentMenu_ = nullptr;
     QLabel* calibLabel_ = nullptr;  // estado de la escala en la barra inferior
     // Fila 2: pieza y flujo.
     QComboBox* pieceCombo_ = nullptr;

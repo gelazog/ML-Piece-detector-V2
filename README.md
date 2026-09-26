@@ -47,6 +47,11 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    - **Abrir imagen…** — una foto de la pieza,
    - **Abrir vídeo…** — un `.mp4`/`.avi`, que se reproduce en bucle.
 
+   Más rápido, como en cualquier programa: **Ctrl+O** (*Archivo ▸ Abrir imagen
+   o vídeo…*), **arrastrar el fichero** sobre la ventana, o *Archivo ▸ Abrir
+   reciente*, con los cinco últimos. Imagen o vídeo se decide por la extensión;
+   si sueltas otra cosa, la barra de estado te dice qué formatos valen.
+
    Con una imagen o un vídeo tienes **exactamente lo mismo** que con la cámara:
    detección de contorno, fixture, zona de trabajo, herramientas de medición,
    medición automática, recuento de piezas e inspección. Sirve para preparar una
@@ -1186,9 +1191,9 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    ratón, que es lo que el alto fijo protegía.
 
    **Los menús están ordenados por lo que contestan**, no por dónde vive el
-   código: **Archivo** (exportar, importar, restablecer), **Fuente** (cámaras y
-   *Configurar…*), **Medida** (calibrar la escala, marcador ArUco, unidad, medir
-   la pieza y su modo), **Pieza** (registrar, gestionar, plantillas),
+   código: **Archivo** (abrir una imagen o un vídeo, recientes), **Configurar**
+   (*Configurar…*, cámaras, exportar, importar, restablecer y las
+   calibraciones), **Medida** (unidad, medir la pieza y su modo), **Pieza** (registrar, gestionar, plantillas),
    **Inspección** (inspeccionar, auto-inspección, editor, historial), **Ver**
    (capas: contorno, tablero, regla) y **Ayuda**.
 
@@ -1203,7 +1208,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    viene a desenredar el umbral no quiere perder la calibración de la máquina.
    El umbral vuelve a **automático**, no a un número: son dos cosas distintas.
 
-   **Restablecer de fábrica** (menú **Archivo** ▸ *Restablecer configuración de
+   **Restablecer de fábrica** (menú **Configurar** ▸ *Restablecer configuración de
    fábrica…*): devuelve la máquina al estado de recién instalada. Te dice antes
    **qué se lleva** —calibración, ajustes y perfiles de detección, zona de
    trabajo, preferencias, atajos, controles de cámara, capas de la vista y

@@ -4966,6 +4966,21 @@ teclado — a los menús se va justo cuando no se reconoce el icono. Ahora todas
 tienen su entrada, y la de auto-inspección es un **espejo en los dos sentidos**
 del botón: si dijeran cosas distintas, el operador no sabría a cuál creer.
 
+#### Abrir un fichero: Ctrl+O, arrastrar y recientes
+
+Abrir una imagen solo se podía desde el desplegable de fuente —elegir «Abrir
+imagen…» y pulsar el botón—, sin Ctrl+O, sin menú y sin soltar el fichero sobre
+la ventana. Ahora el menú **Archivo** tiene «Abrir imagen o vídeo…» (Ctrl+O, un
+atajo más de la guía, así que se puede cambiar) y «Abrir reciente» con los cinco
+últimos, guardados en el ajuste `recent_files`, una ruta por línea. Las tres
+puertas pasan por `MainWindow::openFile`, que decide imagen o vídeo por la
+extensión (`ui/source_files`, una sola lista también para los filtros del
+diálogo) y acaba en `startFileSourceAtPath`, igual que el desplegable. Con otra
+fuente en marcha la para y abre el fichero en `onStreamStopped`, como ya se hacía
+al cambiar de fuente. Soltar un formato que no vale lo dice en la barra de
+estado; un reciente que ya no existe se quita al pedirlo.
+`test_open_file.cpp` lo comprueba.
+
 #### El conmutador que contestaba con un modal
 
 Lo destapó el banco, y de la peor manera: el test que iba a comprobar ese espejo

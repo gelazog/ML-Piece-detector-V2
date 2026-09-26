@@ -67,6 +67,8 @@ TEST(MenusShowShortcuts, TheEntriesThatHaveAKeyShowIt) {
         // área y el perímetro que ya existía. Que alguien pida algo que ya está
         // es la mejor prueba de que no se encuentra.
         QStringLiteral("Medir pieza"),
+        // Ctrl+O, la de cualquier programa.
+        QStringLiteral("Abrir imagen o vídeo…"),
     };
 
     int found = 0;

@@ -10,6 +10,12 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCloseEvent>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <QDir>
+#include <QFileInfo>
+#include <QUrl>
 #include <QDockWidget>
 #include <QFileDialog>
 #include <QFrame>
@@ -68,6 +74,7 @@
 #include "ui/piece_manager_dialog.h"
 #include "ui/piece_mosaic.h"
 #include "ui/setup_guide.h"
+#include "ui/source_files.h"
 #include "ui/measurement_mode_dialog.h"
 #include "ui/preferences_page.h"
 #include "ui/registration_wizard.h"
@@ -115,6 +122,8 @@ constexpr int kSourceOpenVideo = -2;
 // registrar— dependen de con qué imagen se está trabajando.
 constexpr int kSourceOpenedFile = -3;
 const char* const kSettingLastSourceDir = "last_source_dir";
+// Los ficheros abiertos hace poco, una ruta por línea (los 5 últimos).
+const char* const kSettingRecentFiles = "recent_files";
 const char* const kSettingFreeZone = "det_roi_poly";
 constexpr int kCaptureTarget = 30;
 constexpr int kCaptureMinimum = 5;
@@ -1702,6 +1711,16 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // Construir el menú primero obligaba a que la entrada se creara sola, y por
     // eso ninguna de las 58 enseñaba nada. `buildShortcuts` no depende de nada
     // de lo que hay debajo: solo crea acciones y lee las teclas guardadas.
+    // Los recientes, antes del menú que los enseña.
+    if (repos_.settings != nullptr) {
+        if (const auto saved = repos_.settings->getString(kSettingRecentFiles, "");
+            saved.isOk()) {
+            recentFiles_ = decodeRecentFiles(QString::fromStdString(saved.value()));
+        }
+    }
+    // Soltar un fichero sobre la ventana lo abre. Es lo primero que se prueba
+    // con un programa que abre imágenes, y no hacer nada parece un cuelgue.
+    setAcceptDrops(true);
     buildShortcuts();
     buildMenuBar();  // crea las acciones de menú (incluidas unidad y contorno)
     // El menú se construye DESPUÉS de la primera actualización de estado, así
@@ -1988,6 +2007,31 @@ void MainWindow::explainMenus() {
 }
 
 void MainWindow::buildMenuBar() {
+    // --- Archivo ---
+    //
+    // Vuelve, y esta vez con ficheros. Abrir una imagen o un vídeo solo se podía
+    // desde el desplegable de fuente —elegir «Abrir imagen…» y luego pulsar el
+    // botón—, sin Ctrl+O ni lista de recientes. Todo el mundo lo busca aquí, así
+    // que aquí está, delante de todo. Por debajo es el mismo camino que el
+    // desplegable: `startFileSourceAtPath`.
+    auto* fileMenu = menuBar()->addMenu(tr("&Archivo"));
+    QAction* openAction = shortcutAction(QStringLiteral("open_file"),
+                                         tr("Abrir imagen o vídeo…"));
+    if (openAction != nullptr) {
+        fileMenu->addAction(openAction);
+    } else {
+        openAction = fileMenu->addAction(tr("Abrir imagen o vídeo…"), this,
+                                         &MainWindow::onOpenFileClicked);
+    }
+    openAction->setObjectName(QStringLiteral("openFileAction"));
+    openAction->setToolTip(
+        tr("Carga una foto o un vídeo del disco. También puedes arrastrarlo a la ventana."));
+    recentMenu_ = fileMenu->addMenu(tr("Abrir reciente"));
+    recentMenu_->setObjectName(QStringLiteral("recentFilesMenu"));
+    recentMenu_->menuAction()->setToolTip(
+        tr("Los últimos ficheros abiertos, el más nuevo arriba."));
+    rebuildRecentMenu();
+
     // --- Configurar ---
     //
     // Dos quejas de uso que apuntan al mismo sitio: «el menú de configurar/escala
@@ -3374,6 +3418,10 @@ void MainWindow::buildShortcuts() {
                 QKeySequence(Qt::Key_M), &MainWindow::onMeasurePieceClicked);
     addShortcut("shortcuts_help", tr("Guía de atajos"), QKeySequence(Qt::Key_F1),
                 &MainWindow::onShowShortcuts);
+    // Ctrl+O, la de cualquier programa. Sin ella, abrir un fichero pedía elegir
+    // «Abrir imagen…» en el desplegable y luego pulsar el botón de al lado.
+    addShortcut("open_file", tr("Abrir imagen o vídeo…"), QKeySequence::Open,
+                &MainWindow::onOpenFileClicked);
 
     // Vista (Z3). ZoomIn cubre Ctrl++ y Ctrl+= (la misma tecla sin Shift).
     addShortcut("zoom_in", tr("Acercar la vista"), QKeySequence::ZoomIn,
@@ -4083,6 +4131,16 @@ void MainWindow::toggleFrozenPhoto() {
 
 bool MainWindow::startFileSource(camera::SourceKind kind) {
     const bool wantsImage = kind == camera::SourceKind::Image;
+    const QString path = askForSourceFile(wantsImage ? tr("Abrir imagen") : tr("Abrir vídeo"),
+                                          wantsImage ? imageFileFilter() : videoFileFilter());
+    if (path.isEmpty()) {
+        // Cancelar no es un error: la ventana se queda exactamente como estaba.
+        return false;
+    }
+    return startFileSourceAtPath(kind, path);
+}
+
+QString MainWindow::askForSourceFile(const QString& title, const QString& filter) {
     // Se vuelve a la última carpeta usada. Quien está revisando casos abre diez
     // ficheros de la misma carpeta, y volver a navegar cada vez es una fricción
     // tonta que se paga en cada abrir.
@@ -4093,13 +4151,9 @@ bool MainWindow::startFileSource(camera::SourceKind kind) {
             startDir = QString::fromStdString(saved.value());
         }
     }
-    const QString path = QFileDialog::getOpenFileName(
-        this, wantsImage ? tr("Abrir imagen") : tr("Abrir vídeo"), startDir,
-        wantsImage ? tr("Imágenes (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;Todos (*)")
-                   : tr("Vídeos (*.mp4 *.avi *.mkv *.mov *.wmv);;Todos (*)"));
+    const QString path = QFileDialog::getOpenFileName(this, title, startDir, filter);
     if (path.isEmpty()) {
-        // Cancelar no es un error: la ventana se queda exactamente como estaba.
-        return false;
+        return path;
     }
     if (repos_.settings != nullptr) {
         if (auto saved = repos_.settings->setString(kSettingLastSourceDir,
@@ -4109,7 +4163,149 @@ bool MainWindow::startFileSource(camera::SourceKind kind) {
                              saved.error().message);
         }
     }
-    return startFileSourceAtPath(kind, path);
+    return path;
+}
+
+void MainWindow::onOpenFileClicked() {
+    const QString path = askForSourceFile(tr("Abrir imagen o vídeo"), imageOrVideoFileFilter());
+    if (!path.isEmpty()) {
+        openFile(path);
+    }
+}
+
+// La puerta común del menú, de los recientes y de soltar un fichero. Decide
+// imagen o vídeo por la extensión y entra por `startFileSourceAtPath`, igual
+// que el desplegable: un segundo camino para montar la fuente sería otro sitio
+// donde olvidarse de algo.
+bool MainWindow::openFile(const QString& path) {
+    const QString name = QFileInfo(path).fileName();
+    const auto kind = sourceKindForFile(path);
+    if (!kind.has_value()) {
+        statusBar()->showMessage(
+            tr("«%1» no se puede abrir: usa una imagen (%2) o un vídeo (%3).")
+                .arg(name, describeExtensions(imageExtensions()),
+                     describeExtensions(videoExtensions())));
+        return false;
+    }
+    if (!QFileInfo(path).isFile()) {
+        // Pasa con los recientes: el fichero se movió o se borró. Se quita de la
+        // lista para que no vuelva a ofrecerse.
+        recentFiles_ = withoutRecentFile(recentFiles_, path);
+        storeRecentFiles();
+        rebuildRecentMenu();
+        statusBar()->showMessage(
+            tr("«%1» ya no está en su carpeta. Lo he quitado de los recientes.").arg(name));
+        return false;
+    }
+    if (sourceKind_ == camera::SourceKind::Photo) {
+        // Con una foto congelada la cámara sigue abierta por debajo: primero se
+        // vuelve al vídeo, y así lo que se para a continuación es la cámara.
+        toggleFrozenPhoto();
+    }
+    if (streaming_) {
+        // Parar es asíncrono con la cámara: el fichero se abre en
+        // `onStreamStopped`, cuando la fuente anterior ya ha soltado.
+        pendingOpenPath_ = path;
+        pendingSourceChoice_.reset();
+        statusBar()->showMessage(tr("Cambiando de fuente…"));
+        onStartStopClicked();
+        return true;
+    }
+    return startFileSourceAtPath(*kind, path);
+}
+
+void MainWindow::rememberRecentFile(const QString& path) {
+    recentFiles_ = withRecentFile(recentFiles_, path);
+    storeRecentFiles();
+    rebuildRecentMenu();
+}
+
+void MainWindow::storeRecentFiles() {
+    if (repos_.settings == nullptr) {
+        return;  // sin base, la lista dura lo que la sesión
+    }
+    if (auto saved = repos_.settings->setString(
+            kSettingRecentFiles, encodeRecentFiles(recentFiles_).toStdString());
+        !saved.isOk()) {
+        core::logWarning("No se pudo guardar la lista de recientes: " + saved.error().message);
+    }
+}
+
+void MainWindow::rebuildRecentMenu() {
+    if (recentMenu_ == nullptr) {
+        return;
+    }
+    recentMenu_->clear();
+    recentMenu_->setToolTipsVisible(true);
+    int number = 0;
+    for (const auto& path : recentFiles_) {
+        ++number;
+        // «&1 pieza.png»: la cifra es el acelerador, y un «&» del nombre se
+        // dobla para que no se lo coma Qt.
+        QString name = QFileInfo(path).fileName();
+        name.replace(QLatin1Char('&'), QStringLiteral("&&"));
+        auto* action = recentMenu_->addAction(QStringLiteral("&%1 %2").arg(number).arg(name));
+        action->setToolTip(QDir::toNativeSeparators(path));
+        connect(action, &QAction::triggered, this, [this, path] { openFile(path); });
+    }
+    recentMenu_->addSeparator();
+    auto* clear = recentMenu_->addAction(tr("Vaciar la lista"));
+    clear->setObjectName(QStringLiteral("clearRecentFilesAction"));
+    clear->setToolTip(tr("Borra la lista. Los ficheros se quedan donde están."));
+    clear->setEnabled(!recentFiles_.isEmpty());
+    connect(clear, &QAction::triggered, this, [this] {
+        recentFiles_.clear();
+        storeRecentFiles();
+        rebuildRecentMenu();
+    });
+    recentMenu_->menuAction()->setEnabled(!recentFiles_.isEmpty());
+}
+
+// Se acepta cualquier fichero local al entrar, y se decide al soltar. Rechazar
+// aquí un formato que no vale deja el cursor de prohibido sin decir por qué;
+// al soltarlo, la barra de estado sí lo explica.
+void MainWindow::dragEnterEvent(QDragEnterEvent* event) {
+    const QMimeData* data = event->mimeData();
+    if (data != nullptr && data->hasUrls()) {
+        for (const auto& url : data->urls()) {
+            if (url.isLocalFile()) {
+                event->acceptProposedAction();
+                return;
+            }
+        }
+    }
+    QMainWindow::dragEnterEvent(event);
+}
+
+void MainWindow::dropEvent(QDropEvent* event) {
+    const QMimeData* data = event->mimeData();
+    if (data == nullptr || !data->hasUrls()) {
+        QMainWindow::dropEvent(event);
+        return;
+    }
+    // Uno solo: la ventana trabaja con una fuente cada vez. Si sueltan varios,
+    // se abre el primero que se pueda abrir; si ninguno vale, el primero, para
+    // que el mensaje diga cuál.
+    QString chosen;
+    for (const auto& url : data->urls()) {
+        if (!url.isLocalFile()) {
+            continue;
+        }
+        const QString path = url.toLocalFile();
+        if (chosen.isEmpty()) {
+            chosen = path;
+        }
+        if (sourceKindForFile(path).has_value()) {
+            chosen = path;
+            break;
+        }
+    }
+    if (chosen.isEmpty()) {
+        QMainWindow::dropEvent(event);
+        return;
+    }
+    event->acceptProposedAction();
+    openFile(chosen);
 }
 
 // Abrir un fichero CONCRETO, sin diálogo. Separado de `startFileSource` porque
@@ -4144,6 +4340,9 @@ bool MainWindow::startFileSourceAtPath(camera::SourceKind kind, const QString& p
     sourceKind_ = kind;
     lastSourcePath_ = path;
     streaming_ = true;
+    // Todo lo que se abre acaba aquí —desplegable, menú, recientes, soltar—,
+    // así que es el único sitio donde apuntarlo.
+    rememberRecentFile(path);
     // El disparo por paso de pieza empieza de cero con cada fuente: los
     // milisegundos del vídeo anterior no dicen nada de éste, y si se cerró con
     // una pieza dentro el disparo quedó desarmado — la primera pieza del vídeo
@@ -5589,6 +5788,13 @@ void MainWindow::onStreamStopped() {
             cameraCombo_->setCurrentIndex(index);
         }
         QTimer::singleShot(0, this, &MainWindow::onStartStopClicked);
+    }
+    // Y el fichero pedido por el menú, los recientes o al soltarlo. Diferido
+    // por lo mismo que lo de arriba.
+    if (!pendingOpenPath_.isEmpty()) {
+        const QString path = pendingOpenPath_;
+        pendingOpenPath_.clear();
+        QTimer::singleShot(0, this, [this, path] { openFile(path); });
     }
     updateBoardReadout();      // "sin pieza detectada" al cortar la transmisión
     updateStatusIndicators();  // cámara vuelve a rojo (S4)

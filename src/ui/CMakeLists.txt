@@ -24,6 +24,7 @@ add_library(pci_ui STATIC
   preferences_page.cpp
   registration_wizard.cpp
   shortcuts_dialog.cpp
+  source_files.cpp
   stats_bar_chart.cpp
   template_manager_dialog.cpp
   video_widget.cpp
