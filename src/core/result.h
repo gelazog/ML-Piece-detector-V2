@@ -34,6 +34,19 @@ public:
         return std::get<Error>(data_);
     }
 
+    // EL VALOR, O ESTE OTRO SI NO LO HAY.
+    //
+    // Existe por los ajustes. La ventana leía 65 de ellos con
+    // `settings->getInt("x", 0).value()`, y `value()` sobre un error solo tiene un
+    // `assert`: en release, `std::get` lanza `bad_variant_access` y el programa
+    // se cierra. Un «database is locked» —que puede pasar, porque el hilo de
+    // inspección escribe en la misma base— se convertía en un cierre al abrir
+    // la ventana. Para un ajuste, «no se pudo leer» significa «usa el de
+    // fábrica», que es justo el valor que ya se pasaba como segundo argumento.
+    [[nodiscard]] T valueOr(T fallback) const& {
+        return isOk() ? std::get<T>(data_) : std::move(fallback);
+    }
+
 private:
     explicit Result(T value) : data_(std::move(value)) {}
     explicit Result(Error error) : data_(std::move(error)) {}

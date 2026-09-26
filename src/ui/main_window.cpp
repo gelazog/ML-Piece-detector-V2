@@ -1496,15 +1496,15 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // Calibración de escala persistida.
     if (repos_.settings != nullptr) {
         calibration_.mmPerPixel =
-            repos_.settings->getDouble("calib_mm_per_px", 0.0).value();
+            repos_.settings->getDouble("calib_mm_per_px", 0.0).valueOr(0.0);
         calibration_.cameraDistanceMm =
-            repos_.settings->getDouble("calib_camera_dist_mm", 0.0).value();
+            repos_.settings->getDouble("calib_camera_dist_mm", 0.0).valueOr(0.0);
         calibration_.horizontalFovDeg =
-            repos_.settings->getDouble("calib_fov_deg", 60.0).value();
-        calibration_.calibratedWidth = repos_.settings->getInt("calib_width", 0).value();
-        calibration_.calibratedHeight = repos_.settings->getInt("calib_height", 0).value();
+            repos_.settings->getDouble("calib_fov_deg", 60.0).valueOr(60.0);
+        calibration_.calibratedWidth = repos_.settings->getInt("calib_width", 0).valueOr(0);
+        calibration_.calibratedHeight = repos_.settings->getInt("calib_height", 0).valueOr(0);
         calibratedCameraKey_ = QString::fromStdString(
-            repos_.settings->getString("calib_camera", std::string()).value());
+            repos_.settings->getString("calib_camera", std::string()).valueOr(std::string()));
     }
     updateCalibrationLabel();
     video_->setMmPerPixel(calibration_.mmPerPixel);
@@ -1512,28 +1512,28 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // Preferencias persistidas (O1): intervalo de auto-inspección y kSigma.
     if (repos_.settings != nullptr) {
         autoIntervalMs_ =
-            std::clamp(repos_.settings->getInt("pref_auto_interval_ms", 1000).value(),
+            std::clamp(repos_.settings->getInt("pref_auto_interval_ms", 1000).valueOr(1000),
                        200, 10000);
-        kSigma_ = std::clamp(repos_.settings->getDouble("pref_ksigma", 3.0).value(), 0.5, 6.0);
+        kSigma_ = std::clamp(repos_.settings->getDouble("pref_ksigma", 3.0).valueOr(3.0), 0.5, 6.0);
         // Disparo por paso de pieza (P2). De fábrica APAGADO: encenderlo cambia
         // cuándo se mide, y quien ya tenía la auto-inspección funcionando no
         // puede encontrarse con que mide en otros momentos por actualizar.
-        passTriggerOn_ = repos_.settings->getInt("pref_pass_trigger", 0).value() != 0;
+        passTriggerOn_ = repos_.settings->getInt("pref_pass_trigger", 0).valueOr(0) != 0;
         vision::PassTriggerOptions passOptions;
         passOptions.settleMs =
-            std::clamp(repos_.settings->getInt("pref_pass_settle_ms", 400).value(), 0, 10000);
+            std::clamp(repos_.settings->getInt("pref_pass_settle_ms", 400).valueOr(400), 0, 10000);
         passOptions.rearmMs =
-            std::clamp(repos_.settings->getInt("pref_pass_rearm_ms", 300).value(), 0, 10000);
+            std::clamp(repos_.settings->getInt("pref_pass_rearm_ms", 300).valueOr(300), 0, 10000);
         passTrigger_.setOptions(passOptions);
         // Pestaña del panel Configurar (C1). Sin acotar por arriba: el diálogo
         // ignora un índice que no exista, que es lo que pasará si una versión
         // futura tiene menos pestañas que la que guardó el número.
-        configureTab_ = std::max(0, repos_.settings->getInt("config_last_tab", 0).value());
-        measureStages_ = repos_.settings->getInt("measure_stages", 0).value() != 0;
+        configureTab_ = std::max(0, repos_.settings->getInt("config_last_tab", 0).valueOr(0));
+        measureStages_ = repos_.settings->getInt("measure_stages", 0).valueOr(0) != 0;
         pipelineConfig_.minAreaFraction = std::clamp(
-            repos_.settings->getDouble("det_min_area", 0.005).value(), 0.0001, 0.5);
+            repos_.settings->getDouble("det_min_area", 0.005).valueOr(0.005), 0.0001, 0.5);
         pipelineConfig_.maxAreaFraction = std::clamp(
-            repos_.settings->getDouble("det_max_area", 0.9).value(), 0.1, 1.0);
+            repos_.settings->getDouble("det_max_area", 0.9).valueOr(0.9), 0.1, 1.0);
         // Por defecto, IMAGEN ENTERA. Estuvo en «automática» y hubo que
         // revertirlo: el argumento para ponerla —«la automática no puede
         // cambiar ninguna respuesta»— era FALSO, y lo demostró usar la
@@ -1550,7 +1550,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         // un fallo. Esa frase ya estaba escrita en `effectiveWorkingZone`; lo
         // que faltaba era aplicármela al elegir el valor por defecto.
         zoneMode_ = vision::workingZoneModeFromKey(
-            repos_.settings->getString("work_zone_mode", "off").value().c_str());
+            repos_.settings->getString("work_zone_mode", "off").valueOr("off").c_str());
     }
     autoTimer_.setInterval(autoIntervalMs_);
     if (repos_.engine != nullptr) {
@@ -1560,18 +1560,18 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // Ajustes de detección persistidos (umbral, polaridad, kernels y zona).
     if (repos_.settings != nullptr) {
         auto& seg = pipelineConfig_.segmentation;
-        seg.manualThreshold = repos_.settings->getInt("det_threshold", -1).value();
+        seg.manualThreshold = repos_.settings->getInt("det_threshold", -1).valueOr(-1);
         seg.polarity = static_cast<vision::SegmentationPolarity>(
-            std::clamp(repos_.settings->getInt("det_polarity", 0).value(), 0, 2));
-        seg.blurKernel = repos_.settings->getInt("det_blur", 5).value();
-        seg.morphKernel = repos_.settings->getInt("det_morph", 5).value();
+            std::clamp(repos_.settings->getInt("det_polarity", 0).valueOr(0), 0, 2));
+        seg.blurKernel = repos_.settings->getInt("det_blur", 5).valueOr(5);
+        seg.morphKernel = repos_.settings->getInt("det_morph", 5).valueOr(5);
         // La separación de piezas que se tocan también se recuerda: es una
         // propiedad de CÓMO están colocadas las piezas en el puesto, no algo
         // que se decida cada vez.
-        seg.splitTouchingPieces = repos_.settings->getInt("det_split_touching", 0).value() != 0;
+        seg.splitTouchingPieces = repos_.settings->getInt("det_split_touching", 0).valueOr(0) != 0;
         // Se guarda el NÚMERO, no un sí/no: el día que el nivel de aflojado sea
         // ajustable, lo que ya está guardado sigue queriendo decir lo mismo.
-        seg.recoverHighlightsBy = repos_.settings->getInt("det_recover_glare", 0).value();
+        seg.recoverHighlightsBy = repos_.settings->getInt("det_recover_glare", 0).valueOr(0);
         // LA CLAVE DE COLOR DE FONDO ES UNA PROPIEDAD DEL PUESTO.
         //
         // El color de la mesa no cambia entre inspecciones, así que preguntarlo
@@ -1579,18 +1579,18 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         // el color por separado: quien lo tenga en «lo busca solo» y un día pase
         // a «lo digo yo» se encuentra el último color que eligió, no un blanco.
         seg.backgroundKey = static_cast<vision::SegmentationOptions::BackgroundKey>(
-            std::clamp(repos_.settings->getInt("det_background_key", 0).value(), 0, 2));
+            std::clamp(repos_.settings->getInt("det_background_key", 0).valueOr(0), 0, 2));
         seg.background = cv::Vec3b(
             static_cast<unsigned char>(
-                std::clamp(repos_.settings->getInt("det_background_b", 255).value(), 0, 255)),
+                std::clamp(repos_.settings->getInt("det_background_b", 255).valueOr(255), 0, 255)),
             static_cast<unsigned char>(
-                std::clamp(repos_.settings->getInt("det_background_g", 255).value(), 0, 255)),
+                std::clamp(repos_.settings->getInt("det_background_g", 255).valueOr(255), 0, 255)),
             static_cast<unsigned char>(
-                std::clamp(repos_.settings->getInt("det_background_r", 255).value(), 0, 255)));
-        pipelineConfig_.roi = cv::Rect(repos_.settings->getInt("det_roi_x", 0).value(),
-                                       repos_.settings->getInt("det_roi_y", 0).value(),
-                                       repos_.settings->getInt("det_roi_w", 0).value(),
-                                       repos_.settings->getInt("det_roi_h", 0).value());
+                std::clamp(repos_.settings->getInt("det_background_r", 255).valueOr(255), 0, 255)));
+        pipelineConfig_.roi = cv::Rect(repos_.settings->getInt("det_roi_x", 0).valueOr(0),
+                                       repos_.settings->getInt("det_roi_y", 0).valueOr(0),
+                                       repos_.settings->getInt("det_roi_w", 0).valueOr(0),
+                                       repos_.settings->getInt("det_roi_h", 0).valueOr(0));
         // Modo «fija» sin zona guardada es un estado imposible de alcanzar hoy,
         // pero sí de heredar de una versión anterior. Sin esto el programa diría
         // que trabaja en una zona y estaría mirando la imagen entera.
@@ -1604,20 +1604,20 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             zoneMode_ = vision::WorkingZoneMode::Off;
         }
         pipelineConfig_.roiPolygon = decodeZonePolygon(
-            repos_.settings->getString(kSettingFreeZone, std::string()).value());
+            repos_.settings->getString(kSettingFreeZone, std::string()).valueOr(std::string()));
         // Y lo mismo para la libre, por el mismo motivo: el modo guardado puede
         // apuntar a un dibujo que ya no está.
         if (zoneMode_ == vision::WorkingZoneMode::Free &&
             pipelineConfig_.roiPolygon.size() < 3) {
             zoneMode_ = vision::WorkingZoneMode::Off;
         }
-        pixelReferenceSize_ = QSize(repos_.settings->getInt("det_zone_ref_w", 0).value(),
-                                   repos_.settings->getInt("det_zone_ref_h", 0).value());
-        pipelineConfig_.autoOrient = repos_.settings->getInt("track_rotation", 0).value() != 0;
+        pixelReferenceSize_ = QSize(repos_.settings->getInt("det_zone_ref_w", 0).valueOr(0),
+                                   repos_.settings->getInt("det_zone_ref_h", 0).valueOr(0));
+        pipelineConfig_.autoOrient = repos_.settings->getInt("track_rotation", 0).valueOr(0) != 0;
         pipelineConfig_.subpixelEdges =
-            repos_.settings->getInt("det_subpixel", 0).value() != 0;
-        arucoLiveScale_ = repos_.settings->getInt("aruco_live", 0).value() != 0;
-        markerSizeMm_ = repos_.settings->getDouble("aruco_marker_mm", 30.0).value();
+            repos_.settings->getInt("det_subpixel", 0).valueOr(0) != 0;
+        arucoLiveScale_ = repos_.settings->getInt("aruco_live", 0).valueOr(0) != 0;
+        markerSizeMm_ = repos_.settings->getDouble("aruco_marker_mm", 30.0).valueOr(30.0);
     }
     updateRoiButton();
 
@@ -1631,26 +1631,26 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
                 savedCameraControls_.push_back({property, stored.value()});
             }
         }
-        setupGuided_ = repos_.settings->getInt("setup_guided", 0).value() != 0;
-        savedResolution_.width = repos_.settings->getInt("cam_width", 0).value();
-        savedResolution_.height = repos_.settings->getInt("cam_height", 0).value();
+        setupGuided_ = repos_.settings->getInt("setup_guided", 0).valueOr(0) != 0;
+        savedResolution_.width = repos_.settings->getInt("cam_width", 0).valueOr(0);
+        savedResolution_.height = repos_.settings->getInt("cam_height", 0).valueOr(0);
     }
 
     // Tablero de referencia (T2): visibilidad y origen elegidos por el operador.
     if (repos_.settings != nullptr) {
-        boardVisible_ = repos_.settings->getInt("board_visible", 0).value() != 0;
+        boardVisible_ = repos_.settings->getInt("board_visible", 0).valueOr(0) != 0;
         boardConfig_.origin = vision::originFromKey(
-            repos_.settings->getString("board_origin", std::string("bounds")).value());
-        boardConfig_.followPieceAngle = repos_.settings->getInt("board_follow", 0).value() != 0;
+            repos_.settings->getString("board_origin", std::string("bounds")).valueOr(std::string("bounds")));
+        boardConfig_.followPieceAngle = repos_.settings->getInt("board_follow", 0).valueOr(0) != 0;
         boardConfig_.fixedPoint = {
-            static_cast<float>(repos_.settings->getDouble("board_fixed_x", 0.0).value()),
-            static_cast<float>(repos_.settings->getDouble("board_fixed_y", 0.0).value())};
+            static_cast<float>(repos_.settings->getDouble("board_fixed_x", 0.0).valueOr(0.0)),
+            static_cast<float>(repos_.settings->getDouble("board_fixed_y", 0.0).valueOr(0.0))};
         boardConfig_.manualOffset = {
-            static_cast<float>(repos_.settings->getDouble("board_offset_x", 0.0).value()),
-            static_cast<float>(repos_.settings->getDouble("board_offset_y", 0.0).value())};
+            static_cast<float>(repos_.settings->getDouble("board_offset_x", 0.0).valueOr(0.0)),
+            static_cast<float>(repos_.settings->getDouble("board_offset_y", 0.0).valueOr(0.0))};
     }
     if (repos_.settings != nullptr) {
-        rulerVisible_ = repos_.settings->getInt("ruler_visible", 0).value() != 0;
+        rulerVisible_ = repos_.settings->getInt("ruler_visible", 0).valueOr(0) != 0;
         // El realce se recuerda: quien inspecciona piezas negras las inspecciona
         // todos los días, y volver a encenderlo cada mañana es un impuesto.
         // El modelo de la lente que quedara guardado. Se carga SIEMPRE; que se
@@ -1660,14 +1660,14 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
                 lensCorrector_ = vision::LensCorrector(*model);
             }
         }
-        const bool lensOn = repos_.settings->getInt("lens_enabled", 0).value() != 0;
+        const bool lensOn = repos_.settings->getInt("lens_enabled", 0).valueOr(0) != 0;
         lensCorrectionOn_ = lensOn && lensCorrector_.isReady();
         if (lensCorrectionAction_ != nullptr) {
             lensCorrectionAction_->setEnabled(lensCorrector_.isReady());
             const QSignalBlocker block(lensCorrectionAction_);
             lensCorrectionAction_->setChecked(lensCorrectionOn_);
         }
-        const bool enhance = repos_.settings->getInt("view_enhance", 0).value() != 0;
+        const bool enhance = repos_.settings->getInt("view_enhance", 0).valueOr(0) != 0;
         if (viewEnhanceAction_ != nullptr) {
             viewEnhanceAction_->setChecked(enhance);
         }
@@ -1707,7 +1707,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         // lo mismo mientras las dos listas coincidieran, y basta con insertar
         // una unidad en medio para que dejen de coincidir: quien tuviera
         // «píxeles» guardado se encontraría midiendo en otra cosa.
-        const int unit = repos_.settings->getInt("length_unit", 0).value();
+        const int unit = repos_.settings->getInt("length_unit", 0).valueOr(0);
         for (auto* action : unitGroup_->actions()) {
             if (action->data().toInt() == unit) {
                 action->setChecked(true);
@@ -1773,9 +1773,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     std::int64_t lastPiece = -1;
     QString lastTemplate;
     if (repos_.settings != nullptr) {
-        lastPiece = repos_.settings->getInt("last_piece_id", -1).value();
+        lastPiece = repos_.settings->getInt("last_piece_id", -1).valueOr(-1);
         lastTemplate = QString::fromStdString(
-            repos_.settings->getString("last_template", std::string()).value());
+            repos_.settings->getString("last_template", std::string()).valueOr(std::string()));
     }
     // Si la pieza se borró desde otra sesión, `loadPieceList` cae sola en la
     // primera: recordar una elección no puede impedir arrancar.
@@ -1788,9 +1788,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // pone a leer un fichero hace algo que nadie le ha pedido.
     if (repos_.settings != nullptr) {
         const auto kind = camera::sourceKindFromKey(
-            repos_.settings->getString("last_source_kind", "camera").value().c_str());
+            repos_.settings->getString("last_source_kind", "camera").valueOr("camera").c_str());
         lastSourcePath_ = QString::fromStdString(
-            repos_.settings->getString("last_source_file", std::string()).value());
+            repos_.settings->getString("last_source_file", std::string()).valueOr(std::string()));
         const int wanted = kind == camera::SourceKind::Image  ? kSourceOpenImage
                            : kind == camera::SourceKind::Video ? kSourceOpenVideo
                                                                : 0;
@@ -2171,7 +2171,7 @@ void MainWindow::buildMenuBar() {
     // SIEMPRE. Recuperar un ajuste no puede depender de una señal que solo
     // salta cuando algo cambia.
     const bool contourVisible = repos_.settings == nullptr ||
-                                repos_.settings->getInt("show_contour", 1).value() != 0;
+                                repos_.settings->getInt("show_contour", 1).valueOr(1) != 0;
     showContourAction_->setChecked(contourVisible);
     video_->setLiveContourVisible(contourVisible);
     showContourAction_->setToolTip(
@@ -3713,11 +3713,11 @@ void MainWindow::onCalibrateClicked() {
     // que lo hacía aún más difícil de entender.
     ScaleEntry last;
     if (repos_.settings != nullptr) {
-        const double saved = repos_.settings->getDouble("scale_known_length", 0.0).value();
+        const double saved = repos_.settings->getDouble("scale_known_length", 0.0).valueOr(0.0);
         if (saved > 0.0) {
             last.knownLength = saved;
         }
-        last.unitIndex = repos_.settings->getInt("scale_known_unit", 0).value();
+        last.unitIndex = repos_.settings->getInt("scale_known_unit", 0).valueOr(0);
     }
     CalibrationDialog dialog(snapshot, calibration_, last, currentUnit(), this);
     keepDialogSize(dialog, repos_.settings, "calibration", 1000, 640);
@@ -4468,7 +4468,7 @@ void MainWindow::onSaveCapturesClicked() {
     QString startDir;
     if (repos_.settings != nullptr) {
         startDir = QString::fromStdString(
-            repos_.settings->getString("last_capture_dir", std::string()).value());
+            repos_.settings->getString("last_capture_dir", std::string()).valueOr(std::string()));
     }
     const QString folder = QFileDialog::getExistingDirectory(
         this, tr("Guardar las capturas en…"), startDir);
@@ -6332,14 +6332,14 @@ vision::BoardConfig MainWindow::defaultBoardConfig() const {
         return config;
     }
     config.origin = vision::originFromKey(
-        repos_.settings->getString("board_origin", std::string("bounds")).value());
-    config.followPieceAngle = repos_.settings->getInt("board_follow", 0).value() != 0;
+        repos_.settings->getString("board_origin", std::string("bounds")).valueOr(std::string("bounds")));
+    config.followPieceAngle = repos_.settings->getInt("board_follow", 0).valueOr(0) != 0;
     config.fixedPoint = {
-        static_cast<float>(repos_.settings->getDouble("board_fixed_x", 0.0).value()),
-        static_cast<float>(repos_.settings->getDouble("board_fixed_y", 0.0).value())};
+        static_cast<float>(repos_.settings->getDouble("board_fixed_x", 0.0).valueOr(0.0)),
+        static_cast<float>(repos_.settings->getDouble("board_fixed_y", 0.0).valueOr(0.0))};
     config.manualOffset = {
-        static_cast<float>(repos_.settings->getDouble("board_offset_x", 0.0).value()),
-        static_cast<float>(repos_.settings->getDouble("board_offset_y", 0.0).value())};
+        static_cast<float>(repos_.settings->getDouble("board_offset_x", 0.0).valueOr(0.0)),
+        static_cast<float>(repos_.settings->getDouble("board_offset_y", 0.0).valueOr(0.0))};
     return config;
 }
 

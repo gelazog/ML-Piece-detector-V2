@@ -19,6 +19,21 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Sesenta y cinco ajustes que cerraban el programa si la base estaba ocupada
+
+La ventana leía sus ajustes con `settings->getInt("x", 0).value()`: 65 veces. El
+segundo argumento es el valor de fábrica si la clave no existe, pero si la
+LECTURA falla —un «database is locked»— lo que vuelve es un error, y `value()`
+sobre un error solo tenía un `assert`. En release no hay `assert`: `std::get`
+lanza `bad_variant_access` y el programa se cierra.
+
+Podía pasar: el hilo de inspección escribe en la misma base mientras la ventana
+lee. Ahora `Result` tiene `valueOr(reserva)` y las 65 lecturas lo usan con el
+mismo valor de fábrica que ya se pasaba. Para un ajuste, «no se pudo leer»
+significa «usa el de fábrica».
+
+---
+
 ### Las opciones del motor se reescribían con una inspección leyéndolas
 
 `InspectionEngine` pedía en su cabecera no cambiar sus ajustes con una
