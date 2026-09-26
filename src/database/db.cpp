@@ -52,6 +52,7 @@ Db::~Db() {
 }
 
 core::Result<void> Db::exec(const std::string& sql) {
+    const std::lock_guard lock(mutex_);
     char* message = nullptr;
     if (sqlite3_exec(db_, sql.c_str(), nullptr, nullptr, &message) != SQLITE_OK) {
         std::string text = message != nullptr ? message : errorOf(db_);
@@ -62,16 +63,63 @@ core::Result<void> Db::exec(const std::string& sql) {
 }
 
 core::Result<Statement> Db::prepare(const std::string& sql) {
+    std::unique_lock lock(mutex_);
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
         return core::Result<Statement>::err("Error preparando SQL: " + errorOf(db_));
     }
-    return core::Result<Statement>::ok(Statement(db_, stmt));
+    return core::Result<Statement>::ok(Statement(db_, stmt, std::move(lock)));
+}
+
+core::Result<Db::Transaction> Db::begin() {
+    std::unique_lock lock(mutex_);
+    if (auto started = exec("BEGIN;"); !started.isOk()) {
+        return core::Result<Transaction>::err(started.error().message);
+    }
+    return core::Result<Transaction>::ok(Transaction(*this, std::move(lock)));
+}
+
+Db::Transaction::Transaction(Transaction&& other) noexcept
+    : db_(other.db_), lock_(std::move(other.lock_)), active_(std::exchange(other.active_, false)) {}
+
+Db::Transaction::~Transaction() {
+    rollback();
+}
+
+core::Result<void> Db::Transaction::commit() {
+    if (!active_) {
+        return core::Result<void>::err("La transacción ya estaba cerrada");
+    }
+    auto result = db_->exec("COMMIT;");
+    if (!result.isOk()) {
+        // Un COMMIT fallido deja la transacción abierta: hay que deshacerla
+        // antes de soltar el cerrojo, o el siguiente hilo heredaría el BEGIN.
+        rollback();
+        return result;
+    }
+    active_ = false;
+    if (lock_.owns_lock()) {
+        lock_.unlock();
+    }
+    return result;
+}
+
+void Db::Transaction::rollback() {
+    if (active_) {
+        active_ = false;
+        if (auto undone = db_->exec("ROLLBACK;"); !undone.isOk()) {
+            core::logError("ROLLBACK falló: " + undone.error().message);
+        }
+    }
+    if (lock_.owns_lock()) {
+        lock_.unlock();
+    }
 }
 
 core::Result<void> Db::transaction(const std::function<core::Result<void>()>& body) {
-    if (auto begin = exec("BEGIN;"); !begin.isOk()) {
-        return begin;
+    auto tx = begin();
+    if (!tx.isOk()) {
+        return core::Result<void>::err(tx.error().message);
     }
     core::Result<void> result = core::Result<void>::err("cuerpo de transacción no ejecutado");
     try {
@@ -80,19 +128,19 @@ core::Result<void> Db::transaction(const std::function<core::Result<void>()>& bo
         result = core::Result<void>::err(std::string("Excepción en transacción: ") + e.what());
     }
     if (!result.isOk()) {
-        if (auto rollback = exec("ROLLBACK;"); !rollback.isOk()) {
-            core::logError("ROLLBACK falló: " + rollback.error().message);
-        }
+        tx.value().rollback();
         return result;
     }
-    return exec("COMMIT;");
+    return tx.value().commit();
 }
 
 std::int64_t Db::lastInsertId() const {
+    const std::lock_guard lock(mutex_);
     return sqlite3_last_insert_rowid(db_);
 }
 
 int Db::changes() const {
+    const std::lock_guard lock(mutex_);
     return sqlite3_changes(db_);
 }
 

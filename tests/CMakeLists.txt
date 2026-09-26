@@ -20,6 +20,7 @@ add_executable(pci_tests
   test_canvas_geometry.cpp
   test_crash_guard.cpp
   test_database.cpp
+  test_shared_connection.cpp
   test_detection_profiles.cpp
   test_calibration_trace.cpp
   test_auto_zone_hides_pieces.cpp

@@ -22,7 +22,9 @@ Statement::~Statement() {
 }
 
 Statement::Statement(Statement&& other) noexcept
-    : db_(other.db_), stmt_(std::exchange(other.stmt_, nullptr)) {}
+    : db_(other.db_),
+      stmt_(std::exchange(other.stmt_, nullptr)),
+      lock_(std::move(other.lock_)) {}
 
 Statement& Statement::operator=(Statement&& other) noexcept {
     if (this != &other) {
@@ -31,6 +33,8 @@ Statement& Statement::operator=(Statement&& other) noexcept {
         }
         db_ = other.db_;
         stmt_ = std::exchange(other.stmt_, nullptr);
+        // Se suelta el cerrojo viejo solo después de finalizar su sentencia.
+        lock_ = std::move(other.lock_);
     }
     return *this;
 }

@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "core/result.h"
@@ -13,9 +15,14 @@ namespace pci::database {
 
 // RAII de sqlite3_stmt, solo movible. Los índices de bind empiezan en 1 y los
 // de columna en 0, igual que en la API C.
+//
+// Retiene el cerrojo de la conexión (ver `Db`) durante toda su vida: otro hilo
+// no puede ejecutar nada entre el bind y el último step, ni entre el step y el
+// `lastInsertId` que lo sigue.
 class Statement {
 public:
-    Statement(sqlite3* db, sqlite3_stmt* stmt) : db_(db), stmt_(stmt) {}
+    Statement(sqlite3* db, sqlite3_stmt* stmt, std::unique_lock<std::recursive_mutex> lock)
+        : db_(db), stmt_(stmt), lock_(std::move(lock)) {}
     ~Statement();
 
     Statement(Statement&& other) noexcept;
@@ -42,6 +49,8 @@ private:
 
     sqlite3* db_ = nullptr;
     sqlite3_stmt* stmt_ = nullptr;
+    // Declarado el último: se suelta DESPUÉS del sqlite3_finalize del destructor.
+    std::unique_lock<std::recursive_mutex> lock_;
 };
 
 }  // namespace pci::database
