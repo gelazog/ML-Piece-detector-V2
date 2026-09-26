@@ -45,15 +45,18 @@ InspectionEngine::InspectionEngine(EmbedFn embedFn, repositories::PieceRepositor
 core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat& frameBgr,
                                                                   std::int64_t pieceId) {
     using ResultT = core::Result<Outcome>;
+    // Las opciones de ESTE instante: si la ventana las cambia mientras esto
+    // corre, la inspección en curso no las ve a medias.
+    const EngineOptions opts = options();
 
-    auto analysis = vision::analyzeFrame(frameBgr, options_.pipeline);
+    auto analysis = vision::analyzeFrame(frameBgr, opts.pipeline);
     if (!analysis.isOk()) {
         return ResultT::err("No se pudo analizar el frame: " + analysis.error().message);
     }
 
     // Rasgo distintivo de la pieza (si tiene): fija la orientación aunque la
     // pieza sea simétrica o llegue girada 180°. Solo si se sigue la rotación.
-    if (options_.pipeline.autoOrient) {
+    if (opts.pipeline.autoOrient) {
         if (auto anchor = pieces_.loadAnchor(pieceId); anchor.isOk() && anchor.value()) {
             if (auto applied =
                     vision::applyAnchor(frameBgr, *anchor.value(), analysis.value());
@@ -116,7 +119,7 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
                 if (variants.isOk() && !variants.value().empty()) {
                     const auto match =
                         ml::matchVariants(outcome.embedding, variants.value(),
-                                          options_.kSigma);
+                                          opts.kSigma);
                     check.similarity = match.similarity;
                     check.anomalous = match.anomalous;
                     // El umbral que se enseña es el de la variante que decidió,
@@ -127,15 +130,15 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
                             match.index >= 0 ? match.index : 0)];
                     check.threshold =
                         deciding.simMean -
-                        std::max(options_.kSigma * deciding.simStd, 0.02);
+                        std::max(opts.kSigma * deciding.simStd, 0.02);
                 } else {
                     check.similarity =
                         ml::cosineSimilarity(outcome.embedding, reference.mean);
                     check.threshold =
                         reference.simMean -
-                        std::max(options_.kSigma * reference.simStd, 0.02);
+                        std::max(opts.kSigma * reference.simStd, 0.02);
                     check.anomalous =
-                        ml::isAnomalous(outcome.embedding, reference, options_.kSigma);
+                        ml::isAnomalous(outcome.embedding, reference, opts.kSigma);
                 }
             }
         }
@@ -180,7 +183,7 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
     // quedarse con las N mayores; no puede ser lo que ENCIENDE la medición.
     const bool lookAtEveryPiece = expectedPieces != 1;
     if (lookAtEveryPiece) {
-        if (auto all = vision::analyzeFrames(frameBgr, options_.pipeline); all.isOk()) {
+        if (auto all = vision::analyzeFrames(frameBgr, opts.pipeline); all.isOk()) {
             outcome.piecesFound = static_cast<int>(all.value().size());
             // Las DEMÁS, que es la mayor la que ya se analizó aparte.
             //
@@ -207,7 +210,7 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
 
     // 2. Herramientas geométricas sobre la imagen original (sin warp).
     std::vector<inspection::ToolConfig> toolConfigs;
-    if (auto listed = tools_.listForPiece(pieceId, options_.templateName); listed.isOk()) {
+    if (auto listed = tools_.listForPiece(pieceId, opts.templateName); listed.isOk()) {
         toolConfigs = std::move(listed.value());
     } else {
         core::logWarning("No se pudieron cargar las herramientas: " +
@@ -218,11 +221,11 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
     // operador en vivo.
     const cv::Point2f boundsCenter = outcome.analysis.contour.rotatedRect.center;
     const vision::BoardFrame board = vision::resolveBoardFrame(
-        options_.board, outcome.analysis.fixture, true,
+        opts.board, outcome.analysis.fixture, true,
         cv::Size(frameBgr.cols, frameBgr.rows), &boundsCenter);
     outcome.toolResults =
         inspection::runTools(frameBgr, outcome.analysis.fixture, toolConfigs,
-                             options_.mmPerPixel, options_.unit, cv::Mat(), &board);
+                             opts.mmPerPixel, opts.unit, cv::Mat(), &board);
     // La principal también lleva su sitio. No es siempre la 0: se analiza
     // aparte por ser la MAYOR, y la mayor puede estar en cualquier posición.
     for (auto& result : outcome.toolResults) {
@@ -234,10 +237,10 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
     // cambiar de fixture y volver a ejecutar, sin tocar ni una herramienta.
     for (const auto& extra : extraFixtures) {
         const vision::BoardFrame pieceBoard = vision::resolveBoardFrame(
-            options_.board, extra.fixture, true, cv::Size(frameBgr.cols, frameBgr.rows));
+            opts.board, extra.fixture, true, cv::Size(frameBgr.cols, frameBgr.rows));
         auto results =
-            inspection::runTools(frameBgr, extra.fixture, toolConfigs, options_.mmPerPixel,
-                                 options_.unit, cv::Mat(), &pieceBoard);
+            inspection::runTools(frameBgr, extra.fixture, toolConfigs, opts.mmPerPixel,
+                                 opts.unit, cv::Mat(), &pieceBoard);
         for (auto& result : results) {
             result.pieceIndex = static_cast<int>(extra.readingIndex);
             outcome.toolResults.push_back(std::move(result));
@@ -294,7 +297,7 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
     // 5. Historial + estadísticas (fallo de BD = avisado, nunca oculta el
     //    veredicto ni tumba la inspección).
     const std::vector<unsigned char> thumbnail =
-        encodeThumbnailJpeg(outcome.analysis.normalized, options_.thumbnailSize);
+        encodeThumbnailJpeg(outcome.analysis.normalized, opts.thumbnailSize);
     auto saved = history_.saveInspection(pieceId, outcome.referenceVersion, outcome.verdict,
                                          outcome.toolResults, thumbnail);
     if (saved.isOk()) {

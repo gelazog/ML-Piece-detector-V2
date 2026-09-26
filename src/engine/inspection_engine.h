@@ -1,5 +1,6 @@
 #pragma once
 
+#include <mutex>
 #include <opencv2/core.hpp>
 
 #include <cstdint>
@@ -71,23 +72,58 @@ public:
     core::Result<int> updateReference(std::int64_t pieceId,
                                       const std::vector<float>& embedding);
 
-    // Ajustes de detección (umbral, polaridad, zona). Llamar solo sin una
-    // inspección en vuelo (la UI garantiza un solo vuelo a la vez).
+    // Ajustes de detección (umbral, polaridad, zona), sensibilidad, tablero…
+    //
+    // SE PUEDEN LLAMAR CON UNA INSPECCIÓN EN VUELO. Antes la cabecera pedía no
+    // hacerlo («la UI garantiza un solo vuelo a la vez») y la UI no lo
+    // garantizaba: `setBoardConfig` y `setKSigma` se llamaban desde la ventana
+    // mientras la auto-inspección leía estas mismas opciones en el hilo de
+    // trabajo, y «Aprender de esta captura» lanzaba otra inspección síncrona en
+    // el hilo de la interfaz a la vez. Leer un `std::string` o un `BoardConfig`
+    // mientras otro hilo lo reescribe es comportamiento indefinido, no una
+    // lectura vieja.
+    //
+    // Ahora las opciones van tras un mutex y `inspect` trabaja con una COPIA
+    // tomada al empezar: una inspección ve los ajustes de un solo instante, y un
+    // cambio a mitad de camino vale para la siguiente.
     void setPipelineConfig(const vision::PipelineConfig& config) {
+        const std::lock_guard<std::mutex> lock(optionsMutex_);
         options_.pipeline = config;
     }
-    void setMmPerPixel(double mmPerPixel) { options_.mmPerPixel = mmPerPixel; }
-    void setUnit(inspection::LengthUnit unit) { options_.unit = unit; }
-    void setTemplateName(const std::string& name) { options_.templateName = name; }
+    void setMmPerPixel(double mmPerPixel) {
+        const std::lock_guard<std::mutex> lock(optionsMutex_);
+        options_.mmPerPixel = mmPerPixel;
+    }
+    void setUnit(inspection::LengthUnit unit) {
+        const std::lock_guard<std::mutex> lock(optionsMutex_);
+        options_.unit = unit;
+    }
+    void setTemplateName(const std::string& name) {
+        const std::lock_guard<std::mutex> lock(optionsMutex_);
+        options_.templateName = name;
+    }
     // Sensibilidad de anomalía de apariencia (Preferencias, O1).
-    void setKSigma(double kSigma) { options_.kSigma = kSigma; }
-    void setBoardConfig(const vision::BoardConfig& board) { options_.board = board; }
+    void setKSigma(double kSigma) {
+        const std::lock_guard<std::mutex> lock(optionsMutex_);
+        options_.kSigma = kSigma;
+    }
+    void setBoardConfig(const vision::BoardConfig& board) {
+        const std::lock_guard<std::mutex> lock(optionsMutex_);
+        options_.board = board;
+    }
+
+    // Las opciones de este instante, copiadas. Es lo que usa `inspect`.
+    [[nodiscard]] EngineOptions options() const {
+        const std::lock_guard<std::mutex> lock(optionsMutex_);
+        return options_;
+    }
 
 private:
     EmbedFn embedFn_;
     repositories::PieceRepository& pieces_;
     repositories::ToolRepository& tools_;
     repositories::InspectionRepository& history_;
+    mutable std::mutex optionsMutex_;
     EngineOptions options_;
 };
 

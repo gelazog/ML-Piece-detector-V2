@@ -1,3 +1,5 @@
+#include <thread>
+#include <atomic>
 #include <gtest/gtest.h>
 
 #include <cstdio>
@@ -1143,4 +1145,76 @@ TEST_F(EngineTest, AutomaticWithASinglePieceLooksExactlyAsBefore) {
     EXPECT_FALSE(outcome.value().verdict.count.evaluated)
         << "en automático no se juzga el recuento: no hay número que cumplir";
     EXPECT_TRUE(outcome.value().verdict.ok);
+}
+
+// LAS OPCIONES DEL MOTOR SE PUEDEN CAMBIAR CON UNA INSPECCIÓN EN VUELO.
+//
+// La cabecera pedía no hacerlo («la UI garantiza un solo vuelo a la vez») y la
+// UI no lo garantizaba: la ventana llama a `setBoardConfig` y `setKSigma`
+// mientras la auto-inspección lee esas opciones en el hilo de trabajo, y
+// «Aprender de esta captura» lanza otra inspección síncrona a la vez. Leer un
+// `std::string` mientras otro hilo lo reescribe es comportamiento indefinido:
+// puede no pasar nada mil veces y romper la mil una.
+//
+// Lo que esta prueba NO puede demostrar es la ausencia de la carrera — eso pide
+// un analizador de hilos, que este toolchain no trae. Lo que sí fija es el
+// contrato nuevo: los ajustes se pueden cambiar a mitad de una inspección, cada
+// inspección ve un instante coherente (una plantilla u otra, nunca media), y
+// `options()` devuelve lo último que se puso. Con nombres de plantilla de
+// longitudes muy distintas, además, una lectura a medias de la cadena tiende a
+// salir como basura o como fallo, que es la forma en que esto se vería.
+TEST_F(EngineTest, OptionsCanChangeWhileAnInspectionRuns) {
+    auto& pieces = *pieces_;
+    auto& tools = *tools_;
+    auto& history = *history_;
+    auto pieceId = pieces.createPiece("barra");
+    ASSERT_TRUE(pieceId.isOk());
+
+    inspection::ToolConfig caliper;
+    caliper.type = inspection::ToolType::Caliper;
+    caliper.name = "ancho";
+    caliper.geometryJson = inspection::toJson(inspection::ToolGeometry(
+        inspection::CaliperGeometry{{-160.0F, 0.0F}, {160.0F, 0.0F}, 20.0F}));
+    caliper.toleranceMin = 180.0;
+    caliper.toleranceMax = 220.0;
+    ASSERT_TRUE(tools.save(pieceId.value(), caliper, "principal").isOk());
+
+    engine::InspectionEngine engine(nullptr, pieces, tools, history);
+    cv::Mat scene;
+    cv::cvtColor(trayOfBars(-1, 200), scene, cv::COLOR_GRAY2BGR);
+
+    const std::string shortName = "principal";
+    const std::string longName(400, 'x');  // obliga a reservar memoria nueva
+    std::atomic<bool> done{false};
+    std::thread changer([&] {
+        int turn = 0;
+        while (!done.load()) {
+            engine.setTemplateName(turn % 2 == 0 ? longName : shortName);
+            engine.setKSigma(2.0 + (turn % 5));
+            vision::BoardConfig board;
+            board.followPieceAngle = (turn % 2 == 0);
+            engine.setBoardConfig(board);
+            ++turn;
+        }
+    });
+
+    int inspected = 0;
+    for (int i = 0; i < 25; ++i) {
+        auto outcome = engine.inspect(scene, pieceId.value());
+        ASSERT_TRUE(outcome.isOk()) << outcome.error().message;
+        // Con la plantilla «principal» hay una herramienta por barra; con la
+        // otra, ninguna. Una mezcla sería una inspección viendo dos instantes.
+        const std::size_t results = outcome.value().toolResults.size();
+        EXPECT_TRUE(results == 0 || results == outcome.value().pieceFixtures.size())
+            << "la inspección " << i << " vio " << results << " medidas";
+        ++inspected;
+    }
+    done = true;
+    changer.join();
+    EXPECT_EQ(inspected, 25);
+
+    engine.setTemplateName(shortName);
+    engine.setKSigma(3.5);
+    EXPECT_EQ(engine.options().templateName, shortName);
+    EXPECT_DOUBLE_EQ(engine.options().kSigma, 3.5);
 }

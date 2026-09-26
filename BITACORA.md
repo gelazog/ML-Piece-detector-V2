@@ -19,6 +19,28 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Las opciones del motor se reescribían con una inspección leyéndolas
+
+`InspectionEngine` pedía en su cabecera no cambiar sus ajustes con una
+inspección en vuelo, y lo justificaba así: «la UI garantiza un solo vuelo a la
+vez». No lo garantizaba. `setBoardConfig` (tres sitios) y `setKSigma` se llaman
+desde la ventana mientras la auto-inspección lee esas opciones en el hilo de
+trabajo, y «Aprender de esta captura» lanzaba además una inspección síncrona en
+el hilo de la interfaz a la vez.
+
+Leer un `std::string` o un `BoardConfig` mientras otro hilo lo reescribe no da un
+valor viejo: es comportamiento indefinido, y puede no pasar nada mil veces y
+romper la siguiente. Por eso nunca se vio.
+
+Ahora las opciones van tras un mutex y `inspect` trabaja con una copia tomada al
+empezar: cada inspección ve un solo instante, y un cambio a mitad vale para la
+siguiente. La prueba no puede demostrar la ausencia de la carrera —eso pide un
+analizador de hilos que este toolchain no trae— pero fija el contrato: se
+cambian ajustes sin parar mientras se inspecciona veinticinco veces, y ninguna
+inspección ve media plantilla.
+
+---
+
 ### BGRA tratada como gris en seis sitios que no pasaban por `toGray`
 
 `vision/gray.h` nació para acabar con las copias de «pasar a gris» después de
