@@ -108,7 +108,43 @@ if(WIN32 AND ONNXRUNTIME_DLL_PATH)
 endif()
 
 include(GoogleTest)
-gtest_discover_tests(pci_tests DISCOVERY_MODE PRE_TEST)
+
+# LAS PRUEBAS QUE MIDEN TIEMPO VAN EN SERIE.
+#
+# Comparan milisegundos (o cocientes de milisegundos) y con `ctest -j` compiten
+# por los núcleos con el resto de la suite: fallaban solas de vez en cuando sin
+# que nada estuviera mal. Pasó tres veces seguidas —EngineTest...InColour...,
+# DetectionTuning.ItIsFastEnough..., EdgesOnReflections.TheAdviceCosts...— con
+# una compilación en marcha, y las tres pasaban al repetirlas solas.
+#
+# Por eso se registran aparte, con RUN_SERIAL (ctest no ejecuta nada más a la
+# vez) y la etiqueta `timing` (`ctest -LE timing` las salta en el ciclo diario).
+# La lista va por NOMBRE y no por palabras del nombre: «ShrinksSlowly» es una
+# prueba de lógica, no de tiempo. Una prueba nueva que mida tiempo se añade
+# aquí.
+set(PCI_TIMING_TESTS
+  "AutoRoi.CroppingIsAtLeastTwiceAsFastOnASmallPiece"
+  "DetectionTuning.ItIsFastEnoughToRunWhileTheOperatorWaits"
+  "EdgesOnReflections.TheAdviceCostsWhatSegmentingTwiceCosts"
+  "FixtureSpeedup.*"
+  "MultiPiece.CountingManyPiecesIsNotAbsurdlySlower"
+  "NormalizeSpeedup.*"
+  "NutProbe.WhatItCostsToLookAtEveryPiece"
+  "PointCountTuning.CostOn*"
+  "SiblingMeasures.OpeningAToolCostsWhatSixReadingsCost"
+  "ToolsCost.*"
+  "ParallelTools.*"
+  "EngineTest.AHundredPiecesInColourCostAboutTheSameAsInGrey"
+  "StageTimings.*"
+)
+list(JOIN PCI_TIMING_TESTS ":" PCI_TIMING_FILTER)
+
+gtest_discover_tests(pci_tests DISCOVERY_MODE PRE_TEST
+  TEST_FILTER "-${PCI_TIMING_FILTER}")
+gtest_discover_tests(pci_tests DISCOVERY_MODE PRE_TEST
+  TEST_FILTER "${PCI_TIMING_FILTER}"
+  TEST_LIST pci_tests_timing
+  PROPERTIES RUN_SERIAL TRUE LABELS timing)
 
 # Pruebas de gesto sobre el widget: necesitan Qt y una plataforma sin pantalla,
 # por eso van aparte de la suite principal.
@@ -180,5 +216,12 @@ target_link_libraries(pci_gui_tests
 )
 gtest_discover_tests(pci_gui_tests
   DISCOVERY_MODE PRE_TEST
+  TEST_FILTER "-${PCI_TIMING_FILTER}"
   PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+gtest_discover_tests(pci_gui_tests
+  DISCOVERY_MODE PRE_TEST
+  TEST_FILTER "${PCI_TIMING_FILTER}"
+  TEST_LIST pci_gui_tests_timing
+  PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" RUN_SERIAL TRUE LABELS timing
 )
