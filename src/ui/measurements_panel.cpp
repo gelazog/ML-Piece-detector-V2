@@ -292,10 +292,7 @@ MeasurementsPanel::MeasurementsPanel(QWidget* parent) : QWidget(parent) {
     pieceRow->addWidget(new QLabel(tr("Pieza:"), this));
     pieceBox_ = new QComboBox(this);
     pieceBox_->setObjectName(QStringLiteral("piecePicker"));
-    pieceBox_->setToolTip(
-        tr("Cuál de las piezas del encuadre se está midiendo. Es la misma\n"
-           "elección que hacen las flechas de la barra y el mosaico: no hay\n"
-           "dos estados distintos que puedan discrepar."));
+    pieceBox_->setToolTip(tr("Cuál de las piezas del encuadre se está midiendo."));
     pieceRow->addWidget(pieceBox_, 1);
     root->addLayout(pieceRow);
     connect(pieceBox_, &QComboBox::currentIndexChanged, this, [this](int index) {
@@ -494,9 +491,8 @@ void MeasurementsPanel::rebuild() {
         const bool visible = std::find(hidden_.begin(), hidden_.end(), toolId) == hidden_.end();
         auto* eye = rowButton(QStringLiteral("eyeButton_%1").arg(toolId),
                               visible ? QStringLiteral("\U0001F441") : QStringLiteral("—"),
-                              tr("Dibujar esta cota sobre la pieza.\n\n"
-                                 "Apagarla no deja de medirla: sigue aquí con su veredicto.\n"
-                                 "Sirve para no tapar la imagen cuando hay muchas."),
+                              tr("Dibuja esta cota sobre la pieza. Apagarla no deja de "
+                                 "medirla."),
                               true);
         eye->setChecked(visible);
         connect(eye, &QToolButton::toggled, this, [this, toolId, eye](bool on) {
@@ -644,7 +640,7 @@ void MeasurementsPanel::rebuild() {
     const bool good = failures.empty();
     if (pieces.size() <= 1) {
         verdictText = good ? tr("✓ Cumple")
-                          : tr("✕ No cumple — %1 %2")
+                          : tr("✕ No cumple: %1 %2")
                                 .arg(failures.front().cota, failures.front().phrase);
     } else {
         std::set<int> failingPieces;
@@ -652,8 +648,8 @@ void MeasurementsPanel::rebuild() {
             failingPieces.insert(f.pieceIndex);
         }
         verdictText =
-            good ? tr("✓ %1 piezas — todas cumplen").arg(pieces.size())
-                : tr("✕ %1 de %2 no cumple — pieza %3: %4 %5")
+            good ? tr("✓ %1 piezas: todas cumplen").arg(pieces.size())
+                : tr("✕ %1 de %2 no cumple · pieza %3: %4 %5")
                       .arg(failingPieces.size())
                       .arg(pieces.size())
                       .arg(failures.front().pieceIndex + 1)

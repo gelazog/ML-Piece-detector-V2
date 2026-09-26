@@ -434,7 +434,7 @@ double wrapAngleDeg(double angle) {
 
 MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     : QMainWindow(parent), repos_(repositories) {
-    setWindowTitle(tr("PC Inspector — Demo de inspección visual"));
+    setWindowTitle(tr("PC Inspector: demo de inspección visual"));
     resize(1100, 760);
 
     auto* central = new QWidget(this);
@@ -475,12 +475,11 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // El botón MÁS pulsado de la ventana y no decía nada. Su rótulo además
     // cambia solo —«Iniciar», «Detener», «Abrir…»— según la fuente elegida, así
     // que leerlo no basta para saber qué va a pasar.
-    startStopButton_->setToolTip(
-        tr("Arranca o detiene la fuente elegida en la lista de al lado.\n\n"
-           "Con una cámara: empieza o para el vídeo en directo.\n"
-           "Con «Abrir imagen…» o «Abrir vídeo…»: pide el fichero.\n\n"
-           "Mientras está parado se puede seguir dibujando herramientas sobre\n"
-           "el último fotograma."));
+    startStopButton_->setToolTip(tr("Arranca o detiene la fuente elegida en la lista de al lado."));
+    startStopButton_->setWhatsThis(
+        tr("Con una cámara, empieza o para el vídeo en directo. Con «Abrir imagen…» o "
+           "«Abrir vídeo…», pide el fichero. Mientras está parado se puede seguir "
+           "dibujando sobre el último fotograma."));
     cameraLayout->addWidget(startStopButton_);
     // El botón dice lo que va a hacer. Con «Abrir imagen…» elegido, «Iniciar»
     // no describe la acción —lo siguiente que pasa es que se abre un diálogo de
@@ -513,11 +512,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     freezeButton_ = new QPushButton(tr("Capturar foto"), central);
     freezeButton_->setObjectName(QStringLiteral("freezeButton"));
     freezeButton_->setEnabled(false);
-    freezeButton_->setToolTip(
-        tr("Congela el frame actual y trabaja sobre esa foto: con el vídeo en vivo la\n"
-           "pieza tiembla y la detección late, así que dibujar una herramienta encima es\n"
-           "puntería. Sobre una foto se traza, se calibra y se mide con calma.\n\n"
-           "La cámara no se cierra: vuelves al vídeo con el mismo botón."));
+    freezeButton_->setToolTip(tr("Congela la imagen para dibujar y medir con calma."));
+    freezeButton_->setWhatsThis(
+        tr("Con el vídeo en vivo la pieza tiembla y dibujar encima es cuestión de "
+           "puntería. La cámara no se cierra: vuelves al vídeo con el mismo botón."));
     connect(freezeButton_, &QPushButton::clicked, this, &MainWindow::toggleFrozenPhoto);
     cameraLayout->addWidget(freezeButton_);
 
@@ -543,8 +541,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     zoneButton_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     zoneButton_->setPopupMode(QToolButton::InstantPopup);
     zoneButton_->setToolTip(
-        tr("Dónde busca el programa la pieza. Fuera de la zona, las sombras, los\n"
-           "reflejos y las piezas de al lado dejan de estorbar."));
+        tr("Limita dónde busca el programa la pieza, para que sombras y piezas vecinas "
+           "no estorben."));
     auto* zoneMenu = new QMenu(zoneButton_);
     rectZoneAction_ = zoneMenu->addAction(tr("Dibujar zona rectangular"));
     rectZoneAction_->setIcon(inspection::regionIcon());
@@ -553,10 +551,11 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     freeZoneAction_ = zoneMenu->addAction(tr("Dibujar zona libre"));
     freeZoneAction_->setIcon(inspection::freeZoneIcon());
     freeZoneAction_->setToolTip(
-        tr("La misma zona sin la obligación de que sea un rectángulo: rodea el área\n"
-           "arrastrando, o marca las esquinas a clics y cierra sobre la primera.\n"
-           "Para lo que un rectángulo no puede separar — el borde del útil pegado a\n"
-           "la pieza, la pieza de al lado en diagonal."));
+        tr("Rodea el área a mano, arrastrando o marcando esquinas a clics."));
+    freeZoneAction_->setWhatsThis(
+        tr("A diferencia del rectángulo, sirve para separar formas irregulares: el "
+           "borde del útil pegado a la pieza, o una pieza vecina en diagonal. Cierra el "
+           "trazo sobre el primer punto."));
     zoneMenu->addSeparator();
     clearZoneAction_ = zoneMenu->addAction(tr("Quitar la zona"));
     zoneButton_->setMenu(zoneMenu);
@@ -591,18 +590,19 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     outlineAddAction_->setObjectName(QStringLiteral("outlineAddAction"));
     outlineAddAction_->setCheckable(true);
     outlineAddAction_->setToolTip(
-        tr("Rodea con el ratón una pieza que la detección no ve. Dentro del trazo\n"
-           "se vuelve a buscar el borde con el fondo que haya ahí, así que la\n"
-           "pieza se mide de verdad y no con el pulso de tu mano.\n\n"
-           "Si ahí dentro no hay nada que detectar, se dice: la pieza se marca\n"
-           "igual —vale para contarla— pero sus cotas serían las del trazo."));
+        tr("Rodea con el ratón una pieza que la detección no ve."));
+    outlineAddAction_->setWhatsThis(
+        tr("Dentro del trazo se vuelve a buscar el borde real, así que la pieza se mide "
+           "de verdad y no con el pulso de tu mano. Si ahí dentro no hay nada que "
+           "detectar, la pieza se marca igual pero sus cotas serían las del trazo."));
     outlineDropAction_ = brushMenu->addAction(tr("Descartar lo que no es una pieza…"));
     outlineDropAction_->setObjectName(QStringLiteral("outlineDropAction"));
     outlineDropAction_->setCheckable(true);
     outlineDropAction_->setToolTip(
-        tr("Rodea una mancha que la detección cuenta como pieza y no lo es: una\n"
-           "sombra, un reflejo, un rótulo impreso en la mesa.\n\n"
-           "Todo lo que quede dentro del trazo pasa a ser fondo."));
+        tr("Rodea una mancha que la detección cuenta como pieza sin serlo: una sombra, "
+           "un reflejo, un rótulo en la mesa."));
+    outlineDropAction_->setWhatsThis(
+        tr("Todo lo que quede dentro del trazo pasa a ser fondo."));
     brushMenu->addSeparator();
 
     // EL TAMAÑO, A LA VISTA.
@@ -644,26 +644,25 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     brushSteadyAction_->setObjectName(QStringLiteral("brushSteadyAction"));
     brushSteadyAction_->setCheckable(true);
     brushSteadyAction_->setToolTip(
-        tr("El pincel persigue al ratón en vez de seguirlo al píxel.\n"
-           "Filtra el temblor de la mano; la intención llega igual.\n"
-           "Medido sobre un trazo con temblor: de 3,6 px de desviación a 1,4."));
+        tr("Suaviza el temblor de la mano; la intención del trazo llega igual."));
     brushStraightAction_ = brushMenu->addAction(tr("   Trazo recto"));
     brushStraightAction_->setObjectName(QStringLiteral("brushStraightAction"));
     brushStraightAction_->setCheckable(true);
     brushStraightAction_->setToolTip(
-        tr("La pincelada va en línea recta del principio al final, y el rodeo\n"
-           "que dé la mano por el camino no cuenta.\n"
-           "Mantener Mayús mientras se pinta hace lo CONTRARIO de lo que diga\n"
-           "este interruptor, para no tener que venir a cambiarlo por un trazo."));
+        tr("La pincelada va en línea recta del principio al final."));
+    brushStraightAction_->setWhatsThis(
+        tr("El rodeo que dé la mano por el camino no cuenta. Mantener Mayús mientras se "
+           "pinta invierte este interruptor solo para ese trazo."));
     brushSnapAction_ = brushMenu->addAction(tr("   Ceñir al borde"));
     brushSnapAction_->setObjectName(QStringLiteral("brushSnapAction"));
     brushSnapAction_->setCheckable(true);
     brushSnapAction_->setToolTip(
-        tr("El resultado sigue el contraste real de la imagen en vez de tener\n"
-           "el ancho del pincel: menos uniforme y más pegado a la pieza.\n\n"
-           "Se queda con la mitad de la pincelada que se parece al punto donde\n"
-           "EMPEZASTE el trazo, así que empieza encima de lo que quieres marcar.\n"
-           "Donde no hay contraste que seguir, pinta como el pincel de siempre."));
+        tr("El trazo se pega al contraste real de la imagen, más ceñido que el ancho "
+           "del pincel."));
+    brushSnapAction_->setWhatsThis(
+        tr("Se queda con la mitad de la pincelada más cercana a donde empezó el trazo, "
+           "así que empieza encima de lo que quieres marcar. Donde no hay contraste que "
+           "seguir, pinta como el pincel normal."));
     brushMenu->addSeparator();
     // UN solo deshacer, no dos.
     //
@@ -852,8 +851,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
 
     registerLiveButton_ = new QPushButton(tr("Registrar y activar"), central);
     registerLiveButton_->setToolTip(
-        tr("Captura automáticamente %1 referencias de la pieza en el video, guarda las "
-           "herramientas dibujadas y arranca la auto-inspección")
+        tr("Captura %1 referencias de la pieza, guarda las herramientas y arranca la "
+           "auto-inspección.")
             .arg(kCaptureTarget));
     pieceLayout->addWidget(registerLiveButton_);
 
@@ -901,13 +900,12 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // diciéndolo.
     measurePieceButton_ = new QPushButton(tr("Medir pieza"), central);
     measurePieceButton_->setToolTip(
-        tr("Mide la pieza entera a partir de su contorno y enseña todas las cotas:\n"
-           "qué figura es, perímetro, área, envolvente, agujeros, y las cotas que su\n"
-           "forma tenga — diámetro y redondez si es redonda, cada lado y cada ángulo\n"
-           "si es un polígono, los dos diámetros si es una arandela.\n\n"
-           "No hace falta pieza registrada ni plantilla. Sin calibrar da píxeles y lo\n"
-           "dice. Desde el informe puedes copiarlo, exportarlo a CSV o convertir las\n"
-           "cotas en herramientas vigiladas."));
+        tr("Mide la pieza entera a partir de su contorno: perímetro, área, agujeros y "
+           "las cotas propias de su forma."));
+    measurePieceButton_->setWhatsThis(
+        tr("No hace falta pieza registrada ni plantilla. Sin calibrar da píxeles y lo "
+           "dice. Desde el informe se puede copiar, exportar a CSV o convertir cotas en "
+           "herramientas vigiladas."));
     pieceLayout->addWidget(measurePieceButton_);
     pieceLayout->addStretch(0);
     rootLayout->addLayout(pieceLayout);
@@ -925,24 +923,29 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     anchorButton_->setIcon(inspection::anchorIcon());
     anchorButton_->setCheckable(true);
     anchorButton_->setToolTip(
-        tr("Marca un punto visualmente único de la pieza (un agujero, una marca, una\n"
-           "esquina oscura). Con él la orientación queda fija aunque la pieza sea\n"
-           "simétrica: se detecta igual en cualquier rotación, incluso girada 180°."));
+        tr("Marca un punto único de la pieza (un agujero, una marca) para fijar su "
+           "orientación."));
+    anchorButton_->setWhatsThis(
+        tr("Con la pieza siendo simétrica, se detecta igual en cualquier rotación, "
+           "incluso girada 180°."));
     toolsLayout->addWidget(anchorButton_);
 
     calibrateFromToolButton_ = new QPushButton(tr("Fijar escala con esta medida…"), central);
     calibrateFromToolButton_->setEnabled(false);
     calibrateFromToolButton_->setToolTip(
-        tr("La forma más fácil de calibrar: traza una herramienta sobre algo de tamaño\n"
-           "conocido (una regla, una moneda), selecciónala y escribe cuánto mide de\n"
-           "verdad. La escala px→mm sale de esa medida y todas las cotas quedan reales."));
+        tr("Traza una herramienta sobre algo de tamaño conocido y escribe cuánto mide "
+           "de verdad."));
+    calibrateFromToolButton_->setWhatsThis(
+        tr("La escala px→mm sale de esa medida y todas las cotas quedan en unidades "
+           "reales."));
     toolsLayout->addWidget(calibrateFromToolButton_);
 
     saveTemplateButton_ = new QPushButton(tr("Guardar plantilla (Ctrl+S)"), central);
     saveTemplateButton_->setToolTip(
-        tr("Guarda las herramientas dibujadas en vivo en la plantilla activa de la\n"
-           "pieza, sin tener que volver a registrarla. Si no hay pieza seleccionada\n"
-           "te pide crear una."));
+        tr("Guarda las herramientas dibujadas en la plantilla activa de la pieza."));
+    saveTemplateButton_->setWhatsThis(
+        tr("No hace falta volver a registrar la pieza. Si no hay ninguna seleccionada, "
+           "pide crear una."));
     connect(saveTemplateButton_, &QPushButton::clicked, this,
             &MainWindow::onSaveTemplateClicked);
     toolsLayout->addWidget(saveTemplateButton_);
@@ -971,8 +974,8 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         setupHintLabel_->setWordWrap(true);
         row->addWidget(setupHintLabel_, 1);
         auto* dismiss = new QPushButton(tr("Entendido"), setupBanner_);
-        dismiss->setToolTip(tr("No volver a mostrarlo. Los indicadores de la barra de "
-                               "abajo siguen diciendo el estado en todo momento."));
+        dismiss->setToolTip(tr("No vuelve a mostrarse; el estado sigue en los "
+                               "indicadores de la barra de abajo."));
         row->addWidget(dismiss);
         connect(dismiss, &QPushButton::clicked, this, &MainWindow::dismissSetupGuide);
     }
@@ -1175,10 +1178,11 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         liveParamSpin_->setRange(1, 1000);
         liveParamSpin_->setEnabled(false);
         liveParamSpin_->setToolTip(
-            tr("Parámetro de muestreo de la herramienta seleccionada.\n"
-               "En doce herramientas son sus PUNTOS DE MEDIDA: más puntos,\n"
-               "medida más estable pero más lenta. Calibre usa la banda (px)\n"
-               "y Blob el área mínima (px²), que no son puntos."));
+            tr("Parámetro de muestreo de la herramienta seleccionada."));
+        liveParamSpin_->setWhatsThis(
+            tr("En la mayoría de herramientas son los puntos de medida: más puntos dan "
+               "una medida más estable pero más lenta. Calibre usa la banda y Blob el "
+               "área mínima, que no son puntos."));
         paramRow->addWidget(liveParamSpin_, 1);
         panelLayout->addLayout(paramRow);
 
@@ -1347,9 +1351,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     zoomLabel_ = new QLabel(zoomBar);
     zoomLabel_->setMinimumWidth(52);
     zoomLabel_->setAlignment(Qt::AlignCenter);
-    zoomLabel_->setToolTip(tr("Zoom actual. Rueda = acercar/alejar hacia el cursor,\n"
-                              "botón central o Ctrl + arrastrar = mover la vista,\n"
-                              "doble clic = ajustar a la ventana."));
+    zoomLabel_->setToolTip(tr("Zoom actual."));
+    zoomLabel_->setWhatsThis(
+        tr("La rueda acerca o aleja hacia el cursor. El botón central o Ctrl y "
+           "arrastrar mueven la vista. Doble clic ajusta a la ventana."));
     zoomLayout->addWidget(zoomLabel_);
     zoomInButton_ = addZoomButton(QStringLiteral("+"), tr("Acercar (Ctrl++)"),
                                   [this] { video_->zoomIn(); });
@@ -1862,69 +1867,120 @@ void MainWindow::onUnitChanged() {
 // si una dice lo contrario que otra, que es de donde sale la sensación de
 // incoherencia.
 void MainWindow::explainMenus() {
-    const std::pair<QString, QString> ayudas[] = {
+    struct MenuHelp {
+        QString nombre;
+        QString ayuda;    // tooltip: una frase corta
+        QString detalle;  // opcional: setWhatsThis, para lo que no cabe en el tooltip
+    };
+    const MenuHelp ayudas[] = {
         {tr("Exportar configuración…"),
-         tr("Guarda en un fichero la puesta a punto de esta PC: cámara, detección,\nescala, tablero y preferencias.\n\nSirve para clonar un puesto que ya funciona en otra máquina de la línea\nsin repetir los ajustes a mano. NO se lleva las piezas ni su historial.")},
+         tr("Guarda en un fichero los ajustes de esta máquina, para copiarlos en otra."),
+         tr("Incluye cámara, detección, escala, tablero y preferencias. No lleva piezas "
+            "ni su historial.")},
         {tr("Importar configuración…"),
-         tr("Carga la puesta a punto guardada de otra PC. Sustituye los ajustes\nactuales; las piezas registradas y su historial se quedan como están.\n\nRevisa la escala después: si esta cámara está a otra altura, hay que\nvolver a calibrarla.")},
+         tr("Carga los ajustes guardados de otra máquina y sustituye los actuales."),
+         tr("Las piezas registradas y su historial no cambian. Si esta cámara está a "
+            "otra altura, vuelve a calibrar la escala.")},
         {tr("Restablecer configuración de fábrica…"),
-         tr("Devuelve todos los ajustes a como venían de fábrica. Pide confirmación.\n\nNo borra piezas, herramientas ni historial: solo los ajustes.")},
+         tr("Devuelve todos los ajustes a como venían de fábrica."),
+         tr("Pide confirmación antes de aplicarse. No borra piezas, herramientas ni "
+            "historial: solo los ajustes.")},
         {tr("Buscar cámaras de nuevo"),
-         tr("Vuelve a preguntar al sistema qué cámaras hay conectadas.\n\nÚsalo si has enchufado una cámara con el programa ya abierto.")},
+         tr("Vuelve a preguntar qué cámaras hay conectadas; útil si enchufaste una con "
+            "el programa abierto."),
+         QString()},
         {tr("Calibrar escala (mm)…"),
-         tr("Le enseñas al programa cuánto mide un píxel, marcando con dos clics una\ndistancia que conoces (una regla, una moneda) y escribiendo cuánto mide.\n\nSin esto todas las medidas salen en píxeles. Hay que rehacerla si cambia\nla altura de la cámara o la resolución.")},
+         tr("Marca con dos clics una distancia conocida y di cuánto mide, para fijar la "
+            "escala."),
+         tr("Sin calibrar, todas las medidas salen en píxeles. Repite la calibración si "
+            "cambia la altura de la cámara o la resolución.")},
         {tr("Calibrar la lente…"),
-         tr("Corrige la deformación del objetivo con fotos de un tablero de ajedrez.\n\nHace falta cuando la misma pieza mide distinto en el centro que en una\nesquina: sin corregir, la diferencia llega al 18 %.")},
+         tr("Corrige la deformación del objetivo con fotos de un tablero de ajedrez."),
+         tr("Hace falta cuando la misma pieza mide distinto en el centro que en una "
+            "esquina.")},
         {tr("Unidad de medida"),
-         tr("En qué unidad se enseñan las medidas: milímetros, centímetros, píxeles o\nautomática (mm o cm según el tamaño).\n\nPara ver milímetros hace falta haber calibrado la escala antes.")},
+         tr("En qué unidad se enseñan las medidas: milímetros, centímetros, píxeles o "
+            "automática."),
+         tr("Para ver milímetros o centímetros hace falta haber calibrado la escala "
+            "antes.")},
         {tr("Medir pieza"),
-         tr("Mide la pieza que hay ahora delante con las herramientas dibujadas y\nenseña el resultado, sin guardarlo en el historial.\n\nEs la prueba de antes de inspeccionar: sirve para ver si las\nherramientas están donde tienen que estar.")},
+         tr("Mide la pieza de delante con las herramientas dibujadas, sin guardar nada."),
+         tr("Sirve para comprobar antes de inspeccionar que las herramientas están bien "
+            "puestas.")},
         {tr("Modo de medición de la pieza…"),
-         tr("Elige si esta pieza se juzga por sus medidas reales o por su posición\nrespecto al cero del tablero.\n\nVa con la pieza, no con la máquina.")},
+         tr("Elige si esta pieza se juzga por sus medidas o por su posición respecto al "
+            "tablero."),
+         tr("El modo se guarda con la pieza, no con la máquina.")},
         {tr("Automática (mm/cm)"),
-         tr("Enseña milímetros en las medidas pequeñas y centímetros en las grandes,\npara no leer «1250,0 mm».")},
+         tr("Enseña milímetros en las medidas pequeñas y centímetros en las grandes."),
+         QString()},
         {tr("Milímetros"),
-         tr("Todas las medidas en milímetros. Necesita la escala calibrada.")},
+         tr("Todas las medidas en milímetros. Necesita la escala calibrada."), QString()},
         {tr("Centímetros"),
-         tr("Todas las medidas en centímetros. Necesita la escala calibrada.")},
+         tr("Todas las medidas en centímetros. Necesita la escala calibrada."), QString()},
         {tr("Píxeles"),
-         tr("Todas las medidas en píxeles de la imagen. Es lo que hay sin calibrar, y\nsirve para trabajar cuando no importa el tamaño real.")},
+         tr("Todas las medidas en píxeles de la imagen: lo que hay sin calibrar."),
+         QString()},
         {tr("Pulgadas"),
-         tr("Todas las medidas en pulgadas. Necesita la escala calibrada.\n\n"
-            "Se escriben con tres decimales: una pulgada son 25,4 mm, así que con\n"
-            "dos la resolución sería de un cuarto de milímetro.")},
+         tr("Todas las medidas en pulgadas, con tres decimales. Necesita la escala "
+            "calibrada."),
+         tr("Una pulgada son 25,4 mm; con menos decimales se perdería precisión.")},
         {tr("Registrar con asistente…"),
-         tr("Da de alta una pieza nueva paso a paso: capturas varias buenas y el\nprograma aprende cómo tiene que ser.\n\nCon eso puede avisar de piezas raras aunque no midas nada.")},
+         tr("Da de alta una pieza nueva paso a paso, capturando varias fotos buenas."),
+         tr("Con esas fotos el programa aprende a avisar de piezas raras aunque no "
+            "midas nada.")},
         {tr("Registrar otro acabado de esta pieza…"),
-         tr("Añade un acabado admisible A LA MISMA pieza: otro proveedor, otro lote,\notro brillo.\n\nNo la registres otra vez con el asistente: eso crea una pieza distinta.\nY mezclar dos acabados en la misma referencia no da falsos NG, deja\nCIEGA la referencia — un defecto que se detectaba deja de detectarse.")},
+         tr("Añade un acabado admisible a esta misma pieza: otro proveedor, otro lote, "
+            "otro brillo."),
+         tr("No uses el asistente para esto: crearía una pieza distinta. Mezclar dos "
+            "acabados en la misma referencia deja de detectar defectos que antes sí se "
+            "veían.")},
         {tr("Gestionar piezas…"),
-         tr("Renombrar, duplicar o borrar piezas registradas, y ver cuántas\nherramientas e inspecciones tiene cada una.")},
+         tr("Renombra, duplica o borra piezas registradas."),
+         tr("También enseña cuántas herramientas e inspecciones tiene cada una.")},
         {tr("Gestionar plantillas…"),
-         tr("Las plantillas son juegos de herramientas de la misma pieza: una por\ncara, o una rápida y otra completa.\n\nAquí se crean, se renombran y se borran.")},
+         tr("Crea, renombra o borra plantillas de herramientas de esta pieza."),
+         tr("Las plantillas son juegos de herramientas de la misma pieza: una por cara, "
+            "o una rápida y otra completa.")},
         {tr("Guardar plantilla"),
-         tr("Guarda las herramientas que hay dibujadas ahora como plantilla de esta\npieza, para recuperarlas tal cual.")},
+         tr("Guarda las herramientas dibujadas ahora como plantilla de esta pieza."),
+         QString()},
         {tr("Inspeccionar"),
-         tr("Mide la pieza, da el veredicto OK/NG y lo GUARDA en el historial con su\nfoto.\n\nEs lo que diferencia una inspección de una prueba: queda registrada.")},
+         tr("Mide la pieza, da el veredicto OK/NG y lo guarda en el historial con su "
+            "foto."),
+         tr("Es lo que diferencia una inspección de una prueba: queda registrada.")},
         {tr("Editor de plantilla…"),
-         tr("Abre la pieza registrada a tamaño completo para dibujar sus herramientas\ncon calma, sin la cámara en marcha.")},
+         tr("Abre la pieza a tamaño completo para dibujar sus herramientas sin la "
+            "cámara en marcha."),
+         QString()},
         {tr("Ver historial…"),
-         tr("Todas las inspecciones guardadas de esta pieza, con su foto, su veredicto\ny por qué.\n\nDesde ahí se saca el informe del turno.")},
+         tr("Todas las inspecciones guardadas de esta pieza, con foto, veredicto y "
+            "motivo."),
+         tr("Desde ahí se saca el informe del turno.")},
         {tr("Panel de herramientas"),
-         tr("Enseña u oculta el panel lateral con las herramientas dibujadas y sus\ntolerancias.")},
+         tr("Muestra u oculta el panel con las herramientas dibujadas y sus "
+            "tolerancias."),
+         QString()},
         {tr("Panel de comparación"),
-         tr("Enseña u oculta el panel que pone lado a lado la pieza registrada y la\nque hay ahora delante.")},
+         tr("Muestra u oculta el panel que compara la pieza registrada con la actual."),
+         QString()},
         {tr("Origen del tablero"),
-         tr("Dónde está el punto cero desde el que se miden las posiciones: el centro\nde la pieza, un punto fijo de la imagen o el rasgo que marques.\n\nSolo afecta a las herramientas de Posición.")},
+         tr("Dónde está el cero desde el que se miden las posiciones."),
+         tr("Puede ser el centro de la pieza, un punto fijo de la imagen o un rasgo "
+            "marcado. Solo afecta a las herramientas de Posición.")},
         {tr("Atajos de teclado…"),
-         tr("La lista de teclas: zoom, paso a paso, cambiar de pieza, medir.")},
+         tr("La lista de teclas: zoom, paso a paso, cambiar de pieza, medir."), QString()},
     };
     for (auto* menu : menuBar()->findChildren<QMenu*>()) {
-        // Sin esto no se ve NINGUNA, ni las que ya estaban escritas.
+        // Sin esto no se ve ninguna, ni las que ya estaban escritas.
         menu->setToolTipsVisible(true);
         for (auto* action : menu->actions()) {
-            for (const auto& [nombre, ayuda] : ayudas) {
-                if (action->text() == nombre) {
-                    action->setToolTip(ayuda);
+            for (const auto& entry : ayudas) {
+                if (action->text() == entry.nombre) {
+                    action->setToolTip(entry.ayuda);
+                    if (!entry.detalle.isEmpty()) {
+                        action->setWhatsThis(entry.detalle);
+                    }
                 }
             }
         }
@@ -1959,9 +2015,11 @@ void MainWindow::buildMenuBar() {
                                             &MainWindow::onConfigureClicked);
     configureAction_->setObjectName(QStringLiteral("configureAction"));
     configureAction_->setToolTip(
-        tr("Cámara e imagen, detección, piezas, rendimiento, escala, preferencias\n"
-           "y atajos, todo en el mismo sitio. Se abre sin bloquear el vídeo: lo\n"
-           "que ajustes se ve al momento sobre la pieza."));
+        tr("Cámara, detección, piezas, rendimiento, escala, preferencias y atajos, "
+           "todo en el mismo sitio."));
+    configureAction_->setWhatsThis(
+        tr("Se abre sin bloquear el vídeo: lo que ajustes se ve al momento sobre la "
+           "pieza."));
     refreshAction_ = setupMenu->addAction(tr("Buscar cámaras de nuevo"), this,
                                           &MainWindow::refreshCameras);
     setupMenu->addSeparator();
@@ -2004,14 +2062,10 @@ void MainWindow::buildMenuBar() {
     lensCorrectionAction_->setCheckable(true);
     lensCorrectionAction_->setEnabled(false);  // hasta que haya un modelo
     lensCorrectionAction_->setToolTip(
-        tr("Endereza lo que curva la lente, antes de medir.\n"
-           "\n"
-           "OJO: esto SÍ cambia las medidas, y es lo que se pretende. Una pieza ya\n"
-           "registrada tiene sus tolerancias ajustadas contra el borde de antes,\n"
-           "así que al encender esto hay que volver a mirarlas.\n"
-           "\n"
-           "Medido con una lente de gama de consumo: la misma pieza salía un 18,5 %\n"
-           "más pequeña en una esquina que en el centro."));
+        tr("Endereza lo que curva la lente, antes de medir. Cambia las medidas."));
+    lensCorrectionAction_->setWhatsThis(
+        tr("Una pieza ya registrada tiene sus tolerancias ajustadas contra el borde de "
+           "antes, así que al encenderlo hay que revisarlas."));
     connect(lensCorrectionAction_, &QAction::toggled, this, [this](bool on) {
         lensCorrectionOn_ = on && lensCorrector_.isReady();
         if (repos_.settings != nullptr) {
@@ -2028,9 +2082,8 @@ void MainWindow::buildMenuBar() {
     arucoAction->setCheckable(true);
     arucoAction->setChecked(arucoLiveScale_);
     arucoAction->setToolTip(
-        tr("Pon un marcador ArUco (diccionario 4x4) de tamaño conocido junto a la\n"
-           "pieza: la escala px→mm se recalcula en cada frame y se ajusta sola si\n"
-           "acercas o alejas la cámara (marcador en el mismo plano)."));
+        tr("Pon un marcador ArUco de tamaño conocido junto a la pieza para calcular la "
+           "escala en cada frame."));
     connect(arucoAction, &QAction::toggled, this, [this](bool on) {
         if (on) {
             bool ok = false;
@@ -2233,9 +2286,11 @@ void MainWindow::buildMenuBar() {
         toggle->setObjectName(QStringLiteral("measurementsToggle"));
         toggle->setText(tr("Medidas en vivo (tabla)"));
         toggle->setToolTip(
-            tr("Lo que mide cada herramienta de cada pieza, con su banda y su\n"
-               "veredicto. Sobre el vídeo sólo caben los números de una pieza; aquí\n"
-               "se leen todos, y las que no llegan a medir dicen por qué."));
+            tr("Lo que mide cada herramienta de cada pieza, con su banda y su "
+               "veredicto."));
+        toggle->setWhatsThis(
+            tr("Sobre el vídeo solo caben los números de una pieza; aquí se leen todos, "
+               "y las que no llegan a medir dicen por qué."));
         viewMenu->addAction(toggle);
     }
 
@@ -2246,8 +2301,7 @@ void MainWindow::buildMenuBar() {
     trackRotationAction_->setCheckable(true);
     trackRotationAction_->setChecked(pipelineConfig_.autoOrient);
     trackRotationAction_->setToolTip(
-        tr("Por defecto la pieza se muestra vertical (más estable). Actívalo solo si "
-           "la pieza llega girada y quieres que las herramientas la sigan al rotar."));
+        tr("Hace que las herramientas sigan a la pieza cuando llega girada."));
     connect(trackRotationAction_, &QAction::toggled, this, [this](bool on) {
         pipelineConfig_.autoOrient = on;
         persistPipelineConfig();
@@ -2261,9 +2315,11 @@ void MainWindow::buildMenuBar() {
     boardAction_->setCheckable(true);
     boardAction_->setChecked(boardVisible_);
     boardAction_->setToolTip(
-        tr("Dibuja ejes y grilla con el CERO en el origen elegido, para medir\n"
-           "la posición de la pieza (desviación en X/Y y ángulo) en vez de solo\n"
-           "distancias sueltas. +X a la derecha, +Y hacia arriba."));
+        tr("Dibuja ejes y grilla con el cero en el origen elegido, para medir la "
+           "posición de la pieza."));
+    boardAction_->setWhatsThis(
+        tr("Enseña la desviación en X/Y y el ángulo en vez de solo distancias sueltas. "
+           "+X a la derecha, +Y hacia arriba."));
     connect(boardAction_, &QAction::toggled, this, [this](bool on) {
         boardVisible_ = on;
         video_->setBoardVisible(on);
@@ -2279,9 +2335,9 @@ void MainWindow::buildMenuBar() {
     rulerAction_->setCheckable(true);
     rulerAction_->setChecked(rulerVisible_);
     rulerAction_->setToolTip(
-        tr("Reglas en los bordes con marcas y números en la unidad activa, barra de\n"
-           "escala y marca de la posición del cursor. Sirve para leer una medida de\n"
-           "un vistazo sin dibujar una herramienta."));
+        tr("Reglas en los bordes con marcas, barra de escala y posición del cursor."));
+    rulerAction_->setWhatsThis(
+        tr("Sirve para leer una medida de un vistazo sin dibujar una herramienta."));
     connect(rulerAction_, &QAction::toggled, this, [this](bool on) {
         rulerVisible_ = on;
         video_->setRulerVisible(on);
@@ -2302,13 +2358,12 @@ void MainWindow::buildMenuBar() {
     viewEnhanceAction_->setObjectName(QStringLiteral("viewEnhanceAction"));
     viewEnhanceAction_->setCheckable(true);
     viewEnhanceAction_->setToolTip(
-        tr("Estira el contraste de lo que se ve en pantalla: una pieza oscura\n"
-           "sobre fondo oscuro pasa a distinguirse.\n\n"
-           "SOLO cambia lo que se pinta. Las medidas salen del fotograma tal\n"
-           "como llega de la cámara, así que realzar no mueve ninguna cota.\n"
-           "Si lo que quieres es arreglar la iluminación de verdad, eso está en\n"
-           "Configurar ▸ Configurar…, pestaña Cámara e imagen — y eso sí cambia lo\n"
-           "que se mide."));
+        tr("Estira el contraste en pantalla para distinguir una pieza oscura sobre "
+           "fondo oscuro."));
+    viewEnhanceAction_->setWhatsThis(
+        tr("Solo cambia lo que se pinta: las medidas siguen saliendo del fotograma "
+           "original. Para arreglar la iluminación de verdad, usa Configurar ▸ "
+           "Configurar…, pestaña Cámara e imagen."));
     connect(viewEnhanceAction_, &QAction::toggled, this, [this](bool on) {
         video_->setViewEnhance(on);
         if (repos_.settings != nullptr) {
@@ -2337,16 +2392,16 @@ void MainWindow::buildMenuBar() {
         vision::BoardOrigin origin;
     } origins[] = {
         {tr("Automático: centro del contorno"),
-         tr("Centra el cero en el centro geométrico de la pieza — el que se ve\n"
-            "centrado. Es la opción recomendada para centrar automáticamente."),
+         tr("Centra el cero en el centro geométrico de la pieza, el que se ve "
+            "centrado."),
          vision::BoardOrigin::PieceBounds},
         {tr("Automático: centro de masa"),
-         tr("Centro de masa del contorno. En piezas asimétricas (una L, por\n"
-            "ejemplo) queda visiblemente desplazado respecto al centro que se ve."),
+         tr("Centro de masa del contorno. En piezas asimétricas queda desplazado "
+            "respecto al centro que se ve."),
          vision::BoardOrigin::PieceCenter},
         {tr("Automático: centro de la imagen"),
-         tr("El cero queda fijo en pantalla: mide cuánto se desvía la pieza del centro\n"
-            "del campo de visión (útil para centrarla en un soporte)."),
+         tr("El cero queda fijo en pantalla: mide cuánto se desvía la pieza del centro "
+            "del campo de visión."),
          vision::BoardOrigin::ImageCenter},
         {tr("Manual: punto fijado a mano…"),
          tr("Marca un punto de la imagen con el ratón y todo se mide respecto a él."),
@@ -2374,8 +2429,7 @@ void MainWindow::buildMenuBar() {
     boardFollowAction_->setCheckable(true);
     boardFollowAction_->setChecked(boardConfig_.followPieceAngle);
     boardFollowAction_->setToolTip(
-        tr("Activado: los ejes acompañan el giro de la pieza (se mide en su marco).\n"
-           "Desactivado: los ejes quedan alineados con la imagen (marco de la máquina)."));
+        tr("Los ejes giran con la pieza en vez de quedar alineados con la imagen."));
     connect(boardFollowAction_, &QAction::toggled, this, [this](bool on) {
         boardConfig_.followPieceAngle = on;
         video_->setBoardConfig(boardConfig_);
@@ -2703,26 +2757,12 @@ void MainWindow::applyDetectionPage(DetectionPage* page) {
         QMessageBox::information(
             this, tr("Ha cambiado la definición del borde"),
             pipelineConfig_.subpixelEdges
-                ? tr("El borde pasa a afinarse a subpíxel: en vez de caer donde lo puso el "
-                     "umbral, cada punto se coloca donde el brillo cruza la mitad entre el "
-                     "nivel de dentro y el de fuera.\n\n"
-                     "Las medidas de la pieza —área, perímetro y todas las cotas— cambian "
-                     "un poco a partir de ahora, porque el borde ya no está en el mismo "
-                     "sitio.\n\n"
-                     "Si tienes tolerancias ajustadas, REVÍSALAS: una pieza buena podría "
-                     "salir NG por este cambio y no por un defecto.\n\n"
-                     "Y hay una contrapartida que conviene saber: gana EXACTITUD y pierde "
-                     "un poco de REPETIBILIDAD. Cada punto del borde se coloca mejor, pero "
-                     "recoge el ruido de su propio sitio en vez de quedarse pegado a la "
-                     "rejilla de píxeles, y el perímetro suma todos esos puntos.\n\n"
-                     "Medido sobre seis piezas reales, moviendo la imagen fracciones de "
-                     "píxel: el perímetro se mueve algo más en cinco de las seis (por "
-                     "ejemplo de 0,59 %% a 1,02 %%). Las tolerancias se juzgan con la "
-                     "repetibilidad, así que si tu cota es de perímetro, mira si te "
-                     "compensa.")
-                : tr("El borde vuelve a ser el que marca el umbral.\n\n"
-                     "Las medidas cambian un poco respecto a las de ahora mismo. Si "
-                     "ajustaste tolerancias con el afinado encendido, revísalas."));
+                ? tr("El borde se afina a subpíxel y las medidas cambian un poco. Revisa "
+                     "las tolerancias: una pieza buena podría salir NG por este cambio y "
+                     "no por un defecto.")
+                : tr("El borde vuelve a ser el que marca el umbral, y las medidas cambian "
+                     "un poco. Revisa las tolerancias que ajustaste con el afinado "
+                     "encendido."));
     }
     persistPipelineConfig();
 
@@ -3683,7 +3723,7 @@ void MainWindow::updateCalibrationLabel() {
         } else {
             why = tr("otra cámara");
         }
-        calibLabel_->setText(tr("⚠ Calibración obsoleta (%1) — recalibra con C").arg(why));
+        calibLabel_->setText(tr("⚠ Calibración obsoleta (%1): recalibra con C").arg(why));
         return;
     }
     // Escala calibrada + automático encendido es la combinación que da números
@@ -3692,7 +3732,7 @@ void MainWindow::updateCalibrationLabel() {
     const std::string warning =
         camera::automaticsWarning(true, autoExposureOn_, autoFocusOn_);
     if (!warning.empty()) {
-        calibLabel_->setText(tr("⚠ Escala: %1 mm/px — %2")
+        calibLabel_->setText(tr("⚠ Escala: %1 mm/px · %2")
                                  .arg(calibration_.mmPerPixel, 0, 'f', 4)
                                  .arg(QString::fromStdString(warning)));
         return;
@@ -4172,14 +4212,18 @@ void MainWindow::buildVideoBar(QWidget* parent, QVBoxLayout* root) {
     // los dos, y una prueba que ya no encuentra ninguno falla lejos de aquí.
     playPauseButton_->setObjectName(QStringLiteral("playPauseButton"));
     playPauseButton_->setText(tr("Pausa"));
-    playPauseButton_->setToolTip(tr("Pausar o seguir. Con el vídeo parado se puede dibujar\n"
-                                    "una herramienta sin que la pieza tiemble."));
+    playPauseButton_->setToolTip(tr("Pausa o sigue el vídeo."));
+    playPauseButton_->setWhatsThis(
+        tr("Con el vídeo parado se puede dibujar una herramienta sin que la pieza "
+           "tiemble."));
     row->addWidget(playPauseButton_);
 
     stepButton_ = new QToolButton(videoBar_);
     stepButton_->setText(tr("▶|"));
-    stepButton_->setToolTip(tr("Avanzar un frame y quedarse ahí. Con la barra no se puede\n"
-                               "elegir el frame: en un vídeo largo, un píxel son varios."));
+    stepButton_->setToolTip(tr("Avanza un solo frame."));
+    stepButton_->setWhatsThis(
+        tr("Con la barra no se puede elegir el frame exacto: en un vídeo largo, un "
+           "píxel de barra son varios frames."));
     row->addWidget(stepButton_);
 
     videoSlider_ = new QSlider(Qt::Horizontal, videoBar_);
@@ -4284,8 +4328,7 @@ void MainWindow::buildCaptureDock() {
     captureList_->setMovement(QListView::Static);
     captureList_->setSpacing(4);
     captureList_->setToolTip(
-        tr("Las fotos tomadas en esta sesión. Haz clic en una para trabajar sobre\n"
-           "ella; con Supr se quita de la tira."));
+        tr("Las fotos de esta sesión. Haz clic para trabajar sobre una; Supr la quita."));
 
     // SUPR, AQUÍ, QUITA LA FOTO — Y ANTES NO LO HACÍA.
     //
@@ -4321,10 +4364,11 @@ void MainWindow::buildCaptureDock() {
     auto* buttons = new QHBoxLayout();
     auto* save = new QPushButton(tr("Guardar todas…"), panel);
     save->setToolTip(
-        tr("Escribe las capturas en una carpeta, en PNG y con el nombre de la pieza\n"
-           "y la fecha por delante, para que la carpeta se ordene sola por tiempo.\n\n"
-           "En PNG y no JPEG a propósito: estas fotos son para volver a medir sobre\n"
-           "ellas, y el JPEG inventa bordes donde no los hay."));
+        tr("Guarda todas las capturas en una carpeta, en PNG."));
+    save->setWhatsThis(
+        tr("El nombre lleva la pieza y la fecha por delante, para que la carpeta se "
+           "ordene sola. Se usa PNG y no JPEG porque estas fotos son para volver a "
+           "medir sobre ellas."));
     buttons->addWidget(save);
     auto* clear = new QPushButton(tr("Vaciar"), panel);
     clear->setToolTip(tr("Quita todas las capturas de la tira. No borra lo ya guardado."));
@@ -4385,17 +4429,17 @@ void MainWindow::updateLearnFromCaptureAvailability() {
     const bool usable = hasCapture && pieceId >= 0 && hasEngine;
     learnFromCaptureButton_->setEnabled(usable);
     learnFromCaptureButton_->setToolTip(
-        usable ? tr("Añade esta foto a la referencia de la pieza como un ejemplar BUENO.\n\n"
-                    "La referencia no se reentrena: se le suma esta muestra y se guarda una "
-                    "versión nueva, conservando las anteriores. Antes de añadirla se "
-                    "inspecciona, y si sale NG se avisa — enseñarle una pieza mala a la "
-                    "referencia es la forma más rápida de que deje de detectar nada.")
+        usable ? tr("Añade esta foto a la referencia de la pieza como ejemplar bueno.")
         : !hasCapture ? tr("Elige antes una foto de la tira.")
         : pieceId < 0 ? tr("Elige antes qué pieza es: la referencia que se actualiza es la "
                            "suya.")
-                      : tr("Sin el modelo ONNX no hay apariencia que aprender. Con las "
-                           "herramientas de medida se sigue inspeccionando, pero la "
-                           "referencia por apariencia necesita el modelo."));
+                      : tr("Sin el modelo ONNX no hay apariencia que aprender."));
+    if (usable) {
+        learnFromCaptureButton_->setWhatsThis(
+            tr("La referencia no se reentrena: se le suma esta muestra y se guarda una "
+               "versión nueva, conservando las anteriores. Antes de añadirla se "
+               "inspecciona, y si sale NG se avisa."));
+    }
 }
 
 // Aprender de una captura elegida a mano.
@@ -4443,12 +4487,9 @@ void MainWindow::onLearnFromCaptureClicked() {
     if (!verdict.ok) {
         const auto answer = QMessageBox::question(
             this, tr("Esta foto sale NG"),
-            tr("El programa considera MALA esta pieza:\n\n%1\n\n"
-               "Añadirla a la referencia mueve lo que se considera normal hacia esa "
-               "pieza, y a partir de ahí defectos parecidos empezarán a pasar como "
-               "buenos.\n\n"
-               "Tiene sentido hacerlo si la referencia se quedó demasiado estrecha y esta "
-               "pieza es buena de verdad. ¿La añado?")
+            tr("El programa considera mala esta pieza: %1\n\n"
+               "Añadirla igualmente hará que defectos parecidos pasen como buenos a "
+               "partir de ahora. ¿La añado?")
                 .arg(QString::fromStdString(verdict.summary)),
             QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
         if (answer != QMessageBox::Yes) {
@@ -4485,7 +4526,7 @@ void MainWindow::refreshCaptureList() {
                                          capture.taken.toString(QStringLiteral("HH:mm:ss")));
         // De dónde salió: sin esto, dos fotos de dos montajes distintos son
         // indistinguibles una semana después, que es cuando se miran.
-        item->setToolTip(tr("%1 — %2")
+        item->setToolTip(tr("%1 · %2")
                              .arg(capture.taken.toString(QStringLiteral("dd/MM/yyyy HH:mm:ss")),
                                   capture.source));
         captureList_->addItem(item);
@@ -4730,21 +4771,19 @@ void MainWindow::updateEdgeBrushAvailability() {
     }
     edgeBrushButton_->setEnabled(usable);
     edgeBrushButton_->setToolTip(
-        usable
-            ? tr("Corrige a mano dónde está el borde de la pieza cuando la detección se\n"
-                 "equivoca: una sombra que se come un lado, un reflejo que la parte.\n\n"
-                 "Verde lo que añades, rojo lo que quitas. La rueda del ratón cambia el\n"
-                 "tamaño del pincel. La corrección vale para esta imagen: no cambia cómo\n"
-                 "se detectan las demás.")
+        usable ? tr("Corrige a mano el borde cuando la detección se equivoca.")
         : sourceKind_ == camera::SourceKind::Video
-            ? tr("Pausa el vídeo para corregir el borde.\n\n"
-                 "Con el vídeo en marcha el contorno se recalcula en cada frame, así que\n"
-                 "una corrección a mano dejaría de valer al frame siguiente.")
-            : tr("Solo con una imagen quieta: una foto, un fichero abierto o un vídeo en\n"
-                 "pausa.\n\n"
-                 "En vídeo en vivo el contorno se recalcula en cada frame, así que un borde\n"
-                 "corregido a mano dejaría de valer en cuanto la pieza se moviera. Captura\n"
-                 "una foto y corrígela ahí."));
+            ? tr("Pausa el vídeo para corregir el borde.")
+            : tr("Solo funciona con una imagen quieta: foto, fichero abierto o vídeo en "
+                 "pausa."));
+    edgeBrushButton_->setWhatsThis(
+        usable ? tr("Verde es lo que añades, rojo lo que quitas. La rueda del ratón cambia "
+                    "el tamaño del pincel. La corrección solo vale para esta imagen.")
+        : sourceKind_ == camera::SourceKind::Video
+            ? tr("Con el vídeo en marcha el contorno se recalcula en cada frame, así que "
+                 "la corrección dejaría de valer al siguiente.")
+            : tr("En vivo el contorno se recalcula en cada frame, así que un borde "
+                 "corregido a mano dejaría de valer en cuanto la pieza se moviera."));
     if (!usable) {
         // Al dejar de poder usarse, el pincel se apaga solo: dejarlo encendido
         // haría que el siguiente clic sobre la imagen pintara sin que nadie lo
@@ -4922,11 +4961,9 @@ void MainWindow::onTuneDetectionFromEdge() {
         // indistinguible de «no lo he mirado».
         QMessageBox::information(
             this, tr("Afinar la detección"),
-            tr("Con estos ajustes no se gana nada.\n\n"
-               "Los de ahora reproducen tu corrección en un %1 %, y el mejor ajuste que "
-               "he encontrado llega al %2 %. La diferencia no justifica cambiarlos.\n\n"
-               "Si el borde te sigue saliendo mal, el problema no está en el umbral: "
-               "mira la iluminación, el enfoque o la zona de trabajo.")
+            tr("Con estos ajustes no se gana nada: los actuales llegan al %1 % y el "
+               "mejor que encontré al %2 %. Si el borde sigue saliendo mal, revisa la "
+               "iluminación, el enfoque o la zona de trabajo.")
                 .arg(percent(suggestion.agreementNow))
                 .arg(percent(suggestion.agreementSuggested)));
         return;
@@ -4940,11 +4977,9 @@ void MainWindow::onTuneDetectionFromEdge() {
                                        : tr("automática");
     const auto answer = QMessageBox::question(
         this, tr("Afinar la detección"),
-        tr("Hay un ajuste que habría detectado este borde SOLO, sin corregirlo a mano.\n\n"
-           "Ahora: coincide con tu corrección en un %1 %.\n"
-           "Propuesto: %2 %, con umbral %3 y polaridad «%4».\n\n"
-           "Se aplica a todas las piezas que se midan de aquí en adelante, no sólo a "
-           "ésta. ¿Lo aplico?")
+        tr("Hay un ajuste que habría detectado este borde sin corregirlo a mano: ahora "
+           "coincide en un %1 %, y con umbral %3 y polaridad «%4» llegaría al %2 %. Se "
+           "aplicaría a todas las piezas que se midan de aquí en adelante. ¿Lo aplico?")
             .arg(percent(suggestion.agreementNow))
             .arg(percent(suggestion.agreementSuggested))
             .arg(proposed.manualThreshold)
@@ -4964,7 +4999,7 @@ void MainWindow::onTuneDetectionFromEdge() {
     video_->clearEdgeCorrection();
     reanalyseCurrentFrame();
     statusBar()->showMessage(tr("Detección afinada: umbral %1, coincidencia %2 %. La "
-                                "corrección a mano se ha retirado — lo que ves ahora sale "
+                                "corrección a mano se ha retirado: lo que ves ahora sale "
                                 "de los ajustes.")
                                  .arg(proposed.manualThreshold)
                                  .arg(percent(suggestion.agreementSuggested)));
@@ -5200,8 +5235,8 @@ void MainWindow::onAnalysisFinished() {
             // perpendicular esté la cámara al plano del marcador.
             const double q = overlay.liveScaleQuality;
             const QString quality = q >= 0.9   ? tr("buena")
-                                    : q >= 0.75 ? tr("regular — endereza la cámara")
-                                                : tr("pobre — cámara muy inclinada");
+                                    : q >= 0.75 ? tr("regular: endereza la cámara")
+                                                : tr("pobre: cámara muy inclinada");
             calibLabel_->setText(tr("Escala (ArUco): %1 mm/px · calidad %2 (%3%)")
                                      .arg(overlay.liveMmPerPixel, 0, 'f', 4)
                                      .arg(quality)
@@ -5437,7 +5472,7 @@ void MainWindow::updateRateReadout() {
     // es el tamaño —de él depende la calibración— y a qué ritmo se está
     // analizando.
     if (streaming_ && !camera::capabilitiesOf(sourceKind_).meaningfulCaptureFps) {
-        QString text = QStringLiteral("%1x%2 — imagen")
+        QString text = QStringLiteral("%1x%2 · imagen")
                            .arg(currentResolution_.width)
                            .arg(currentResolution_.height);
         if (analysing) {
@@ -5615,12 +5650,12 @@ void MainWindow::onLiveToolCreated(const inspection::ToolGeometry& geometry) {
             // La unidad la decide `formatMeasure`, no esta pantalla.
             const QString measure = QString::fromStdString(inspection::formatMeasure(
                 result.value(), calibration_.mmPerPixel, currentUnit()));
-            hint = tr("%1 — midió %2; tolerancias sugeridas [%3, %4]")
+            hint = tr("%1: midió %2; tolerancias sugeridas [%3, %4]")
                        .arg(QString::fromStdString(tool.config.name), measure)
                        .arg(tool.config.toleranceMin, 0, 'f', 1)
                        .arg(tool.config.toleranceMax, 0, 'f', 1);
         } else {
-            hint = tr("%1 creada, pero no midió en este frame (%2) — ajusta su posición")
+            hint = tr("%1 creada, pero no midió en este frame (%2); ajusta su posición")
                        .arg(QString::fromStdString(tool.config.name),
                             QString::fromStdString(result.isOk() ? result.value().detail
                                                                  : result.error().message));
@@ -5770,14 +5805,14 @@ void MainWindow::onDeleteAllToolsClicked() {
             total > 0
                 ? tr("Borrar las de esta pieza se puede deshacer con Ctrl+Z.\n\n"
                      "En el programa hay %1 herramientas repartidas en %2 piezas. "
-                     "Borrarlas TODAS de una vez NO se puede deshacer.")
+                     "Borrarlas todas de una vez no se puede deshacer.")
                       .arg(everywhere.tools)
                       .arg(everywhere.pieces)
                 // Sin pieza abierta NO se menciona Ctrl+Z, y no es un olvido:
                 // la pila de deshacer guarda las herramientas de la pieza
                 // abierta, y aquí no hay ninguna. Prometer una vuelta atrás que
                 // no existe es peor que avisar de que no la hay.
-                : tr("Están repartidas en %1 piezas. Borrarlas NO se puede "
+                : tr("Están repartidas en %1 piezas. Borrarlas no se puede "
                      "deshacer.")
                       .arg(everywhere.pieces));
     } else {
@@ -5899,7 +5934,7 @@ void MainWindow::updateBoardReadout() {
     }
     boardReadoutLabel_->setVisible(true);
     if (!liveFixture_.has_value()) {
-        boardReadoutLabel_->setText(tr("Tablero — sin pieza detectada"));
+        boardReadoutLabel_->setText(tr("Tablero: sin pieza detectada"));
         return;
     }
 
@@ -5957,12 +5992,12 @@ void MainWindow::updateBoardReadout() {
         boardConfig_.manualOffset.y == 0.0F) {
         // El cero está sobre la pieza: su desviación es 0 por definición.
         boardReadoutLabel_->setText(
-            tr("Tablero — el cero viaja con la pieza · giro %1°%2")
+            tr("Tablero: el cero viaja con la pieza · giro %1°%2")
                 .arg(offsetDeg, 0, 'f', 1)
                 .arg(limits));
         return;
     }
-    boardReadoutLabel_->setText(tr("Tablero — dx %1 · dy %2 · radio %3 · giro %4°%5")
+    boardReadoutLabel_->setText(tr("Tablero: dx %1 · dy %2 · radio %3 · giro %4°%5")
                                     .arg(signedLen(reading.dx), signedLen(reading.dy),
                                          len(reading.radius))
                                     .arg(offsetDeg, 0, 'f', 1)
@@ -6074,29 +6109,35 @@ void MainWindow::updatePiecesChip() {
     // que algo pasa y no dice dónde se toca obliga a buscarlo.
     const QString tooSmall =
         lastPiecesTooSmall_ > 0
-            ? tr("\n\nAdemás, %1 mancha(s) más se quedaron fuera por no llegar al "
-                 "área mínima. Si son piezas tuyas, baja «Área mínima» en "
-                 "Configurar ▸ Detección.")
+            ? tr("Además, %1 mancha(s) más se quedaron fuera por no llegar al área "
+                 "mínima. Si son piezas tuyas, baja «Área mínima» en Configurar ▸ "
+                 "Detección.")
                   .arg(lastPiecesTooSmall_)
             : QString();
 
+    // El emergente lleva el ajuste con el que se arregla (probado por nombre:
+    // «Área mínima»), así que se queda en el tooltip y no en el «Shift+F1»,
+    // que aquí nadie va a pulsar sobre una pastilla de estado.
+    const auto withTooSmall = [&](const QString& base) {
+        return tooSmall.isEmpty() ? base : base + QStringLiteral("\n\n") + tooSmall;
+    };
     if (someLeftOut) {
-        piecesChip_->setToolTip(
+        piecesChip_->setToolTip(withTooSmall(
             tr("Se ven %1 manchas y has declarado %2 piezas: se trabaja con las %2 "
-               "mayores y el resto no se mide.")
+               "mayores.")
                 .arg(lastPiecesSeen_)
-                .arg(lastPieceCount_) +
-            tooSmall);
+                .arg(lastPieceCount_)));
         updatePieceNavigator();
         return;
     }
-    piecesChip_->setToolTip(
-        (several ? tr("Se ven %1 piezas en el encuadre.\n\n"
-                     "Las herramientas miden UNA: la que dice el selector de al lado. "
-                     "Las demás se cuentan y se pueden mirar una a una con las flechas.")
-                      .arg(lastPieceCount_)
-                : tr("Se ve una sola pieza en el encuadre.")) +
-        tooSmall);
+    piecesChip_->setToolTip(withTooSmall(
+        several ? tr("Se ven %1 piezas en el encuadre.").arg(lastPieceCount_)
+                : tr("Se ve una sola pieza en el encuadre.")));
+    if (several) {
+        piecesChip_->setWhatsThis(
+            tr("Las herramientas miden una sola: la que dice el selector de al lado. "
+               "Las demás se cuentan y se pueden mirar con las flechas."));
+    }
     updatePieceNavigator();
 }
 
@@ -6173,16 +6214,17 @@ void MainWindow::updatePieceNavigator() {
     // viene a impedir.
     pieceNavLabel_->setStyleSheet(focusedPiece_ == 0 ? theme::chipRestStyle()
                                                      : theme::chipChosenStyle());
-    const QString tip =
-        tr("Qué pieza del encuadre están midiendo las herramientas.\n\n"
-           "Numeradas en orden de lectura: por filas de arriba abajo, y dentro de\n"
-           "cada fila de izquierda a derecha. Las flechas pasan de una a otra para\n"
-           "ver cómo sale cada una.\n\n"
-           "Sin elegir ninguna se mide la mayor, que es lo de siempre. Pasa de la\n"
-           "última a «la mayor» para volver a ese modo.");
+    const QString tip = tr("Qué pieza del encuadre están midiendo las herramientas.");
     pieceNavLabel_->setToolTip(tip);
     piecePrevButton_->setToolTip(tip);
     pieceNextButton_->setToolTip(tip);
+    const QString detail =
+        tr("Numeradas en orden de lectura, por filas de arriba abajo. Sin elegir "
+           "ninguna se mide la mayor; pasa de la última a «la mayor» para volver a ese "
+           "modo.");
+    pieceNavLabel_->setWhatsThis(detail);
+    piecePrevButton_->setWhatsThis(detail);
+    pieceNextButton_->setWhatsThis(detail);
 }
 
 // Pasar a la pieza siguiente o a la anterior.
@@ -6254,14 +6296,13 @@ void MainWindow::updateEdgeCorrectionChip() {
                            pipelineConfig_.forcePiece.rows == lastFrame_.height()));
     edgeChip_->setVisible(true);
     if (!applied) {
-        edgeChip_->setText(tr(" Borde corregido — sin aplicar "));
+        edgeChip_->setText(tr(" Borde corregido: sin aplicar "));
         edgeChip_->setStyleSheet(theme::noticeStyle(theme::kWarn, theme::kWarnField) +
                                  QStringLiteral(" border-radius:8px; padding:1px 6px;"));
         edgeChip_->setToolTip(
-            tr("Hay %1 px pintados a mano, pero no se están aplicando: la corrección "
-               "es de una imagen de otro tamaño.\n\n"
-               "Vuelve a corregir sobre la imagen que tienes delante.")
+            tr("Hay %1 px corregidos a mano, pero son de otra imagen: no se aplican.")
                 .arg(corrected));
+        edgeChip_->setWhatsThis(tr("Vuelve a corregir sobre la imagen que tienes delante."));
         if (brushUndoAction_ != nullptr) {
             brushUndoAction_->setEnabled(video_->canUndoEdgeCorrection());
         }
@@ -6272,13 +6313,12 @@ void MainWindow::updateEdgeCorrectionChip() {
     }
     edgeChip_->setText(tr(" Borde corregido "));
     edgeChip_->setStyleSheet(theme::chipChosenStyle(theme::kChipEdited));
-    edgeChip_->setToolTip(tr("%1 px del borde están puestos a mano.\n\n"
-                             "El trazo ya no se pinta: lo que ves es el contorno que sale de "
-                             "la corrección, no la pincelada. Con el pincel activo, Ctrl+Z deshace "
-                             "la última; "
-                             "en \u00abCorregir borde\u00bb puedes quitarlas todas o afinar la "
-                             "detección con ellas.")
-                              .arg(corrected));
+    edgeChip_->setToolTip(tr("%1 px del borde están puestos a mano.").arg(corrected));
+    edgeChip_->setWhatsThis(
+        tr("El trazo ya no se pinta: lo que ves es el contorno que sale de la "
+           "corrección. Con el pincel activo, Ctrl+Z deshace la última; en "
+           "\u00abCorregir borde\u00bb puedes quitarlas todas o afinar la detección con "
+           "ellas."));
     if (brushUndoAction_ != nullptr) {
         brushUndoAction_->setEnabled(video_->canUndoEdgeCorrection());
     }
@@ -6566,7 +6606,7 @@ void MainWindow::onAnchorPicked(const cv::Point2f& imagePoint) {
         }
     } else {
         statusBar()->showMessage(
-            tr("Rasgo marcado — se guardará con la pieza al registrar."));
+            tr("Rasgo marcado: se guardará con la pieza al registrar."));
     }
 }
 
@@ -6628,10 +6668,7 @@ void MainWindow::onLiveSelectionChanged(int index) {
                 liveParamSpin_->setObjectName(QStringLiteral("spinPosicionEje"));
                 liveParamSpin_->setRange(1, 1000);
                 liveParamSpin_->setToolTip(
-                    tr("Eje sobre el que se juzga la desviación:\n"
-                       "1 = radial (distancia al cero)\n"
-                       "2 = solo X\n"
-                       "3 = solo Y"));
+                    tr("Eje sobre el que se juzga la desviación (1 radial, 2 X, 3 Y)."));
                 liveParamSpin_->setValue(static_cast<int>(g.axis) + 1);
                 liveParamSpin_->setEnabled(true);
             } else if constexpr (std::is_same_v<T, inspection::RegionGeometry>) {
@@ -6641,7 +6678,8 @@ void MainWindow::onLiveSelectionChanged(int index) {
                 QString tip = tr("Qué mide esta Región:");
                 const auto& measures = inspection::allRegionMeasures();
                 for (std::size_t i = 0; i < measures.size(); ++i) {
-                    tip += QStringLiteral("\n%1 = %2")
+                    tip += QStringLiteral("%1%2 = %3")
+                               .arg(i == 0 ? QStringLiteral(" ") : QStringLiteral(", "))
                                .arg(i + 1)
                                .arg(QString::fromUtf8(
                                    inspection::regionMeasureLabel(measures[i])));
@@ -6765,7 +6803,7 @@ void MainWindow::rotatePieceView(double deltaDeg) {
                 .arg(currentOrientationOffset_, 0, 'f', 0));
     } else {
         statusBar()->showMessage(
-            tr("Vista girada a %1° — se guardará con la pieza al registrar.")
+            tr("Vista girada a %1°: se guardará con la pieza al registrar.")
                 .arg(currentOrientationOffset_, 0, 'f', 0));
     }
 }
@@ -7085,7 +7123,7 @@ void MainWindow::onResetConfigClicked() {
            "detección, la zona de trabajo, las preferencias, los atajos de teclado, "
            "los controles de cámara guardados, las capas de la vista y el tamaño de "
            "las ventanas.\n\n"
-           "NO se toca: las piezas registradas, sus plantillas de herramientas ni el "
+           "No se toca: las piezas registradas, sus plantillas de herramientas ni el "
            "historial de inspecciones.\n\n"
            "Esto no se puede deshacer. Si quieres conservar la puesta a punto, "
            "cancela y usa antes «Exportar configuración…»."));
@@ -7597,7 +7635,7 @@ void MainWindow::onCanvasContextMenu(int tool, const QPoint& globalPos,
 
         // Un encabezado que dice sobre QUÉ va el menú. Sin él, con dos cotas
         // pegadas no hay forma de saber cuál se ha cogido hasta ejecutar algo.
-        auto* header = menu.addAction(tr("%1 — %2")
+        auto* header = menu.addAction(tr("%1 · %2")
                                           .arg(typeLabel(hit.config.type))
                                           .arg(name));
         header->setEnabled(false);
@@ -7639,10 +7677,12 @@ void MainWindow::onCanvasContextMenu(int tool, const QPoint& globalPos,
         // se sabe dónde quiere ponerlo el operador: ha pulsado justo ahí.
         auto* anchor = menu.addAction(tr("Marcar aquí el rasgo distintivo"));
         anchor->setToolTip(
-            tr("Fija la orientación de la pieza cuando es simétrica o puede\n"
-               "llegar girada 180°. Elige un punto que solo exista en un sitio:\n"
-               "un agujero, una marca, una esquina achaflanada.\n\n"
-               "Solo se aplica si «seguir la rotación» está encendido."));
+            tr("Fija la orientación cuando la pieza es simétrica o puede llegar girada "
+               "180°."));
+        anchor->setWhatsThis(
+            tr("Elige un punto que solo exista en un sitio: un agujero, una marca, una "
+               "esquina achaflanada. Solo se aplica si «seguir la rotación» está "
+               "encendido."));
         anchor->setEnabled(streaming_ && liveFixture_.has_value());
         if (!anchor->isEnabled()) {
             anchor->setToolTip(tr("Necesita vídeo en vivo con la pieza detectada."));
@@ -8033,7 +8073,7 @@ void MainWindow::onRegisterLiveClicked() {
         if (QMessageBox::question(
                 this, tr("Sin modelo de apariencia"),
                 tr("El modelo ONNX no está disponible, así que las piezas se "
-                   "registrarán SOLO CON HERRAMIENTAS: se medirán con las que dibujes, "
+                   "registrarán solo con herramientas: se medirán con las que dibujes, "
                    "pero no habrá comparación de apariencia que detecte defectos "
                    "inesperados.\n\n¿Registrar así durante esta sesión?")) !=
             QMessageBox::Yes) {
@@ -8296,7 +8336,7 @@ void MainWindow::finishLiveRegistration() {
                 .arg(toolErrors));
     } else if (toolsOnly) {
         statusBar()->showMessage(
-            tr("'%1' registrada SOLO CON HERRAMIENTAS (%2): sin comparación de "
+            tr("'%1' registrada solo con herramientas (%2): sin comparación de "
                "apariencia. Auto-inspección activa.")
                 .arg(pendingPieceName_)
                 .arg(liveTools_.size()));
@@ -8783,7 +8823,7 @@ void MainWindow::onInspectionFinished() {
     const std::int64_t pieceId = selectedPieceId();
     if (repos_.inspections != nullptr) {
         if (auto stats = repos_.inspections->todayStats(pieceId); stats.isOk()) {
-            statusBar()->showMessage(tr("Hoy: %1 inspecciones — %2 OK / %3 NG")
+            statusBar()->showMessage(tr("Hoy: %1 inspecciones · %2 OK / %3 NG")
                                          .arg(stats.value().total)
                                          .arg(stats.value().okCount)
                                          .arg(stats.value().ngCount));
