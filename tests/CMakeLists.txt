@@ -207,6 +207,7 @@ add_executable(pci_gui_tests
   test_frame_sources.cpp
   test_source_remembers.cpp
   test_session_state.cpp
+  test_dark_mode_palette.cpp
 )
 set_target_properties(pci_gui_tests PROPERTIES AUTOMOC ON)
 target_link_libraries(pci_gui_tests

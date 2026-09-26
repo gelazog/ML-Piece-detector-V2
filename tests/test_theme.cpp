@@ -25,22 +25,15 @@ using namespace pci::ui;
 namespace {
 
 // Luminancia relativa, tal y como la define WCAG 2.2.
-double relativeLuminance(const char* hex) {
-    const QColor color = theme::color(hex);
-    const auto channel = [](int value) {
-        const double c = value / 255.0;
-        return c <= 0.03928 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
-    };
-    return 0.2126 * channel(color.red()) + 0.7152 * channel(color.green()) +
-           0.0722 * channel(color.blue());
-}
+//
+// La cuenta en sí vive en `theme::relativeLuminance`/`theme::contrastRatio`
+// desde que `test_dark_mode_palette.cpp` la necesitó también: tenerla en dos
+// sitios era el mismo desorden que esta prueba existe para cazar en la
+// paleta.
+double relativeLuminance(const char* hex) { return theme::relativeLuminance(theme::color(hex)); }
 
 double contrast(const char* a, const char* b) {
-    const double la = relativeLuminance(a);
-    const double lb = relativeLuminance(b);
-    const double hi = std::max(la, lb);
-    const double lo = std::min(la, lb);
-    return (hi + 0.05) / (lo + 0.05);
+    return theme::contrastRatio(theme::color(a), theme::color(b));
 }
 
 constexpr const char* kWhite = "#ffffff";

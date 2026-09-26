@@ -1,9 +1,15 @@
 #pragma once
 
+#include <QApplication>
 #include <QColor>
 #include <QPainter>
+#include <QPalette>
 #include <QPen>
 #include <QString>
+#include <QStyleFactory>
+
+#include <algorithm>
+#include <cmath>
 
 namespace pci::ui::theme {
 
@@ -94,6 +100,31 @@ inline constexpr const char* kOutline = "#c9c9c9";
 inline constexpr const char* kSurfaceSunken = "#f5f6f7";
 
 [[nodiscard]] inline QColor color(const char* token) { return QColor(QString(token)); }
+
+// LA FÓRMULA DE CONTRASTE DE WCAG 2.2, EN UN SOLO SITIO.
+//
+// Antes vivía copiada dentro de `tests/test_theme.cpp`: si otra prueba
+// necesitaba medir un contraste —como la que comprueba que el modo oscuro de
+// Windows no rompe la paleta de la aplicación— la alternativa era copiarla
+// otra vez, que es exactamente el defecto que motivó tener una paleta con
+// nombre en primer lugar. Ahora la cuenta se hace aquí una vez y todo lo demás
+// la llama.
+[[nodiscard]] inline double relativeLuminance(const QColor& colour) {
+    const auto channel = [](int value) {
+        const double c = value / 255.0;
+        return c <= 0.03928 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * channel(colour.red()) + 0.7152 * channel(colour.green()) +
+           0.0722 * channel(colour.blue());
+}
+
+[[nodiscard]] inline double contrastRatio(const QColor& a, const QColor& b) {
+    const double la = relativeLuminance(a);
+    const double lb = relativeLuminance(b);
+    const double hi = std::max(la, lb);
+    const double lo = std::min(la, lb);
+    return (hi + 0.05) / (lo + 0.05);
+}
 
 // Texto de un color de la paleta, con lo que se le quiera añadir detrás.
 //
@@ -307,6 +338,59 @@ inline constexpr int kTileBadgeRestAlpha = 170;  // la de las demás
 [[nodiscard]] inline QString chipStyle(const char* background, const QString& extra = {}) {
     return QStringLiteral("background:%1; color:%2; border-radius:8px; padding:3px;%3")
         .arg(QString(background), QString(kInkOnChip), extra);
+}
+
+// EL MODO OSCURO DE WINDOWS ROMPÍA EL TEXTO.
+//
+// `src/main.cpp` no fijaba estilo ni paleta, así que Qt (≥6.7, con
+// `qmodernwindowsstyle`) seguía el tema del sistema. Con Windows en oscuro la
+// ventana se volvía oscura pero los tokens de arriba —pensados para fondo
+// claro: `kInk` a 18,42:1 sobre BLANCO, no sobre `#1a1a1a`— seguían pintándose
+// encima. Medido: `kInk` (#141414) sobre el gris oscuro que pone Windows por
+// defecto (#2d2d2d) da 1,26:1; el mínimo de WCAG es 4,5:1. El texto no
+// desaparecía del todo, pero se acercaba.
+//
+// El arreglo es fijar el estilo Fusion —que no seguía el tema del sistema— y
+// una paleta explícita construida desde los mismos tokens, para que la app se
+// vea IGUAL con Windows en claro o en oscuro. `tests/test_dark_mode_palette.cpp`
+// fuerza un esquema de color oscuro con
+// `QGuiApplication::styleHints()->setColorScheme(Qt::ColorScheme::Dark)` antes
+// de llamar a esta función y comprueba que, después, el texto sigue siendo
+// oscuro sobre fondo claro con contraste ≥4,5:1 — no basta con que contraste,
+// porque el contraste es simétrico: una paleta invertida (fondo oscuro, texto
+// claro) también pasaría esa cuenta y seguiría siendo el error.
+inline void applyApplicationLook(QApplication& app) {
+    app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+
+    QPalette palette;
+    const QColor windowBg = color(kSurfaceSunken);
+    const QColor ink = color(kInk);
+    const QColor inkOff = color(kInkOff);
+    const QColor base = QColor(Qt::white);
+    const QColor highlight = color(kChipChosen);
+    const QColor highlightedInk = color(kInkOnChipChosen);
+
+    palette.setColor(QPalette::Window, windowBg);
+    palette.setColor(QPalette::WindowText, ink);
+    palette.setColor(QPalette::Base, base);
+    palette.setColor(QPalette::AlternateBase, windowBg);
+    palette.setColor(QPalette::ToolTipBase, base);
+    palette.setColor(QPalette::ToolTipText, ink);
+    palette.setColor(QPalette::Text, ink);
+    palette.setColor(QPalette::Button, windowBg);
+    palette.setColor(QPalette::ButtonText, ink);
+    palette.setColor(QPalette::BrightText, color(kBad));
+    palette.setColor(QPalette::Highlight, highlight);
+    palette.setColor(QPalette::HighlightedText, highlightedInk);
+    palette.setColor(QPalette::Link, highlight);
+
+    // Deshabilitado: sigue siendo legible (`kInkOff` está medido a 4,70:1),
+    // solo que apagado. Un control inactivo no debería volverse invisible.
+    palette.setColor(QPalette::Disabled, QPalette::WindowText, inkOff);
+    palette.setColor(QPalette::Disabled, QPalette::Text, inkOff);
+    palette.setColor(QPalette::Disabled, QPalette::ButtonText, inkOff);
+
+    app.setPalette(palette);
 }
 
 }  // namespace pci::ui::theme

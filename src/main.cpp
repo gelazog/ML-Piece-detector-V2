@@ -20,11 +20,15 @@
 #include "repositories/settings_repository.h"
 #include "repositories/tool_repository.h"
 #include "ui/main_window.h"
+#include "ui/theme.h"
 
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("PC Inspector"));
     QApplication::setOrganizationName(QStringLiteral("PCInspector"));
+    // EL MODO OSCURO DE WINDOWS ROMPÍA EL TEXTO: ver el porqué y la medida en
+    // `ui/theme.h`, justo encima de `applyApplicationLook`.
+    pci::ui::theme::applyApplicationLook(app);
 
     const QString appDir = QCoreApplication::applicationDirPath();
     pci::core::Logger::instance().setLogFile(
