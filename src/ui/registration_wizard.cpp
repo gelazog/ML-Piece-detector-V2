@@ -173,8 +173,23 @@ void RegistrationWizard::processFrame(const QImage& frame) {
         return;
     }
     captureButton_->setEnabled(false);
+    // SIN EXCEPCIONES QUE CRUCEN EL HILO.
+    //
+    // `QFuture::result()` vuelve a lanzar en el hilo de la interfaz cualquier
+    // excepción del trabajo, y ahí nadie la recoge: una sola excepción al
+    // calcular el embedding (un modelo que falta, memoria) cerraba el programa
+    // entero con el asistente abierto. Se convierte en un error normal, que es
+    // lo que el asistente ya sabe enseñar.
     watcher_.setFuture(QtConcurrent::run([this, frame] {
-        return session_->addFrame(camera::qImageToMat(frame));
+        using Feedback = core::Result<engine::RegistrationSession::SampleFeedback>;
+        try {
+            return session_->addFrame(camera::qImageToMat(frame));
+        } catch (const std::exception& error) {
+            return Feedback::err(std::string("No se pudo procesar la captura: ") +
+                                 error.what());
+        } catch (...) {
+            return Feedback::err("No se pudo procesar la captura");
+        }
     }));
 }
 
@@ -207,6 +222,10 @@ void RegistrationWizard::onCaptureProcessed() {
 }
 
 void RegistrationWizard::onFilesClicked() {
+    // Una captura puede estar procesándose en el pool con esta misma sesión:
+    // tocarla desde aquí a la vez es leer y escribir la misma lista desde dos
+    // hilos. Se espera a que termine; tarda lo que un embedding.
+    watcher_.waitForFinished();
     const QStringList paths = QFileDialog::getOpenFileNames(
         this, tr("Elegir imágenes de la pieza"), QString(),
         tr("Imágenes (*.png *.jpg *.jpeg *.bmp)"));
@@ -254,6 +273,10 @@ void RegistrationWizard::updateProgress() {
 }
 
 void RegistrationWizard::onFinishClicked() {
+    // Una captura puede estar procesándose en el pool con esta misma sesión:
+    // tocarla desde aquí a la vez es leer y escribir la misma lista desde dos
+    // hilos. Se espera a que termine; tarda lo que un embedding.
+    watcher_.waitForFinished();
     const QString name = nameEdit_->text().trimmed();
     if (name.isEmpty()) {
         QMessageBox::warning(this, tr("Falta el nombre"),

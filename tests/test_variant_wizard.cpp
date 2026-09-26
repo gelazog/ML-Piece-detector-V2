@@ -18,6 +18,10 @@
 #include <gtest/gtest.h>
 
 #include <QApplication>
+#include <stdexcept>
+#include <QPushButton>
+#include <QPainter>
+#include <QElapsedTimer>
 #include <QLabel>
 #include <QLineEdit>
 
@@ -124,4 +128,60 @@ TEST(VariantWizard, TheOrdinaryWizardIsUnchanged) {
     EXPECT_EQ(namedLabel(normal, "variantIntro"), nullptr)
         << "el asistente normal enseña la explicación del modo acabado";
     EXPECT_TRUE(normal.savedVariant().isEmpty());
+}
+
+// UNA EXCEPCIÓN AL PROCESAR UNA CAPTURA NO PUEDE CERRAR EL PROGRAMA.
+//
+// El asistente procesa cada captura en el pool de hilos y recoge el resultado
+// con `QFuture::result()`, que VUELVE A LANZAR en el hilo de la interfaz
+// cualquier excepción del trabajo. Ahí nadie la recogía: una excepción al
+// calcular el embedding —un modelo que falta, memoria— cerraba el programa con
+// el asistente abierto y el operador a mitad de registrar.
+//
+// La prueba le da al asistente un embedding que lanza y le pasa una captura con
+// una pieza. Antes del arreglo esta prueba no llegaba a fallar: se caía el
+// proceso de pruebas entero.
+TEST(VariantWizard, AnExceptionWhileProcessingACaptureIsShownNotFatal) {
+    const auto throwingEmbed =
+        [](const cv::Mat&) -> pci::core::Result<std::vector<float>> {
+        throw std::runtime_error("modelo ausente");
+    };
+    pci::ui::RegistrationWizard wizard(nullptr, throwingEmbed, nullptr);
+    wizard.show();
+
+    // Una pieza oscura sobre fondo claro, para que pase la validación de
+    // captura y se llegue a pedir el embedding.
+    QImage frame(640, 480, QImage::Format_BGR888);
+    frame.fill(QColor(220, 220, 220));
+    {
+        QPainter painter(&frame);
+        painter.setBrush(QColor(40, 40, 40));
+        painter.setPen(Qt::NoPen);
+        painter.drawEllipse(QPoint(320, 240), 120, 90);
+    }
+    ASSERT_TRUE(QMetaObject::invokeMethod(&wizard, "onFrame", Qt::DirectConnection,
+                                          Q_ARG(QImage, frame)));
+    ASSERT_TRUE(QMetaObject::invokeMethod(&wizard, "onCaptureClicked",
+                                          Qt::DirectConnection));
+
+    // Se espera a que la captura se procese y el asistente vuelva a aceptar.
+    auto* capture = wizard.findChild<QPushButton*>();
+    QElapsedTimer timer;
+    timer.start();
+    QString shown;
+    while (timer.elapsed() < 5000) {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+        for (auto* label : wizard.findChildren<QLabel*>()) {
+            if (label->text().contains(QStringLiteral("modelo ausente"))) {
+                shown = label->text();
+            }
+        }
+        if (!shown.isEmpty()) {
+            break;
+        }
+    }
+    std::printf("  [asistente] dice: %s\n", shown.toStdString().c_str());
+    EXPECT_FALSE(shown.isEmpty())
+        << "la excepción del embedding no llega al operador como un error";
+    EXPECT_NE(capture, nullptr);
 }

@@ -19,6 +19,26 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Una excepción al procesar una captura cerraba el programa con el asistente abierto
+
+El asistente de registro procesa cada captura en el pool de hilos y recoge el
+resultado con `QFuture::result()`, que **vuelve a lanzar en el hilo de la
+interfaz** cualquier excepción del trabajo. Ahí nadie la recogía: una sola
+excepción al calcular el embedding —un modelo que falta, memoria— terminaba el
+proceso con `terminate called after throwing QUnhandledException`, con el
+operador a mitad de registrar la pieza.
+
+Y había una segunda mitad del mismo sitio: «Elegir imágenes…» y «Finalizar»
+usaban la misma sesión desde la interfaz sin mirar si el pool la estaba usando
+en ese momento. Leer y escribir la lista de capturas desde dos hilos.
+
+Ahora la excepción se convierte en un error normal, que el asistente ya sabe
+enseñar («No se pudo procesar la captura: …»), y los dos botones esperan a que
+termine la captura en curso. La prueba le da al asistente un embedding que lanza:
+antes del arreglo no llegaba a fallar, se caía el proceso de pruebas entero.
+
+---
+
 ### Sesenta y cinco ajustes que cerraban el programa si la base estaba ocupada
 
 La ventana leía sus ajustes con `settings->getInt("x", 0).value()`: 65 veces. El
