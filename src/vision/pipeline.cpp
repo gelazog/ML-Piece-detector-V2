@@ -61,8 +61,21 @@ void keepOnlyInsidePolygon(cv::Mat& mask, const PipelineConfig& config,
 // La máscara limpia se construye **solo dentro de la envolvente de la pieza**:
 // con varias piezas, hacerlo a tamaño de frame para cada una multiplicaría por
 // N el coste de la parte que C4b acababa de abaratar.
-core::Result<PieceAnalysis> analyzePiece(const cv::Mat& working, PieceContour contour,
-                                         const PipelineConfig& config) {
+//
+// `gray` es `working` ya en gris, o vacía si no hay afinado subpíxel. Llega
+// hecha de fuera por lo que costaba hacerla aquí: se convertía la imagen ENTERA
+// una vez por pieza, y con la bandeja de cien tuercas (1920×1080, BGR) eso
+// llevaba `analyzeFrames` de 65,8 a 108,4 ms — cien conversiones de la misma
+// imagen para quedarse cada vez con los píxeles de alrededor de una tuerca.
+//
+// `full` y `offset` dicen dónde vive `working` dentro de la imagen completa:
+// la máscara se crea UNA vez, ya del tamaño del frame y en su sitio. Antes se
+// creaba del tamaño del recorte y, con zona de detección, se volvía a crear del
+// tamaño del frame para copiarla encima: dos reservas y una copia por pieza
+// donde basta una reserva.
+core::Result<PieceAnalysis> analyzePiece(const cv::Mat& working, const cv::Mat& gray,
+                                         PieceContour contour, const PipelineConfig& config,
+                                         const cv::Size& full, const cv::Point& offset) {
     const cv::Rect box = cv::boundingRect(contour.points) &
                          cv::Rect(0, 0, working.cols, working.rows);
     if (box.empty()) {
@@ -94,8 +107,11 @@ core::Result<PieceAnalysis> analyzePiece(const cv::Mat& working, PieceContour co
     analysis.contour = std::move(contour);
     analysis.fixture = fixture.value();
     analysis.normalized = std::move(normalized.value());
-    analysis.mask = cv::Mat::zeros(working.size(), CV_8UC1);
-    pieceMask.copyTo(analysis.mask(box));
+    // Del tamaño del FRAME y no de la envolvente, aunque sería más barato: la
+    // máscara es API pública y quien la consume la cruza con la imagen entera
+    // (`pieceMaskWithHoles` exige el mismo tamaño, y las pruebas lo comprueban).
+    analysis.mask = cv::Mat::zeros(full, CV_8UC1);
+    pieceMask.copyTo(analysis.mask(box + offset));
 
     // AFINADO SUBPÍXEL, TAMBIÉN POR AQUÍ.
     //
@@ -114,13 +130,7 @@ core::Result<PieceAnalysis> analyzePiece(const cv::Mat& working, PieceContour co
     // Los puntos ya están en coordenadas de `working`, que es el marco de la
     // imagen que se pasa: se afina contra ella directamente, igual que arriba.
     if (config.subpixelEdges && analysis.contour.points.size() >= 3) {
-        cv::Mat grayFull;
-        if (working.channels() == 3) {
-            cv::cvtColor(working, grayFull, cv::COLOR_BGR2GRAY);
-        } else {
-            grayFull = working;
-        }
-        const auto refined = refineContourSubpixel(grayFull, analysis.contour.points);
+        const auto refined = refineContourSubpixel(gray, analysis.contour.points);
         if (refined.refined > 0) {
             analysis.contour.area = subpixelArea(refined.points);
             analysis.contour.perimeter = subpixelPerimeter(refined.points);
@@ -130,8 +140,9 @@ core::Result<PieceAnalysis> analyzePiece(const cv::Mat& working, PieceContour co
     return core::Result<PieceAnalysis>::ok(std::move(analysis));
 }
 
-// Lleva un análisis del marco del recorte al de la imagen completa.
-void shiftToFullFrame(PieceAnalysis& analysis, const cv::Rect& roi, const cv::Size& full) {
+// Lleva un análisis del marco del recorte al de la imagen completa. La máscara
+// no: `analyzePiece` ya la deja en su sitio.
+void shiftToFullFrame(PieceAnalysis& analysis, const cv::Rect& roi) {
     const cv::Point offset = roi.tl();
     for (auto& point : analysis.contour.points) {
         point += offset;
@@ -139,10 +150,207 @@ void shiftToFullFrame(PieceAnalysis& analysis, const cv::Rect& roi, const cv::Si
     analysis.contour.centroid += cv::Point2f(offset);
     analysis.contour.rotatedRect.center += cv::Point2f(offset);
     analysis.fixture.origin += cv::Point2f(offset);
+}
 
-    cv::Mat fullMask = cv::Mat::zeros(full, CV_8UC1);
-    analysis.mask.copyTo(fullMask(roi));
-    analysis.mask = std::move(fullMask);
+// El gris que usa el afinado subpíxel, con la regla de siempre: tres canales se
+// convierten y cualquier otra cosa se pasa tal cual. Vacía si no hay afinado,
+// para no pagar la conversión cuando nadie la va a leer.
+//
+// No es `toGray` a propósito: con cuatro canales `toGray` convierte y esto no
+// —`refineContourSubpixel` recibe la BGRA, ve que no es CV_8UC1 y devuelve el
+// contorno sin afinar—. Cambiarlo es una corrección aparte, no algo que meter
+// de paso en un cambio que promete resultados idénticos.
+cv::Mat subpixelGray(const cv::Mat& image, const PipelineConfig& config) {
+    if (!config.subpixelEdges) {
+        return {};
+    }
+    if (image.channels() == 3) {
+        cv::Mat gray;
+        cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+        return gray;
+    }
+    return image;
+}
+
+// La imagen de trabajo y su máscara segmentada: lo que comparten los dos
+// caminos, el de una pieza y el de todas.
+struct Segmented {
+    cv::Rect roi;
+    bool useRoi = false;
+    cv::Mat working;
+    cv::Mat mask;
+};
+
+core::Result<Segmented> segmentWorking(const cv::Mat& image, const PipelineConfig& config) {
+    Segmented out;
+    const cv::Rect frameRect(0, 0, image.cols, image.rows);
+    out.roi = croppingRect(config, frameRect);
+    out.useRoi = out.roi.area() > 0 && out.roi != frameRect;
+    out.working = out.useRoi ? image(out.roi) : image;
+
+    auto mask = segmentPiece(out.working, config.segmentation);
+    if (!mask.isOk()) {
+        return core::Result<Segmented>::err(mask.error().message);
+    }
+    out.mask = std::move(mask.value());
+    applyMaskCorrection(out.mask, config, out.roi, out.useRoi);
+    keepOnlyInsidePolygon(out.mask, config, out.roi, out.useRoi);
+    return core::Result<Segmented>::ok(std::move(out));
+}
+
+// Todas las piezas a partir de una máscara ya segmentada. `grayWorking` es el
+// gris de `seg.working` (vacío sin afinado subpíxel).
+core::Result<std::vector<PieceAnalysis>> piecesFromMask(const cv::Mat& image,
+                                                        const Segmented& seg,
+                                                        const cv::Mat& grayWorking,
+                                                        const PipelineConfig& config,
+                                                        int* belowMinArea,
+                                                        std::vector<double>* blobAreas) {
+    auto contours = findPieceContours(config.segmentation.splitTouchingPieces
+                                          ? splitTouchingPieces(seg.mask)
+                                          : seg.mask,
+                                      config.minAreaFraction, config.maxAreaFraction,
+                                      kMaxPieces, nullptr, belowMinArea, blobAreas);
+    if (contours.empty()) {
+        return core::Result<std::vector<PieceAnalysis>>::err(
+            "No se encontró ninguna pieza en la imagen");
+    }
+
+    const cv::Point offset = seg.useRoi ? seg.roi.tl() : cv::Point(0, 0);
+    std::vector<PieceAnalysis> pieces;
+    pieces.reserve(contours.size());
+    for (auto& contour : contours) {
+        auto analysis = analyzePiece(seg.working, grayWorking, std::move(contour), config,
+                                     image.size(), offset);
+        if (!analysis.isOk()) {
+            continue;  // una pieza degenerada no invalida a las demás
+        }
+        if (seg.useRoi) {
+            shiftToFullFrame(analysis.value(), seg.roi);
+        }
+        pieces.push_back(std::move(analysis.value()));
+    }
+    if (pieces.empty()) {
+        return core::Result<std::vector<PieceAnalysis>>::err(
+            "No se encontró ninguna pieza en la imagen");
+    }
+    return core::Result<std::vector<PieceAnalysis>>::ok(std::move(pieces));
+}
+
+// El cronómetro de `analyzeFrame`. Solo existe si alguien lo pidió: `mark`
+// apunta los ms transcurridos en la etapa y reinicia, de forma que las etapas
+// se reparten el total sin huecos ni solapes — que es lo que permite comprobar
+// que la suma cuadra, y un desglose cuya suma no cuadra está mintiendo.
+class Stopwatch {
+public:
+    explicit Stopwatch(StageTimings* timings) : timings_(timings) {
+        if (timings_ != nullptr) {
+            started_ = Clock::now();
+            last_ = started_;
+        }
+    }
+    void mark(double StageTimings::*stage) {
+        if (timings_ == nullptr) {
+            return;
+        }
+        const auto now = Clock::now();
+        timings_->*stage = std::chrono::duration<double, std::milli>(now - last_).count();
+        last_ = now;
+    }
+    // El total se mide de punta a punta, NO sumando las etapas. Así, si alguna
+    // vez el desglose deja de cuadrar con el total, la diferencia aparece en vez
+    // de esconderse: es el trozo de trabajo que nadie está atribuyendo a nada.
+    void finish() {
+        if (timings_ != nullptr) {
+            timings_->total =
+                std::chrono::duration<double, std::milli>(Clock::now() - started_).count();
+        }
+    }
+
+private:
+    using Clock = std::chrono::steady_clock;
+    StageTimings* timings_;
+    Clock::time_point started_{};
+    Clock::time_point last_{};
+};
+
+// La pieza principal —el contorno mayor— a partir de una máscara ya segmentada.
+// `grayImage` es el gris de la imagen COMPLETA si quien llama ya lo tiene; si
+// llega vacío y hace falta, se saca aquí, al final, para que el cronómetro de
+// `analyzeFrame` lo siga atribuyendo donde siempre (a ninguna etapa, al total).
+core::Result<PieceAnalysis> mainFromMask(const cv::Mat& image, const Segmented& seg,
+                                         cv::Mat grayImage,
+                                         const PipelineConfig& config, Stopwatch& clock) {
+    auto contour =
+        findLargestContour(seg.mask, config.minAreaFraction, config.maxAreaFraction);
+    if (!contour.isOk()) {
+        return core::Result<PieceAnalysis>::err(contour.error().message);
+    }
+    clock.mark(&StageTimings::contour);
+
+    // Máscara reconstruida solo con el contorno mayor: los blobs de ruido que
+    // sobrevivieron a la morfología no deben sesgar el fixture ni el recorte.
+    cv::Mat cleanMask = cv::Mat::zeros(seg.mask.size(), CV_8UC1);
+    const std::vector<std::vector<cv::Point>> fill{contour.value().points};
+    cv::drawContours(cleanMask, fill, 0, cv::Scalar(255), cv::FILLED);
+
+    const auto fixture = computeFixture(cleanMask, config.autoOrient);
+    if (!fixture.isOk()) {
+        return core::Result<PieceAnalysis>::err(fixture.error().message);
+    }
+    clock.mark(&StageTimings::fixture);
+
+    auto normalized =
+        normalizePiece(seg.working, cleanMask, fixture.value(), config.canonicalSize);
+    if (!normalized.isOk()) {
+        return core::Result<PieceAnalysis>::err(normalized.error().message);
+    }
+    clock.mark(&StageTimings::normalize);
+
+    PieceAnalysis analysis;
+    analysis.contour = std::move(contour.value());
+    analysis.fixture = fixture.value();
+    analysis.normalized = std::move(normalized.value());
+
+    if (seg.useRoi) {
+        // Desplazar contorno, fixture y máscara al marco de la imagen completa.
+        const cv::Point offset = seg.roi.tl();
+        for (auto& point : analysis.contour.points) {
+            point += offset;
+        }
+        analysis.contour.centroid += cv::Point2f(offset);
+        analysis.contour.rotatedRect.center += cv::Point2f(offset);
+        analysis.fixture.origin += cv::Point2f(offset);
+
+        cv::Mat fullMask = cv::Mat::zeros(image.size(), CV_8UC1);
+        cleanMask.copyTo(fullMask(seg.roi));
+        analysis.mask = std::move(fullMask);
+    } else {
+        analysis.mask = std::move(cleanMask);
+    }
+
+    // Afinado subpíxel del contorno, si se pidió.
+    //
+    // AQUÍ y no antes: los puntos ya están en coordenadas de la imagen completa,
+    // que es donde vive `image`. Afinar dentro del recorte y desplazar después
+    // funcionaría igual, pero obligaría a recordar en qué marco está cada cosa
+    // en dos sitios en vez de uno.
+    //
+    // El área y el perímetro se recalculan desde el contorno afinado y en coma
+    // flotante: redondear al entero justo después de haber medido en décimas
+    // tiraría la precisión recién ganada.
+    if (config.subpixelEdges && analysis.contour.points.size() >= 3) {
+        if (grayImage.empty()) {
+            grayImage = subpixelGray(image, config);
+        }
+        const auto refined = refineContourSubpixel(grayImage, analysis.contour.points);
+        if (refined.refined > 0) {
+            analysis.contour.area = subpixelArea(refined.points);
+            analysis.contour.perimeter = subpixelPerimeter(refined.points);
+            analysis.contour.subpixel = refined.points;
+        }
+    }
+    return core::Result<PieceAnalysis>::ok(std::move(analysis));
 }
 
 }  // namespace
@@ -261,46 +469,38 @@ core::Result<std::vector<PieceAnalysis>> analyzeFrames(const cv::Mat& image,
     if (image.empty()) {
         return core::Result<std::vector<PieceAnalysis>>::err("Imagen vacía");
     }
-    const cv::Rect frameRect(0, 0, image.cols, image.rows);
-    const cv::Rect roi = croppingRect(config, frameRect);
-    const bool useRoi = roi.area() > 0 && roi != frameRect;
-    const cv::Mat working = useRoi ? image(roi) : image;
+    auto seg = segmentWorking(image, config);
+    if (!seg.isOk()) {
+        return core::Result<std::vector<PieceAnalysis>>::err(seg.error().message);
+    }
+    // El gris, UNA vez y antes del bucle de piezas. Y del recorte, no de la
+    // imagen entera: es lo único que `analyzePiece` va a mirar.
+    const cv::Mat gray = subpixelGray(seg.value().working, config);
+    return piecesFromMask(image, seg.value(), gray, config, belowMinArea, blobAreas);
+}
 
-    auto mask = segmentPiece(working, config.segmentation);
-    if (!mask.isOk()) {
-        return core::Result<std::vector<PieceAnalysis>>::err(mask.error().message);
+FrameAndPieces analyzeFrameAndPieces(const cv::Mat& image, const PipelineConfig& config) {
+    if (image.empty()) {
+        return {core::Result<PieceAnalysis>::err("Imagen vacía"),
+                core::Result<std::vector<PieceAnalysis>>::err("Imagen vacía")};
     }
-    applyMaskCorrection(mask.value(), config, roi, useRoi);
-    keepOnlyInsidePolygon(mask.value(), config, roi, useRoi);
-
-    auto contours =
-        findPieceContours(config.segmentation.splitTouchingPieces
-                              ? splitTouchingPieces(mask.value())
-                              : mask.value(),
-                          config.minAreaFraction, config.maxAreaFraction, kMaxPieces,
-                          nullptr, belowMinArea, blobAreas);
-    if (contours.empty()) {
-        return core::Result<std::vector<PieceAnalysis>>::err(
-            "No se encontró ninguna pieza en la imagen");
+    auto seg = segmentWorking(image, config);
+    if (!seg.isOk()) {
+        return {core::Result<PieceAnalysis>::err(seg.error().message),
+                core::Result<std::vector<PieceAnalysis>>::err(seg.error().message)};
     }
-
-    std::vector<PieceAnalysis> pieces;
-    pieces.reserve(contours.size());
-    for (auto& contour : contours) {
-        auto analysis = analyzePiece(working, std::move(contour), config);
-        if (!analysis.isOk()) {
-            continue;  // una pieza degenerada no invalida a las demás
-        }
-        if (useRoi) {
-            shiftToFullFrame(analysis.value(), roi, image.size());
-        }
-        pieces.push_back(std::move(analysis.value()));
-    }
-    if (pieces.empty()) {
-        return core::Result<std::vector<PieceAnalysis>>::err(
-            "No se encontró ninguna pieza en la imagen");
-    }
-    return core::Result<std::vector<PieceAnalysis>>::ok(std::move(pieces));
+    // Un solo gris para los dos caminos. La conversión es píxel a píxel, así
+    // que el gris del recorte es el recorte del gris: idéntico a convertir
+    // `working` por separado, como hace `analyzeFrames`.
+    const cv::Mat grayImage = subpixelGray(image, config);
+    const cv::Mat grayWorking =
+        grayImage.empty() || !seg.value().useRoi ? grayImage : grayImage(seg.value().roi);
+    Stopwatch unused(nullptr);
+    // Ninguno de los dos caminos escribe en la máscara compartida:
+    // `findContours` no la modifica desde OpenCV 3.2 y `splitTouchingPieces`
+    // trabaja sobre una copia.
+    return {mainFromMask(image, seg.value(), grayImage, config, unused),
+            piecesFromMask(image, seg.value(), grayWorking, config, nullptr, nullptr)};
 }
 
 cv::Mat pieceMaskWithHoles(const cv::Mat& image, const cv::Mat& filledMask,
@@ -368,120 +568,20 @@ core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image, const PipelineCon
     if (image.empty()) {
         return core::Result<PieceAnalysis>::err("Imagen vacía");
     }
-
-    // El cronómetro solo existe si alguien lo pidió. `mark` devuelve los ms
-    // transcurridos y reinicia, de forma que las etapas se reparten el total
-    // sin huecos ni solapes — que es lo que permite comprobar que la suma
-    // cuadra, y un desglose cuya suma no cuadra está mintiendo.
-    using Clock = std::chrono::steady_clock;
-    const auto started = Clock::now();
-    auto last = started;
-    const auto mark = [&last](double* into) {
-        if (into == nullptr) {
-            return;
-        }
-        const auto now = Clock::now();
-        *into = std::chrono::duration<double, std::milli>(now - last).count();
-        last = now;
-    };
+    // El cronómetro solo corre si alguien lo pidió (ver `Stopwatch`).
+    Stopwatch clock(timings);
 
     // Zona de detección: todo el pipeline trabaja sobre el recorte y al final
     // los resultados se llevan a coordenadas de la imagen completa.
-    const cv::Rect frameRect(0, 0, image.cols, image.rows);
-    cv::Rect roi = croppingRect(config, frameRect);
-    const bool useRoi = roi.area() > 0 && roi != frameRect;
-    const cv::Mat working = useRoi ? image(roi) : image;
-
-    auto mask = segmentPiece(working, config.segmentation);
-    if (!mask.isOk()) {
-        return core::Result<PieceAnalysis>::err(mask.error().message);
+    auto seg = segmentWorking(image, config);
+    if (!seg.isOk()) {
+        return core::Result<PieceAnalysis>::err(seg.error().message);
     }
-    applyMaskCorrection(mask.value(), config, roi, useRoi);
-    keepOnlyInsidePolygon(mask.value(), config, roi, useRoi);
-    mark(timings != nullptr ? &timings->segment : nullptr);
+    clock.mark(&StageTimings::segment);
 
-    auto contour =
-        findLargestContour(mask.value(), config.minAreaFraction, config.maxAreaFraction);
-    if (!contour.isOk()) {
-        return core::Result<PieceAnalysis>::err(contour.error().message);
-    }
-    mark(timings != nullptr ? &timings->contour : nullptr);
-
-    // Máscara reconstruida solo con el contorno mayor: los blobs de ruido que
-    // sobrevivieron a la morfología no deben sesgar el fixture ni el recorte.
-    cv::Mat cleanMask = cv::Mat::zeros(mask.value().size(), CV_8UC1);
-    const std::vector<std::vector<cv::Point>> fill{contour.value().points};
-    cv::drawContours(cleanMask, fill, 0, cv::Scalar(255), cv::FILLED);
-
-    const auto fixture = computeFixture(cleanMask, config.autoOrient);
-    if (!fixture.isOk()) {
-        return core::Result<PieceAnalysis>::err(fixture.error().message);
-    }
-    mark(timings != nullptr ? &timings->fixture : nullptr);
-
-    auto normalized =
-        normalizePiece(working, cleanMask, fixture.value(), config.canonicalSize);
-    if (!normalized.isOk()) {
-        return core::Result<PieceAnalysis>::err(normalized.error().message);
-    }
-    mark(timings != nullptr ? &timings->normalize : nullptr);
-
-    PieceAnalysis analysis;
-    analysis.contour = std::move(contour.value());
-    analysis.fixture = fixture.value();
-    analysis.normalized = std::move(normalized.value());
-
-    if (useRoi) {
-        // Desplazar contorno, fixture y máscara al marco de la imagen completa.
-        const cv::Point offset = roi.tl();
-        for (auto& point : analysis.contour.points) {
-            point += offset;
-        }
-        analysis.contour.centroid += cv::Point2f(offset);
-        analysis.contour.rotatedRect.center += cv::Point2f(offset);
-        analysis.fixture.origin += cv::Point2f(offset);
-
-        cv::Mat fullMask = cv::Mat::zeros(image.size(), CV_8UC1);
-        cleanMask.copyTo(fullMask(roi));
-        analysis.mask = std::move(fullMask);
-    } else {
-        analysis.mask = std::move(cleanMask);
-    }
-
-    // Afinado subpíxel del contorno, si se pidió.
-    //
-    // AQUÍ y no antes: los puntos ya están en coordenadas de la imagen completa,
-    // que es donde vive `image`. Afinar dentro del recorte y desplazar después
-    // funcionaría igual, pero obligaría a recordar en qué marco está cada cosa
-    // en dos sitios en vez de uno.
-    //
-    // El área y el perímetro se recalculan desde el contorno afinado y en coma
-    // flotante: redondear al entero justo después de haber medido en décimas
-    // tiraría la precisión recién ganada.
-    if (config.subpixelEdges && analysis.contour.points.size() >= 3) {
-        cv::Mat grayFull;
-        if (image.channels() == 3) {
-            cv::cvtColor(image, grayFull, cv::COLOR_BGR2GRAY);
-        } else {
-            grayFull = image;
-        }
-        const auto refined = refineContourSubpixel(grayFull, analysis.contour.points);
-        if (refined.refined > 0) {
-            analysis.contour.area = subpixelArea(refined.points);
-            analysis.contour.perimeter = subpixelPerimeter(refined.points);
-            analysis.contour.subpixel = refined.points;
-        }
-    }
-
-    if (timings != nullptr) {
-        // El total se mide de punta a punta, NO sumando las etapas. Así, si
-        // alguna vez el desglose deja de cuadrar con el total, la diferencia
-        // aparece en vez de esconderse: es el trozo de trabajo que nadie está
-        // atribuyendo a nada.
-        timings->total =
-            std::chrono::duration<double, std::milli>(Clock::now() - started).count();
-    }
-    return core::Result<PieceAnalysis>::ok(std::move(analysis));
+    auto analysis = mainFromMask(image, seg.value(), cv::Mat(), config, clock);
+    clock.finish();
+    return analysis;
 }
 
 }  // namespace pci::vision

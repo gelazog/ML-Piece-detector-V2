@@ -4,6 +4,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
+#include <optional>
 #include <utility>
 
 #include "core/logging.h"
@@ -50,7 +51,44 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
     // corre, la inspección en curso no las ve a medias.
     const EngineOptions opts = options();
 
-    auto analysis = vision::analyzeFrame(frameBgr, opts.pipeline);
+    // CUÁNTAS SE ESPERAN, ANTES DE ANALIZAR. Se leía más abajo, después de
+    // `analyzeFrame`, y en cuanto había que mirar todas las piezas se llamaba
+    // además a `analyzeFrames`: el mismo frame segmentado dos veces. Sabiéndolo
+    // antes, las dos respuestas salen de una sola segmentación (ver
+    // `analyzeFrameAndPieces`, que da exactamente lo mismo que las dos llamadas
+    // por separado).
+    int expectedPieces = 1;
+    if (auto measurement = pieces_.loadMeasurement(pieceId); measurement.isOk()) {
+        expectedPieces = measurement.value().expectedPieces;
+    }
+    // CUÁNDO SE MIRAN TODAS.
+    //
+    // Antes la condición era «hay un número declarado mayor que uno», y el
+    // motivo escrito era el coste. El efecto era que el modo AUTOMÁTICO —que en
+    // la pantalla dice, con esas palabras, «cuenta las que haya»— no miraba: se
+    // medía la mayor y las demás no existían para el informe. Peor aún, la
+    // bandeja salía OK porque la única pieza mirada estaba bien.
+    //
+    // El coste, medido sobre las imágenes reales: +0,70 ms con dos piezas y
+    // +50 ms con cien. Es por INSPECCIÓN, no por fotograma, y la alternativa a
+    // esos 50 ms era no medir noventa y nueve piezas.
+    //
+    // El único caso que sigue sin enumerar es el declarado a UNA, y ahí es una
+    // decisión del operador que la pantalla promete: «con una pieza el programa
+    // deja de enumerar», para que una sombra o un reflejo no cuenten como
+    // segunda pieza. Declarar el número sirve para juzgar el recuento y para
+    // quedarse con las N mayores; no puede ser lo que ENCIENDE la medición.
+    const bool lookAtEveryPiece = expectedPieces != 1;
+
+    std::optional<core::Result<std::vector<vision::PieceAnalysis>>> everyPiece;
+    auto analysis = [&]() {
+        if (!lookAtEveryPiece) {
+            return vision::analyzeFrame(frameBgr, opts.pipeline);
+        }
+        auto both = vision::analyzeFrameAndPieces(frameBgr, opts.pipeline);
+        everyPiece.emplace(std::move(both.all));
+        return std::move(both.main);
+    }();
     if (!analysis.isOk()) {
         return ResultT::err("No se pudo analizar el frame: " + analysis.error().message);
     }
@@ -149,10 +187,6 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
     //     dos cosas: contar y medir. La pieza 0 sigue siendo `outcome.analysis`
     //     —la que ya lleva aplicado el rasgo distintivo y el giro—, así que
     //     inspeccionar de una en una da exactamente lo mismo que antes.
-    int expectedPieces = 1;
-    if (auto measurement = pieces_.loadMeasurement(pieceId); measurement.isOk()) {
-        expectedPieces = measurement.value().expectedPieces;
-    }
     // LAS DEMÁS PIEZAS, CADA UNA CON SU SITIO EN EL ORDEN DE LECTURA.
     //
     // Se guarda la posición y no solo el fixture porque el número que acaba en
@@ -165,26 +199,8 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
     };
     std::vector<ExtraPiece> extraFixtures;
     std::size_t mainReadingIndex = 0;
-    // CUÁNDO SE MIRAN TODAS.
-    //
-    // Antes la condición era «hay un número declarado mayor que uno», y el
-    // motivo escrito era el coste. El efecto era que el modo AUTOMÁTICO —que en
-    // la pantalla dice, con esas palabras, «cuenta las que haya»— no miraba: se
-    // medía la mayor y las demás no existían para el informe. Peor aún, la
-    // bandeja salía OK porque la única pieza mirada estaba bien.
-    //
-    // El coste, medido sobre las imágenes reales: +0,70 ms con dos piezas y
-    // +50 ms con cien. Es por INSPECCIÓN, no por fotograma, y la alternativa a
-    // esos 50 ms era no medir noventa y nueve piezas.
-    //
-    // El único caso que sigue sin enumerar es el declarado a UNA, y ahí es una
-    // decisión del operador que la pantalla promete: «con una pieza el programa
-    // deja de enumerar», para que una sombra o un reflejo no cuenten como
-    // segunda pieza. Declarar el número sirve para juzgar el recuento y para
-    // quedarse con las N mayores; no puede ser lo que ENCIENDE la medición.
-    const bool lookAtEveryPiece = expectedPieces != 1;
-    if (lookAtEveryPiece) {
-        if (auto all = vision::analyzeFrames(frameBgr, opts.pipeline); all.isOk()) {
+    if (everyPiece.has_value()) {
+        if (auto& all = *everyPiece; all.isOk()) {
             outcome.piecesFound = static_cast<int>(all.value().size());
             // Las DEMÁS, que es la mayor la que ya se analizó aparte.
             //

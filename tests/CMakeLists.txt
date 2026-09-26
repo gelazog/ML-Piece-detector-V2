@@ -92,6 +92,7 @@ add_executable(pci_tests
   test_real_photos.cpp
   test_real_video.cpp
   test_working_zone.cpp
+  test_one_segmentation.cpp
 )
 target_link_libraries(pci_tests
   PRIVATE pci_camera pci_core pci_database pci_domain pci_engine pci_inspection
@@ -136,6 +137,7 @@ set(PCI_TIMING_TESTS
   "ParallelTools.*"
   "EngineTest.AHundredPiecesInColourCostAboutTheSameAsInGrey"
   "StageTimings.*"
+  "OneSegmentation.MeasuredCostOfSegmentingTwice"
 )
 list(JOIN PCI_TIMING_TESTS ":" PCI_TIMING_FILTER)
 

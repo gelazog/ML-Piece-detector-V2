@@ -145,6 +145,31 @@ core::Result<PieceAnalysis> analyzeFrame(const cv::Mat& image,
     const cv::Mat& image, const PipelineConfig& config = {},
     int* belowMinArea = nullptr, std::vector<double>* blobAreas = nullptr);
 
+// LAS DOS RESPUESTAS DE UNA SOLA SEGMENTACIÓN.
+//
+// El motor, cuando mira todas las piezas, necesitaba las dos: `analyzeFrame`
+// para la principal —la que lleva el rasgo distintivo, el giro, la apariencia
+// y la miniatura— y `analyzeFrames` para contar y medir las demás. Y cada una
+// segmentaba el mismo frame por su cuenta.
+//
+// `main` es EXACTAMENTE lo que daría `analyzeFrame(image, config)` y `all` lo
+// que daría `analyzeFrames(image, config)`: se comparte la segmentación y nada
+// más, cada mitad sigue su propio camino desde la misma máscara.
+//
+// No se saca la principal como «la mayor de `all`» porque NO es lo mismo, y
+// medido: con `splitTouchingPieces` la principal es la mancha entera y la mayor
+// de la lista es un trozo; si la mancha mayor pasa del área máxima,
+// `analyzeFrame` falla y la lista sigue con las demás; con dos piezas de área
+// idéntica cada camino desempata distinto; con `autoOrient` el recorte
+// normalizado de la lista gira dentro de la envolvente y pierde las esquinas.
+// Ver `tests/test_one_segmentation.cpp`.
+struct FrameAndPieces {
+    core::Result<PieceAnalysis> main;
+    core::Result<std::vector<PieceAnalysis>> all;
+};
+[[nodiscard]] FrameAndPieces analyzeFrameAndPieces(const cv::Mat& image,
+                                                   const PipelineConfig& config = {});
+
 // CUÁNTO SE MOVERÍA ESTA MEDIDA SI LA LUZ CAMBIARA UN POCO.
 //
 // Queja del taller: «la manera en que toma los contornos suele variar mucho por

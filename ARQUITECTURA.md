@@ -5167,6 +5167,20 @@ herramientas pasaron de costar en color entre 1,6 y 2,7 veces lo que en gris a
 Las pruebas nuevas comparan color contra gris con el mínimo de varias vueltas y
 solo en serie, porque en paralelo miden también cuántos núcleos había libres.
 
+### La bandeja se segmentaba dos veces por inspección
+
+Con el número de piezas distinto de uno, `inspect` pedía la pieza principal a
+`analyzeFrame` y luego la lista entera a `analyzeFrames`, y cada una segmentaba
+el fotograma desde cero. Ahora `analyzeFrameAndPieces` segmenta una vez y de esa
+misma máscara saca las dos respuestas, cada una por su camino de siempre.
+
+La principal no se toma como «la mayor de la lista» porque no es lo mismo: con
+«separar piezas que se tocan» la principal es la mancha entera y la mayor de la
+lista es un trozo, y con el giro automático el recorte sale distinto.
+`test_one_segmentation.cpp` exige que las dos respuestas salgan idénticas a las
+dos llamadas por separado. Medido con la bandeja de 100 tuercas, en serie:
+de 99,9 ms a 81,8 ms por inspección.
+
 
 ### Puntos de medida: el operador decide cuántos
 
