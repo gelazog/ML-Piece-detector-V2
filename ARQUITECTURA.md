@@ -5168,6 +5168,23 @@ Las pruebas nuevas comparan color contra gris con el mínimo de varias vueltas y
 solo en serie, porque en paralelo miden también cuántos núcleos había libres.
 
 
+### Puntos de medida: el operador decide cuántos
+
+Doce herramientas (Círculo, Arco, Redondez, Engranaje, Borde liso, Rebabas y
+mellas, Rectitud, Orientación, Eje/Diámetro, Eje medio, Ranura, Rosca) exploran
+su geometría con un número fijo de rayos, escaneos o cortes, y el operador no
+podía tocarlo. Ahora se edita en el editor de plantilla y en la vista en vivo
+(«Puntos de medida»), con el rango que decide el modelo (`pointCountOf`).
+
+Medido en 1920×1080: pasar de 18 a 180 puntos cuesta entre 5 y 8,5 veces más.
+Con ruido de cámara el Ø medio de un disco conocido casi no se mueve entre 8 y
+360 rayos (0,18 % → 0,15 %): el ajuste robusto ya absorbe el ruido. Lo que se
+pierde con pocos puntos es aguante ante un defecto local —una rebaba pesa un
+12,5 % del ajuste con 8 muestras y menos del 1 % con 180— y, en Redondez, la
+forma misma. De paso: Borde liso exigía su campo de puntos en el JSON, y una
+plantilla anterior sin él no cargaba.
+
+
 ## 12. Empaquetado
 
 `.\run.ps1 -Package` genera un `.zip` que corre en una PC **sin MSYS2**: el

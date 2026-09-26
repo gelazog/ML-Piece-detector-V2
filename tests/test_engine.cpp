@@ -1238,9 +1238,13 @@ TEST_F(EngineTest, AHundredPiecesInColourCostAboutTheSameAsInGrey) {
         EXPECT_DOUBLE_EQ(fromGray[i], fromColour[i]) << "medida " << i;
     }
     // Margen ancho: se caza la forma —el color costando un múltiplo del gris—,
-    // no un milisegundo. El análisis del fotograma también convierte, y eso
-    // cabe de sobra en el 50 % más 5 ms.
-    EXPECT_LT(colourMs, grayMs * 1.5 + 5.0)
+    // no un milisegundo. El fallo que vigila costaba entre 5,8 y 6,3 veces; con
+    // el arreglo, 1,1. El primer listón (1,5x) saltó en un ctest completo con
+    // otra compilación en marcha, y la misma prueba sola daba entre 0,64x y
+    // 1,40x en tres vueltas: el gris y el color se miden uno detrás del otro, y
+    // la carga de la máquina cambia entre medias. 3x sigue cazando el fallo con
+    // el doble de margen y ya no mide la carga.
+    EXPECT_LT(colourMs, grayMs * 3.0 + 10.0)
         << "el color cuesta mucho más que el gris: ¿se convierte el fotograma por pieza?";
 }
 

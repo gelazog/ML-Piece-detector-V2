@@ -555,10 +555,11 @@ std::string pointCountTooltip(ToolType type) {
     // % de error); lo que sí se pierde con pocos puntos es ROBUSTEZ: un solo
     // defecto local pesa más entre 8 muestras que entre 180, y en Redondez
     // pocos rayos pueden no ver la forma entera (ver Redondez más abajo).
-    return std::string("Puntos de medida (") + noun +
-           "): cuántas veces se explora el contorno.\n"
-           "Medido: de 18 a 180 puntos, entre 5x y 8,5x más lento y apenas "
-           "cambia el Ø medio; con pocos puntos, un defecto local pesa más.";
+    // Corto y sin las cifras de arriba: el tooltip dice qué se gana y qué se
+    // pierde, no cómo se midió (guía de textos de la interfaz).
+    return std::string("Cuántos ") + noun +
+           " usa la medida. Más: aguanta mejor una rebaba o un reflejo, "
+           "pero va más lenta.";
 }
 
 const char* operandKindLabel(OperandKind kind) {
