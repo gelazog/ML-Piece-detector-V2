@@ -5151,6 +5151,23 @@ Estaban aquí: **1 191 líneas** de bitácora dentro de un capítulo llamado
 [BITACORA.md](BITACORA.md), que es donde alguien las buscaría.
 
 
+### El fotograma se convertía a gris una vez por herramienta y por pieza
+
+`runTool` llamaba a `vision::toGray` sobre la imagen completa en cada ejecución,
+`runTools` lo hacía una vez por herramienta —también dentro del reparto entre
+hilos— y `InspectionEngine::inspect` repetía esa tanda por cada pieza de la
+bandeja. Invisible porque las pruebas de coste (`ToolsCost`, `ParallelTools`)
+medían con imágenes ya en gris, donde `toGray` no hace nada; solo se notaba con
+la cámara real, que entrega color.
+
+Ahora se convierte una sola vez en `runTools` y una sola vez en `inspect`, y ese
+gris baja a todas las herramientas y piezas. Medido en esta máquina: 20
+herramientas pasaron de costar en color entre 1,6 y 2,7 veces lo que en gris a
+1,0–1,3 veces; el motor con 100 tuercas × 10 calibres, de 5,8–6,3 veces a 1,16.
+Las pruebas nuevas comparan color contra gris con el mínimo de varias vueltas y
+solo en serie, porque en paralelo miden también cuántos núcleos había libres.
+
+
 ## 12. Empaquetado
 
 `.\run.ps1 -Package` genera un `.zip` que corre en una PC **sin MSYS2**: el
