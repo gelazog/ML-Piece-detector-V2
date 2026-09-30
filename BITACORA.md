@@ -19,6 +19,21 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Otsu y «el contorno mayor» estaban copiados a mano en dieciocho sitios
+
+El umbral de Otsu con polaridad y el «quedarse con el contorno exterior mayor»
+estaban repetidos letra a letra en el ejecutor de herramientas, `auto_measure`,
+`measure_recipe` y `outlined_piece`. Pasan a `vision/silhouette.h` (`otsuMask` y
+`largestOuterContour`). Las diez variantes que se parecen pero no son iguales
+(RETR_CCOMP, CHAIN_APPROX_SIMPLE, desempate con `>` desde cero, filtro de área, o
+que solo quieren el umbral) se quedan donde están, cada una con su comentario.
+
+El riesgo no se veía: una unificación «equivalente» con CHAIN_APPROX_SIMPLE deja
+un cuadrado de 100 px en 4 puntos en vez de 396, y Polígono y Perfil cambiarían
+de número sin que fallara nada. `test_silhouette_helpers.cpp` compara el código de
+antes con el de ahora, en escenas sintéticas y en el banco de fotos, y exige
+igualdad exacta.
+
 ### El veredicto y los errores no se veían a metro y medio
 
 El operador trabaja de pie, a 1–1,5 m de la pantalla. El OK/NG iba en una banda

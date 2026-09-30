@@ -246,6 +246,7 @@ ClippingCheck checkThresholdClipping(const cv::Mat& image) {
     // sirviendo igual: le dice si SU elección corta.
     cv::Mat blurred;
     cv::GaussianBlur(gray, blurred, cv::Size(5, 5), 0.0);
+    // No es `otsuMask`: solo interesa el umbral de Otsu, y sobre el gris suavizado.
     cv::Mat scratch;
     const int otsu = static_cast<int>(
         cv::threshold(blurred, scratch, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU));

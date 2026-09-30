@@ -53,6 +53,18 @@ Dos reglas que sostienen el diseño:
   `core::Result<T>`, que obliga al llamador a mirar el error. Las excepciones de
   OpenCV se atrapan donde ocurren.
 
+**Ayudantes compartidos de `vision/`.** Los pasos que se repetían a mano viven
+en una cabecera de `vision/` y el resto de capas los llama: `gray.h`
+(`toGray`) y `silhouette.h` (`otsuMask`, Otsu con la polaridad de la
+herramienta; `largestOuterContour`, el contorno exterior mayor con todos sus
+píxeles). Sustituyeron diez y ocho copias idénticas, y
+`tests/test_silhouette_helpers.cpp` comprueba contra el código de antes, en
+escenas sintéticas y en el banco de fotos, que dan los mismos píxeles y los
+mismos puntos. Las variantes que se parecen y no son iguales (RETR_CCOMP,
+CHAIN_APPROX_SIMPLE, `>` desde cero, filtro de área antes de elegir, o solo
+querer el umbral) se quedan donde están, con una línea que dice en qué se
+diferencian: unificarlas cambiaría números.
+
 ---
 
 ## 2. Captura: la cámara y los ficheros

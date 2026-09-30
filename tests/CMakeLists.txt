@@ -94,6 +94,7 @@ add_executable(pci_tests
   test_real_video.cpp
   test_working_zone.cpp
   test_one_segmentation.cpp
+  test_silhouette_helpers.cpp
 )
 target_link_libraries(pci_tests
   PRIVATE pci_camera pci_core pci_database pci_domain pci_engine pci_inspection

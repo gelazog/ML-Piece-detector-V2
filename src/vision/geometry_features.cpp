@@ -479,6 +479,7 @@ ContourReport describeContour(const cv::Mat& mask, const DecomposeOptions& optio
         return report;
     }
 
+    // No es `largestOuterContour`: RETR_CCOMP, solo exteriores, `abs` del área y `>` desde 0.
     std::vector<std::vector<cv::Point>> contours;
     std::vector<cv::Vec4i> hierarchy;
     cv::findContours(mask, contours, hierarchy, cv::RETR_CCOMP, cv::CHAIN_APPROX_NONE);

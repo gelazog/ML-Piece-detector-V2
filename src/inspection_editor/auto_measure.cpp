@@ -11,6 +11,7 @@
 #include "vision/geometry_features.h"
 #include "vision/position_fixture.h"
 #include "vision/shape_class.h"
+#include "vision/silhouette.h"
 
 namespace pci::inspection {
 
@@ -186,14 +187,10 @@ std::vector<AutoProposal> proposeTools(const cv::Mat& gray, const cv::Mat& mask,
         return proposals;
     }
 
-    std::vector<std::vector<cv::Point>> outer;
-    cv::findContours(mask, outer, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
-    if (outer.empty()) {
+    const std::vector<cv::Point> contour = vision::largestOuterContour(mask);
+    if (contour.empty()) {
         return proposals;
     }
-    const auto& contour = *std::max_element(
-        outer.begin(), outer.end(),
-        [](const auto& a, const auto& b) { return cv::contourArea(a) < cv::contourArea(b); });
 
     // --- Qué figura es ------------------------------------------------------
     // Se pregunta ANTES de proponer nada, porque cambia qué tiene sentido

@@ -1,6 +1,7 @@
 #include "inspection_editor/measure_recipe.h"
 
 #include "inspection_editor/piece_report.h"
+#include "vision/silhouette.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -207,15 +208,11 @@ RecipeResult proposeWithRecipe(const cv::Mat& gray, const cv::Mat& mask,
         return result;
     }
 
-    std::vector<std::vector<cv::Point>> outer;
-    cv::findContours(mask, outer, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
-    if (outer.empty()) {
+    const std::vector<cv::Point> contour = vision::largestOuterContour(mask);
+    if (contour.empty()) {
         result.why = "No hay ninguna pieza sobre la que medir.";
         return result;
     }
-    const auto& contour = *std::max_element(
-        outer.begin(), outer.end(),
-        [](const auto& a, const auto& b) { return cv::contourArea(a) < cv::contourArea(b); });
     const vision::ShapeClass shape = vision::classifyShape(contour, mask);
     const PieceFamily seen = familyOf(shape);
 

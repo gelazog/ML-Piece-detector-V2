@@ -408,6 +408,7 @@ MeasurementStability measureStability(const cv::Mat& image, const PipelineConfig
             out.summary = "No se puede leer esta imagen.";
             return out;
         }
+        // No es `otsuMask`: aquí se quiere el UMBRAL que elige Otsu, la máscara se tira.
         cv::Mat binary;
         base = static_cast<int>(
             cv::threshold(gray, binary, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU));
@@ -540,6 +541,7 @@ cv::Mat pieceMaskWithHoles(const cv::Mat& image, const cv::Mat& filledMask,
     // contorno mayor del cruce y se compara con la máscara rellena. Una arandela
     // da el 100 % —su borde de fuera es el mismo— y un cruce con la polaridad
     // cambiada se queda con el agujero, cuyo contorno relleno es mucho menor.
+    // No es `largestOuterContour`: CHAIN_APPROX_SIMPLE y hace falta el ÍNDICE para `drawContours`.
     std::vector<std::vector<cv::Point>> kept;
     cv::findContours(withHoles, kept, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
     if (kept.empty()) {

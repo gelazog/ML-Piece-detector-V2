@@ -71,6 +71,7 @@ BrushSnapResult snapBrushBand(const cv::Mat& gray, const cv::Mat& band, const cv
     }
 
     const cv::Mat column(static_cast<int>(values.size()), 1, CV_8UC1, values.data());
+    // No es `otsuMask`: solo interesa el umbral, sobre una columna de valores y no una imagen.
     cv::Mat ignored;
     const double threshold =
         cv::threshold(column, ignored, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);

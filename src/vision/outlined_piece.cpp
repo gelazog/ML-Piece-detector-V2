@@ -1,4 +1,5 @@
 #include "vision/outlined_piece.h"
+#include "vision/silhouette.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -70,18 +71,14 @@ OutlinedPiece pieceInsideOutline(const cv::Mat& frame, const std::vector<cv::Poi
     segmented.value().copyTo(local(box));
     cv::bitwise_and(local, outline, local);
 
-    std::vector<std::vector<cv::Point>> blobs;
-    cv::findContours(local, blobs, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
-    if (blobs.empty()) {
+    const std::vector<cv::Point> biggest = largestOuterContour(local);
+    if (biggest.empty()) {
         result.why =
             "Dentro de la zona marcada no se ve ningún borde que separar del fondo. Se "
             "usa el trazo tal cual: vale para contar la pieza, pero sus cotas serían las "
             "del pulso de quien lo dibujó.";
         return result;
     }
-    const auto& biggest = *std::max_element(
-        blobs.begin(), blobs.end(),
-        [](const auto& a, const auto& b) { return cv::contourArea(a) < cv::contourArea(b); });
 
     cv::Mat piece(frame.size(), CV_8UC1, cv::Scalar(0));
     // Con los agujeros rellenos: lo que se fuerza es la SILUETA. Los huecos

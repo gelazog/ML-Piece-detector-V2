@@ -309,6 +309,7 @@ core::Result<cv::Mat> segmentPiece(const cv::Mat& image, const SegmentationOptio
 
     // Umbral: automático (Otsu) o fijo elegido por el usuario cuando la
     // iluminación engaña al automático.
+    // No es `otsuMask`: guarda el umbral, admite corte manual y la polaridad se decide DESPUÉS.
     cv::Mat binary;
     double usedThreshold = 0.0;
     if (active.manualThreshold >= 0) {

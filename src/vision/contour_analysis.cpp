@@ -289,6 +289,7 @@ core::Result<PieceContour> findLargestContour(const cv::Mat& mask, double minAre
         return core::Result<PieceContour>::err("Máscara inválida (se espera CV_8UC1)");
     }
 
+    // No es `largestOuterContour`: CHAIN_APPROX_SIMPLE, `>` desde 0 y filtro de área después.
     std::vector<std::vector<cv::Point>> contours;
     cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 

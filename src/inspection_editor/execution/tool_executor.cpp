@@ -19,6 +19,7 @@
 #include "vision/plane_scale.h"
 #include "vision/position_fixture.h"
 #include "vision/shape_class.h"
+#include "vision/silhouette.h"
 
 namespace pci::inspection {
 
@@ -2194,11 +2195,10 @@ int countBlobsInPolygon(const cv::Mat& gray, const std::vector<cv::Point2f>& pol
     cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{polyLocal}, cv::Scalar(255));
 
     const cv::Mat roi = gray(bounds);
-    cv::Mat binary;
-    cv::threshold(roi, binary, 0.0, 255.0,
-                  (darkBlobs ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
+    cv::Mat binary = vision::otsuMask(roi, darkBlobs);
     cv::bitwise_and(binary, regionMask, binary);
 
+    // No es `largestOuterContour`: aquí cuentan TODAS las manchas que pasan el área mínima.
     std::vector<std::vector<cv::Point>> contours;
     cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
@@ -2451,19 +2451,12 @@ ToolRunResult runFillet(const cv::Mat& gray, const Fixture& fixture,
         return result;
     }
 
-    cv::Mat binary;
-    cv::threshold(gray(bounds), binary, 0.0, 255.0,
-                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
-    std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
-    if (contours.empty()) {
+    cv::Mat binary = vision::otsuMask(gray(bounds), g.darkPiece);
+    const std::vector<cv::Point> outer = vision::largestOuterContour(binary);
+    if (outer.empty()) {
         result.detail = "No se ve ningún borde dentro del recuadro";
         return result;
     }
-    const auto& outer = *std::max_element(
-        contours.begin(), contours.end(), [](const auto& a, const auto& b) {
-            return cv::contourArea(a) < cv::contourArea(b);
-        });
 
     const auto primitives = vision::decomposeContour(outer);
     const cv::Rect2f selectionLocal(
@@ -2591,20 +2584,13 @@ ToolRunResult runChamfer(const cv::Mat& gray, const Fixture& fixture,
         return result;
     }
 
-    cv::Mat binary;
-    cv::threshold(gray(bounds), binary, 0.0, 255.0,
-                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
+    cv::Mat binary = vision::otsuMask(gray(bounds), g.darkPiece);
 
-    std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
-    if (contours.empty()) {
+    const std::vector<cv::Point> outer = vision::largestOuterContour(binary);
+    if (outer.empty()) {
         result.detail = "No se ve ningún borde dentro del recuadro";
         return result;
     }
-    const auto& outer = *std::max_element(
-        contours.begin(), contours.end(), [](const auto& a, const auto& b) {
-            return cv::contourArea(a) < cv::contourArea(b);
-        });
 
     // Descomposición con el listón del ARCO más alto de lo normal, y por un
     // motivo concreto: el bisel de un chaflán es un tramo RECTO y corto, y en
@@ -2823,21 +2809,14 @@ ToolRunResult runExtremes(const cv::Mat& gray, const Fixture& fixture,
     }
     cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
 
-    cv::Mat binary;
-    cv::threshold(gray(bounds), binary, 0.0, 255.0,
-                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
+    cv::Mat binary = vision::otsuMask(gray(bounds), g.darkPiece);
     cv::bitwise_and(binary, regionMask, binary);
 
-    std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
-    if (contours.empty()) {
+    const std::vector<cv::Point> outer = vision::largestOuterContour(binary);
+    if (outer.empty()) {
         result.detail = "No se ve ninguna figura dentro del recuadro";
         return result;
     }
-    const auto& outer = *std::max_element(
-        contours.begin(), contours.end(), [](const auto& a, const auto& b) {
-            return cv::contourArea(a) < cv::contourArea(b);
-        });
     if (cv::contourArea(outer) < 25.0) {
         result.detail = "No se ve ninguna figura dentro del recuadro";
         return result;
@@ -2933,24 +2912,17 @@ ToolRunResult runProfile(const cv::Mat& gray, const Fixture& fixture,
         return result;
     }
 
-    cv::Mat binary;
     // Con la polaridad de la herramienta, como el resto de las de silueta. Antes
     // era `THRESH_BINARY_INV` a secas, o sea «la pieza es siempre lo oscuro»: con
     // el montaje contrario —contraluz, pieza clara sobre fondo negro— comparaba
     // el nominal contra el FONDO y devolvía 125,7 px de perfil con veredicto
     // bueno. No un aviso: un número con toda la pinta de ser una medida.
-    cv::threshold(gray(bounds), binary, 0.0, 255.0,
-                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
-    std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
-    if (contours.empty()) {
+    cv::Mat binary = vision::otsuMask(gray(bounds), g.darkPiece);
+    const std::vector<cv::Point> biggest = vision::largestOuterContour(binary);
+    if (biggest.empty()) {
         result.detail = "no se ve ninguna silueta que comparar";
         return result;
     }
-    const auto& biggest = *std::max_element(
-        contours.begin(), contours.end(), [](const auto& a, const auto& b) {
-            return cv::contourArea(a) < cv::contourArea(b);
-        });
 
     // A coordenadas de pieza, que es donde vive el nominal.
     const cv::Point2f offset(static_cast<float>(bounds.x), static_cast<float>(bounds.y));
@@ -3026,11 +2998,10 @@ ToolRunResult runBoltPattern(const cv::Mat& gray, const Fixture& fixture,
     }
     cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
 
-    cv::Mat binary;
-    cv::threshold(gray(bounds), binary, 0.0, 255.0,
-                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
+    cv::Mat binary = vision::otsuMask(gray(bounds), g.darkPiece);
     cv::bitwise_and(binary, regionMask, binary);
 
+    // No es `largestOuterContour`: CCOMP para los agujeros; `>` desde 0 no elige áreas nulas.
     std::vector<std::vector<cv::Point>> contours;
     std::vector<cv::Vec4i> hierarchy;
     cv::findContours(binary, contours, hierarchy, cv::RETR_CCOMP, cv::CHAIN_APPROX_NONE);
@@ -3577,11 +3548,10 @@ ToolRunResult runClearance(const cv::Mat& gray, const Fixture& fixture,
     }
     cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
 
-    cv::Mat binary;
-    cv::threshold(gray(bounds), binary, 0.0, 255.0,
-                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
+    cv::Mat binary = vision::otsuMask(gray(bounds), g.darkPiece);
     cv::bitwise_and(binary, regionMask, binary);
 
+    // No es `largestOuterContour`: APPROX_SIMPLE, filtro de área y las DOS mayores.
     std::vector<std::vector<cv::Point>> contours;
     cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
     // Se descartan las motas: dos píxeles sueltos harían de "segunda figura" y
@@ -3895,21 +3865,14 @@ ToolRunResult runPolygon(const cv::Mat& gray, const Fixture& fixture,
     }
     cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
 
-    cv::Mat binary;
-    cv::threshold(gray(bounds), binary, 0.0, 255.0,
-                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
+    cv::Mat binary = vision::otsuMask(gray(bounds), g.darkPiece);
     cv::bitwise_and(binary, regionMask, binary);
 
-    std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
-    if (contours.empty()) {
+    const std::vector<cv::Point> outer = vision::largestOuterContour(binary);
+    if (outer.empty()) {
         result.detail = "No se ve ninguna figura dentro del recuadro";
         return result;
     }
-    const auto& outer = *std::max_element(
-        contours.begin(), contours.end(), [](const auto& a, const auto& b) {
-            return cv::contourArea(a) < cv::contourArea(b);
-        });
     if (cv::contourArea(outer) < 25.0) {
         result.detail = "No se ve ninguna figura dentro del recuadro";
         return result;
@@ -4113,9 +4076,7 @@ ToolRunResult runSymmetry(const cv::Mat& gray, const Fixture& fixture,
     }
     cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
 
-    cv::Mat binary;
-    cv::threshold(gray(bounds), binary, 0.0, 255.0,
-                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
+    cv::Mat binary = vision::otsuMask(gray(bounds), g.darkPiece);
     cv::bitwise_and(binary, regionMask, binary);
 
     const cv::Moments moments = cv::moments(binary, true);
@@ -4242,15 +4203,14 @@ ToolRunResult runRegion(const cv::Mat& gray, const Fixture& fixture, const ToolC
     }
     cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
 
-    cv::Mat binary;
-    cv::threshold(gray(bounds), binary, 0.0, 255.0,
-                  (g.darkPiece ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY) | cv::THRESH_OTSU);
+    cv::Mat binary = vision::otsuMask(gray(bounds), g.darkPiece);
     cv::bitwise_and(binary, regionMask, binary);
 
     // CCOMP da exterior e hijos en dos niveles, que es justo lo que hace falta
     // para contar agujeros. Y NONE —no SIMPLE— porque `digitalPerimeter`
     // necesita la cadena de píxeles completa: con el contorno aproximado el
     // conteo de pasos no significa nada.
+    // No es `largestOuterContour`: CCOMP, solo exteriores, `>` desde 0.
     std::vector<std::vector<cv::Point>> contours;
     std::vector<cv::Vec4i> hierarchy;
     cv::findContours(binary, contours, hierarchy, cv::RETR_CCOMP, cv::CHAIN_APPROX_NONE);
