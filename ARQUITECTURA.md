@@ -65,6 +65,26 @@ CHAIN_APPROX_SIMPLE, `>` desde cero, filtro de área antes de elegir, o solo
 querer el umbral) se quedan donde están, con una línea que dice en qué se
 diferencian: unificarlas cambiaría números.
 
+Dentro de `ui/`, la ventana principal es **una clase en ocho ficheros**. La API
+es la de siempre (`main_window.h`); lo que se reparte es la implementación, por
+responsabilidad:
+
+| Fichero | Qué lleva |
+|---|---|
+| `main_window.cpp` | Constructor (arma la ventana entera), destructor y unidad de medida |
+| `main_window_menus.cpp` | Barra de menús, explicación de cada entrada, atajos y comandos que se habilitan según el estado |
+| `main_window_sources.cpp` | Cámara, ficheros, recientes, arrastrar y soltar, barra de vídeo, tira de capturas, resoluciones y controles |
+| `main_window_detection.cpp` | Configuración de la detección, zona de trabajo y zona libre, calibración de escala y de lente, pincel de borde |
+| `main_window_analysis.cpp` | Análisis en vivo (`buildOverlay`), estado de la estación, «Medir pieza», auto-inspección e inspección |
+| `main_window_tools.cpp` | Herramientas dibujadas sobre el vídeo, deshacer/rehacer, tablero y modo de medición, mosaico de piezas |
+| `main_window_pieces.cpp` | Piezas y plantillas, registro en vivo y los flujos con diálogo (asistente, variante, editor) |
+| `main_window_settings.cpp` | Panel «Configurar», exportar/importar/restablecer, geometría de la ventana y última sesión |
+
+Lo que comparten varios de esos ficheros —los includes, las constantes del
+desplegable de fuente y de ajustes, y la codificación de la zona libre— está en
+`main_window_internal.h`, una cabecera privada que solo incluyen ellos. Un
+ayudante que usa uno solo vive en el espacio de nombres anónimo de ese fichero.
+
 ---
 
 ## 2. Captura: la cámara y los ficheros
@@ -5311,6 +5331,45 @@ pierde con pocos puntos es aguante ante un defecto local —una rebaba pesa un
 12,5 % del ajuste con 8 muestras y menos del 1 % con 180— y, en Redondez, la
 forma misma. De paso: Borde liso exigía su campo de puntos en el JSON, y una
 plantilla anterior sin él no cargaba.
+
+### La ventana principal, repartida en ocho ficheros
+
+`main_window.cpp` había llegado a **9 169 líneas**, y el grafo del código lo
+dejaba ver sin abrirlo: `MainWindow` era el nodo más conectado (433 aristas; el
+siguiente, 240) y su comunidad tenía una cohesión de 0,01, es decir, métodos que
+no se hablan entre sí metidos en el mismo saco. Cualquier cambio —un texto de un
+menú, un umbral de la zona— obligaba a recorrer un fichero donde convivían la
+cámara, el análisis, los menús y el registro.
+
+Se repartió **solo la implementación**, sin tocar la clase ni su cabecera:
+cada método se movió entero, con su comentario, al fichero de su
+responsabilidad (la tabla está en el [mapa del código](#1-mapa-del-código)).
+No cambió una línea de lógica ni de texto; la única diferencia en el código
+movido es que `encodeZonePolygon` y `decodeZonePolygon` llevan ahora `inline`,
+porque viven en la cabecera privada y un fichero que no las usa no puede avisar
+de función sin usar con `-Werror`.
+
+| Fichero | Líneas |
+|---|---|
+| `main_window.cpp` (antes) | 9 169 |
+| `main_window.cpp` | 1 467 |
+| `main_window_analysis.cpp` | 1 530 |
+| `main_window_tools.cpp` | 1 506 |
+| `main_window_sources.cpp` | 1 371 |
+| `main_window_detection.cpp` | 950 |
+| `main_window_menus.cpp` | 916 |
+| `main_window_pieces.cpp` | 886 |
+| `main_window_settings.cpp` | 440 |
+| `main_window_internal.h` | 174 |
+
+Dos pruebas leían el fuente de la ventana por su nombre de fichero, en tres
+sitios, y se actualizaron: `test_same_piece_everywhere` busca «Medir pieza» en
+`main_window_analysis.cpp` y comprueba **todos** los `main_window*.cpp` para que
+nadie vuelva a copiar la regla de qué pieza se mide, y
+`test_same_detection_everywhere` busca el asistente de registro en
+`main_window_pieces.cpp`. Dos de esas lecturas habrían fallado al no encontrar
+lo que buscaban; la tercera no: `main_window.cpp` sigue existiendo, ya no
+contiene el análisis en vivo, y la guarda habría aprobado sin comprobar nada.
 
 
 ## 12. Empaquetado

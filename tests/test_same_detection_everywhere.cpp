@@ -113,7 +113,9 @@ TEST(SameDetectionEverywhere, TheRegistrationWizardIsGivenTheConfiguredDetection
     const auto root = sources();
     ASSERT_FALSE(root.empty());
 
-    std::ifstream file(root / "ui" / "main_window.cpp");
+    // El asistente se abre desde main_window_pieces.cpp (la ventana está
+    // repartida en varios main_window*.cpp).
+    std::ifstream file(root / "ui" / "main_window_pieces.cpp");
     ASSERT_TRUE(file.is_open());
     std::string line;
     int built = 0;

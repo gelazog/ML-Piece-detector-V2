@@ -10,6 +10,13 @@ add_library(pci_ui STATIC
   history_dialog.cpp
   inspection_result_dialog.cpp
   main_window.cpp
+  main_window_analysis.cpp
+  main_window_detection.cpp
+  main_window_menus.cpp
+  main_window_pieces.cpp
+  main_window_settings.cpp
+  main_window_sources.cpp
+  main_window_tools.cpp
   measurement_mode_dialog.cpp
   performance_page.cpp
   rate_readout.cpp

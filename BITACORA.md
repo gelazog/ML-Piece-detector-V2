@@ -19,6 +19,20 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### MainWindow vivía en un solo fichero de 9169 líneas
+
+graphify señalaba a `MainWindow` como el nodo más conectado del código (433
+aristas, frente a 240 del siguiente), con una comunidad de cohesión 0,01:
+métodos que no se hablan entre sí, metidos en el mismo saco. Se repartió solo la
+implementación en ocho ficheros por responsabilidad, todos por debajo de 1550
+líneas; la clase, su cabecera y la lógica no cambian.
+
+El peligro invisible estaba en dos pruebas que leían el fuente de la ventana por
+nombre de fichero. Una, la que impide volver a copiar a mano la regla de qué
+pieza se mide, habría seguido aprobando sobre un `main_window.cpp` que ya no
+contiene el análisis. Ahora revisa todos los `main_window*.cpp` y exige
+encontrar más de uno.
+
 ### Otsu y «el contorno mayor» estaban copiados a mano en dieciocho sitios
 
 El umbral de Otsu con polaridad y el «quedarse con el contorno exterior mayor»

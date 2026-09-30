@@ -87,7 +87,7 @@ TEST(SamePieceEverywhere, NoGestureOfTheOperatorMeasuresTheBiggestBehindHisBack)
     // Cada uno es un gesto del operador que habla de «la pieza». Ninguno puede
     // decidir cuál por su cuenta.
     const std::vector<Gesture> gestures = {
-        {"ui/main_window.cpp", "void MainWindow::onMeasurePieceClicked()",
+        {"ui/main_window_analysis.cpp", "void MainWindow::onMeasurePieceClicked()",
          "analyseMeasuredPiece", "el informe de «Medir pieza»"},
         {"inspection_editor/editor_window.cpp", "void EditorWindow::onAutoMeasureClicked()",
          "analyseEditedPiece", "las cotas que propone la medición automática"},
@@ -129,7 +129,18 @@ TEST(SamePieceEverywhere, TheChoiceOfWhichPieceLivesInOneSinglePlace) {
     // Y que nadie la reescriba a mano: la marca es comparar el número señalado
     // contra el tamaño de la lista, que es la forma que tenía cuando estaba
     // copiada dentro de la ventana.
-    const std::string window = read(root / "ui" / "main_window.cpp");
+    // La ventana está repartida en varios main_window*.cpp: se leen todos, o
+    // la regla podría volver a copiarse en uno que esta prueba no mira.
+    std::string window;
+    int windowFiles = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(root / "ui")) {
+        const std::string name = entry.path().filename().string();
+        if (name.rfind("main_window", 0) == 0 && entry.path().extension() == ".cpp") {
+            window += read(entry.path());
+            ++windowFiles;
+        }
+    }
+    ASSERT_GT(windowFiles, 1) << "no se encuentran los main_window*.cpp: no se comprueba nada";
     EXPECT_EQ(window.find("wantedPiece <= static_cast<int>("), std::string::npos)
         << "la ventana vuelve a decidir por su cuenta qué pieza se mide; entonces hay dos "
            "reglas y solo una se arregla el día que cambie";
