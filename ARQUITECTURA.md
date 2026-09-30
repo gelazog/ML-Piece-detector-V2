@@ -5286,8 +5286,14 @@ La principal no se toma como «la mayor de la lista» porque no es lo mismo: con
 «separar piezas que se tocan» la principal es la mancha entera y la mayor de la
 lista es un trozo, y con el giro automático el recorte sale distinto.
 `test_one_segmentation.cpp` exige que las dos respuestas salgan idénticas a las
-dos llamadas por separado. Medido con la bandeja de 100 tuercas, en serie:
-de 99,9 ms a 81,8 ms por inspección.
+dos llamadas por separado.
+
+Lo que se ahorra es poco, y la primera cifra publicada estaba mal. Con la
+bandeja de 100 tuercas se dio «de 99,9 a 81,8 ms», pero era la media de veinte
+vueltas seguidas de cada versión con otra compilación en marcha. Con el mínimo
+de sesenta vueltas alternadas sale de unos 68 a 66 ms, entre el 1 y el 4 %:
+segmentar es barato al lado de analizar cada pieza. El cambio se queda porque
+da lo mismo y no cuesta más, y la prueba exige solo eso: que no vaya más lenta.
 
 
 ### Puntos de medida: el operador decide cuántos
