@@ -213,6 +213,7 @@ add_executable(pci_gui_tests
   test_dark_mode_palette.cpp
   test_status_indicator_words.cpp
   test_open_file.cpp
+  test_verdict_board.cpp
 )
 set_target_properties(pci_gui_tests PROPERTIES AUTOMOC ON)
 target_link_libraries(pci_gui_tests

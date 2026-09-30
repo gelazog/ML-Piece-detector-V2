@@ -19,6 +19,20 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### El veredicto y los errores no se veían a metro y medio
+
+El operador trabaja de pie, a 1–1,5 m de la pantalla. El OK/NG iba en una banda
+de 16 px que solo salía en auto-inspección, o en la línea del panel de medidas,
+un dock casi siempre cerrado. «Cámara desconectada o sin señal» iba a la barra
+de estado y el siguiente mensaje lo borraba en segundos. Nadie lo notaba porque
+el mensaje existía: solo duraba menos que el paseo a por la siguiente pieza.
+
+Ahora hay un tablero con la palabra a 48 px, un símbolo por estado y el motivo
+del NG debajo, sacado de la misma cuenta que el panel (`judgeMeasurements`). Y
+una banda arriba para cámara, fichero, marcador ArUco perdido diez fotogramas
+seguidos y base de datos caída, con «Reintentar» cuando se puede, que solo se
+quita cuando el problema se resuelve. Lo vigila `test_verdict_board.cpp`.
+
 ### La escala del marcador ArUco salía siempre larga
 
 `detectMarkerScale` usaba el detector de OpenCV con sus parámetros por defecto,

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QString>
 #include <QWidget>
 
 #include <cstdint>
@@ -38,6 +39,28 @@ namespace pci::ui {
 // que se pidió. Lo que cambia es la forma de la tabla, no quién manda sobre
 // las herramientas: este panel sigue sin borrar ni ocultar por su cuenta,
 // avisa y deja que la ventana lo haga, que es la que tiene el deshacer.
+// EL VEREDICTO DE LAS MEDIDAS, SIN LA TABLA.
+//
+// La línea de arriba del panel ya sabía decir qué pieza falla y por qué cota.
+// El tablero grande de la ventana necesita decir LO MISMO, y el panel puede
+// estar cerrado; copiar la cuenta habría dejado dos veredictos que un día no
+// coinciden. Así que la cuenta vive aquí y los dos la leen.
+struct MeasurementsVerdict {
+    // Hay al menos una cota que da veredicto. Solo con construcciones
+    // (referencias) no hay nada que juzgar y no se debe decir «OK».
+    bool judged = false;
+    bool good = true;
+    // La línea del panel: «✕ 1 de 3 no cumple · pieza 3: Ø interior se pasa…».
+    QString headline;
+    // El motivo en corto para el tablero, vacío si todo cumple:
+    // «Pieza 3 · Ø interior: se pasa 0.15mm (+1 más)».
+    QString reason;
+};
+[[nodiscard]] MeasurementsVerdict judgeMeasurements(
+    const std::vector<inspection::ToolRunResult>& results,
+    const std::vector<inspection::ToolConfig>& configs, double mmPerPixel,
+    inspection::LengthUnit unit);
+
 class MeasurementsPanel : public QWidget {
     Q_OBJECT
 

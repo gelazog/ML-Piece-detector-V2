@@ -33,6 +33,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QProgressDialog>
+#include <QRegularExpression>
 #include <QPushButton>
 #include <QSlider>
 #include <QSpinBox>
@@ -972,6 +973,14 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // entrada de menú, no necesita estar ahí. Los otros trece la pasan.
     rootLayout->addLayout(toolsLayout);
 
+    // LO QUE IMPIDE MEDIR, lo primero encima de la imagen. Va antes que la guía
+    // y que el veredicto porque manda sobre los dos: con la cámara caída, un
+    // «OK» debajo sería el del último fotograma, no el de la pieza de ahora.
+    blockingNotice_ = new BlockingNotice(central);
+    connect(blockingNotice_, &BlockingNotice::actionRequested, this,
+            &MainWindow::onBlockerAction);
+    rootLayout->addWidget(blockingNotice_);
+
     // Guía del primer arranque (I3). Va donde el veredicto y no en un diálogo
     // a propósito: un asistente modal se cierra sin leer y encima tapa la
     // ventana que hay que mirar para hacer el primer paso.
@@ -992,12 +1001,10 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     setupBanner_->setVisible(false);
     rootLayout->addWidget(setupBanner_);
 
-    // Banner de veredicto para la auto-inspección.
-    verdictBanner_ = new QLabel(central);
-    verdictBanner_->setAlignment(Qt::AlignCenter);
-    verdictBanner_->setMinimumHeight(36);
-    verdictBanner_->setVisible(false);
-    rootLayout->addWidget(verdictBanner_);
+    // El veredicto, grande: el de la auto-inspección y, fuera de ella, el de
+    // las herramientas dibujadas sobre lo que se ve.
+    verdictBoard_ = new VerdictBoard(central);
+    rootLayout->addWidget(verdictBoard_);
 
     // Lectura continua de la pieza respecto al tablero (T3): solo visible con
     // el tablero encendido, junto al banner y nunca en un diálogo.
@@ -1404,6 +1411,16 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     statusBar()->addPermanentWidget(dbIndicator_);
     statusBar()->addPermanentWidget(modelIndicator_);
     updateStatusIndicators();
+    // SIN BASE DE DATOS NO SE INSPECCIONA NI SE GUARDA NADA, y hasta ahora eso
+    // solo lo decía «BD ✕» en la esquina. No lleva botón: la base de datos se
+    // abre al arrancar, así que lo único que la vuelve a intentar es arrancar
+    // otra vez.
+    if (repos_.pieces == nullptr) {
+        blockingNotice_->report(
+            Blocker::Database,
+            tr("No hay base de datos: no se puede inspeccionar ni guardar piezas. "
+               "Cierra el programa y vuelve a abrirlo."));
+    }
 
     connect(startStopButton_, &QPushButton::clicked, this, &MainWindow::onStartStopClicked);
     connect(&enumerationWatcher_, &QFutureWatcher<std::vector<camera::CameraInfo>>::finished,
@@ -2143,6 +2160,10 @@ void MainWindow::buildMenuBar() {
             markerSizeMm_ = mm;
         }
         arucoLiveScale_ = on;
+        // Sin escala por marcador, que no se vea el marcador deja de ser un
+        // problema.
+        markerStreak_.reset();
+        blockingNotice_->resolve(Blocker::Marker);
         if (repos_.settings != nullptr) {
             repos_.settings->setInt("aruco_live", on ? 1 : 0);
             repos_.settings->setDouble("aruco_marker_mm", markerSizeMm_);
@@ -5205,6 +5226,12 @@ void MainWindow::onTuneDetectionFromEdge() {
 }
 
 void MainWindow::onFrame(const QImage& rawFrame) {
+    // Llega imagen: el problema de la fuente, si lo había, está resuelto. Es la
+    // única prueba que vale; que la cámara arranque no quiere decir que dé
+    // fotogramas.
+    if (blockingNotice_->isReported(Blocker::Source)) {
+        blockingNotice_->resolve(Blocker::Source);
+    }
     // LA LENTE SE ENDEREZA LO PRIMERO, antes de que nadie vea el fotograma.
     //
     // A diferencia del realce de vista —que solo toca lo que se pinta— esto
@@ -5443,6 +5470,20 @@ void MainWindow::onAnalysisFinished() {
         } else if (arucoLiveScale_) {
             calibLabel_->setText(tr("Escala (ArUco): marcador no visible"));
         }
+        // SIN MARCADOR, LA ESCALA ES LA DEL ÚLTIMO FOTOGRAMA QUE LO VIO, y las
+        // cotas en milímetros dejan de ser de fiar. La etiqueta de la escala lo
+        // decía en letra de barra de estado; esto lo dice arriba cuando la falta
+        // dura (ver `markerStreak_`) y se quita en cuanto vuelve.
+        if (arucoLiveScale_) {
+            if (markerStreak_.observe(overlay.liveMmPerPixel > 0.0)) {
+                blockingNotice_->report(
+                    Blocker::Marker,
+                    tr("No se ve el marcador: las medidas en milímetros no son fiables. "
+                       "Acércalo o mejora la luz."));
+            } else {
+                blockingNotice_->resolve(Blocker::Marker);
+            }
+        }
         // Medidas en vivo de las herramientas dibujadas (px o mm calibrados).
         video_->setResults(visibleResults(overlay.toolResults));
         lastToolResults_ = overlay.toolResults;
@@ -5454,15 +5495,8 @@ void MainWindow::onAnalysisFinished() {
         // alguien mira el número—.
         if (measurements_ != nullptr && measurementsDock_ != nullptr &&
             measurementsDock_->isVisible()) {
-            std::vector<inspection::ToolConfig> configs;
-            configs.reserve(liveTools_.size());
-            for (const auto& tool : liveTools_) {
-                if (!tool.deleted) {
-                    configs.push_back(tool.config);
-                }
-            }
-            measurements_->setResults(overlay.toolResults, configs, calibration_.mmPerPixel,
-                                      currentUnit());
+            measurements_->setResults(overlay.toolResults, liveToolConfigs(),
+                                      calibration_.mmPerPixel, currentUnit());
             // Y el desplegable de pieza sigue a la elección de siempre, en vez
             // de llevar la suya: las flechas, el mosaico y este panel mueven la
             // MISMA cosa.
@@ -5473,6 +5507,7 @@ void MainWindow::onAnalysisFinished() {
         // pieza remarcada y las cifras encima de otra.
         video_->setFocusedPiece(overlay.measuredPiece >= 1 ? overlay.measuredPiece - 1 : 0);
         updateBoardReadout();  // desviación y giro respecto al tablero (T3)
+        showMeasuringVerdict(overlay);
         // El contorno corregido ya esta en pantalla: el trazo ha hecho su
         // trabajo y se retira. La correccion sigue en vigor, y el aviso de al
         // lado del modo de medicion lo dice.
@@ -5689,7 +5724,33 @@ void MainWindow::updateRateReadout() {
 
 void MainWindow::onCameraError(const QString& message) {
     core::logError("Error de cámara: " + message.toStdString());
-    statusBar()->showMessage(tr("Error: %1").arg(message));
+    // A LA BANDA Y NO A LA BARRA DE ESTADO. En la barra lo borraba el siguiente
+    // mensaje a los pocos segundos, y el operador encontraba la imagen quieta
+    // sin saber por qué. Se queda hasta que vuelva a llegar un fotograma.
+    //
+    // Esta ranura la usan la cámara y los ficheros, y lo que hay que hacer es
+    // distinto: una cámara se reintenta; un fichero que no se lee se cambia
+    // por otro.
+    const bool fromFile = fileSource_ != nullptr && sender() == fileSource_.get();
+    if (fromFile) {
+        blockingNotice_->report(Blocker::Source, tr("%1. Abre otro archivo.").arg(message),
+                                tr("Abrir…"));
+    } else {
+        blockingNotice_->report(Blocker::Source,
+                                tr("%1. Revisa el cable y pulsa Reintentar.").arg(message),
+                                tr("Reintentar"));
+    }
+}
+
+void MainWindow::onBlockerAction(Blocker blocker) {
+    // Solo la fuente tiene botón. Y si ya hay otra en marcha no se toca: su
+    // primer fotograma quitará el aviso.
+    if (blocker != Blocker::Source || streaming_) {
+        return;
+    }
+    // Reintentar es darle a «Iniciar» con lo que esté elegido. Si lo elegido es
+    // abrir un fichero, eso abre el diálogo, que es justo lo que pide «Abrir…».
+    onStartStopClicked();
 }
 
 void MainWindow::onStreamStopped() {
@@ -5745,6 +5806,12 @@ void MainWindow::onStreamStopped() {
     }
     autoInspectButton_->setChecked(false);
     stopLiveCapture();
+    // Sin imagen no hay veredicto que enseñar: el de antes sería el de una
+    // pieza que ya no está. Y el marcador deja de contar hasta que vuelva a
+    // haber fotogramas que mirar.
+    verdictBoard_->showVerdict(VerdictState::Hidden);
+    markerStreak_.reset();
+    blockingNotice_->resolve(Blocker::Marker);
     // EL ROTULO SIGUE AL DESPLEGABLE, TAMBIÉN AQUÍ.
     //
     // Aquí ponía «Iniciar» a secas. Pero justo arriba el desplegable se deja en
@@ -8597,11 +8664,8 @@ void MainWindow::onAutoToggled(bool enabled) {
         //
         // `kChipRest` es literalmente el papel que hace este estado: la
         // aplicación está trabajando y no tiene nada que decir todavía.
-        verdictBanner_->setStyleSheet(
-            theme::chipStyle(theme::kChipRest,
-                             QStringLiteral(" font-size:16px; font-weight:bold;")));
-        verdictBanner_->setText(tr("Auto-inspección en marcha…"));
-        verdictBanner_->setVisible(true);
+        verdictBoard_->showVerdict(VerdictState::Working,
+                                   tr("Auto-inspección: esperando la primera pieza."));
         autoTimer_.start();
     } else {
         autoInspecting_ = false;
@@ -8609,7 +8673,7 @@ void MainWindow::onAutoToggled(bool enabled) {
         video_->setEditingLocked(false);
         toolPalette_->setEnabled(true);
         onLiveSelectionChanged(video_->selectedIndex());  // reactiva calibrar/puntos
-        verdictBanner_->setVisible(false);
+        verdictBoard_->showVerdict(VerdictState::Hidden);
         video_->clearResults();
     }
 }
@@ -8714,11 +8778,68 @@ void MainWindow::onAutoTick() {
     }));
 }
 
+std::vector<inspection::ToolConfig> MainWindow::liveToolConfigs() const {
+    std::vector<inspection::ToolConfig> configs;
+    configs.reserve(liveTools_.size());
+    for (const auto& tool : liveTools_) {
+        if (!tool.deleted) {
+            configs.push_back(tool.config);
+        }
+    }
+    return configs;
+}
+
+// EL VEREDICTO DE LO QUE SE VE, SIN INSPECCIONAR.
+//
+// Con herramientas dibujadas, cada fotograma ya da OK o NG por cota; eso solo
+// se leía en la línea del panel de medidas (cerrado casi siempre) o en el color
+// de cada etiqueta sobre el vídeo. El tablero lo dice en grande con la MISMA
+// cuenta del panel, `judgeMeasurements`, así que no pueden contradecirse.
+//
+// Sin herramientas no hay nada que juzgar y el tablero no sale: un «Sin pieza»
+// permanente con la cámara encendida solo para mirar sería ruido. Durante la
+// auto-inspección manda su veredicto, que es el que se guarda.
+void MainWindow::showMeasuringVerdict(const AnalysisOverlay& overlay) {
+    if (autoInspecting_ || !overlay.analysed) {
+        return;
+    }
+    const bool anyTool = std::any_of(liveTools_.begin(), liveTools_.end(),
+                                     [](const auto& tool) { return !tool.deleted; });
+    if (!anyTool) {
+        verdictBoard_->showVerdict(VerdictState::Hidden);
+        return;
+    }
+    if (!overlay.valid) {
+        verdictBoard_->showVerdict(VerdictState::NoPiece, overlay.error);
+        return;
+    }
+    const MeasurementsVerdict verdict = judgeMeasurements(
+        overlay.toolResults, liveToolConfigs(), calibration_.mmPerPixel, currentUnit());
+    if (!verdict.judged) {
+        verdictBoard_->showVerdict(VerdictState::Hidden);
+        return;
+    }
+    verdictBoard_->showVerdict(verdict.good ? VerdictState::Good : VerdictState::Bad,
+                               verdict.reason);
+}
+
 void MainWindow::showLiveVerdict(const engine::InspectionEngine::Outcome& outcome) {
-    verdictBanner_->setStyleSheet(
-        theme::chipStyle(outcome.verdict.ok ? theme::kGoodChip : theme::kBadChip,
-                         QStringLiteral(" font-size:16px; font-weight:bold;")));
-    verdictBanner_->setText(QString::fromStdString(outcome.verdict.summary));
+    // EL MOTIVO NOMBRA LA COTA. El resumen del motor dice «NG: 1 herramienta(s)
+    // fuera de tolerancia», que obliga a ir a buscar cuál; si lo que falla es
+    // una herramienta, el motivo sale de la misma cuenta que el panel de
+    // medidas —«Ø interior: se pasa 0.15mm»—. Si falla otra cosa (apariencia,
+    // posición, recuento), el resumen del motor ya lo dice con palabras.
+    QString reason;
+    if (!outcome.verdict.ok) {
+        const MeasurementsVerdict tools = judgeMeasurements(
+            outcome.toolResults, liveToolConfigs(), calibration_.mmPerPixel, currentUnit());
+        reason = !tools.good ? tools.reason
+                             : QString::fromStdString(outcome.verdict.summary)
+                                   .remove(QRegularExpression(QStringLiteral("^NG:\\s*")));
+    }
+    verdictBoard_->showVerdict(outcome.verdict.ok ? VerdictState::Good : VerdictState::Bad,
+                               reason);
+    verdictBoard_->setToolTip(QString::fromStdString(outcome.verdict.summary));
     // Los overlays de herramientas ya los pinta la medición en vivo de cada
     // frame; aquí solo el veredicto y la similitud.
 
@@ -9014,10 +9135,8 @@ void MainWindow::onInspectionFinished() {
             // «no cumple»: la pieza no ha suspendido, es que no se ha podido
             // medir. Con `kBadChip` se leería como rechazo y con el gris de «en
             // marcha» no se distinguiría de estar esperando.
-            verdictBanner_->setStyleSheet(
-                theme::chipStyle(theme::kWarnChip,
-                                 QStringLiteral(" font-size:16px; font-weight:bold;")));
-            verdictBanner_->setText(QString::fromStdString(result.error().message));
+            verdictBoard_->showVerdict(VerdictState::Failed,
+                                       QString::fromStdString(result.error().message));
         } else {
             statusBar()->showMessage(tr("Inspección fallida"));
             QMessageBox::warning(this, tr("Inspección fallida"),

@@ -5188,6 +5188,58 @@ que hay ahora, y por abajo a algo legible. Solo el tamaño, no la posición: un
 diálogo se centra sobre su ventana padre, y recordar dónde estaba lo sacaría de
 la pantalla en cuanto alguien mueva la aplicación.
 
+### El veredicto y los errores, a metro y medio
+
+El operador trabaja de pie, a 1–1,5 m de la pantalla y con la siguiente pieza
+en la mano. Lo que tiene que ver desde ahí se veía poco. El OK/NG salía en una
+banda de 16 px que solo existía durante la auto-inspección, o en la línea de
+arriba del panel de medidas, que es un dock y casi siempre está cerrado. Los
+errores iban a la barra de estado: «Cámara desconectada o sin señal» lo borraba
+el siguiente mensaje a los pocos segundos, y la base de datos caída solo se veía
+como «BD ✕» en la esquina.
+
+**El tablero de veredicto** (`ui/verdict_board.*`) sustituye a aquella banda.
+Tiene dos líneas: la palabra, a 48 px, y debajo el motivo, a 22 px, en una sola
+línea. Si el motivo no cabe se corta, y el texto entero va al tooltip y al
+nombre accesible, porque un motivo que se partiera en dos empujaría el vídeo
+hacia abajo cada vez que cambiara. Los estados son OK, NG, «Sin pieza», «Sin
+medir» (se intentó y no se pudo, que no es un NG) y «En marcha». Cada uno lleva
+su palabra además de su color (WCAG 1.4.1). Los colores son las pastillas de
+veredicto de `theme.h` con su propio fondo, así que el contraste no depende del
+tema; todos pasan de 4,5:1 y la prueba lo mide. Fuera de la auto-inspección el
+tablero enseña el veredicto de las herramientas dibujadas en cada fotograma, y
+no sale si no hay ninguna: un «Sin pieza» fijo con la cámara encendida solo
+para mirar sería ruido.
+
+El motivo no se calcula dos veces. La línea del panel ya sabía nombrar la pieza
+y la cota que fallan; esa cuenta se sacó a `judgeMeasurements`
+(`ui/measurements_panel.h`) y la leen el panel, el tablero en vivo y el de la
+auto-inspección. En este último, si lo que falla es una herramienta, el motivo
+es el de esa cuenta («Ø interior: se pasa 0.15mm») y no el «1 herramienta(s)
+fuera de tolerancia» del motor, que obligaba a ir a buscar cuál.
+
+**La banda de lo que impide medir** (`ui/blocking_notice.*`) va arriba del área
+de trabajo, encima del tablero, porque manda sobre él: con la cámara caída, el
+OK de debajo sería el de una pieza que ya no está. Es solo para lo que bloquea:
+
+| Problema | Cuándo sale | Botón | Cuándo se quita |
+|---|---|---|---|
+| La cámara no da imagen | error de la cámara | Reintentar | llega un fotograma |
+| Un fichero no se lee | error de la fuente de fichero | Abrir… | llega un fotograma |
+| No se ve el marcador | escala por ArUco y 10 fotogramas seguidos sin él | — | un fotograma con marcador, o se apaga la escala ArUco |
+| No hay base de datos | al arrancar sin BD | — | no se quita: hay que volver a arrancar |
+
+El marcador necesita una racha y no un fallo suelto porque se pierde en
+fotogramas aislados (un reflejo, la mano al dejar la pieza), y una banda roja
+que parpadea se aprende a ignorar. Basta un fotograma bueno para quitarla. El
+modelo ONNX ausente no entra: la inspección sigue con las herramientas, así que
+no impide medir, y ya lo dice su indicador de la barra de estado. La pieza que
+falta tampoco es un error: es el estado «Sin pieza» del tablero. Los avisos
+informativos siguen en la barra de estado. `tests/test_verdict_board.cpp`
+vigila las dos piezas: contraste y palabras distintas, tamaño, motivo en una
+línea, colores iguales en tema claro y oscuro, la banda que no se va sola, la
+racha del marcador y la ventana de punta a punta.
+
 ### Los defectos que se encontraron y se arreglaron
 
 Estaban aquí: **1 191 líneas** de bitácora dentro de un capítulo llamado

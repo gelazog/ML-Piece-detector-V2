@@ -11,11 +11,13 @@
 #include <optional>
 #include <vector>
 
+#include "ui/blocking_notice.h"
 #include "ui/capture_tray.h"
 #include "ui/rate_readout.h"
 #include "ui/setup_guide.h"
 #include "ui/setup_guide.h"
 #include "ui/station_status.h"
+#include "ui/verdict_board.h"
 #include "vision/stage_stats.h"
 #include "camera/camera_controller.h"
 #include "camera/camera_info.h"
@@ -365,6 +367,13 @@ private:
     void finishLiveRegistration();
     void stopLiveCapture();
     void showLiveVerdict(const engine::InspectionEngine::Outcome& outcome);
+    // El tablero grande con las medidas en vivo, fuera de la auto-inspección:
+    // OK/NG con las herramientas dibujadas, «Sin pieza» si no hay nada delante.
+    void showMeasuringVerdict(const AnalysisOverlay& overlay);
+    // Las herramientas que cuentan para el veredicto, con su tolerancia.
+    [[nodiscard]] std::vector<inspection::ToolConfig> liveToolConfigs() const;
+    // Lo que hace el botón de la banda de problemas: «Reintentar», «Abrir…».
+    void onBlockerAction(pci::ui::Blocker blocker);
     [[nodiscard]] std::int64_t selectedPieceId() const;
     [[nodiscard]] QImage frameOrFile();
     [[nodiscard]] QImage openImageFile();  // siempre abre el diálogo de archivo
@@ -613,7 +622,15 @@ private:
     // ACTÚA sobre la herramienta seleccionada se va con la paleta.
     QDockWidget* toolsDock_ = nullptr;
 
-    QLabel* verdictBanner_ = nullptr;
+    // El veredicto grande, para leerlo a metro y medio (antes, una banda de
+    // 16 px que solo salía en auto-inspección).
+    VerdictBoard* verdictBoard_ = nullptr;
+    // Lo que impide medir, arriba del área de trabajo y hasta que se arregle.
+    BlockingNotice* blockingNotice_ = nullptr;
+    // Diez fotogramas seguidos sin marcador antes de decir que no se ve: uno
+    // suelto se pierde por un reflejo o por la mano, y una banda roja que
+    // parpadea se aprende a ignorar.
+    MissStreak markerStreak_{10};
     QLabel* boardReadoutLabel_ = nullptr;  // dx/dy/radio/giro respecto al tablero (T3)
     inspection::EditorCanvas* video_ = nullptr;
     // Si cada automático de la cámara está encendido AHORA. No se lee de la

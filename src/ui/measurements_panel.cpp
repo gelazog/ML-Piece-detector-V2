@@ -614,8 +614,20 @@ void MeasurementsPanel::rebuild() {
     header->setSectionResizeMode(QHeaderView::ResizeToContents);
     header->setSectionResizeMode(kColCota, QHeaderView::Stretch);
 
+    const MeasurementsVerdict verdict =
+        judgeMeasurements(results_, configs_, mmPerPixel_, unit_);
+    const bool good = verdict.good;
+    const QString verdictText = verdict.headline;
+    verdict_->setStyleSheet(good ? theme::noticeStyle(theme::kGood, theme::kGoodField)
+                                : theme::noticeStyle(theme::kBad, theme::kBadField));
+    verdict_->setText(verdictText);
+}
+
+MeasurementsVerdict judgeMeasurements(const std::vector<ToolRunResult>& results,
+                                      const std::vector<ToolConfig>& configs, double mmPerPixel,
+                                      LengthUnit unit) {
     // EL VEREDICTO (punto A): busca la PRIMERA cota que no cumple, recorriendo
-    // `results_` tal cual llega —pieza 0 entera, luego la 1, luego la 2—, así
+    // `results` tal cual llega —pieza 0 entera, luego la 1, luego la 2—, así
     // que «la primera» es la primera que de verdad se ve al leer de arriba a
     // abajo la tabla sin filtrar.
     struct Failure {
@@ -624,43 +636,61 @@ void MeasurementsPanel::rebuild() {
         QString phrase;
     };
     std::vector<Failure> failures;
-    for (const auto& result : results_) {
+    std::set<int> pieces;
+    MeasurementsVerdict verdict;
+    for (const auto& result : results) {
+        pieces.insert(result.pieceIndex);
+        if (!result.informative) {
+            verdict.judged = true;
+        }
         if (result.informative || result.ok) {
             continue;
         }
         const auto configIt = std::find_if(
-            configs_.begin(), configs_.end(),
+            configs.begin(), configs.end(),
             [&result](const ToolConfig& c) { return c.id == result.toolId; });
         const RowVerdict v =
-            evaluate(result, configIt != configs_.end() ? &*configIt : nullptr, mmPerPixel_, unit_);
+            evaluate(result, configIt != configs.end() ? &*configIt : nullptr, mmPerPixel, unit);
         failures.push_back({result.pieceIndex, QString::fromStdString(result.name), headlinePhrase(v)});
     }
 
-    QString verdictText;
-    const bool good = failures.empty();
+    verdict.good = failures.empty();
     if (pieces.size() <= 1) {
-        verdictText = good ? tr("✓ Cumple")
-                          : tr("✕ No cumple: %1 %2")
-                                .arg(failures.front().cota, failures.front().phrase);
+        verdict.headline = verdict.good
+                               ? QObject::tr("✓ Cumple")
+                               : QObject::tr("✕ No cumple: %1 %2")
+                                     .arg(failures.front().cota, failures.front().phrase);
     } else {
         std::set<int> failingPieces;
         for (const auto& f : failures) {
             failingPieces.insert(f.pieceIndex);
         }
-        verdictText =
-            good ? tr("✓ %1 piezas: todas cumplen").arg(pieces.size())
-                : tr("✕ %1 de %2 no cumple · pieza %3: %4 %5")
-                      .arg(failingPieces.size())
-                      .arg(pieces.size())
-                      .arg(failures.front().pieceIndex + 1)
-                      .arg(failures.front().cota, failures.front().phrase);
+        verdict.headline =
+            verdict.good ? QObject::tr("✓ %1 piezas: todas cumplen").arg(pieces.size())
+                         : QObject::tr("✕ %1 de %2 no cumple · pieza %3: %4 %5")
+                               .arg(failingPieces.size())
+                               .arg(pieces.size())
+                               .arg(failures.front().pieceIndex + 1)
+                               .arg(failures.front().cota, failures.front().phrase);
     }
-    if (!good && failures.size() > 1) {
-        verdictText += tr(" (+%1 más)").arg(failures.size() - 1);
+    if (verdict.good) {
+        return verdict;
     }
-    verdict_->setStyleSheet(good ? theme::noticeStyle(theme::kGood, theme::kGoodField)
-                                : theme::noticeStyle(theme::kBad, theme::kBadField));
-    verdict_->setText(verdictText);
+    // El motivo del tablero nombra la cota con dos puntos —«Ø interior: se pasa
+    // 0.15mm»— porque se lee de lejos y sin la tabla al lado: el nombre y lo
+    // que le pasa tienen que separarse a la vista.
+    const Failure& first = failures.front();
+    verdict.reason = QStringLiteral("%1: %2").arg(first.cota, first.phrase);
+    if (pieces.size() > 1) {
+        verdict.reason =
+            QObject::tr("Pieza %1 · %2").arg(first.pieceIndex + 1).arg(verdict.reason);
+    }
+    if (failures.size() > 1) {
+        const QString more = QObject::tr(" (+%1 más)").arg(failures.size() - 1);
+        verdict.headline += more;
+        verdict.reason += more;
+    }
+    return verdict;
 }
 
 }  // namespace pci::ui

@@ -27,6 +27,8 @@ add_library(pci_ui STATIC
   source_files.cpp
   stats_bar_chart.cpp
   template_manager_dialog.cpp
+  verdict_board.cpp
+  blocking_notice.cpp
   video_widget.cpp
 )
 target_include_directories(pci_ui PUBLIC ${CMAKE_SOURCE_DIR}/src)

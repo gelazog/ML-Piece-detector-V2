@@ -1067,6 +1067,23 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    negro desaparecía. Además la caja de fondo tapa más, así que la lectura se ve
    igual sobre una pieza clara que sobre una oscura.
 
+   **El veredicto se lee desde lejos.** Encima del vídeo sale un tablero con la
+   palabra en grande —**✓ OK**, **✕ NG**, **Sin pieza**, **⚠ Sin medir**— y
+   debajo, en una línea, el motivo del NG: qué cota falla y cuánto se pasa
+   («Pieza 2 · Ø interior: se pasa 0.15mm»). Está pensado para leerlo de pie a
+   metro y medio. Aparece en cuanto hay herramientas dibujadas, con o sin
+   auto-inspección, y dice lo mismo que la línea de arriba del panel de medidas
+   porque sale de la misma cuenta. Cada estado lleva su palabra además de su
+   color.
+
+   **Lo que impide medir no se va solo.** Si la cámara se cae, si el fichero no
+   se puede leer, si la escala es por marcador ArUco y el marcador lleva un rato
+   sin verse, o si no hay base de datos, sale una banda roja arriba del área de
+   trabajo que dice qué pasó y qué hacer. Si hay algo que pulsar, lleva su botón
+   (**Reintentar** con la cámara, **Abrir…** con un fichero). Se quita sola
+   cuando el problema se arregla: vuelve la imagen, vuelve el marcador. Los
+   avisos que solo informan siguen yendo a la barra de estado.
+
    **Supr, con el ratón sobre la tira de fotos, quita esa foto** — y antes
    borraba una cota de la plantilla, que no es lo que decía la ayuda.
 
