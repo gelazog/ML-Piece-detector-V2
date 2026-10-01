@@ -19,6 +19,19 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### «Marcar una pieza rodeándola» no llegaba nunca a la ventana
+
+La ventana conectaba la señal `pieceOutlined` del lienzo antes de crear el
+lienzo, sobre un puntero nulo. Qt no falla por eso: escribe un aviso en la
+consola, que nadie mira en una aplicación de ventana, y sigue. El operador
+rodeaba la pieza que faltaba (o la mancha que sobraba), el trazo se dibujaba y no
+pasaba nada más. Ninguna prueba recorría el camino entero hasta la ventana.
+
+Salió al partir el constructor de 1416 líneas en métodos: con las llamadas una
+debajo de otra se ve que el menú del pincel se arma antes que el lienzo. Es el
+mismo error que ya había costado cuatro rondas con `edgeCorrected`. Lo vigila
+`test_outline_reaches_window.cpp`, que falla con la conexión en el sitio viejo.
+
 ### Colores escritos a mano que la guarda de la paleta no veía
 
 `test_palette_guard` solo miraba el primer nivel de `src/ui`, y 85 de los 93

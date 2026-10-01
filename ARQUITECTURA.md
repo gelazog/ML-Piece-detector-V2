@@ -5522,9 +5522,9 @@ en vez de convertirlos en miembros, y el separador vertical que compartían dos
 filas pasó de lambda local a función libre (`barSeparator`). El orden importa y
 por eso lo sigue diciendo el constructor: los atajos antes que los menús, los
 docks antes de restaurar la disposición, y el lienzo después del menú del
-pincel — que es también por qué `connectEdgeBrushMenu` conecta
-`pieceOutlined` sobre un `video_` todavía nulo, igual que antes del reparto (ver
-abajo).
+pincel. Por ese orden, `pieceOutlined` se conectaba junto al menú del pincel
+sobre un `video_` todavía nulo (ver abajo); ahora se conecta en
+`buildVideoCanvas`, con el lienzo ya creado.
 
 **Los includes, en cada fichero.** `main_window_internal.h` arrastraba los 95
 includes del fichero único a los ocho, usaran lo que usaran. Ahora solo lleva
@@ -5537,12 +5537,13 @@ mismo orden que la ganancia por fichero: `menus`, `settings`, `detection` y
 `main_window.cpp` bajan de 29–39 s a 20–31 s, mientras que `analysis`, que usa
 casi todo, no baja.
 
-Queda un fallo a la vista que este cambio no arregla, porque no es mover
-código: la conexión de `EditorCanvas::pieceOutlined` con `onPieceOutlined` se
-hace antes de crear el lienzo, así que Qt la rechaza con un aviso y «Marcar una
-pieza rodeándola…» / «Descartar lo que no es una pieza…» no llegan a la
-ventana. Es el mismo error que el comentario de `buildVideoCanvas` cuenta para
-`edgeCorrected`.
+Al partir el constructor quedó a la vista un fallo antiguo: la conexión de
+`EditorCanvas::pieceOutlined` con `onPieceOutlined` se hacía antes de crear el
+lienzo, Qt la rechazaba con un aviso en la consola, y «Marcar una pieza
+rodeándola…» / «Descartar lo que no es una pieza…» no llegaban a la ventana. Es
+el mismo error que el comentario de `buildVideoCanvas` cuenta para
+`edgeCorrected`. Ya se conecta allí; lo vigila
+`tests/test_outline_reaches_window.cpp`.
 
 
 ## 12. Empaquetado

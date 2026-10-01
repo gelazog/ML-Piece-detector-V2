@@ -411,8 +411,6 @@ void MainWindow::connectEdgeBrushMenu() {
                     "fondo.")
                : tr("Descartar manchas: apagado."));
     });
-    connect(video_, &inspection::EditorCanvas::pieceOutlined, this,
-            &MainWindow::onPieceOutlined);
     connect(brushClearAction_, &QAction::triggered, this, [this] {
         video_->clearEdgeCorrection();
         statusBar()->showMessage(tr("Correcciones del borde quitadas."));
@@ -799,6 +797,11 @@ void MainWindow::buildVideoCanvas(QWidget* central, QVBoxLayout* rootLayout) {
 
     connect(video_, &inspection::EditorCanvas::edgeCorrected, this,
             &MainWindow::onEdgeCorrected);
+    // Aquí y no junto a las acciones de «Marcar» y «Descartar»: allí el lienzo
+    // aún no existía y la conexión se hacía sobre un puntero nulo. Ver
+    // tests/test_outline_reaches_window.cpp.
+    connect(video_, &inspection::EditorCanvas::pieceOutlined, this,
+            &MainWindow::onPieceOutlined);
     rootLayout->addWidget(video_, 1);
 }
 
