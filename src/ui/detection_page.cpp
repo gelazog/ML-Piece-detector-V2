@@ -525,6 +525,12 @@ void DetectionPage::applyOptions(const vision::SegmentationOptions& options) {
     polarity_->setCurrentIndex(static_cast<int>(options.polarity));
     blur_->setValue(options.blurKernel);
     morph_->setValue(options.morphKernel);
+    if (splitTouching_ != nullptr) {
+        splitTouching_->setChecked(options.splitTouchingPieces);
+    }
+    if (recoverGlare_ != nullptr) {
+        recoverGlare_->setChecked(options.recoverHighlightsBy > 0);
+    }
     if (backgroundKey_ != nullptr) {
         backgroundKey_->setCurrentIndex(static_cast<int>(options.backgroundKey));
         background_ = QColor(options.background[2], options.background[1], options.background[0]);
@@ -541,6 +547,9 @@ void DetectionPage::restoreDefaults() {
     const vision::PipelineConfig factory;
     minArea_->setValue(factory.minAreaFraction * 100.0);
     maxArea_->setValue(factory.maxAreaFraction * 100.0);
+    if (subpixel_ != nullptr) {
+        subpixel_->setChecked(factory.subpixelEdges);
+    }
     // Y sin perfil: un perfil es una elección del operador, así que restablecer
     // vuelve a «ajustes sueltos» en vez de dejar puesto uno que ya no
     // corresponde a lo que enseñan los controles.

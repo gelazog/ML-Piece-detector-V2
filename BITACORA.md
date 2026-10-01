@@ -19,6 +19,17 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Restablecer la detección dejaba tres casillas como estaban
+
+«Separar piezas que se tocan», «Recuperar zonas con brillo» y el subpíxel se
+añadieron a la página de Detección después que el resto, y `applyOptions` —el
+que usan restablecer y cargar un perfil— nunca aprendió a ponerlos. Tras
+«Restablecer», esas tres se quedaban como estaban, y cargar un perfil que las
+llevaba encendidas no las encendía. Las dos primeras cambian qué piezas salen y
+la tercera cambia las medidas: «de fábrica» no era de fábrica. Lo vio el agente
+que plegó las opciones en «Avanzado» al contar qué ajustes no estaban de
+fábrica. Lo vigilan dos pruebas en `test_configure_dialog.cpp`.
+
 ### MainWindow vivía en un solo fichero de 9169 líneas
 
 graphify señalaba a `MainWindow` como el nodo más conectado del código (433

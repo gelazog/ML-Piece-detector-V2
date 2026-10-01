@@ -880,6 +880,43 @@ TEST(DetectionPageDefaults, RestoringGivesBackTheFactoryValuesAndNotACopy) {
     EXPECT_EQ(page.selectedProfileId(), 0);
 }
 
+TEST(DetectionPageDefaults, RestoringAlsoResetsTheBoxesAddedLater) {
+    // «Separar piezas que se tocan», «Recuperar zonas con brillo» y el subpíxel
+    // se añadieron a la página después que el resto, y `applyOptions` (que usan
+    // restablecer y cargar un perfil) nunca aprendió a ponerlos. Restablecer los
+    // dejaba como estaban: las dos primeras cambian qué piezas salen y la
+    // tercera cambia las medidas, así que «de fábrica» no era de fábrica.
+    pci::vision::SegmentationOptions tangled;
+    tangled.splitTouchingPieces = true;
+    tangled.recoverHighlightsBy = 12;
+    pci::ui::DetectionPage page(tangled, nullptr, nullptr, 0, 0.05, 0.5, true);
+    page.resize(500, 600);
+    ASSERT_TRUE(page.options().splitTouchingPieces) << "la pagina no arranco enredada";
+    ASSERT_TRUE(page.subpixelEdges());
+
+    page.restoreDefaults();
+
+    const pci::vision::SegmentationOptions factory;
+    const pci::vision::PipelineConfig defaults;
+    EXPECT_EQ(page.options().splitTouchingPieces, factory.splitTouchingPieces);
+    EXPECT_EQ(page.options().recoverHighlightsBy > 0, factory.recoverHighlightsBy > 0);
+    EXPECT_EQ(page.subpixelEdges(), defaults.subpixelEdges);
+}
+
+TEST(DetectionPageDefaults, LoadingOptionsSetsTheBoxesAddedLater) {
+    // El mismo hueco por el otro camino: cargar unos ajustes que SÍ las llevan
+    // encendidas tiene que encenderlas, o el perfil se aplica a medias.
+    pci::ui::DetectionPage page(pci::vision::SegmentationOptions{}, nullptr, nullptr, 0,
+                                0.05, 0.5);
+    page.resize(500, 600);
+    pci::vision::SegmentationOptions wanted;
+    wanted.splitTouchingPieces = true;
+    wanted.recoverHighlightsBy = 12;
+    page.reloadFor(wanted, 0, 0.05, 0.5, false);
+    EXPECT_TRUE(page.options().splitTouchingPieces);
+    EXPECT_GT(page.options().recoverHighlightsBy, 0);
+}
+
 TEST(DetectionPageDefaults, TheThresholdGoesBackToAutomaticAndNotToANumber) {
     // El umbral automatico es -1, y es un ESTADO distinto de «un numero
     // cualquiera»: -1 significa que lo decide Otsu mirando la imagen. Volver a
