@@ -125,6 +125,7 @@ ConfigureDialog::ConfigureDialog(Inputs inputs, QWidget* parent) : QDialog(paren
     preferences_ = new PreferencesPage(inputs.autoIntervalMs, inputs.kSigma,
                                        inputs.passTrigger, inputs.settleMs,
                                        inputs.rearmMs, this);
+    preferences_->setThemeChoice(inputs.themeChoice);
     tabs_->addTab(preferences_, tr("Preferencias"));
 
     // --- Atajos (asistente) ---

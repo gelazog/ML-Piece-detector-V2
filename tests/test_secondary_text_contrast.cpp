@@ -143,8 +143,15 @@ TEST(SecondaryTextContrast, TheRedNoticeWasLeftAloneBecauseTheThemeMeasuresWorse
     // La excepción, con su número. Sustituir a ciegas «lo escrito a mano» por
     // «el token» habría empeorado esta, y una regla que se aplica sin medir es
     // la misma clase de error que vino a arreglar.
-    const double byHand = contrast(QColor(QStringLiteral("#3a1010")),
-                                   QColor(QStringLiteral("#ffd9d9")));
+    //
+    // Ya no está escrito a mano en `detection_page.cpp`: tiene nombre en el tema
+    // (`kAlarmInk` sobre `kAlarmField`) con el MISMO valor. Por eso se mide el
+    // token y además se fija el valor: si alguien lo «unifica» con `kBad`, esta
+    // prueba lo dice.
+    EXPECT_STREQ(pci::ui::theme::kAlarmInk, "#3a1010");
+    EXPECT_STREQ(pci::ui::theme::kAlarmField, "#ffd9d9");
+    const double byHand = contrast(QColor(QString(pci::ui::theme::kAlarmInk)),
+                                   QColor(QString(pci::ui::theme::kAlarmField)));
     const double withTokens = contrast(QColor(QString(pci::ui::theme::kBad)),
                                        QColor(QString(pci::ui::theme::kBadField)));
     std::printf("  [contraste] aviso rojo: a mano %.2f:1, con tokens %.2f:1\n", byHand,

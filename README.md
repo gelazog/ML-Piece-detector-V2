@@ -968,6 +968,18 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    **sensibilidad de anomalía (kσ)** de apariencia. Se aplican al aceptar y
    quedan guardados.
 
+   **Tema** (misma pestaña): *Claro* —el de siempre, y el que viene puesto—,
+   *Oscuro* o *Como Windows*, que sigue al modo claro u oscuro del sistema. Se
+   guarda con el resto de ajustes y **se aplica al volver a abrir el
+   programa**, no en el momento: los textos de la ventana ya llevan su color
+   puesto, y cambiar el fondo debajo de ellos a media sesión los dejaría
+   ilegibles. Los dos temas están medidos: el texto pasa de 4,5:1 de contraste
+   y el marco de campos, botones y desplegables de 3:1. Lo que se dibuja encima
+   de la imagen (herramientas, cotas, zona, rejilla del tablero) no cambia con
+   el tema, porque va sobre la foto y no sobre la ventana; para que se vea
+   igual sobre una mesa blanca que sobre una pieza oscura lleva un **borde
+   oscuro** alrededor.
+
    **Medir una vez por pieza que pasa** (misma pestaña): para vídeo y cámara en
    marcha. Con el temporizador solo, sobre una cinta pasan tres cosas y ninguna
    avisa: se mide **media pieza** mientras entra, se mide **la misma pieza doce

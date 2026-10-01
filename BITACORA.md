@@ -19,6 +19,23 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Colores escritos a mano que la guarda de la paleta no veía
+
+`test_palette_guard` solo miraba el primer nivel de `src/ui`, y 85 de los 93
+colores escritos a mano estaban en el lienzo del editor
+(`inspection_editor/canvas`). Ahora 62 salen de tokens con nombre de papel en
+`theme.h`, la guarda recorre las dos carpetas y su límite es cero; los 31 que
+quedan son la tabla de color por tipo de herramienta (una identidad, no un
+papel) y un dato de color de mesa.
+
+Al medir para el tema oscuro salieron contrastes que ya fallaban en el claro: la
+fila seleccionada contra la lista (1,62:1), los enlaces sobre blanco (1,62:1), el
+marco de campos y botones (2,01:1) y el «OK» de la tabla de resultados, que
+usaba colores pensados para fondo oscuro sobre una tabla blanca (≈1,6:1). Ahora
+3,49, 6,59, 3,43 y 9,11:1. Y lo que se dibuja sobre la imagen no llevaba ningún
+contorno: sobre una escena blanca, el píxel más oscuro junto a una cota era más
+claro que el propio fondo. Ahora lleva halo oscuro.
+
 ### Restablecer la detección dejaba tres casillas como estaban
 
 «Separar piezas que se tocan», «Recuperar zonas con brillo» y el subpíxel se

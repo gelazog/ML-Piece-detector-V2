@@ -39,11 +39,34 @@ std::filesystem::path uiSources() {
     return {};
 }
 
+// TAMBIÉN EL EDITOR, y entero.
+//
+// La guardia miraba solo `src/ui`, y sin bajar a subcarpetas. El lienzo del
+// editor vive en `src/inspection_editor/canvas/` y tenía 85 colores tecleados
+// —más que todo `src/ui` junto cuando se escribió esta guardia— sin que nada
+// los contara. Una guardia con un agujero de ese tamaño dice «0» y es mentira.
+std::vector<std::filesystem::path> guardedFiles(const std::filesystem::path& ui) {
+    std::vector<std::filesystem::path> files;
+    for (const auto& dir : {ui, ui.parent_path() / "inspection_editor"}) {
+        std::error_code ec;
+        if (!std::filesystem::exists(dir, ec)) {
+            continue;
+        }
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
+            if (entry.path().extension() == ".cpp" || entry.path().extension() == ".h") {
+                files.push_back(entry.path());
+            }
+        }
+    }
+    return files;
+}
+
 }  // namespace
 
 TEST(PaletteGuard, NoHandWrittenColoursOutsideTheTheme) {
     const auto dir = uiSources();
     ASSERT_FALSE(dir.empty()) << "no se encuentra src/ui: la guardia no comprueba nada";
+    int editorFiles = 0;
 
     // Un hexadecimal de color dentro de una cadena, o un QColor con números.
     const std::regex hexColour(R"(#[0-9a-fA-F]{3,8}\b)");
@@ -57,18 +80,18 @@ TEST(PaletteGuard, NoHandWrittenColoursOutsideTheTheme) {
     std::vector<Offence> offences;
     int filesChecked = 0;
 
-    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
-        const auto name = entry.path().filename().string();
-        if (entry.path().extension() != ".cpp" && entry.path().extension() != ".h") {
-            continue;
-        }
+    for (const auto& path : guardedFiles(dir)) {
+        const auto name = path.filename().string();
         // `theme.h` es DONDE viven los colores: es el único sitio donde un
         // hexadecimal significa algo.
         if (name == "theme.h") {
             continue;
         }
         ++filesChecked;
-        std::ifstream file(entry.path());
+        if (path.string().find("inspection_editor") != std::string::npos) {
+            ++editorFiles;
+        }
+        std::ifstream file(path);
         std::string line;
         int number = 0;
         while (std::getline(file, line)) {
@@ -98,6 +121,7 @@ TEST(PaletteGuard, NoHandWrittenColoursOutsideTheTheme) {
     std::printf("  [paleta] %d ficheros de interfaz revisados, %zu colores a mano\n",
                 filesChecked, offences.size());
     EXPECT_GT(filesChecked, 10) << "casi no se ha revisado nada: la ruta no es la que se cree";
+    EXPECT_GT(editorFiles, 5) << "no se ha revisado el editor, que es donde vive el lienzo";
     for (const auto& one : offences) {
         std::printf("           %s:%d  %s\n", one.file.c_str(), one.line, one.text.c_str());
     }
@@ -119,26 +143,21 @@ TEST(PaletteGuard, NoHandWrittenColoursOutsideTheTheme) {
     //    9 tras las bandas que van sobre el vídeo (tres azules que eran uno)
     //    5 tras la rejilla del calibrador de lente
     //    1 tras el banner de veredicto y dos falsos positivos de esta guardia
+    //    0 en `src/ui` y en el editor, que entra ahora en la cuenta con 54
+    //      colores con papel (van a `ui/theme.h`).
     //
-    // Y AQUÍ ESTÁ EL SUELO: el que queda es una excepción MEDIDA, no trabajo
-    // pendiente. El aviso rojo de «el corte sí toca la pieza» está en #3a1010
-    // sobre #ffd9d9, que da 12,83:1, mientras el par de tokens (kBad sobre
-    // kBadField) da 5,55:1. Pasarlo a tokens BAJARÍA el contraste.
+    // El último de `src/ui` era el aviso rojo de «el corte sí toca la pieza»,
+    // que se dejó a mano porque mide MEJOR que los tokens (12,83:1 contra
+    // 5,55:1). No se ha cambiado su valor: se le ha puesto nombre en el tema
+    // (`kAlarmInk`, `kAlarmField`, `kAlarmEdge`). La regla era que el color
+    // venga del tema, no que el tema gane siempre, y así se cumplen las dos.
     //
-    // La regla es que el color venga del tema, no que el tema gane siempre.
-    // `test_secondary_text_contrast.cpp` guarda esa excepción con su número y
-    // falla el día que los tokens midan mejor, para que se cierre entonces.
-    //
-    // Así que no bajes esto a 0 sin mirar allí primero.
-    constexpr std::size_t kColoursStillHandWritten = 1;
+    // La tabla de color por tipo de herramienta del lienzo (`return {0, 200,
+    // 255};`) no la ve esta expresión y está bien que no: es una identidad y no
+    // un papel, y vive en una sola función.
+    constexpr std::size_t kColoursStillHandWritten = 0;
     EXPECT_LE(offences.size(), kColoursStillHandWritten)
         << "han aparecido colores a mano nuevos fuera de ui/theme.h. Así se llegó a "
            "tener cuatro rojos distintos para «no cumple» y cinco colores por debajo "
            "del contraste mínimo: cada uno entró solo y parecía razonable.";
-    if (offences.size() < kColoursStillHandWritten) {
-        ADD_FAILURE() << "quedan " << offences.size() << " colores a mano y el tope dice "
-                      << kColoursStillHandWritten
-                      << ". Baja el tope en esta prueba: un trinquete que no se aprieta "
-                         "deja de serlo.";
-    }
 }

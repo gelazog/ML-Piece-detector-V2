@@ -676,8 +676,7 @@ void DetectionPage::setClippingCheck(const vision::ClippingCheck& check) {
     // mismo aspecto que uno alarmante enseña a no leer ninguno de los dos.
     clipResult_->setStyleSheet(
         check.thresholdCutsThePiece
-            ? QStringLiteral("color:#3a1010; background:#ffd9d9; border:1px solid #c04040;"
-                             " border-radius:4px; padding:6px; font-weight:bold;")
+            ? theme::alarmNoticeStyle()
             : theme::textStyle(theme::kInkMuted) + QStringLiteral(" padding:6px;"));
 }
 
@@ -773,7 +772,10 @@ void DetectionPage::paintBackgroundSwatch() {
     }
     const double luminance = 0.2126 * background_.redF() + 0.7152 * background_.greenF() +
                              0.0722 * background_.blueF();
-    const char* ink = luminance > 0.45 ? theme::kInk : theme::kInkOnDark;
+    // Tinta FIJA, no la del tema: el fondo es el color de la mesa, que es
+    // claro u oscuro por sí mismo. Con `kInk`, en el tema oscuro, una mesa
+    // blanca llevaría el texto claro encima.
+    const char* ink = luminance > 0.45 ? theme::kInkOnLight : theme::kInkOnDark;
     backgroundColour_->setText(tr("Color del fondo: %1").arg(background_.name().toUpper()));
     backgroundColour_->setStyleSheet(QStringLiteral("background:%1; color:%2; padding:6px;")
                                          .arg(background_.name(), QString::fromUtf8(ink)));

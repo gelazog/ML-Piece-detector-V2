@@ -1,6 +1,7 @@
 #include "ui/preferences_page.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QLabel>
@@ -92,6 +93,17 @@ PreferencesPage::PreferencesPage(int autoIntervalMs, double kSigma, bool passTri
     connect(passCheck_, &QCheckBox::toggled, this, syncPassRow);
     syncPassRow();
 
+    // --- Tema ---------------------------------------------------------------
+    // El orden de las opciones es el número de `theme::ThemeChoice`, que es lo
+    // que se guarda: no se reordena sin cambiar también el enum.
+    themeCombo_ = new QComboBox(this);
+    themeCombo_->setObjectName(QStringLiteral("themeCombo"));
+    themeCombo_->addItem(tr("Claro"), static_cast<int>(theme::ThemeChoice::Light));
+    themeCombo_->addItem(tr("Oscuro"), static_cast<int>(theme::ThemeChoice::Dark));
+    themeCombo_->addItem(tr("Como Windows"), static_cast<int>(theme::ThemeChoice::System));
+    themeCombo_->setToolTip(tr("Colores de la ventana. Se aplica al volver a abrir el programa."));
+    form->addRow(tr("Tema:"), themeCombo_);
+
     root->addLayout(form);
 
     auto* note = new QLabel(
@@ -111,6 +123,15 @@ bool PreferencesPage::passTrigger() const { return passCheck_->isChecked(); }
 int PreferencesPage::settleMs() const { return settleSpin_->value(); }
 
 int PreferencesPage::rearmMs() const { return rearmSpin_->value(); }
+
+void PreferencesPage::setThemeChoice(theme::ThemeChoice choice) {
+    const int index = themeCombo_->findData(static_cast<int>(choice));
+    themeCombo_->setCurrentIndex(index >= 0 ? index : 0);
+}
+
+theme::ThemeChoice PreferencesPage::themeChoice() const {
+    return theme::themeChoiceFromSetting(themeCombo_->currentData().toInt());
+}
 
 double PreferencesPage::kSigma() const {
     return sigmaSpin_->value();

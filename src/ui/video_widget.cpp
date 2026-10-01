@@ -46,10 +46,12 @@ void VideoWidget::clear() {
 void VideoWidget::paintEvent(QPaintEvent* event) {
     Q_UNUSED(event);
     QPainter painter(this);
-    painter.fillRect(rect(), Qt::black);
+    // Oscuro en los dos temas, como el lienzo del editor: alrededor de una foto
+    // un marco claro la falsea.
+    painter.fillRect(rect(), theme::color(theme::kSurfaceDark));
 
     if (frame_.isNull()) {
-        painter.setPen(Qt::gray);
+        painter.setPen(theme::color(theme::kInkMutedOnDark));
         painter.drawText(rect(), Qt::AlignCenter, tr("Sin señal"));
         return;
     }

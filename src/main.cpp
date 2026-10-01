@@ -1,4 +1,6 @@
 #include <QApplication>
+#include <QGuiApplication>
+#include <QStyleHints>
 #include <QFileInfo>
 #include <QTimer>
 
@@ -26,9 +28,6 @@ int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("PC Inspector"));
     QApplication::setOrganizationName(QStringLiteral("PCInspector"));
-    // EL MODO OSCURO DE WINDOWS ROMPÍA EL TEXTO: ver el porqué y la medida en
-    // `ui/theme.h`, justo encima de `applyApplicationLook`.
-    pci::ui::theme::applyApplicationLook(app);
 
     const QString appDir = QCoreApplication::applicationDirPath();
     pci::core::Logger::instance().setLogFile(
@@ -68,6 +67,18 @@ int main(int argc, char* argv[]) {
         } else {
             pci::core::logError(opened.error().message);
         }
+    }
+
+    // EL TEMA, ANTES DE CONSTRUIR NINGUNA VENTANA. Se lee aquí, después de abrir
+    // la base, porque la elección vive con el resto de ajustes (`pref_theme`).
+    // Por qué se fija una sola vez y por qué por defecto es el claro: ver
+    // `ui/theme.h`. Sin base, el claro.
+    {
+        const int stored =
+            settings.has_value() ? settings->getInt("pref_theme", 0).valueOr(0) : 0;
+        pci::ui::theme::applyApplicationLook(
+            app, pci::ui::theme::resolveScheme(pci::ui::theme::themeChoiceFromSetting(stored),
+                                               QGuiApplication::styleHints()->colorScheme()));
     }
 
     // Modelo de embeddings: junto al exe o en models/ del proyecto. Si falta,

@@ -188,14 +188,14 @@ InspectionResultDialog::InspectionResultDialog(
         label->setWordWrap(true);
         if (!position.ok) {
             label->setStyleSheet(
-            theme::textStyle(theme::kBadOnDark, QStringLiteral("font-weight:bold;")));
+            theme::textStyle(theme::kBad, QStringLiteral("font-weight:bold;")));
         }
         sideLayout->addWidget(label);
     }
     if (const auto& position = outcome_.verdict.position; !position.note.empty()) {
         auto* note = new QLabel(QString::fromStdString(position.note), this);
         note->setWordWrap(true);
-        note->setStyleSheet(theme::textStyle(theme::kWarnOnDark));
+        note->setStyleSheet(theme::textStyle(theme::kWarn));
         sideLayout->addWidget(note);
     }
 
@@ -225,10 +225,14 @@ InspectionResultDialog::InspectionResultDialog(
         auto* state = new QTableWidgetItem(neutral  ? QStringLiteral("—")
                                            : result.ok ? QStringLiteral("OK")
                                                        : QStringLiteral("NG"));
-        // Esta tabla va sobre fondo OSCURO: los tokens claros no valen aquí.
-        state->setForeground(neutral    ? QBrush(theme::color(theme::kInkMutedOnDark))
-                             : result.ok ? QBrush(theme::color(theme::kGoodOnDark))
-                                         : QBrush(theme::color(theme::kBadOnDark)));
+        // ESTA TABLA NO VA SOBRE FONDO OSCURO, aunque el comentario de antes
+        // lo decía. Lo fue mientras el modo oscuro de Windows se colaba en la
+        // aplicación; desde que la paleta es fija, la tabla es blanca, y el
+        // verde para fondo oscuro (#7ddba0) quedaba a 1,6:1 sobre ella. Los
+        // tokens de la ventana siguen al tema, así que valen en los dos.
+        state->setForeground(neutral    ? QBrush(theme::color(theme::kInkMuted))
+                             : result.ok ? QBrush(theme::color(theme::kGood))
+                                         : QBrush(theme::color(theme::kBad)));
         table->setItem(row, 2, state);
         table->setItem(row, 3,
                        new QTableWidgetItem(QString::fromStdString(result.detail)));
@@ -239,7 +243,7 @@ InspectionResultDialog::InspectionResultDialog(
         auto* persist = new QLabel(tr("Aviso: historial no guardado (%1)")
                                        .arg(QString::fromStdString(outcome_.persistError)),
                                    this);
-        persist->setStyleSheet(theme::textStyle(theme::kWarnOnDark));
+        persist->setStyleSheet(theme::textStyle(theme::kWarn));
         persist->setWordWrap(true);
         sideLayout->addWidget(persist);
     }
@@ -337,7 +341,7 @@ void InspectionResultDialog::onLearnClicked() {
                                  "anteriores se conservan).")
                                   .arg(version.value()));
     } else {
-        learnStatus_->setStyleSheet(theme::textStyle(theme::kBadOnDark));
+        learnStatus_->setStyleSheet(theme::textStyle(theme::kBad));
         learnStatus_->setText(QString::fromStdString(version.error().message));
         learnButton_->setEnabled(true);
     }

@@ -36,6 +36,11 @@
 #include <cmath>
 #include <cstdio>
 
+#include <opencv2/core.hpp>
+
+#include <vector>
+
+#include "inspection_editor/canvas/editor_canvas.h"
 #include "ui/analysis_overlay.h"
 #include "ui/video_widget.h"
 
@@ -140,4 +145,117 @@ TEST(OverlayHalo, WithNoPieceThereIsNoContourAndSoNoHalo) {
     std::printf("  [halo] sin pieza, lo más oscuro dibujado: %d\n", darkest);
     EXPECT_GT(darkest, 200) << "se está pintando algo oscuro encima de la imagen sin que "
                                "haya ninguna pieza que contornear";
+}
+
+// ---------------------------------------------------------------------------
+// EL LIENZO DEL EDITOR: LO QUE SE DIBUJA, NO SOLO EL CONTORNO
+// ---------------------------------------------------------------------------
+//
+// El contorno de la pieza llevaba halo desde hace tiempo. Lo demás que se pinta
+// encima de la foto, no: las herramientas (cian, ámbar, rosa), la cota medida
+// (verde o rojo), la zona de detección (ámbar a rayas), lo que se está
+// trazando (blanco a rayas), la rejilla del tablero. Son colores claros a
+// propósito —para verse sobre piezas oscuras— y por eso mismo se pierden sobre
+// mesa blanca, que es el montaje normal: el cian del calibre (0,200,255) sobre
+// un blanco 245 deja como canal más alto 245, o sea que no hay nada más oscuro
+// que el propio fondo, y el ámbar de la zona da 1,1:1 contra él.
+//
+// Se mide igual que arriba: lo más oscuro que aparece cerca del trazo. Sin halo
+// es el propio fondo (245) o el color de la línea; con halo baja a ~100.
+namespace {
+
+using pci::inspection::CaliperGeometry;
+using pci::inspection::EditedTool;
+using pci::inspection::EditorCanvas;
+using pci::inspection::ToolRunResult;
+using pci::inspection::ToolType;
+
+// Escena blanca del MISMO tamaño que el lienzo, para que píxel de imagen y de
+// pantalla coincidan al ajustar.
+QImage whiteScene() {
+    QImage white(800, 600, QImage::Format_RGB888);
+    white.fill(QColor(245, 245, 245));
+    return white;
+}
+
+QImage shotOf(EditorCanvas& canvas) {
+    QImage shot(canvas.size(), QImage::Format_RGB888);
+    canvas.render(&shot);
+    return shot;
+}
+
+}  // namespace
+
+TEST(OverlayHalo, AToolOnAWhiteTableCarriesItsHalo) {
+    EditorCanvas canvas;
+    canvas.resize(800, 600);
+    canvas.setScene(whiteScene(), pci::vision::Fixture{});
+    std::vector<EditedTool> tools(1);
+    tools[0].config.id = 1;
+    tools[0].config.type = ToolType::Caliper;
+    tools[0].geometry = CaliperGeometry{{300.0F, 300.0F}, {500.0F, 300.0F}, 10.0F};
+    canvas.setTools(&tools);
+
+    const QImage shot = shotOf(canvas);
+    const QRect strip(350, 285, 100, 30);
+    int cyan = 0;
+    for (int y = strip.top(); y < strip.bottom(); ++y) {
+        for (int x = strip.left(); x < strip.right(); ++x) {
+            const QColor c = shot.pixelColor(x, y);
+            if (c.blue() > 200 && c.red() < 120) {
+                ++cyan;
+            }
+        }
+    }
+    const int darkest = darkestOver(shot, strip);
+    std::printf("  [halo] herramienta sobre mesa blanca: %d px de su color, lo más oscuro %d\n",
+                cyan, darkest);
+    EXPECT_GT(cyan, 50) << "no se está pintando la herramienta: la prueba no mide nada";
+    EXPECT_LT(darkest, 160) << "la herramienta no lleva halo: su cian sobre mesa blanca no se ve";
+}
+
+TEST(OverlayHalo, TheMeasuredDimensionCarriesItsHalo) {
+    EditorCanvas canvas;
+    canvas.resize(800, 600);
+    canvas.setScene(whiteScene(), pci::vision::Fixture{});
+    ToolRunResult result;
+    result.toolId = 1;
+    result.name = "medida";
+    result.ok = true;
+    result.measured = 600.0;
+    result.overlaySegments = {{cv::Point2f(100.0F, 450.0F), cv::Point2f(700.0F, 450.0F)}};
+    canvas.setResults({result});
+
+    // Lejos de la etiqueta, que va en una caja negra y aprobaría sola.
+    const QImage shot = shotOf(canvas);
+    const QRect strip(520, 440, 150, 20);
+    const int darkest = darkestOver(shot, strip);
+    std::printf("  [halo] cota que cumple sobre mesa blanca, lo más oscuro: %d\n", darkest);
+    EXPECT_LT(darkest, 160) << "la cota no lleva halo: el verde de «cumple» sobre una pieza "
+                               "clara no se distingue";
+}
+
+TEST(OverlayHalo, TheDetectionZoneCarriesItsHalo) {
+    EditorCanvas canvas;
+    canvas.resize(800, 600);
+    canvas.setScene(whiteScene(), pci::vision::Fixture{});
+    canvas.setDetectionRegion(true, cv::Rect(200, 150, 400, 300));
+
+    const QImage shot = shotOf(canvas);
+    const QRect strip(300, 140, 200, 20);
+    const int darkest = darkestOver(shot, strip);
+    std::printf("  [halo] zona de detección sobre mesa blanca, lo más oscuro: %d\n", darkest);
+    EXPECT_LT(darkest, 160) << "la zona no lleva halo: su ámbar a rayas sobre blanco no se ve";
+}
+
+TEST(OverlayHalo, ANothingDrawnSceneStaysClean) {
+    // La otra mitad: sin nada encima, nada oscuro. Si no, las tres de arriba
+    // pasarían igual pintando una mancha en cualquier sitio.
+    EditorCanvas canvas;
+    canvas.resize(800, 600);
+    canvas.setScene(whiteScene(), pci::vision::Fixture{});
+    const QImage shot = shotOf(canvas);
+    const int darkest = darkestOver(shot, QRect(200, 140, 400, 320));
+    std::printf("  [halo] lienzo sin nada encima, lo más oscuro: %d\n", darkest);
+    EXPECT_GT(darkest, 200);
 }

@@ -3209,6 +3209,96 @@ oscuro sería la propia línea —220 el verde, 255 el rojo— y sin nada dibuja
 el fondo, **245**. Entre 101 y 220 hay sitio de sobra para un tope que no sea
 delicado.
 
+### Tema claro u oscuro, y los colores del lienzo con nombre
+
+**Qué se pidió.** Que el modo oscuro sea una opción de verdad y no solo algo que
+se evita, y que no quede ningún color escrito a mano en la interfaz.
+
+**Cómo se elige.** *Configurar*, pestaña *Preferencias*, campo *Tema*: Claro
+(por defecto, lo que había), Oscuro o Como Windows. Se guarda en el ajuste
+`pref_theme` (0, 1, 2; un valor desconocido vuelve al claro) y `main.cpp` lo
+lee **después de abrir la base y antes de construir ninguna ventana**:
+`theme::resolveScheme` convierte la elección en un tema —«Como Windows» es
+oscuro solo si `QStyleHints::colorScheme()` dice oscuro— y
+`theme::applyApplicationLook(app, tema)` fija estilo, paleta y tema de los
+tokens. Sin base de datos, el claro.
+
+**Por qué al reiniciar y no en el acto.** Las hojas de estilo se escriben al
+construir cada widget. Cambiar la paleta a media sesión deja cada rótulo con la
+tinta del tema viejo sobre el fondo del nuevo: es exactamente el 1,05:1 de
+`kInk` sobre `kSurfaceDark` que motivó fijar la paleta. Aceptar Preferencias
+guarda el tema y lo dice en la barra de estado; la prueba
+`TheChoiceIsSavedAndComesBackButDoesNotRepaintTheSession` comprueba que la
+sesión no cambia.
+
+**Tokens con dos valores.** Los que van sobre la VENTANA —`kInk`, `kInkMuted`,
+`kInkOff`, `kBad`/`kWarn`/`kGood` y sus campos, `kSurfaceSunken`,
+`kSurfaceBase`, `kSelection`, `kLink`, `kControlOutline`— son
+`theme::Adaptive`: un valor por tema y conversión implícita a `const char*` con
+el del tema activo. Así ningún sitio de uso tuvo que cambiar (`textStyle(kWarn)`
+sigue igual). Los que van sobre una superficie que no cambia —pastillas, bandas
+del vídeo, el hueco sin imagen, lo que se dibuja encima de la foto— siguen con
+un solo valor. `kInkOnLight` existe para el único caso en que se quiere tinta
+oscura en los dos temas: el nombre del color de la mesa, escrito sobre la
+propia muestra.
+
+**Lo que salió al medir las dos paletas** (`tests/test_theme_choice.cpp`, todo
+con `theme::contrastRatio`), y que ya estaba mal en la clara:
+
+| qué | antes | ahora |
+|---|---|---|
+| fila elegida contra la lista (`Highlight`, era `kChipChosen`) | 1,62:1 | 3,49:1 (`#3a8fd0`) |
+| enlace sobre blanco (también era `kChipChosen`, y es texto) | 1,62:1 | 6,59:1 (`#1a5fa0`) |
+| `kInkOff` sobre la ventana `#f5f6f7` (solo se medía contra blanco) | 4,34:1 | 4,74:1 (`#6a6e74`) |
+| marco de campo/botón/desplegable, claro (Fusion: ventana `darker(140)`) | 2,01:1 | 3,43:1 |
+| ídem, oscuro | 1,15:1 | 4,15:1 |
+| «OK» de la tabla del informe de inspección | 1,6:1 | 9,11:1 |
+
+El marco de los controles no sale de ningún papel de la paleta: Fusion lo
+calcula oscureciendo la ventana un 40 %. `theme::ThemedStyle` es un
+`QProxyStyle` sobre Fusion que, solo para campos, botones, casillas, números y
+desplegables, le pasa una copia de la opción con una «ventana» elegida para que
+ese 40 % dé justo `kControlOutline`. La prueba lo mide pintado.
+
+El informe de inspección usaba los tokens de fondo oscuro (`kGoodOnDark`…) con
+un comentario que decía «esta tabla va sobre fondo OSCURO». Lo era mientras el
+modo oscuro de Windows se colaba en la aplicación; desde que la paleta es fija,
+la tabla es blanca y el «OK» verde claro quedaba a 1,6:1. Ahora usa los tokens
+de ventana, que valen en los dos temas.
+
+**Los colores del lienzo, con nombre.** La guardia de paleta
+(`tests/test_palette_guard.cpp`) solo miraba `src/ui` y sin bajar a
+subcarpetas; el lienzo del editor (`src/inspection_editor/canvas/`) tenía **85**
+colores tecleados que nadie contaba. Inventario completo de `src/ui` y
+`src/inspection_editor` antes del cambio: **93** colores a mano. Ahora:
+
+- 54 del lienzo, 3 del gráfico de estadísticas, 2 del vídeo, 1 del mosaico y el
+  aviso rojo de `detection_page` pasan a tokens. El aviso rojo conserva su valor
+  (12,83:1, mejor que `kBad` sobre `kBadField`) con nombre propio: `kAlarmInk`,
+  `kAlarmField`, `kAlarmEdge`.
+- Donde dos colores decían lo mismo con valores casi iguales queda uno: la
+  chapa del número de pieza del lienzo y la del mosaico (`theme::tileBadge`), el
+  fondo de la lectura del cursor y el de las bandas del vídeo (`kBandField`), el
+  «sin pieza» del lienzo y el del vídeo (`kDrawMissing`), el gráfico de
+  estadísticas y los verdes/rojos de veredicto.
+- Quedan **31**, por motivo: los 30 de la tabla que da a cada tipo de
+  herramienta su color (es una identidad, no un papel, y vive en una sola
+  función; la guardia no la cuenta) y el blanco por defecto del color de mesa
+  en `detection_page.h`, que es un dato y no un color de interfaz.
+
+La guardia ahora recorre los dos árboles y su tope es **0**.
+
+**El halo, en todo lo que va encima de la foto.** Solo el contorno de la pieza
+lo llevaba. Herramientas, cotas, zona, dependencias, lo que se está trazando, el
+ancla, los ejes y números del tablero y la descomposición del contorno van
+ahora con `theme::strokeWithHalo` o `theme::drawTextWithHalo`; las
+herramientas se pintan en dos pasadas (halo continuo y luego su color, a rayas
+si toca). Sin halo, sobre una escena blanca (245), lo más oscuro junto a una
+herramienta era **245**, junto a una cota **226** y junto a la zona **245**: no
+había nada más oscuro que el propio fondo. Con halo, **101**, **136** y **101**.
+Se dejan sin halo a propósito la rejilla tenue del tablero y el contorno crudo
+de referencia: son fondo, y con halo dejarían de serlo.
+
 ### De una silueta a rasgos medibles
 
 `vision/geometry_features.*` convierte "una lista de puntos" en "cuatro lados y

@@ -2,6 +2,8 @@
 
 #include <QPainter>
 
+#include "ui/theme.h"
+
 #include <algorithm>
 #include <utility>
 
@@ -24,9 +26,13 @@ void StatsBarChart::paintEvent(QPaintEvent* /*event*/) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    const QColor axis(120, 120, 120);
-    const QColor okColor(0, 170, 0);
-    const QColor ngColor(210, 60, 60);
+    // Del tema, y no escritos aquí: el gráfico va sobre la ventana, así que en
+    // el tema oscuro sus colores tienen que ser los de fondo oscuro. Los de
+    // antes —(0,170,0) y (210,60,60)— eran un verde y un rojo más, distintos de
+    // los de «cumple» y «no cumple» del resto de la aplicación.
+    const QColor axis = theme::color(theme::kInkMuted);
+    const QColor okColor = theme::color(theme::kGood);
+    const QColor ngColor = theme::color(theme::kBad);
     const QColor text = palette().color(QPalette::WindowText);
 
     if (data_.empty()) {

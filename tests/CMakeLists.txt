@@ -214,6 +214,7 @@ add_executable(pci_gui_tests
   test_source_remembers.cpp
   test_session_state.cpp
   test_dark_mode_palette.cpp
+  test_theme_choice.cpp
   test_status_indicator_words.cpp
   test_open_file.cpp
   test_verdict_board.cpp

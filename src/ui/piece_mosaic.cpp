@@ -199,11 +199,7 @@ void PieceMosaic::rebuild() {
             const QRectF badge(2, 2, metrics.horizontalAdvance(label) + 8,
                                metrics.height() + 2);
             painter.setPen(Qt::NoPen);
-            QColor chip = number == measured_ ? theme::color(theme::kTileMeasured)
-                                              : QColor(Qt::black);
-            chip.setAlpha(number == measured_ ? theme::kTileBadgeAlpha
-                                              : theme::kTileBadgeRestAlpha);
-            painter.setBrush(chip);
+            painter.setBrush(theme::tileBadge(number == measured_));
             painter.drawRoundedRect(badge, 3.0, 3.0);
             painter.setPen(number == measured_ ? theme::color(theme::kInkOnTileMeasured)
                                                : theme::color(theme::kInkOnChipRest));

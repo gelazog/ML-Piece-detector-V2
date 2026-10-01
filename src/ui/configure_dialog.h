@@ -4,6 +4,7 @@
 #include <QSize>
 
 #include "ui/station_status.h"
+#include "ui/theme.h"
 
 #include <cstdint>
 #include <vector>
@@ -82,6 +83,9 @@ public:
         bool passTrigger = false;
         int settleMs = 400;
         int rearmMs = 300;
+        // Lo guardado en `pref_theme`, no el tema activo: si el operador lo
+        // cambió en esta sesión, al reabrir tiene que ver lo que eligió.
+        theme::ThemeChoice themeChoice = theme::ThemeChoice::Light;
         vision::WorkingZoneMode zoneMode = vision::WorkingZoneMode::Off;
         bool hasFixedZone = false;
         bool hasFreeZone = false;

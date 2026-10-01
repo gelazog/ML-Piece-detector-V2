@@ -19,6 +19,7 @@
 #include <limits>
 
 #include "inspection_editor/execution/edge_detection.h"
+#include "ui/theme.h"
 #include "vision/auto_roi.h"
 #include "vision/brush_snap.h"
 #include "vision/view_enhance.h"
@@ -28,6 +29,8 @@
 namespace pci::inspection {
 
 namespace {
+
+namespace theme = pci::ui::theme;
 
 // Límites de zoom (1.0 = imagen ajustada a la ventana) y factor por muesca de
 // rueda: 15% da una progresión suave sin sentirse lento.
@@ -98,7 +101,7 @@ QColor toolColor(ToolType type) {
         case ToolType::ConstructedLine:
         case ToolType::MedianAxis: return {150, 255, 255};
     }
-    return Qt::white;
+    return theme::drawColor(theme::kDrawSelected);
 }
 
 
@@ -1855,13 +1858,15 @@ void EditorCanvas::paintDependencies(QPainter& painter) const {
         return nullptr;
     };
 
-    QPen pen(QColor(150, 255, 255, 130));
+    QPen pen(theme::drawColor(theme::kDrawLink, 130));
     pen.setStyle(Qt::DotLine);
     pen.setWidthF(1.2);
     pen.setCosmetic(true);
     painter.save();
-    painter.setPen(pen);
     painter.setBrush(Qt::NoBrush);
+    // Con halo, como todo lo que va encima de la foto: un cian claro punteado
+    // sobre mesa blanca no se ve.
+    const auto drawArrows = [&] {
     for (const auto& tool : *tools_) {
         if (tool.deleted) {
             continue;
@@ -1894,18 +1899,40 @@ void EditorCanvas::paintDependencies(QPainter& painter) const {
             painter.drawLine(tip, tip - unit * 7.0 - normal * 3.5);
         }
     }
+    };
+    theme::strokeWithHalo(painter, pen, drawArrows);
     painter.restore();
 }
 
 void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool selected) const {
-    QColor color = toolColor(tool.config.type);
-    QPen pen(color);
-    pen.setWidthF(selected ? 3.0 : 1.8);
-    pen.setCosmetic(true);
-    painter.setPen(pen);
+    const QColor toolInk = toolColor(tool.config.type);
+    const double nominalWidth = selected ? 3.0 : 1.8;
     painter.setBrush(Qt::NoBrush);
 
     QPointF labelPos;
+    // DOS PASADAS: primero el halo oscuro y luego el color, la misma forma.
+    //
+    // Los colores de herramienta son claros —cian, ámbar, rosa— para que se
+    // vean sobre piezas oscuras, y por eso mismo desaparecían sobre mesa
+    // blanca. Es el mismo arreglo que ya llevaba el contorno de la pieza.
+    // `styled` da la pluma de cada pasada: en la del halo, continua y más
+    // ancha; en la del color, la de siempre.
+    for (const bool haloPass : {true, false}) {
+    const QColor color = haloPass ? theme::haloColor() : toolInk;
+    const auto styled = [&color, haloPass](Qt::PenStyle style, double width) {
+        QPen styledPen(color);
+        styledPen.setCosmetic(true);
+        if (haloPass) {
+            styledPen = theme::haloPenFor(QPen(color, width));
+            styledPen.setCosmetic(true);
+        } else {
+            styledPen.setStyle(style);
+            styledPen.setWidthF(width);
+        }
+        return styledPen;
+    };
+    const QPen pen = styled(Qt::SolidLine, nominalWidth);
+    painter.setPen(pen);
     std::visit(
         [&](const auto& g) {
             using T = std::decay_t<decltype(g)>;
@@ -1934,9 +1961,7 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                     }
                     const cv::Point2f u = delta / length;
                     const cv::Point2f n(-u.y * half, u.x * half);
-                    QPen dashed = painter.pen();
-                    dashed.setStyle(Qt::DashLine);
-                    dashed.setWidthF(1.0);
+                    const QPen dashed = styled(Qt::DashLine, 1.0);
                     painter.save();
                     painter.setPen(dashed);
                     painter.drawLine(imageToWidget(p0 + n), imageToWidget(p1 + n));
@@ -1960,10 +1985,7 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 const QPointF c = imageToWidget(toImg(g.center));
                 const double scale = targetRect().width() / image_.width();
                 painter.drawEllipse(c, g.radius * scale, g.radius * scale);
-                QPen dashed(pen);
-                dashed.setStyle(Qt::DashLine);
-                dashed.setWidthF(1.0);
-                painter.setPen(dashed);
+                painter.setPen(styled(Qt::DashLine, 1.0));
                 painter.drawEllipse(c, (g.radius - g.searchBand) * scale,
                                     (g.radius - g.searchBand) * scale);
                 painter.drawEllipse(c, (g.radius + g.searchBand) * scale,
@@ -1973,9 +1995,7 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 const QPointF la = imageToWidget(toImg(g.lineA));
                 const QPointF lb = imageToWidget(toImg(g.lineB));
                 painter.drawLine(la, lb);
-                QPen dashed(pen);
-                dashed.setStyle(Qt::DashLine);
-                painter.setPen(dashed);
+                painter.setPen(styled(Qt::DashLine, nominalWidth));
                 painter.drawLine(imageToWidget(toImg(g.scanA)), imageToWidget(toImg(g.scanB)));
                 labelPos = (la + lb) / 2.0;
             } else if constexpr (std::is_same_v<T, BlobGeometry> ||
@@ -2022,10 +2042,7 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                     poly << imageToWidget(toImg(v));
                 }
                 if (!poly.isEmpty()) {
-                    QPen ghost = painter.pen();
-                    ghost.setStyle(Qt::DashLine);
-                    ghost.setWidthF(1.2);
-                    painter.setPen(ghost);
+                    painter.setPen(styled(Qt::DashLine, 1.2));
                     painter.drawPolygon(poly);
                     labelPos = poly.boundingRect().topLeft() + QPointF(2, -4);
                 }
@@ -2047,10 +2064,7 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 if (boardVisible_) {
                     const vision::BoardFrame board = boardFrame();
                     const QPointF zero = imageToWidget(board.origin);
-                    QPen link = painter.pen();
-                    link.setStyle(Qt::DashLine);
-                    link.setWidthF(1.2);
-                    painter.setPen(link);
+                    painter.setPen(styled(Qt::DashLine, 1.2));
                     painter.drawLine(zero, p);
                 }
                 labelPos = p + QPointF(8, -10);
@@ -2072,8 +2086,7 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                     // al revés que las coordenadas de imagen: de ahí los signos.
                     painter.drawArc(box, static_cast<int>(-arc.startAngleDeg * 16.0),
                                     static_cast<int>(-arc.sweepDeg * 16.0));
-                    QPen radiusPen = painter.pen();
-                    radiusPen.setStyle(Qt::DashLine);
+                    const QPen radiusPen = styled(Qt::DashLine, nominalWidth);
                     const QPen solid = painter.pen();
                     painter.setPen(radiusPen);
                     painter.drawLine(c, imageToWidget(sm));  // el radio, a la vista
@@ -2106,9 +2119,7 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 if (length > 1.0F) {
                     const cv::Point2f u = delta / length;
                     const cv::Point2f n(-u.y * g.searchBand, u.x * g.searchBand);
-                    QPen dashed = painter.pen();
-                    dashed.setStyle(Qt::DashLine);
-                    dashed.setWidthF(1.0);
+                    const QPen dashed = styled(Qt::DashLine, 1.0);
                     painter.save();
                     painter.setPen(dashed);
                     painter.drawLine(imageToWidget(from + n), imageToWidget(to + n));
@@ -2134,11 +2145,9 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 // discontinuo justamente para que no se confunda con una
                 // herramienta trazada, que sí está donde se ve.
                 const QPointF p = imageToWidget(toImg(g.anchor));
-                QPen ghost = painter.pen();
-                ghost.setStyle(Qt::DashLine);
-                painter.setPen(ghost);
+                painter.setPen(styled(Qt::DashLine, nominalWidth));
                 painter.drawEllipse(p, 8.0, 8.0);
-                painter.setPen(QPen(color, painter.pen().widthF()));
+                painter.setPen(pen);
                 if constexpr (std::is_same_v<T, ConstructedPointGeometry> ||
                               std::is_same_v<T, CentreOffsetGeometry>) {
                     painter.setBrush(color);
@@ -2159,24 +2168,26 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
             }
         },
         tool.geometry);
+    }
 
     // El nombre solo se pinta si NO hay resultado para esta herramienta: cuando
     // lo hay, paintResults dibuja "nombre: medida" en el mismo sitio y las dos
     // etiquetas quedaban una encima de otra, ilegibles.
     if (!hasResultFor(tool.config)) {
-        painter.setPen(selected ? Qt::white : color);
-        painter.drawText(labelPos + QPointF(6, -4),
-                         QString::fromStdString(tool.config.name));
+        theme::drawTextWithHalo(painter, labelPos + QPointF(6, -4),
+                                QString::fromStdString(tool.config.name),
+                                selected ? theme::drawColor(theme::kDrawSelected) : toolInk);
     }
 
     // Manijas de edición: cuadraditos blancos en cada extremo editable de la
     // herramienta seleccionada (arrástralos para afinar sin volver a dibujar).
+    // Blanco por fuera y oscuro por dentro: se ven sobre cualquier foto.
     if (selected && !editingLocked_) {
-        QPen handlePen(Qt::white);
+        QPen handlePen(theme::drawColor(theme::kDrawSelected));
         handlePen.setWidthF(1.5);
         handlePen.setCosmetic(true);
         painter.setPen(handlePen);
-        painter.setBrush(QColor(40, 40, 40));
+        painter.setBrush(theme::drawColor(theme::kDrawHandleFill));
         for (const auto& hp : handlePoints(tool.geometry)) {
             const QPointF w = imageToWidget(toImg(hp));
             painter.drawRect(QRectF(w.x() - 3.5, w.y() - 3.5, 7.0, 7.0));
@@ -2248,19 +2259,22 @@ void EditorCanvas::paintResults(QPainter& painter) const {
     const ViewRect visible{0.0, 0.0, static_cast<double>(width()),
                            static_cast<double>(height())};
     for (const auto& result : results_) {
-        const QColor color = result.ok ? QColor(0, 220, 0) : QColor(255, 70, 70);
+        const QColor color = theme::drawColor(result.ok ? theme::kDrawPass : theme::kDrawFail);
         QPen pen(color);
         pen.setWidthF(1.5);
         pen.setCosmetic(true);
-        painter.setPen(pen);
-        for (const auto& segment : result.overlaySegments) {
-            painter.drawLine(imageToWidget(segment[0]), imageToWidget(segment[1]));
-        }
-        for (const auto& point : result.overlayPoints) {
-            const QPointF p = imageToWidget(point);
-            painter.drawLine(p + QPointF(-5, 0), p + QPointF(5, 0));
-            painter.drawLine(p + QPointF(0, -5), p + QPointF(0, 5));
-        }
+        // La cota con su halo: el verde de «cumple» sobre una pieza clara se
+        // queda en 1,3:1 contra lo que tiene debajo.
+        theme::strokeWithHalo(painter, pen, [&] {
+            for (const auto& segment : result.overlaySegments) {
+                painter.drawLine(imageToWidget(segment[0]), imageToWidget(segment[1]));
+            }
+            for (const auto& point : result.overlayPoints) {
+                const QPointF p = imageToWidget(point);
+                painter.drawLine(p + QPointF(-5, 0), p + QPointF(5, 0));
+                painter.drawLine(p + QPointF(0, -5), p + QPointF(0, 5));
+            }
+        });
 
         // Ancla de la etiqueta: el ÚLTIMO punto del overlay, que es el que
         // pertenece a la herramienta. Con el primero, la herramienta Posición
@@ -2300,7 +2314,7 @@ void EditorCanvas::paintResults(QPainter& painter) const {
         // 225 el fondo es prácticamente negro haya lo que haya debajo, así que
         // la medida se lee igual sobre una pieza clara que sobre una oscura.
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(0, 0, 0, 225));
+        painter.setBrush(theme::veil(theme::kDrawLabelAlpha));
         painter.drawRect(box);
         painter.setPen(color);
         painter.drawText(box, Qt::AlignCenter, text);
@@ -2309,11 +2323,52 @@ void EditorCanvas::paintResults(QPainter& painter) const {
 }
 
 void EditorCanvas::paintCreationPreview(QPainter& painter) const {
-    QPen pen(Qt::white);
+    QPen pen(theme::drawColor(theme::kDrawSelected));
     pen.setStyle(Qt::DashLine);
     pen.setCosmetic(true);
+    painter.setBrush(Qt::NoBrush);
+    // Blanco a rayas: sobre mesa blanca, sin halo, lo que se está trazando no
+    // se ve mientras se traza.
+    theme::strokeWithHalo(painter, pen, [&] { paintPendingShapes(painter); });
     painter.setPen(pen);
     painter.setBrush(Qt::NoBrush);
+    if (!creating_) {
+        return;
+    }
+
+    const QPointF a = imageToWidget(dragStart_);
+    const QPointF b = imageToWidget(dragCurrent_);
+    theme::strokeWithHalo(painter, pen, [&] {
+        if (createType_ == ToolType::Circle) {
+            const double r = std::hypot(b.x() - a.x(), b.y() - a.y());
+            painter.drawEllipse(a, r, r);
+        } else if (createType_ == ToolType::Blob) {
+            painter.drawRect(QRectF(a, b).normalized());
+        } else {
+            painter.drawLine(a, b);
+        }
+    });
+
+    // Resaltado del borde bajo el cursor (snap): el extremo se pegará aquí.
+    if (snapImg_.has_value()) {
+        const QPointF s = imageToWidget(*snapImg_);
+        QPen snapPen(theme::drawColor(theme::kDrawSnap));
+        snapPen.setWidthF(2.0);
+        snapPen.setCosmetic(true);
+        painter.setBrush(Qt::NoBrush);
+        theme::strokeWithHalo(painter, snapPen, [&] {
+            painter.drawEllipse(s, 5.0, 5.0);
+            painter.drawLine(s + QPointF(-8, 0), s + QPointF(8, 0));
+            painter.drawLine(s + QPointF(0, -8), s + QPointF(0, 8));
+        });
+    }
+}
+
+// Lo que ya está fijado de una herramienta a medio trazar: la línea A de una
+// Línea-Línea, los extremos de un Arco, el primer lado de un Ángulo y los
+// vértices de un blob poligonal. Se llama dos veces, con el halo y con el
+// color: por eso no cambia de pluma.
+void EditorCanvas::paintPendingShapes(QPainter& painter) const {
 
     // Línea A ya trazada de una Línea-Línea en curso: se mantiene visible
     // mientras se dibuja la línea B.
@@ -2344,36 +2399,9 @@ void EditorCanvas::paintCreationPreview(QPainter& painter) const {
         for (const auto& v : pendingPolygon_) {
             painter.drawEllipse(imageToWidget(toImg(v)), 2.5, 2.5);
         }
-        painter.setBrush(QColor(0, 220, 0));
+        painter.setBrush(theme::drawColor(theme::kDrawCloseHere));
         painter.drawEllipse(imageToWidget(toImg(pendingPolygon_.front())), 4.0, 4.0);
         painter.setBrush(Qt::NoBrush);
-    }
-    if (!creating_) {
-        return;
-    }
-
-    const QPointF a = imageToWidget(dragStart_);
-    const QPointF b = imageToWidget(dragCurrent_);
-    if (createType_ == ToolType::Circle) {
-        const double r = std::hypot(b.x() - a.x(), b.y() - a.y());
-        painter.drawEllipse(a, r, r);
-    } else if (createType_ == ToolType::Blob) {
-        painter.drawRect(QRectF(a, b).normalized());
-    } else {
-        painter.drawLine(a, b);
-    }
-
-    // Resaltado del borde bajo el cursor (snap): el extremo se pegará aquí.
-    if (snapImg_.has_value()) {
-        const QPointF s = imageToWidget(*snapImg_);
-        QPen snapPen(QColor(255, 230, 0));
-        snapPen.setWidthF(2.0);
-        snapPen.setCosmetic(true);
-        painter.setPen(snapPen);
-        painter.setBrush(Qt::NoBrush);
-        painter.drawEllipse(s, 5.0, 5.0);
-        painter.drawLine(s + QPointF(-8, 0), s + QPointF(8, 0));
-        painter.drawLine(s + QPointF(0, -8), s + QPointF(0, 8));
     }
 }
 
@@ -2433,9 +2461,12 @@ void EditorCanvas::paintBoard(QPainter& painter) const {
     font.setPointSizeF(std::max(7.0, font.pointSizeF() - 1.0));
     painter.setFont(font);
 
-    QPen gridPen(QColor(120, 200, 255, 60));
+    // La rejilla va tenue y SIN halo a propósito: es fondo, y con halo cada
+    // línea se volvería una raya negra que tapa la pieza. Lo que sí lo lleva
+    // es lo que se lee: los ejes, el origen y los números.
+    QPen gridPen(theme::drawColor(theme::kDrawGrid, 60));
     gridPen.setCosmetic(true);
-    QPen axisPen(QColor(0, 220, 255, 200));
+    QPen axisPen(theme::drawColor(theme::kDrawGridAxis, 200));
     axisPen.setWidthF(1.6);
     axisPen.setCosmetic(true);
 
@@ -2463,31 +2494,35 @@ void EditorCanvas::paintBoard(QPainter& painter) const {
                                                       : vision::toImagePoint(frame, otherLo, value));
             const QPointF b = imageToWidget(axis == 0 ? vision::toImagePoint(frame, value, otherHi)
                                                       : vision::toImagePoint(frame, otherHi, value));
-            painter.setPen(isAxis ? axisPen : gridPen);
-            painter.drawLine(a, b);
             if (isAxis) {
+                theme::strokeWithHalo(painter, axisPen, [&] { painter.drawLine(a, b); });
                 continue;  // el 0 se rotula en el origen
             }
+            painter.setPen(gridPen);
+            painter.drawLine(a, b);
             // La etiqueta cuelga del eje correspondiente (o del borde si el eje
             // quedó fuera de la vista); el valor va en px de imagen y
             // formatLength lo pasa a la unidad activa.
-            painter.setPen(QColor(170, 220, 255, 200));
+            const QColor tickInk = theme::drawColor(theme::kDrawGridInk, 200);
             if (axis == 0) {
                 const double x = imageToWidget(vision::toImagePoint(frame, value, 0.0)).x();
-                painter.drawText(QPointF(x + 3.0, labelY), tickLabel(value));
+                theme::drawTextWithHalo(painter, QPointF(x + 3.0, labelY), tickLabel(value),
+                                        tickInk);
             } else {
                 const double y = imageToWidget(vision::toImagePoint(frame, 0.0, value)).y();
-                painter.drawText(QPointF(labelX, y - 3.0), tickLabel(value));
+                theme::drawTextWithHalo(painter, QPointF(labelX, y - 3.0), tickLabel(value),
+                                        tickInk);
             }
         }
     }
 
     // Origen y cuadrante: +X a la derecha y +Y hacia arriba, como en metrología.
-    painter.setPen(axisPen);
     painter.setBrush(Qt::NoBrush);
-    painter.drawEllipse(originWidget, 4.0, 4.0);
-    painter.setPen(QColor(0, 220, 255, 230));
-    painter.drawText(originWidget + QPointF(6.0, 14.0), QStringLiteral("0"));
+    theme::strokeWithHalo(painter, axisPen,
+                          [&] { painter.drawEllipse(originWidget, 4.0, 4.0); });
+    const QColor axisInk = theme::drawColor(theme::kDrawGridAxis, 230);
+    theme::drawTextWithHalo(painter, originWidget + QPointF(6.0, 14.0), QStringLiteral("0"),
+                            axisInk);
     // Marcas de cuadrante: se colocan donde cada semieje positivo abandona la
     // vista, así siguen visibles aunque los ejes estén girados. Si el origen
     // quedó fuera de la vista no se dibujan (no habría de dónde partir).
@@ -2521,8 +2556,10 @@ void EditorCanvas::paintBoard(QPainter& painter) const {
             unitDir(imageToWidget(vision::toImagePoint(frame, 0.0, stepPx)));
         // Pequeño desplazamiento perpendicular para no chocar con la etiqueta
         // de la última división de cada eje.
-        painter.drawText(edgePoint(dirX) + QPointF(0.0, -8.0), QStringLiteral("+X"));
-        painter.drawText(edgePoint(dirY) + QPointF(12.0, 0.0), QStringLiteral("+Y"));
+        theme::drawTextWithHalo(painter, edgePoint(dirX) + QPointF(0.0, -8.0),
+                                QStringLiteral("+X"), axisInk);
+        theme::drawTextWithHalo(painter, edgePoint(dirY) + QPointF(12.0, 0.0),
+                                QStringLiteral("+Y"), axisInk);
     }
 
     // Lectura del punto bajo el cursor en el sistema centrado (T4).
@@ -2540,9 +2577,11 @@ void EditorCanvas::paintBoard(QPainter& painter) const {
             box.moveTop(cursorWidget_->y() + 16.0);
         }
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(10, 34, 43, 210));
+        QColor readoutField = theme::color(theme::kBandField);
+        readoutField.setAlpha(210);
+        painter.setBrush(readoutField);
         painter.drawRoundedRect(box, 3.0, 3.0);
-        painter.setPen(QColor(160, 225, 255));
+        painter.setPen(theme::drawColor(theme::kDrawReadoutInk));
         painter.drawText(box, Qt::AlignCenter, text);
         painter.setBrush(Qt::NoBrush);
     }
@@ -2556,9 +2595,9 @@ void EditorCanvas::paintContourReport(QPainter& painter) const {
         return;
     }
     constexpr double kPi = 3.14159265358979323846;
-    const QColor lineColor(90, 180, 255);
-    const QColor arcColor(255, 165, 40);
-    const QColor holeColor(230, 110, 230);
+    const QColor lineColor = theme::drawColor(theme::kDrawStraight);
+    const QColor arcColor = theme::drawColor(theme::kDrawArc);
+    const QColor holeColor = theme::drawColor(theme::kDrawHole);
 
     painter.save();
     const auto toWidget = [this](const cv::Point& p) {
@@ -2576,7 +2615,9 @@ void EditorCanvas::paintContourReport(QPainter& painter) const {
     // El contorno crudo va DEBAJO y en blanco tenue: es la referencia contra la
     // que se lee la descomposición. Sin él, un arco mal ajustado se ve como un
     // arco perfecto y nadie nota que no sigue a la pieza.
-    QPen rawPen(QColor(255, 255, 255, 110));
+    // Este es el único trazo de encima de la foto que va sin halo: es la
+    // referencia tenue, y con halo dejaría de serlo.
+    QPen rawPen(theme::drawColor(theme::kDrawSelected, 110));
     rawPen.setWidthF(1.0);
     rawPen.setCosmetic(true);
     painter.setPen(rawPen);
@@ -2586,10 +2627,11 @@ void EditorCanvas::paintContourReport(QPainter& painter) const {
     QPen holePen(holeColor);
     holePen.setWidthF(1.8);
     holePen.setCosmetic(true);
-    painter.setPen(holePen);
-    for (const auto& hole : contourReport_.holes) {
-        painter.drawPolygon(polygonOf(hole));
-    }
+    theme::strokeWithHalo(painter, holePen, [&] {
+        for (const auto& hole : contourReport_.holes) {
+            painter.drawPolygon(polygonOf(hole));
+        }
+    });
 
     QFont labelFont = painter.font();
     labelFont.setBold(true);
@@ -2599,10 +2641,11 @@ void EditorCanvas::paintContourReport(QPainter& painter) const {
         QPen pen(primitive.kind == vision::PrimitiveKind::Arc ? arcColor : lineColor);
         pen.setWidthF(2.5);
         pen.setCosmetic(true);
-        painter.setPen(pen);
 
         if (primitive.kind == vision::PrimitiveKind::Line) {
-            painter.drawLine(imageToWidget(primitive.start), imageToWidget(primitive.end));
+            theme::strokeWithHalo(painter, pen, [&] {
+                painter.drawLine(imageToWidget(primitive.start), imageToWidget(primitive.end));
+            });
         } else {
             // El arco se dibuja a partir del círculo AJUSTADO, no de los puntos
             // del contorno: así se ve de un vistazo dónde se despega del borde.
@@ -2636,21 +2679,24 @@ void EditorCanvas::paintContourReport(QPainter& painter) const {
                     c.x + static_cast<float>(std::cos(a) * primitive.radius),
                     c.y + static_cast<float>(std::sin(a) * primitive.radius)));
             }
-            painter.drawPolyline(arc);
+            theme::strokeWithHalo(painter, pen, [&] { painter.drawPolyline(arc); });
 
             // El radio es el dato que se viene a buscar en un redondeo; los
             // tramos cortos no se etiquetan para no tapar la pieza de números.
             if (primitive.length > 20.0) {
-                painter.drawText(imageToWidget(primitive.mid) + QPointF(6.0, -6.0),
-                                 QStringLiteral("R %1").arg(
-                                     boardValueText(primitive.radius, false)));
+                theme::drawTextWithHalo(painter,
+                                        imageToWidget(primitive.mid) + QPointF(6.0, -6.0),
+                                        QStringLiteral("R %1").arg(
+                                            boardValueText(primitive.radius, false)),
+                                        arcColor);
             }
         }
 
         // Punto de corte entre tramos: hace visible la descomposición aunque dos
         // tramos vecinos sean del mismo tipo.
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(255, 255, 255));
+        // Blanco con borde oscuro: se ve sobre pieza clara y sobre oscura.
+        painter.setPen(theme::haloPenFor(QPen(theme::haloColor(), 0.0)));
+        painter.setBrush(theme::drawColor(theme::kDrawSelected));
         painter.drawEllipse(imageToWidget(primitive.start), 2.5, 2.5);
         painter.setBrush(Qt::NoBrush);
     }
@@ -2667,9 +2713,9 @@ void EditorCanvas::paintContourReport(QPainter& painter) const {
         const QRectF box(8.0, height() - 8.0 - lineHeight * lines.size() - 8.0,
                          textWidth + 16.0, lineHeight * lines.size() + 8.0);
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(0, 0, 0, 170));
+        painter.setBrush(theme::veil(theme::kDrawCaptionAlpha));
         painter.drawRect(box);
-        painter.setPen(QColor(235, 235, 235));
+        painter.setPen(theme::drawColor(theme::kDrawCaption));
         for (int i = 0; i < lines.size(); ++i) {
             painter.drawText(QRectF(box.left() + 8.0, box.top() + 4.0 + lineHeight * i,
                                     box.width() - 16.0, lineHeight),
@@ -2717,7 +2763,7 @@ void EditorCanvas::paintRuler(QPainter& painter) const {
     small.setBold(false);
     painter.setFont(small);
     painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(18, 18, 18, 205));
+    painter.setBrush(theme::drawColor(theme::kDrawPanel, theme::kDrawPanelAlpha));
     painter.drawRect(top);
     painter.drawRect(left);
 
@@ -2750,9 +2796,9 @@ void EditorCanvas::paintRuler(QPainter& painter) const {
         return;
     }
 
-    QPen tickPen(QColor(200, 200, 200, 200));
+    QPen tickPen(theme::drawColor(theme::kDrawRulerTick, 200));
     tickPen.setCosmetic(true);
-    const QPen textPen(QColor(225, 225, 225));
+    const QPen textPen(theme::drawColor(theme::kDrawCaption));
 
     // Regla horizontal: se recorren los múltiplos del paso en X del sistema
     // activo y se marcan donde caen en pantalla.
@@ -2803,11 +2849,11 @@ void EditorCanvas::paintRuler(QPainter& painter) const {
     if (barLength > 8.0 && barLength < view.width() * 0.8) {
         const double barY = view.bottom() - 14.0;
         const double barX = view.left() + kBand + 10.0;
-        QPen barPen(QColor(255, 255, 255, 230));
+        QPen barPen(theme::drawColor(theme::kDrawSelected, 230));
         barPen.setWidthF(2.0);
         barPen.setCosmetic(true);
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(18, 18, 18, 205));
+        painter.setBrush(theme::drawColor(theme::kDrawPanel, theme::kDrawPanelAlpha));
         painter.drawRect(QRectF(barX - 6.0, barY - 14.0, barLength + 12.0, 22.0));
         painter.setPen(barPen);
         painter.drawLine(QPointF(barX, barY), QPointF(barX + barLength, barY));
@@ -2823,7 +2869,7 @@ void EditorCanvas::paintRuler(QPainter& painter) const {
     // Marca de la posición del cursor sobre ambas reglas: ubica al operador sin
     // tener que leer números.
     if (cursorWidget_.has_value() && view.contains(*cursorWidget_)) {
-        QPen cursorPen(QColor(255, 200, 0));
+        QPen cursorPen(theme::drawColor(theme::kDrawBoard));
         cursorPen.setWidthF(1.5);
         cursorPen.setCosmetic(true);
         painter.setPen(cursorPen);
@@ -2870,13 +2916,17 @@ void EditorCanvas::paintLiveOverlay(QPainter& painter) const {
                     // esta trabajando. Sin eleccion se quedan como estaban: no
                     // hay ninguna a la que dar preferencia.
                     const int haloAlpha = livePieceChosen_ ? 90 : 150;
-                    const int tone = livePieceChosen_ ? 120 : 170;
-                    QPen otherHalo(QColor(0, 0, 0, haloAlpha));
+                    QColor otherInk = theme::drawColor(theme::kDrawOtherPiece,
+                                                       livePieceChosen_ ? 150 : 255);
+                    if (livePieceChosen_) {
+                        otherInk.setGreen(theme::kDrawOtherPieceDim);
+                    }
+                    QPen otherHalo(theme::veil(haloAlpha));
                     otherHalo.setWidthF(3.0);
                     otherHalo.setCosmetic(true);
                     painter.setPen(otherHalo);
                     painter.drawPolygon(outline);
-                    QPen other(QColor(70, tone, 90, livePieceChosen_ ? 150 : 255));
+                    QPen other(otherInk);
                     other.setWidthF(1.2);
                     other.setCosmetic(true);
                     painter.setPen(other);
@@ -2902,9 +2952,11 @@ void EditorCanvas::paintLiveOverlay(QPainter& painter) const {
                                  metrics.horizontalAdvance(text) + 8.0,
                                  metrics.height() + 2.0);
                 painter.setPen(Qt::NoPen);
-                painter.setBrush(measured ? QColor(0, 190, 0, 210) : QColor(0, 0, 0, 170));
+                // Las mismas chapas que el mosaico: una pieza, un aspecto.
+                painter.setBrush(theme::tileBadge(measured));
                 painter.drawRoundedRect(box, 4.0, 4.0);
-                painter.setPen(measured ? QColor(10, 30, 10) : QColor(200, 230, 205));
+                painter.setPen(theme::color(measured ? theme::kInkOnTileMeasured
+                                                     : theme::kInkOnChipRest));
                 painter.drawText(box, Qt::AlignCenter, text);
                 painter.restore();
                 painter.setFont(numberFont);
@@ -2937,19 +2989,19 @@ void EditorCanvas::paintLiveOverlay(QPainter& painter) const {
         // entonces es DONDE acaba una cosa y empieza la otra. Con un trazo oscuro
         // mas ancho por debajo, el contorno se ve encima de cualquier cosa. Es el
         // mismo truco que el borde de los subtitulos, y por el mismo motivo.
-        QPen haloPen(QColor(0, 0, 0, 180));
+        QPen haloPen(theme::veil(180));
         haloPen.setWidthF(4.0 * emphasis);
         haloPen.setCosmetic(true);
         painter.setPen(haloPen);
         painter.drawPolygon(liveContour_);
 
-        QPen contourPen(QColor(0, 220, 0));
+        QPen contourPen(theme::drawColor(theme::kDrawFound));
         contourPen.setWidthF(2.0 * emphasis);
         contourPen.setCosmetic(true);
         painter.setPen(contourPen);
         painter.drawPolygon(liveContour_);
 
-        QPen axisPen(QColor(0, 200, 255));
+        QPen axisPen(theme::drawColor(theme::kDrawAxis));
         axisPen.setWidthF(2.0);
         axisPen.setCosmetic(true);
         painter.setPen(axisPen);
@@ -2959,7 +3011,7 @@ void EditorCanvas::paintLiveOverlay(QPainter& painter) const {
                          liveCentroid_ + QPointF(std::cos(rad) * len, std::sin(rad) * len));
 
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(255, 60, 60));
+        painter.setBrush(theme::drawColor(theme::kDrawOrigin));
         painter.drawEllipse(liveCentroid_, 4.0, 4.0);
         painter.restore();
     }
@@ -2967,10 +3019,13 @@ void EditorCanvas::paintLiveOverlay(QPainter& painter) const {
     if (!liveStatus_.isEmpty()) {
         const QRectF target = targetRect();
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(0, 0, 0, 160));
+        painter.setBrush(theme::veil());
         const QRectF textRect(target.left() + 8, target.top() + 8, 280, 24);
         painter.drawRect(textRect);
-        painter.setPen(pieceVisible_ ? QColor(0, 220, 0) : QColor(255, 150, 100));
+        // «Sin pieza» es lo mismo que el `kDrawMissing` del vídeo en vivo; aquí
+        // tenía su propio naranja (255,150,100).
+        painter.setPen(theme::drawColor(pieceVisible_ ? theme::kDrawFound
+                                                      : theme::kDrawMissing));
         painter.drawText(textRect.adjusted(6, 0, 0, 0), Qt::AlignVCenter, liveStatus_);
     }
 }
@@ -2978,10 +3033,12 @@ void EditorCanvas::paintLiveOverlay(QPainter& painter) const {
 void EditorCanvas::paintEvent(QPaintEvent* event) {
     Q_UNUSED(event);
     QPainter painter(this);
-    painter.fillRect(rect(), QColor(25, 25, 25));
+    // El fondo del lienzo es oscuro en los dos temas: un marco claro alrededor
+    // de una foto la falsea. Es el mismo `kSurfaceDark` de los huecos sin imagen.
+    painter.fillRect(rect(), theme::color(theme::kSurfaceDark));
 
     if (image_.isNull()) {
-        painter.setPen(Qt::gray);
+        painter.setPen(theme::color(theme::kInkMutedOnDark));
         painter.drawText(rect(), Qt::AlignCenter,
                          liveMode_ ? tr("Sin señal") : tr("Sin imagen de referencia"));
         return;
@@ -2997,7 +3054,7 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
     // operador no sabe si la pieza esta fuera de cuadro o es que no se ve. Una
     // linea basta, y no tapa nada porque va por fuera del borde.
     {
-        QPen framePen(QColor(120, 130, 145));
+        QPen framePen(theme::drawColor(theme::kDrawFrame));
         framePen.setWidthF(1.0);
         framePen.setCosmetic(true);
         painter.setPen(framePen);
@@ -3012,16 +3069,17 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
     // Marcador del rasgo distintivo (rombo magenta anclado a la pieza).
     if (anchorVisible_ && hasFixture_) {
         const QPointF p = imageToWidget(toImg(anchorPiecePoint_));
-        QPen pen(QColor(255, 0, 255));
+        QPen pen(theme::drawColor(theme::kDrawAnchor));
         pen.setWidthF(2.0);
         pen.setCosmetic(true);
-        painter.setPen(pen);
         painter.setBrush(Qt::NoBrush);
         QPolygonF diamond;
         diamond << p + QPointF(0, -8) << p + QPointF(8, 0) << p + QPointF(0, 8)
                 << p + QPointF(-8, 0);
-        painter.drawPolygon(diamond);
-        painter.drawEllipse(p, 1.5, 1.5);
+        theme::strokeWithHalo(painter, pen, [&] {
+            painter.drawPolygon(diamond);
+            painter.drawEllipse(p, 1.5, 1.5);
+        });
     }
 
     if (tools_ != nullptr) {
@@ -3038,36 +3096,42 @@ void EditorCanvas::paintEvent(QPaintEvent* event) {
 
     // Marco de selección múltiple en curso.
     if (marquee_) {
-        QPen pen(Qt::white);
+        QPen pen(theme::drawColor(theme::kDrawSelected));
         pen.setStyle(Qt::DashLine);
         pen.setCosmetic(true);
-        painter.setPen(pen);
-        painter.setBrush(QColor(255, 255, 255, 30));
-        painter.drawRect(QRectF(imageToWidget(dragStart_), imageToWidget(dragCurrent_))
-                             .normalized());
+        const QRectF marquee =
+            QRectF(imageToWidget(dragStart_), imageToWidget(dragCurrent_)).normalized();
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(theme::drawColor(theme::kDrawSelected, 30));
+        painter.drawRect(marquee);
+        painter.setBrush(Qt::NoBrush);
+        theme::strokeWithHalo(painter, pen, [&] { painter.drawRect(marquee); });
     }
 
     paintRuler(painter);
 
     // Zona de detección: la guardada (amarillo punteado) y la que se está
     // arrastrando ahora mismo.
-    QPen regionPen(QColor(255, 210, 0));
+    QPen regionPen(theme::drawColor(theme::kDrawZone));
     regionPen.setStyle(Qt::DashLine);
     regionPen.setWidthF(2.0);
     regionPen.setCosmetic(true);
     if (regionVisible_ && regionRect_.area() > 0) {
-        painter.setPen(regionPen);
         painter.setBrush(Qt::NoBrush);
-        painter.drawRect(QRectF(imageToWidget({static_cast<float>(regionRect_.x),
-                                               static_cast<float>(regionRect_.y)}),
-                                imageToWidget({static_cast<float>(regionRect_.br().x),
-                                               static_cast<float>(regionRect_.br().y)})));
+        const QRectF region(imageToWidget({static_cast<float>(regionRect_.x),
+                                           static_cast<float>(regionRect_.y)}),
+                            imageToWidget({static_cast<float>(regionRect_.br().x),
+                                           static_cast<float>(regionRect_.br().y)}));
+        theme::strokeWithHalo(painter, regionPen, [&] { painter.drawRect(region); });
     }
     if (regionDrag_) {
-        painter.setPen(regionPen);
-        painter.setBrush(QColor(255, 210, 0, 25));
-        painter.drawRect(QRectF(imageToWidget(dragStart_), imageToWidget(dragCurrent_))
-                             .normalized());
+        const QRectF dragged =
+            QRectF(imageToWidget(dragStart_), imageToWidget(dragCurrent_)).normalized();
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(theme::drawColor(theme::kDrawZone, 25));
+        painter.drawRect(dragged);
+        painter.setBrush(Qt::NoBrush);
+        theme::strokeWithHalo(painter, regionPen, [&] { painter.drawRect(dragged); });
     }
     paintFreeZone(painter);
     paintEdgeCorrection(painter);
@@ -3167,8 +3231,8 @@ void EditorCanvas::paintEdgeCorrection(QPainter& painter) const {
         }
         painter.drawImage(targetRect(), layer);
     };
-    tint(forcePiece_, QColor(0, 210, 90));
-    tint(forceBackground_, QColor(230, 60, 60));
+    tint(forcePiece_, theme::drawColor(theme::kDrawAddPiece));
+    tint(forceBackground_, theme::drawColor(theme::kDrawAddBackground));
 }
 
 // Ceñir al borde lo que acaba de pintar esta pincelada.
@@ -3242,7 +3306,8 @@ void EditorCanvas::paintBrushCursor(QPainter& painter) const {
         return;
     }
     const QColor colour =
-        brush_ == EdgeBrush::AddPiece ? QColor(0, 210, 90) : QColor(230, 60, 60);
+        theme::drawColor(brush_ == EdgeBrush::AddPiece ? theme::kDrawAddPiece
+                                                       : theme::kDrawAddBackground);
 
     // La linea elastica del trazo recto: sin ella, «recto» seria un modo que no
     // se ve hasta que ya se ha soltado.
@@ -3264,7 +3329,7 @@ void EditorCanvas::paintBrushCursor(QPainter& painter) const {
     // Anillo de DOS plumas: una oscura debajo y la de color encima. Sobre una
     // pieza clara el color se ve; sobre una oscura, no —y corregir el borde de
     // una pieza oscura es justo el caso en el que hace falta ver el pincel.
-    QPen halo(QColor(0, 0, 0, 160));
+    QPen halo(theme::veil());
     halo.setWidthF(3.0);
     halo.setCosmetic(true);
     painter.setPen(halo);
@@ -3285,7 +3350,7 @@ void EditorCanvas::paintBrushCursor(QPainter& painter) const {
     const QRectF box(at.x() - 3.0, at.y() - metrics.ascent() - 2.0,
                      metrics.horizontalAdvance(label) + 6.0, metrics.height() + 4.0);
     painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(0, 0, 0, 170));
+    painter.setBrush(theme::veil(theme::kDrawCaptionAlpha));
     painter.drawRect(box);
     painter.setPen(colour);
     painter.drawText(at, label);
@@ -3297,7 +3362,7 @@ void EditorCanvas::paintBrushCursor(QPainter& painter) const {
 // programa— y darles colores distintos las convertiría en dos cosas que hay que
 // aprender por separado.
 void EditorCanvas::paintFreeZone(QPainter& painter) const {
-    const QColor zoneColor(255, 210, 0);
+    const QColor zoneColor = theme::drawColor(theme::kDrawZone);
     const auto toWidget = [this](const cv::Point& point) {
         return imageToWidget(
             {static_cast<float>(point.x), static_cast<float>(point.y)});
@@ -3315,15 +3380,14 @@ void EditorCanvas::paintFreeZone(QPainter& painter) const {
         outside.addRect(QRectF(rect()));
         QPainterPath inside;
         inside.addPolygon(poly);
-        painter.fillPath(outside.subtracted(inside), QColor(0, 0, 0, 70));
+        painter.fillPath(outside.subtracted(inside), theme::veil(70));
 
         QPen pen(zoneColor);
         pen.setStyle(Qt::DashLine);
         pen.setWidthF(2.0);
         pen.setCosmetic(true);
-        painter.setPen(pen);
         painter.setBrush(Qt::NoBrush);
-        painter.drawPolygon(poly);
+        theme::strokeWithHalo(painter, pen, [&] { painter.drawPolygon(poly); });
     }
 
     if (!freeZonePick_) {
@@ -3340,7 +3404,7 @@ void EditorCanvas::paintFreeZone(QPainter& painter) const {
         for (const auto& point : freeTrace_) {
             trace << toWidget(point);
         }
-        painter.drawPolyline(trace);
+        theme::strokeWithHalo(painter, pen, [&] { painter.drawPolyline(trace); });
         // El cierre se insinúa desde el principio: la zona será el trazo MÁS
         // esta línea, y verla evita la sorpresa de un cierre por donde no se
         // esperaba.
@@ -3358,7 +3422,7 @@ void EditorCanvas::paintFreeZone(QPainter& painter) const {
             marks << toWidget(point);
         }
         if (marks.size() >= 2) {
-            painter.drawPolyline(marks);
+            theme::strokeWithHalo(painter, pen, [&] { painter.drawPolyline(marks); });
         }
         // Línea elástica hasta el cursor: enseña el lado que se está a punto de
         // fijar antes de fijarlo.
@@ -3380,7 +3444,7 @@ void EditorCanvas::paintFreeZone(QPainter& painter) const {
         // El primero se resalta solo cuando cerrar es posible: un blanco verde
         // desde el primer vértice prometería un cierre que aún no existe.
         if (freeVertices_.size() >= 3) {
-            painter.setBrush(QColor(0, 220, 0));
+            painter.setBrush(theme::drawColor(theme::kDrawCloseHere));
             painter.drawEllipse(marks.front(), 4.5, 4.5);
         }
         painter.setBrush(Qt::NoBrush);

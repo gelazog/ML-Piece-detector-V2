@@ -2,7 +2,10 @@
 
 #include <QWidget>
 
+#include "ui/theme.h"
+
 class QCheckBox;
+class QComboBox;
 class QDoubleSpinBox;
 class QSpinBox;
 
@@ -27,12 +30,18 @@ public:
     [[nodiscard]] int settleMs() const;
     [[nodiscard]] int rearmMs() const;
 
+    // Claro / Oscuro / Como Windows. Se guarda al aceptar y se aplica al
+    // volver a abrir el programa (ver `ui/theme.h`).
+    void setThemeChoice(theme::ThemeChoice choice);
+    [[nodiscard]] theme::ThemeChoice themeChoice() const;
+
 private:
     QSpinBox* intervalSpin_ = nullptr;
     QDoubleSpinBox* sigmaSpin_ = nullptr;
     QCheckBox* passCheck_ = nullptr;
     QSpinBox* settleSpin_ = nullptr;
     QSpinBox* rearmSpin_ = nullptr;
+    QComboBox* themeCombo_ = nullptr;
 };
 
 }  // namespace pci::ui

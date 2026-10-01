@@ -425,6 +425,7 @@ private:
     // activa).
     [[nodiscard]] QString measureText(const ToolRunResult& result) const;
     void paintCreationPreview(QPainter& painter) const;
+    void paintPendingShapes(QPainter& painter) const;
     void paintFreeZone(QPainter& painter) const;
     void paintEdgeCorrection(QPainter& painter) const;
     // Cierra el trazo: lo simplifica, y si no encierra área lo dice en vez de

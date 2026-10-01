@@ -180,7 +180,18 @@ void MainWindow::applyPreferencesPage(PreferencesPage* page) {
         repos_.settings->setInt("pref_pass_settle_ms", passOptions.settleMs);
         repos_.settings->setInt("pref_pass_rearm_ms", passOptions.rearmMs);
     }
-    statusBar()->showMessage(tr("Preferencias guardadas."));
+    // El tema no se aplica aquí: se guarda y lo usa el próximo arranque.
+    const theme::ThemeChoice chosenTheme = page->themeChoice();
+    bool themeChanged = false;
+    if (repos_.settings != nullptr) {
+        const int before = repos_.settings->getInt("pref_theme", 0).valueOr(0);
+        themeChanged = theme::themeChoiceFromSetting(before) != chosenTheme;
+        repos_.settings->setInt("pref_theme", static_cast<int>(chosenTheme));
+    }
+    statusBar()->showMessage(themeChanged
+                                 ? tr("Preferencias guardadas. El tema cambia al volver a "
+                                      "abrir el programa.")
+                                 : tr("Preferencias guardadas."));
 }
 
 void MainWindow::onConfigureClicked() {
@@ -216,6 +227,8 @@ void MainWindow::onConfigureClicked() {
     inputs.passTrigger = passTriggerOn_;
     inputs.settleMs = passTrigger_.options().settleMs;
     inputs.rearmMs = passTrigger_.options().rearmMs;
+    inputs.themeChoice = theme::themeChoiceFromSetting(
+        repos_.settings != nullptr ? repos_.settings->getInt("pref_theme", 0).valueOr(0) : 0);
     inputs.zoneMode = zoneMode_;
     inputs.expectedPieces = expectedPieces_;
     inputs.showMosaic = showMosaic_;

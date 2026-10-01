@@ -3,8 +3,11 @@
 #include <QApplication>
 #include <QColor>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPalette>
 #include <QPen>
+#include <QProxyStyle>
+#include <QStyleOption>
 #include <QString>
 #include <QStyleFactory>
 
@@ -29,18 +32,92 @@ namespace pci::ui::theme {
 // siete colores que había antes, CINCO fallaban —la pista de escena estaba a
 // 1,53:1, casi invisible sobre el panel—, y ninguno de los siete lo sabía.
 
+// --- CLARO U OSCURO: EL TEMA DE LA VENTANA ----------------------------------
+//
+// Hasta ahora la aplicación solo sabía ser clara, y a propósito: con el modo
+// oscuro de Windows el texto se quedaba a 1,26:1 (ver `applyApplicationLook`).
+// El operador puede pedir el oscuro en Preferencias; por defecto sigue claro.
+//
+// Los tokens que van sobre la VENTANA (texto, veredicto, campos de aviso)
+// tienen dos valores, uno por tema. Los que van sobre una superficie que no
+// cambia con el tema —las pastillas, las bandas del vídeo, lo que se dibuja
+// encima de la imagen— siguen teniendo uno solo.
+//
+// EL TEMA SE ELIGE AL ARRANCAR Y NO CAMBIA HASTA EL SIGUIENTE ARRANQUE. Las
+// hojas de estilo se escriben al construir cada widget: cambiar de tema a
+// media sesión dejaría un rótulo con la tinta del tema viejo sobre el fondo del
+// nuevo, que es exactamente el 1,05:1 que motivó todo esto.
+enum class Scheme { Light, Dark };
+
+// Lo que el operador elige. El número es el que se guarda en los ajustes
+// (`pref_theme`), así que no se reordena.
+enum class ThemeChoice { Light = 0, Dark = 1, System = 2 };
+
+namespace detail {
+inline Scheme gActiveScheme = Scheme::Light;
+}  // namespace detail
+
+[[nodiscard]] inline Scheme activeScheme() { return detail::gActiveScheme; }
+
+// Un número guardado que no se reconoce (un ajuste de otra versión, una base
+// tocada a mano) vuelve al claro: es el tema que se sabe que funciona.
+[[nodiscard]] inline ThemeChoice themeChoiceFromSetting(int stored) {
+    switch (stored) {
+        case static_cast<int>(ThemeChoice::Dark): return ThemeChoice::Dark;
+        case static_cast<int>(ThemeChoice::System): return ThemeChoice::System;
+        default: return ThemeChoice::Light;
+    }
+}
+
+// «Como Windows» se resuelve aquí, una vez: oscuro solo si el sistema dice
+// oscuro. Un sistema que no dice nada (`Unknown`) se queda en claro.
+[[nodiscard]] inline Scheme resolveScheme(ThemeChoice choice, Qt::ColorScheme system) {
+    switch (choice) {
+        case ThemeChoice::Dark: return Scheme::Dark;
+        case ThemeChoice::System:
+            return system == Qt::ColorScheme::Dark ? Scheme::Dark : Scheme::Light;
+        case ThemeChoice::Light: break;
+    }
+    return Scheme::Light;
+}
+
+// UN COLOR CON UN VALOR POR TEMA.
+//
+// Se convierte solo a `const char*`, así que todos los sitios que ya escribían
+// `textStyle(kWarn)` o `QString(kInk)` siguen igual y reciben el valor del tema
+// activo sin tocarlos. `in()` pide el de un tema concreto, que es lo que usan
+// las pruebas para medir los dos.
+struct Adaptive {
+    const char* light;
+    const char* dark;
+
+    [[nodiscard]] constexpr const char* in(Scheme scheme) const {
+        return scheme == Scheme::Dark ? dark : light;
+    }
+    // NOLINTNEXTLINE(google-explicit-constructor): la conversión es el diseño.
+    operator const char*() const { return in(activeScheme()); }
+};
+
 // --- Texto ------------------------------------------------------------------
-// 18,42:1 sobre blanco.
-inline constexpr const char* kInk = "#141414";
-// Secundario: explicaciones, unidades, lo que acompaña. 6,05:1.
-inline constexpr const char* kInkMuted = "#5f6368";
-// Apagado: lo que existe pero no cuenta ahora mismo. 4,70:1.
+// Tinta oscura SIEMPRE, sea cual sea el tema: para escribir sobre algo que es
+// claro por sí mismo, como la muestra del color de la mesa.
+inline constexpr const char* kInkOnLight = "#141414";
+// 18,42:1 sobre blanco. En oscuro, 11,60:1 sobre el fondo de los campos.
+inline constexpr Adaptive kInk{kInkOnLight, "#e8eaed"};
+// Secundario: explicaciones, unidades, lo que acompaña. 6,05:1; en oscuro 7,08:1.
+inline constexpr Adaptive kInkMuted{"#5f6368", "#b4b9bf"};
+// Apagado: lo que existe pero no cuenta ahora mismo. 5,13:1 sobre blanco y
+// 4,74:1 sobre la ventana; en oscuro 5,38:1 sobre los campos.
+//
+// Era #70747a, medido solo contra BLANCO (4,70:1). Sobre el gris de la ventana
+// (#f5f6f7), que es donde va casi siempre, daba 4,34:1: por debajo del mínimo.
+// Lo cazó la prueba que mide cada token contra las dos superficies de su tema.
 //
 // Es más oscuro de lo que parece necesario a propósito. El gris de antes
 // (#999999, 2,85:1) se leía bien en la pantalla del que lo escribió y no en un
 // taller con luz de nave; «apagado» tiene que seguir siendo LEGIBLE, o deja de
 // ser apagado y pasa a ser invisible.
-inline constexpr const char* kInkOff = "#70747a";
+inline constexpr Adaptive kInkOff{"#6a6e74", "#9ca1a8"};
 
 // --- Veredicto --------------------------------------------------------------
 // Cada estado va con su color Y con su campo de fondo, para poder pintar tanto
@@ -55,12 +132,27 @@ inline constexpr const char* kInkOff = "#70747a";
 //
 // Ahora hay 1,26 entre «no cumple» y «aviso», y 1,39 entre «no cumple» y
 // «cumple»: se distinguen aunque se pierda el color entero.
-inline constexpr const char* kBad = "#b3261e";        // 6,54:1 sobre blanco
-inline constexpr const char* kBadField = "#fce8e6";   // con kBad encima
-inline constexpr const char* kWarn = "#a15c00";       // 5,19:1
-inline constexpr const char* kWarnField = "#fff4e0";  // con kWarn encima
-inline constexpr const char* kGood = "#14532d";       // 9,11:1
-inline constexpr const char* kGoodField = "#e8f5e9";  // con kGood encima
+//
+// En oscuro son los mismos tres de `k…OnDark` (más abajo), que ya estaban
+// medidos para fondo oscuro, sobre campos oscuros de su mismo tono: 5,84:1,
+// 7,28:1 y 8,25:1 contra su campo.
+inline constexpr Adaptive kBad{"#b3261e", "#f2836b"};        // 6,54:1 sobre blanco
+inline constexpr Adaptive kBadField{"#fce8e6", "#3d1f1b"};   // con kBad encima
+inline constexpr Adaptive kWarn{"#a15c00", "#f0b26a"};       // 5,19:1
+inline constexpr Adaptive kWarnField{"#fff4e0", "#3a2c14"};  // con kWarn encima
+inline constexpr Adaptive kGood{"#14532d", "#7ddba0"};       // 9,11:1
+inline constexpr Adaptive kGoodField{"#e8f5e9", "#173222"};  // con kGood encima
+
+// --- EL AVISO ROJO FUERTE: tinta oscura sobre rosa, en los dos temas --------
+//
+// Es el de «el corte SÍ toca la pieza», y era el último color escrito a mano en
+// `src/ui`. Se dejó así porque mide MEJOR que los tokens: #3a1010 sobre #ffd9d9
+// da 12,83:1, y `kBad` sobre `kBadField` da 5,55:1. Aquí se le pone nombre sin
+// cambiarle el valor. No depende del tema: es una caja clara con su propia
+// tinta, y en el oscuro destaca todavía más, que para una alarma está bien.
+inline constexpr const char* kAlarmInk = "#3a1010";
+inline constexpr const char* kAlarmField = "#ffd9d9";
+inline constexpr const char* kAlarmEdge = "#c04040";
 
 // --- Los mismos papeles, sobre superficie OSCURA ----------------------------
 //
@@ -96,8 +188,37 @@ inline constexpr const char* kWarnChip = "#a15c00";  // 5,19:1
 inline constexpr const char* kInkOnChip = "#ffffff";
 
 // --- Superficie -------------------------------------------------------------
+// El contorno de la rejilla del calibrador de lente, que va sobre superficies
+// OSCURAS fijas: por eso no cambia con el tema.
 inline constexpr const char* kOutline = "#c9c9c9";
-inline constexpr const char* kSurfaceSunken = "#f5f6f7";
+// El fondo de la ventana.
+inline constexpr Adaptive kSurfaceSunken{"#f5f6f7", "#202124"};
+// El fondo de campos, listas y tablas.
+inline constexpr Adaptive kSurfaceBase{"#ffffff", "#2a2c30"};
+
+// --- SELECCIÓN Y ENLACE -----------------------------------------------------
+//
+// La paleta clara usaba `kChipChosen` (#7fd6ff) para la selección y para los
+// enlaces. Medido contra la fórmula de abajo: la fila elegida se separaba del
+// fondo de la lista 1,62:1 —WCAG pide 3:1 a lo que distingue el estado de un
+// control— y un enlace, que es TEXTO, se leía a 1,62:1 sobre blanco.
+//
+// La selección clara pasa a un azul medio: 3,49:1 contra el fondo de la lista
+// y 3,22:1 contra la ventana, con tinta oscura encima a 5,28:1 (también es la
+// tinta de los iconos de las herramientas, que se pintan sobre ella cuando la
+// herramienta está marcada). En oscuro, el azul claro de siempre sí sirve:
+// 8,64:1 contra la lista y su tinta a 9,28:1.
+inline constexpr Adaptive kSelection{"#3a8fd0", "#7fd6ff"};
+inline constexpr Adaptive kInkOnSelection{kInkOnLight, "#0b2a35"};
+inline constexpr Adaptive kLink{"#1a5fa0", "#8cc8ff"};  // 6,59:1 / 7,87:1
+
+// EL MARCO DE LOS CONTROLES: lo que dice «aquí se escribe» o «esto se pulsa».
+//
+// Fusion no lo saca de ningún papel de la paleta: lo calcula como el fondo de
+// la ventana oscurecido un 40 %. Medido pintado: 2,01:1 en el tema claro y
+// 1,15:1 en el oscuro, donde oscurecer un gris casi negro no da nada. WCAG pide
+// 3:1. Con estos: 3,43:1 en claro y 4,15:1 en oscuro contra la ventana.
+inline constexpr Adaptive kControlOutline{"#80858c", "#7c828a"};
 
 [[nodiscard]] inline QColor color(const char* token) { return QColor(QString(token)); }
 
@@ -146,6 +267,13 @@ inline constexpr const char* kSurfaceSunken = "#f5f6f7";
         .arg(QString(ink), QString(field));
 }
 
+// El aviso rojo fuerte, de una pieza (ver `kAlarmInk`).
+[[nodiscard]] inline QString alarmNoticeStyle() {
+    return QStringLiteral("color:%1; background:%2; border:1px solid %3;"
+                          " border-radius:4px; padding:6px; font-weight:bold;")
+        .arg(QString(kAlarmInk), QString(kAlarmField), QString(kAlarmEdge));
+}
+
 // Una pastilla de veredicto entera: fondo saturado, texto claro y esquinas
 // redondeadas. Existe por lo mismo que `noticeStyle`: es donde se escribían a
 // mano las parejas fondo/texto, y donde se colaban las que no contrastaban.
@@ -172,6 +300,51 @@ inline constexpr int kDrawBoard[3] = {255, 200, 0};    // las esquinas del table
 inline constexpr int kDrawToolBad[3] = {255, 120, 0};  // una cota que no cumple
 inline constexpr int kDrawVeilAlpha = 160;             // el velo bajo un rótulo
 
+// EL RESTO DE LO QUE SE DIBUJA SOBRE LA IMAGEN, con nombre.
+//
+// El lienzo del editor tenía 85 colores tecleados en su propio fichero, fuera
+// del alcance de la guardia de paleta (que solo miraba `src/ui`). 54 tenían un
+// papel y aquí se les pone nombre por lo que hacen. Los otros 31 eran la tabla
+// que da a cada TIPO de herramienta su color: su blanco de reserva pasa a
+// `kDrawSelected` y los 30 colores se quedan en el lienzo, en su única función,
+// porque no es un papel sino una identidad —«el calibre es
+// cian»— y este fichero no conoce los tipos de herramienta. Donde dos significaban lo mismo con dos
+// valores casi iguales se queda uno: el fondo de la lectura del cursor
+// (10,34,43) era el `kBandField` (#10222b = 16,34,43) de las bandas del vídeo
+// escrito de memoria, y la chapa de la pieza medida del lienzo (0,190,0 con
+// alfa 210) era la del mosaico (`kTileMeasured`, alfa 220).
+//
+// NINGUNO DEPENDE DEL TEMA DE LA VENTANA: van sobre la foto, que es igual de
+// clara o de oscura se elija el tema que se elija. Lo que los hace legibles
+// sobre cualquier foto es el halo (`strokeWithHalo`, `drawTextWithHalo`).
+inline constexpr int kDrawPass[3] = {0, 220, 0};        // una cota que cumple
+inline constexpr int kDrawFail[3] = {255, 70, 70};      // una cota que no cumple
+inline constexpr int kDrawSelected[3] = {255, 255, 255};  // lo elegido, lo que se traza
+inline constexpr int kDrawHandleFill[3] = {40, 40, 40};   // el cuerpo de una manija
+inline constexpr int kDrawLink[3] = {150, 255, 255};    // de qué herramienta sale un dato
+inline constexpr int kDrawSnap[3] = {255, 230, 0};      // el borde donde se pegará
+inline constexpr int kDrawCloseHere[3] = {0, 220, 0};  // el vértice que cierra un trazo
+inline constexpr int kDrawZone[3] = {255, 210, 0};      // la zona de detección
+inline constexpr int kDrawAnchor[3] = {255, 0, 255};    // el rasgo que fija la pieza
+inline constexpr int kDrawGrid[3] = {120, 200, 255};    // la rejilla del tablero
+inline constexpr int kDrawGridAxis[3] = {0, 220, 255};  // sus ejes y su origen
+inline constexpr int kDrawGridInk[3] = {170, 220, 255};  // sus números
+inline constexpr int kDrawReadoutInk[3] = {160, 225, 255};  // la lectura del cursor
+inline constexpr int kDrawStraight[3] = {90, 180, 255};   // un tramo recto del contorno
+inline constexpr int kDrawArc[3] = {255, 165, 40};        // un tramo en arco
+inline constexpr int kDrawHole[3] = {230, 110, 230};      // un agujero
+inline constexpr int kDrawAddPiece[3] = {0, 210, 90};     // pincel: esto es pieza
+inline constexpr int kDrawAddBackground[3] = {230, 60, 60};  // pincel: esto es fondo
+inline constexpr int kDrawOtherPiece[3] = {70, 170, 90};  // las demás piezas del encuadre
+inline constexpr int kDrawOtherPieceDim = 120;  // su verde cuando hay una elegida
+inline constexpr int kDrawCaption[3] = {235, 235, 235};  // texto sobre un velo
+inline constexpr int kDrawRulerTick[3] = {200, 200, 200};  // las marcas de la regla
+inline constexpr int kDrawFrame[3] = {120, 130, 145};     // el marco del encuadre
+inline constexpr int kDrawLabelAlpha = 225;  // la caja de una medida: tapa de verdad
+inline constexpr int kDrawCaptionAlpha = 170;  // el velo de un resumen o de un número
+inline constexpr int kDrawPanelAlpha = 205;  // la banda de la regla
+inline constexpr int kDrawPanel[3] = {18, 18, 18};
+
 // EL HALO BAJO EL CONTORNO, y no es adorno.
 //
 // Una línea de color sobre una FOTO no tiene contraste garantizado: depende de
@@ -194,10 +367,13 @@ inline constexpr double kDrawHaloWidth = 3.0;
 inline constexpr double kDrawLineWidth = 2.0;
 inline constexpr int kDrawHaloAlpha = 150;
 
+// El color del halo: negro con el alfa medido arriba.
+[[nodiscard]] inline QColor haloColor() { return QColor(0, 0, 0, kDrawHaloAlpha); }
+
 // Dibuja `shape` con su halo debajo. `draw` recibe el pincel ya puesto.
 template <typename Draw>
 void withHalo(QPainter& painter, const QColor& colour, Draw&& draw) {
-    QPen halo(QColor(0, 0, 0, kDrawHaloAlpha));
+    QPen halo(haloColor());
     halo.setWidthF(kDrawHaloWidth);
     halo.setCosmetic(true);
     painter.setPen(halo);
@@ -211,6 +387,51 @@ void withHalo(QPainter& painter, const QColor& colour, Draw&& draw) {
 
 [[nodiscard]] inline QColor drawColor(const int (&rgb)[3], int alpha = 255) {
     return QColor(rgb[0], rgb[1], rgb[2], alpha);
+}
+
+// EL MISMO HALO, PARA CUALQUIER PLUMA Y PARA EL TEXTO.
+//
+// `withHalo` sirve cuando la línea tiene el grosor de siempre. El lienzo del
+// editor dibuja herramientas de 1,8 y de 3 px, a rayas y continuas, y rótulos
+// de texto; y NADA de eso llevaba halo. Solo el contorno de la pieza lo tenía.
+// Con mesa blanca —el montaje normal del taller— el trazo blanco de lo que se
+// está dibujando, el ámbar de la zona o el cian de la rejilla del tablero se
+// quedaban entre 1,0:1 y 1,6:1 contra lo que tenían debajo.
+//
+// El halo es continuo aunque la línea vaya a rayas: una raya de color sobre
+// una pista oscura se lee; una raya oscura con otra de color encima, con el
+// patrón desfasado por el grosor, se ve como un borrón.
+[[nodiscard]] inline QPen haloPenFor(const QPen& line) {
+    QPen halo(haloColor());
+    halo.setWidthF(std::max(line.widthF(), 1.0) + kDrawHaloWidth - 1.0);
+    halo.setCosmetic(line.isCosmetic());
+    halo.setCapStyle(Qt::RoundCap);
+    halo.setJoinStyle(Qt::RoundJoin);
+    return halo;
+}
+
+// Dibuja lo que haga `draw` dos veces: con el halo de `line` y con `line`.
+template <typename Draw>
+void strokeWithHalo(QPainter& painter, const QPen& line, Draw&& draw) {
+    painter.setPen(haloPenFor(line));
+    draw();
+    painter.setPen(line);
+    draw();
+}
+
+// Texto con su contorno oscuro, para rótulos que van sobre la foto sin caja.
+inline void drawTextWithHalo(QPainter& painter, const QPointF& baseline, const QString& text,
+                             const QColor& ink) {
+    QPainterPath path;
+    path.addText(baseline, painter.font(), text);
+    QPen halo(haloColor());
+    halo.setWidthF(kDrawHaloWidth);
+    halo.setJoinStyle(Qt::RoundJoin);
+    painter.save();
+    painter.setBrush(Qt::NoBrush);
+    painter.strokePath(path, halo);
+    painter.fillPath(path, ink);
+    painter.restore();
 }
 
 // --- PASTILLAS DE ESTADO DE LA VENTANA --------------------------------------
@@ -295,6 +516,17 @@ inline constexpr const char* kInkOnTileMeasured = "#0a1e0a";  // 6,95:1 sobre kT
 inline constexpr int kTileBadgeAlpha = 220;      // la chapa de la que se mide
 inline constexpr int kTileBadgeRestAlpha = 170;  // la de las demás
 
+// Las dos chapas del número de pieza, con su alfa. Las usan el mosaico y el
+// lienzo del editor, que tenían cada uno su propia copia: el lienzo pintaba la
+// medida en (0,190,0) con alfa 210 y el número de las demás en (200,230,205),
+// el mosaico en `kTileMeasured` con alfa 220 y `kInkOnChipRest`. La misma pieza
+// con dos chapas distintas según dónde se mire.
+[[nodiscard]] inline QColor tileBadge(bool measured) {
+    QColor chip = measured ? QColor(QString(kTileMeasured)) : QColor(0, 0, 0);
+    chip.setAlpha(measured ? kTileBadgeAlpha : kTileBadgeRestAlpha);
+    return chip;
+}
+
 // La pastilla en reposo: la aplicación decide, y no llama la atención.
 [[nodiscard]] inline QString chipRestStyle() {
     return QStringLiteral("color:%1; background:%2; border-radius:8px; padding:1px 6px;")
@@ -333,7 +565,7 @@ inline constexpr int kTileBadgeRestAlpha = 170;  // la de las demás
 // El alfa ya tenía nombre (`kDrawVeilAlpha`) y el color no, así que el negro
 // seguía tecleado en cada sitio. Media cosa con nombre es como se acaba con dos
 // velos de distinta opacidad.
-[[nodiscard]] inline QColor veil() { return QColor(0, 0, 0, kDrawVeilAlpha); }
+[[nodiscard]] inline QColor veil(int alpha = kDrawVeilAlpha) { return QColor(0, 0, 0, alpha); }
 
 [[nodiscard]] inline QString chipStyle(const char* background, const QString& extra = {}) {
     return QStringLiteral("background:%1; color:%2; border-radius:8px; padding:3px;%3")
@@ -359,17 +591,26 @@ inline constexpr int kTileBadgeRestAlpha = 170;  // la de las demás
 // oscuro sobre fondo claro con contraste ≥4,5:1 — no basta con que contraste,
 // porque el contraste es simétrico: una paleta invertida (fondo oscuro, texto
 // claro) también pasaría esa cuenta y seguiría siendo el error.
-inline void applyApplicationLook(QApplication& app) {
-    app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+// LA PALETA DE UN TEMA, construida desde los tokens.
+//
+// Aparte de `applyApplicationLook` para poder medirla sin tocar la aplicación:
+// `tests/test_theme_choice.cpp` comprueba las dos con `contrastRatio` —texto
+// a 4,5:1 y selección a 3:1— sin tener que instalar ninguna.
+//
+// Se parte de `QPalette(botón, ventana)` y no de `QPalette()`: el constructor
+// vacío copia la paleta del SISTEMA, así que los papeles que no se fijan aquí
+// (luces y sombras de los bordes en relieve) salían del tema de Windows. Con el
+// sistema en oscuro y la app en claro, un borde podía salir con la sombra del
+// tema contrario.
+[[nodiscard]] inline QPalette applicationPalette(Scheme scheme) {
+    const QColor windowBg = color(kSurfaceSunken.in(scheme));
+    const QColor ink = color(kInk.in(scheme));
+    const QColor inkOff = color(kInkOff.in(scheme));
+    const QColor base = color(kSurfaceBase.in(scheme));
+    const QColor highlight = color(kSelection.in(scheme));
+    const QColor highlightedInk = color(kInkOnSelection.in(scheme));
 
-    QPalette palette;
-    const QColor windowBg = color(kSurfaceSunken);
-    const QColor ink = color(kInk);
-    const QColor inkOff = color(kInkOff);
-    const QColor base = QColor(Qt::white);
-    const QColor highlight = color(kChipChosen);
-    const QColor highlightedInk = color(kInkOnChipChosen);
-
+    QPalette palette(windowBg, windowBg);
     palette.setColor(QPalette::Window, windowBg);
     palette.setColor(QPalette::WindowText, ink);
     palette.setColor(QPalette::Base, base);
@@ -379,18 +620,100 @@ inline void applyApplicationLook(QApplication& app) {
     palette.setColor(QPalette::Text, ink);
     palette.setColor(QPalette::Button, windowBg);
     palette.setColor(QPalette::ButtonText, ink);
-    palette.setColor(QPalette::BrightText, color(kBad));
+    palette.setColor(QPalette::BrightText, color(kBad.in(scheme)));
     palette.setColor(QPalette::Highlight, highlight);
     palette.setColor(QPalette::HighlightedText, highlightedInk);
-    palette.setColor(QPalette::Link, highlight);
+    palette.setColor(QPalette::Accent, highlight);
+    palette.setColor(QPalette::Link, color(kLink.in(scheme)));
+    palette.setColor(QPalette::LinkVisited, color(kLink.in(scheme)));
+    palette.setColor(QPalette::PlaceholderText, inkOff);
 
-    // Deshabilitado: sigue siendo legible (`kInkOff` está medido a 4,70:1),
+    // Deshabilitado: sigue siendo legible (`kInkOff` está medido a 4,74:1),
     // solo que apagado. Un control inactivo no debería volverse invisible.
     palette.setColor(QPalette::Disabled, QPalette::WindowText, inkOff);
     palette.setColor(QPalette::Disabled, QPalette::Text, inkOff);
     palette.setColor(QPalette::Disabled, QPalette::ButtonText, inkOff);
+    return palette;
+}
 
-    app.setPalette(palette);
+// Fija el estilo, el tema de los tokens y la paleta. Se llama UNA vez, antes de
+// construir ninguna ventana (ver arriba por qué no se cambia a media sesión).
+// Sin tema, el claro: es lo que la aplicación ha sido siempre.
+// FUSION, CON EL MARCO DE LOS CONTROLES DEL TEMA.
+//
+// Fusion pinta el marco de campos, botones, desplegables y casillas con
+// `ventana.darker(140)` (ver `kControlOutline` para las cifras). No hay papel
+// de paleta que lo cambie, así que aquí, solo para esos controles, se le pasa
+// una copia de la opción con una «ventana» elegida para que, oscurecida ese
+// 40 %, salga justo `kControlOutline`. El resto del dibujo de esos controles
+// usa la base y el botón, no la ventana, así que no cambia nada más.
+class ThemedStyle : public QProxyStyle {
+public:
+    ThemedStyle() : QProxyStyle(QStyleFactory::create(QStringLiteral("Fusion"))) {}
+
+    void drawPrimitive(PrimitiveElement element, const QStyleOption* option,
+                       QPainter* painter, const QWidget* widget) const override {
+        switch (element) {
+            case PE_FrameLineEdit:
+            case PE_PanelLineEdit:
+                if (drawSeeded<QStyleOptionFrame>(option, [&](const QStyleOption* seeded) {
+                        QProxyStyle::drawPrimitive(element, seeded, painter, widget);
+                    })) {
+                    return;
+                }
+                break;
+            case PE_PanelButtonCommand:
+            case PE_IndicatorCheckBox:
+            case PE_IndicatorRadioButton:
+                if (drawSeeded<QStyleOptionButton>(option, [&](const QStyleOption* seeded) {
+                        QProxyStyle::drawPrimitive(element, seeded, painter, widget);
+                    })) {
+                    return;
+                }
+                break;
+            default: break;
+        }
+        QProxyStyle::drawPrimitive(element, option, painter, widget);
+    }
+
+    void drawComplexControl(ComplexControl control, const QStyleOptionComplex* option,
+                            QPainter* painter, const QWidget* widget) const override {
+        const auto draw = [&](const QStyleOption* seeded) {
+            QProxyStyle::drawComplexControl(
+                control, static_cast<const QStyleOptionComplex*>(seeded), painter, widget);
+        };
+        if ((control == CC_SpinBox && drawSeeded<QStyleOptionSpinBox>(option, draw)) ||
+            (control == CC_ComboBox && drawSeeded<QStyleOptionComboBox>(option, draw))) {
+            return;
+        }
+        QProxyStyle::drawComplexControl(control, option, painter, widget);
+    }
+
+    // La «ventana» que, oscurecida como hace Fusion, da el marco del tema.
+    [[nodiscard]] static QColor outlineSeed() {
+        const QColor outline = color(kControlOutline);
+        return QColor::fromHsv(outline.hsvHue(), outline.hsvSaturation(),
+                               std::min(255, static_cast<int>(std::lround(outline.value() * 1.4))));
+    }
+
+private:
+    template <typename Option, typename Draw>
+    static bool drawSeeded(const QStyleOption* option, Draw&& draw) {
+        const auto* typed = qstyleoption_cast<const Option*>(option);
+        if (typed == nullptr) {
+            return false;
+        }
+        Option seeded(*typed);
+        seeded.palette.setColor(QPalette::Window, outlineSeed());
+        draw(&seeded);
+        return true;
+    }
+};
+
+inline void applyApplicationLook(QApplication& app, Scheme scheme = Scheme::Light) {
+    detail::gActiveScheme = scheme;
+    app.setStyle(new ThemedStyle());
+    app.setPalette(applicationPalette(scheme));
 }
 
 }  // namespace pci::ui::theme
