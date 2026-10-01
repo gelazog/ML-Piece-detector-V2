@@ -1,6 +1,24 @@
 #include "ui/main_window.h"
 #include "ui/main_window_internal.h"
 
+#include "repositories/settings_repository.h"
+#include "ui/dialog_geometry.h"
+#include "ui/source_files.h"
+
+#include <QAction>
+#include <QActionGroup>
+#include <QDockWidget>
+#include <QInputDialog>
+#include <QLabel>
+#include <QMenu>
+#include <QMenuBar>
+#include <QMessageBox>
+#include <QPushButton>
+#include <QStatusBar>
+#include <QToolButton>
+
+#include <string>
+
 namespace pci::ui {
 
 // Barra de menú: agrupa las acciones de baja frecuencia que antes saturaban
@@ -925,6 +943,52 @@ void MainWindow::updateGatedCommands() {
             gate.button->setToolTip(tip);
         }
     }
+}
+
+void MainWindow::buildMenusAndShortcuts() {
+    // LOS ATAJOS, ANTES QUE LOS MENÚS, y el orden es el arreglo entero.
+    //
+    // Los atajos son `QAction` colgadas de la ventana. Para que una entrada de
+    // menú ENSEÑE su tecla tiene que ser esa misma acción, no una gemela: dos
+    // acciones con la misma secuencia en la misma ventana es
+    // `ambiguousActivate`, y Qt no dispara ninguna de forma fiable. Este
+    // proyecto ya se comió ese fallo con Ctrl+1 y Ctrl+2.
+    //
+    // Construir el menú primero obligaba a que la entrada se creara sola, y por
+    // eso ninguna de las 58 enseñaba nada. `buildShortcuts` no depende de nada
+    // de lo que hay debajo: solo crea acciones y lee las teclas guardadas.
+    // Los recientes, antes del menú que los enseña.
+    if (repos_.settings != nullptr) {
+        if (const auto saved = repos_.settings->getString(kSettingRecentFiles, "");
+            saved.isOk()) {
+            recentFiles_ = decodeRecentFiles(QString::fromStdString(saved.value()));
+        }
+    }
+    // Soltar un fichero sobre la ventana lo abre. Es lo primero que se prueba
+    // con un programa que abre imágenes, y no hacer nada parece un cuelgue.
+    setAcceptDrops(true);
+    buildShortcuts();
+    buildMenuBar();  // crea las acciones de menú (incluidas unidad y contorno)
+    // El menú se construye DESPUÉS de la primera actualización de estado, así
+    // que su acción de auto-inspección se quedaba sin el motivo que sí tenía el
+    // botón: uno apagado con explicación y el otro vivo. Se pone al día aquí.
+    updateAutoInspectAvailability();
+
+    // Unidad de medida elegida por el operador (persistida).
+    if (repos_.settings != nullptr) {
+        // Se busca la acción POR SU VALOR, no por su posición en la lista. Eran
+        // lo mismo mientras las dos listas coincidieran, y basta con insertar
+        // una unidad en medio para que dejen de coincidir: quien tuviera
+        // «píxeles» guardado se encontraría midiendo en otra cosa.
+        const int unit = repos_.settings->getInt("length_unit", 0).valueOr(0);
+        for (auto* action : unitGroup_->actions()) {
+            if (action->data().toInt() == unit) {
+                action->setChecked(true);
+                break;
+            }
+        }
+    }
+    video_->setLengthUnit(currentUnit());
 }
 
 }  // namespace pci::ui

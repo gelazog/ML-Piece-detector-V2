@@ -45,6 +45,7 @@ class QCheckBox;
 class QComboBox;
 class QAbstractButton;
 class QDockWidget;
+class QHBoxLayout;
 class QLabel;
 class QListWidget;
 class QMenu;
@@ -196,6 +197,35 @@ protected:
     void dropEvent(QDropEvent* event) override;
 
 private:
+    // EL CONSTRUCTOR, POR ZONAS DE LA VENTANA.
+    //
+    // Era una sola función de 1416 líneas. Ahora llama a estas, en el orden en
+    // que se construía todo: el orden es parte del contrato —el lienzo nace
+    // después de las filas de botones, los atajos antes que los menús, los
+    // docks antes de restaurar la disposición—, así que el constructor sigue
+    // diciendo QUÉ va antes de qué y cada método solo CÓMO se arma su zona.
+    // Las filas reciben el widget central y su layout en vez de convertirlos
+    // en miembros: nadie más los necesita después de construir.
+    void buildSourceRow(QWidget* central, QVBoxLayout* rootLayout);
+    void buildSourceControls(QWidget* central, QHBoxLayout* cameraLayout);
+    void buildEdgeBrushMenu(QWidget* central, QHBoxLayout* cameraLayout);
+    void connectEdgeBrushMenu();
+    void buildPieceRow(QWidget* central, QVBoxLayout* rootLayout);
+    void buildPieceToolsRow(QWidget* central, QVBoxLayout* rootLayout);
+    void buildNoticeBands(QWidget* central, QVBoxLayout* rootLayout);
+    void buildVideoCanvas(QWidget* central, QVBoxLayout* rootLayout);
+    void buildCompareAndToolsDocks();
+    void buildMeasurementsAndMosaicDocks();
+    void buildStatusBar();
+    void connectSignalsAndTimers();
+    // Lo guardado en `Settings`, leído al arrancar (main_window_settings.cpp).
+    void restoreCalibrationAndPreferences();
+    void restoreDetectionSettings();
+    void restoreCameraAndViewSettings();
+    void placeDocksMissingFromSavedLayout();
+    void restoreLastSession();
+    void buildMenusAndShortcuts();  // main_window_menus.cpp
+
     void setControlsEnabled(bool enabled);
     void maybeStartAnalysis();
     void reanalyseCurrentFrame();

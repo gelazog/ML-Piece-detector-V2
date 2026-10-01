@@ -1,7 +1,54 @@
 #include "ui/main_window.h"
 #include "ui/main_window_internal.h"
 
+#include "core/logging.h"
+#include "inspection_editor/canvas/tool_icons.h"
+#include "inspection_editor/canvas/tool_palette.h"
+#include "repositories/settings_repository.h"
+#include "ui/measurements_panel.h"
+#include "ui/piece_mosaic.h"
+#include "ui/theme.h"
+
+#include <QAction>
+#include <QActionGroup>
+#include <QComboBox>
+#include <QDockWidget>
+#include <QFrame>
+#include <QHBoxLayout>
+#include <QIcon>
+#include <QLabel>
+#include <QMenu>
+#include <QPushButton>
+#include <QSlider>
+#include <QSpinBox>
+#include <QStatusBar>
+#include <QToolButton>
+#include <QVBoxLayout>
+#include <QWidgetAction>
+
+#include <algorithm>
+#include <string>
+#include <vector>
+
 namespace pci::ui {
+
+namespace {
+
+// Separador vertical entre grupos de la barra.
+//
+// Trece botones repartidos en tres filas, todos del mismo peso y a la misma
+// distancia unos de otros, se leen como una lista de trece cosas sin
+// relación. Con una línea entre grupos se leen como tres decisiones: qué
+// miro, qué mido y qué hago. No es adorno — es lo único que dice dónde
+// acaba un grupo y empieza el siguiente.
+QFrame* barSeparator(QWidget* central) {
+    auto* line = new QFrame(central);
+    line->setFrameShape(QFrame::VLine);
+    line->setFrameShadow(QFrame::Sunken);
+    return line;
+}
+
+}  // namespace
 
 MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     : QMainWindow(parent), repos_(repositories) {
@@ -10,23 +57,64 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
 
     auto* central = new QWidget(this);
     auto* rootLayout = new QVBoxLayout(central);
+    buildSourceRow(central, rootLayout);
+    buildPieceRow(central, rootLayout);
+    buildPieceToolsRow(central, rootLayout);
+    buildNoticeBands(central, rootLayout);
+    buildVideoCanvas(central, rootLayout);
+    buildVideoBar(central, rootLayout);
 
-    // Separador vertical entre grupos de la barra.
+    setCentralWidget(central);
+
+    buildCompareAndToolsDocks();
+    buildMeasurementsAndMosaicDocks();
+    buildStatusBar();
+    connectSignalsAndTimers();
+
+    restoreCalibrationAndPreferences();
+    restoreDetectionSettings();
+    restoreCameraAndViewSettings();
+    updateModeChip();  // el indicador arranca con el modo por defecto (M3)
+    updateBoardReadout();
+
+    buildCaptureDock();  // antes de restaurar la disposición, o no se colocaría
+    buildMenusAndShortcuts();
+
+    // Restaurar tamaño, posición, pantalla, maximizada y disposición de
+    // paneles: la ventana se abre donde el operador la dejó (S3).
+    restoreWindowLayout();
+
+    placeDocksMissingFromSavedLayout();
+
+    refreshCameras();
+
+    restoreLastSession();
+
+    // Al arrancar con una pieza ya seleccionada, su modo y su tablero mandan
+    // sobre el ajuste global (M2); loadPieceList puede no disparar la señal.
+    loadMeasurementForSelectedPiece();
+    loadDetectionProfileForSelectedPiece();
+
+    // LO ÚLTIMO: qué comandos se pueden usar de verdad ahora mismo.
     //
-    // Trece botones repartidos en tres filas, todos del mismo peso y a la misma
-    // distancia unos de otros, se leen como una lista de trece cosas sin
-    // relación. Con una línea entre grupos se leen como tres decisiones: qué
-    // miro, qué mido y qué hago. No es adorno — es lo único que dice dónde
-    // acaba un grupo y empieza el siguiente.
-    const auto separator = [central] {
-        auto* line = new QFrame(central);
-        line->setFrameShape(QFrame::VLine);
-        line->setFrameShadow(QFrame::Sunken);
-        return line;
-    };
+    // Va al final del constructor porque necesita las acciones ya creadas y sus
+    // tooltips ya repartidos —guarda el texto de siempre para devolverlo cuando
+    // el comando vuelva a poder usarse—, y porque la pieza y la fuente
+    // recordadas acaban de cargarse: con eso ya se sabe qué hay delante.
+    registerGatedCommands();
+}
 
+void MainWindow::buildSourceRow(QWidget* central, QVBoxLayout* rootLayout) {
     // --- Fila 1: cámara ---
     auto* cameraLayout = new QHBoxLayout();
+    buildSourceControls(central, cameraLayout);
+    buildEdgeBrushMenu(central, cameraLayout);
+    connectEdgeBrushMenu();
+    cameraLayout->addStretch(0);
+    rootLayout->addLayout(cameraLayout);
+}
+
+void MainWindow::buildSourceControls(QWidget* central, QHBoxLayout* cameraLayout) {
     cameraLayout->addWidget(new QLabel(tr("Fuente:"), central));
     cameraCombo_ = new QComboBox(central);
     cameraCombo_->setObjectName(QStringLiteral("sourceCombo"));
@@ -90,7 +178,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(freezeButton_, &QPushButton::clicked, this, &MainWindow::toggleFrozenPhoto);
     cameraLayout->addWidget(freezeButton_);
 
-    cameraLayout->addWidget(separator());
+    cameraLayout->addWidget(barSeparator(central));
 
     // UN solo control para la zona, con menú, en vez de dos botones.
     //
@@ -131,7 +219,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     clearZoneAction_ = zoneMenu->addAction(tr("Quitar la zona"));
     zoneButton_->setMenu(zoneMenu);
     cameraLayout->addWidget(zoneButton_);
+}
 
+void MainWindow::buildEdgeBrushMenu(QWidget* central, QHBoxLayout* cameraLayout) {
     // Pincel para corregir el borde detectado.
     edgeBrushButton_ = new QToolButton(central);
     edgeBrushButton_->setObjectName(QStringLiteral("edgeBrushButton"));
@@ -275,7 +365,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     brushClearAction_ = brushMenu->addAction(tr("Quitar las correcciones"));
     edgeBrushButton_->setMenu(brushMenu);
     cameraLayout->addWidget(edgeBrushButton_);
+}
 
+void MainWindow::connectEdgeBrushMenu() {
     connect(brushAddAction_, &QAction::triggered, this, [this](bool on) {
         brushRemoveAction_->setChecked(false);
         video_->setEdgeBrush(on ? inspection::EditorCanvas::EdgeBrush::AddPiece
@@ -336,9 +428,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             statusBar()->showMessage(tr("No hay ninguna pincelada que rehacer."));
         }
     });
-    cameraLayout->addStretch(0);
-    rootLayout->addLayout(cameraLayout);
+}
 
+void MainWindow::buildPieceRow(QWidget* central, QVBoxLayout* rootLayout) {
     // --- Fila 2: pieza y flujo ---
     auto* pieceLayout = new QHBoxLayout();
     pieceLayout->addWidget(new QLabel(tr("Pieza:"), central));
@@ -432,7 +524,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // Aquí cambia la pregunta: hasta este punto la fila dice QUÉ se mide —la
     // pieza y su plantilla—, y a partir de aquí QUÉ SE HACE con ello. Sin la
     // línea, las siete cosas se leían como una lista sin relación.
-    pieceLayout->addWidget(separator());
+    pieceLayout->addWidget(barSeparator(central));
 
     registerLiveButton_ = new QPushButton(tr("Registrar y activar"), central);
     registerLiveButton_->setToolTip(
@@ -494,7 +586,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     pieceLayout->addWidget(measurePieceButton_);
     pieceLayout->addStretch(0);
     rootLayout->addLayout(pieceLayout);
+}
 
+void MainWindow::buildPieceToolsRow(QWidget* central, QVBoxLayout* rootLayout) {
     // --- Fila 3: lo que actúa sobre la PIEZA y la PLANTILLA ---
     //
     // El dibujo se fue al dock de la derecha (P5) y con él lo que actúa sobre
@@ -547,7 +641,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // (1) no forma parte del trabajo de cada pieza, (2) tiene tecla y (3) tiene
     // entrada de menú, no necesita estar ahí. Los otros trece la pasan.
     rootLayout->addLayout(toolsLayout);
+}
 
+void MainWindow::buildNoticeBands(QWidget* central, QVBoxLayout* rootLayout) {
     // LO QUE IMPIDE MEDIR, lo primero encima de la imagen. Va antes que la guía
     // y que el veredicto porque manda sobre los dos: con la cámara caída, un
     // «OK» debajo sería el del último fotograma, no el de la pieza de ahora.
@@ -589,7 +685,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         theme::bandStyle(theme::kInkOnBand, theme::kBandField));
     boardReadoutLabel_->setVisible(false);
     rootLayout->addWidget(boardReadoutLabel_);
+}
 
+void MainWindow::buildVideoCanvas(QWidget* central, QVBoxLayout* rootLayout) {
     // Video (canvas de edición) como área central de la ventana.
     video_ = new inspection::EditorCanvas(central);
     video_->setTools(&liveTools_);
@@ -702,10 +800,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     connect(video_, &inspection::EditorCanvas::edgeCorrected, this,
             &MainWindow::onEdgeCorrected);
     rootLayout->addWidget(video_, 1);
-    buildVideoBar(central, rootLayout);
+}
 
-    setCentralWidget(central);
-
+void MainWindow::buildCompareAndToolsDocks() {
     // Panel de comparación "registrada vs actual" en un dock reubicable (S3):
     // el operador lo puede mover, flotar o cerrar, y su posición se guarda.
     auto* compareWidget = new QWidget(this);
@@ -796,7 +893,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     compareDock_->setObjectName(QStringLiteral("compareDock"));
     compareDock_->setWidget(compareWidget);
     addDockWidget(Qt::RightDockWidgetArea, compareDock_);
+}
 
+void MainWindow::buildMeasurementsAndMosaicDocks() {
     // LA TABLA DE MEDIDAS EN VIVO.
     //
     // Petición de uso: «falta la parte en donde te resume las medidas, la
@@ -917,7 +1016,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         updatePieceNavigator();
         reanalyseCurrentFrame();
     });
+}
 
+void MainWindow::buildStatusBar() {
     // Controles de vista (Z3): mínimo / − / porcentaje / + / máximo, siempre a
     // mano en la barra inferior para quien no use atajos ni rueda.
     auto* zoomBar = new QWidget(this);
@@ -996,7 +1097,9 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
             tr("No hay base de datos: no se puede inspeccionar ni guardar piezas. "
                "Cierra el programa y vuelve a abrirlo."));
     }
+}
 
+void MainWindow::connectSignalsAndTimers() {
     connect(startStopButton_, &QPushButton::clicked, this, &MainWindow::onStartStopClicked);
     connect(&enumerationWatcher_, &QFutureWatcher<std::vector<camera::CameraInfo>>::finished,
             this, &MainWindow::onCamerasEnumerated);
@@ -1101,337 +1204,6 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // intervalo del temporizador.
     passClock_.start();
     autoTimer_.setInterval(autoIntervalMs_);  // se reajusta al cargar Preferencias
-
-    // Calibración de escala persistida.
-    if (repos_.settings != nullptr) {
-        calibration_.mmPerPixel =
-            repos_.settings->getDouble("calib_mm_per_px", 0.0).valueOr(0.0);
-        calibration_.cameraDistanceMm =
-            repos_.settings->getDouble("calib_camera_dist_mm", 0.0).valueOr(0.0);
-        calibration_.horizontalFovDeg =
-            repos_.settings->getDouble("calib_fov_deg", 60.0).valueOr(60.0);
-        calibration_.calibratedWidth = repos_.settings->getInt("calib_width", 0).valueOr(0);
-        calibration_.calibratedHeight = repos_.settings->getInt("calib_height", 0).valueOr(0);
-        calibratedCameraKey_ = QString::fromStdString(
-            repos_.settings->getString("calib_camera", std::string()).valueOr(std::string()));
-    }
-    updateCalibrationLabel();
-    video_->setMmPerPixel(calibration_.mmPerPixel);
-
-    // Preferencias persistidas (O1): intervalo de auto-inspección y kSigma.
-    if (repos_.settings != nullptr) {
-        autoIntervalMs_ =
-            std::clamp(repos_.settings->getInt("pref_auto_interval_ms", 1000).valueOr(1000),
-                       200, 10000);
-        kSigma_ = std::clamp(repos_.settings->getDouble("pref_ksigma", 3.0).valueOr(3.0), 0.5, 6.0);
-        // Disparo por paso de pieza (P2). De fábrica APAGADO: encenderlo cambia
-        // cuándo se mide, y quien ya tenía la auto-inspección funcionando no
-        // puede encontrarse con que mide en otros momentos por actualizar.
-        passTriggerOn_ = repos_.settings->getInt("pref_pass_trigger", 0).valueOr(0) != 0;
-        vision::PassTriggerOptions passOptions;
-        passOptions.settleMs =
-            std::clamp(repos_.settings->getInt("pref_pass_settle_ms", 400).valueOr(400), 0, 10000);
-        passOptions.rearmMs =
-            std::clamp(repos_.settings->getInt("pref_pass_rearm_ms", 300).valueOr(300), 0, 10000);
-        passTrigger_.setOptions(passOptions);
-        // Pestaña del panel Configurar (C1). Sin acotar por arriba: el diálogo
-        // ignora un índice que no exista, que es lo que pasará si una versión
-        // futura tiene menos pestañas que la que guardó el número.
-        configureTab_ = std::max(0, repos_.settings->getInt("config_last_tab", 0).valueOr(0));
-        measureStages_ = repos_.settings->getInt("measure_stages", 0).valueOr(0) != 0;
-        pipelineConfig_.minAreaFraction = std::clamp(
-            repos_.settings->getDouble("det_min_area", 0.005).valueOr(0.005), 0.0001, 0.5);
-        pipelineConfig_.maxAreaFraction = std::clamp(
-            repos_.settings->getDouble("det_max_area", 0.9).valueOr(0.9), 0.1, 1.0);
-        // Por defecto, IMAGEN ENTERA. Estuvo en «automática» y hubo que
-        // revertirlo: el argumento para ponerla —«la automática no puede
-        // cambiar ninguna respuesta»— era FALSO, y lo demostró usar la
-        // aplicación.
-        //
-        // El recorte automático rodea a UNA pieza, la mayor, con su margen. Se
-        // suelta cuando alguien «está contando», pero eso exige que el operador
-        // haya declarado antes que espera varias — y no puede saber que tiene
-        // que declararlo hasta que ya ha visto el problema. Con varias piezas
-        // en la mesa y nada declarado, las demás quedaban fuera por
-        // construcción y la aplicación decía que solo había una.
-        //
-        // Una optimización que cambia una respuesta no es una optimización, es
-        // un fallo. Esa frase ya estaba escrita en `effectiveWorkingZone`; lo
-        // que faltaba era aplicármela al elegir el valor por defecto.
-        zoneMode_ = vision::workingZoneModeFromKey(
-            repos_.settings->getString("work_zone_mode", "off").valueOr("off").c_str());
-    }
-    autoTimer_.setInterval(autoIntervalMs_);
-    if (repos_.engine != nullptr) {
-        repos_.engine->setKSigma(kSigma_);
-    }
-
-    // Ajustes de detección persistidos (umbral, polaridad, kernels y zona).
-    if (repos_.settings != nullptr) {
-        auto& seg = pipelineConfig_.segmentation;
-        seg.manualThreshold = repos_.settings->getInt("det_threshold", -1).valueOr(-1);
-        seg.polarity = static_cast<vision::SegmentationPolarity>(
-            std::clamp(repos_.settings->getInt("det_polarity", 0).valueOr(0), 0, 2));
-        seg.blurKernel = repos_.settings->getInt("det_blur", 5).valueOr(5);
-        seg.morphKernel = repos_.settings->getInt("det_morph", 5).valueOr(5);
-        // La separación de piezas que se tocan también se recuerda: es una
-        // propiedad de CÓMO están colocadas las piezas en el puesto, no algo
-        // que se decida cada vez.
-        seg.splitTouchingPieces = repos_.settings->getInt("det_split_touching", 0).valueOr(0) != 0;
-        // Se guarda el NÚMERO, no un sí/no: el día que el nivel de aflojado sea
-        // ajustable, lo que ya está guardado sigue queriendo decir lo mismo.
-        seg.recoverHighlightsBy = repos_.settings->getInt("det_recover_glare", 0).valueOr(0);
-        // LA CLAVE DE COLOR DE FONDO ES UNA PROPIEDAD DEL PUESTO.
-        //
-        // El color de la mesa no cambia entre inspecciones, así que preguntarlo
-        // cada vez sería preguntar por algo que ya se sabe. Se guarda el modo y
-        // el color por separado: quien lo tenga en «lo busca solo» y un día pase
-        // a «lo digo yo» se encuentra el último color que eligió, no un blanco.
-        seg.backgroundKey = static_cast<vision::SegmentationOptions::BackgroundKey>(
-            std::clamp(repos_.settings->getInt("det_background_key", 0).valueOr(0), 0, 2));
-        seg.background = cv::Vec3b(
-            static_cast<unsigned char>(
-                std::clamp(repos_.settings->getInt("det_background_b", 255).valueOr(255), 0, 255)),
-            static_cast<unsigned char>(
-                std::clamp(repos_.settings->getInt("det_background_g", 255).valueOr(255), 0, 255)),
-            static_cast<unsigned char>(
-                std::clamp(repos_.settings->getInt("det_background_r", 255).valueOr(255), 0, 255)));
-        pipelineConfig_.roi = cv::Rect(repos_.settings->getInt("det_roi_x", 0).valueOr(0),
-                                       repos_.settings->getInt("det_roi_y", 0).valueOr(0),
-                                       repos_.settings->getInt("det_roi_w", 0).valueOr(0),
-                                       repos_.settings->getInt("det_roi_h", 0).valueOr(0));
-        // Modo «fija» sin zona guardada es un estado imposible de alcanzar hoy,
-        // pero sí de heredar de una versión anterior. Sin esto el programa diría
-        // que trabaja en una zona y estaría mirando la imagen entera.
-        //
-        // Aquí NO vale `modeAfterFixedZoneChanged`: esa función es para cuando
-        // el operador acaba de dibujar, y forzaría «fija» al abrir. Si guardó
-        // una zona y luego se pasó a automática, el modo guardado es el que
-        // manda; lo único que se corrige es la incoherencia a la baja.
-        if (zoneMode_ == vision::WorkingZoneMode::Fixed &&
-            pipelineConfig_.roi.area() <= 0) {
-            zoneMode_ = vision::WorkingZoneMode::Off;
-        }
-        pipelineConfig_.roiPolygon = decodeZonePolygon(
-            repos_.settings->getString(kSettingFreeZone, std::string()).valueOr(std::string()));
-        // Y lo mismo para la libre, por el mismo motivo: el modo guardado puede
-        // apuntar a un dibujo que ya no está.
-        if (zoneMode_ == vision::WorkingZoneMode::Free &&
-            pipelineConfig_.roiPolygon.size() < 3) {
-            zoneMode_ = vision::WorkingZoneMode::Off;
-        }
-        pixelReferenceSize_ = QSize(repos_.settings->getInt("det_zone_ref_w", 0).valueOr(0),
-                                   repos_.settings->getInt("det_zone_ref_h", 0).valueOr(0));
-        pipelineConfig_.autoOrient = repos_.settings->getInt("track_rotation", 0).valueOr(0) != 0;
-        pipelineConfig_.subpixelEdges =
-            repos_.settings->getInt("det_subpixel", 0).valueOr(0) != 0;
-        arucoLiveScale_ = repos_.settings->getInt("aruco_live", 0).valueOr(0) != 0;
-        markerSizeMm_ = repos_.settings->getDouble("aruco_marker_mm", 30.0).valueOr(30.0);
-    }
-    updateRoiButton();
-
-    // Controles de la cámara guardados (O2): se reaplican al abrirla. Solo se
-    // recuerdan los que el operador tocó alguna vez.
-    if (repos_.settings != nullptr) {
-        for (const camera::CameraProperty property : camera::allCameraProperties()) {
-            const std::string key(camera::propertyKey(property));
-            if (auto stored = repos_.settings->getDouble(key, -1e9);
-                stored.isOk() && stored.value() > -1e9) {
-                savedCameraControls_.push_back({property, stored.value()});
-            }
-        }
-        setupGuided_ = repos_.settings->getInt("setup_guided", 0).valueOr(0) != 0;
-        savedResolution_.width = repos_.settings->getInt("cam_width", 0).valueOr(0);
-        savedResolution_.height = repos_.settings->getInt("cam_height", 0).valueOr(0);
-    }
-
-    // Tablero de referencia (T2): visibilidad y origen elegidos por el operador.
-    if (repos_.settings != nullptr) {
-        boardVisible_ = repos_.settings->getInt("board_visible", 0).valueOr(0) != 0;
-        boardConfig_.origin = vision::originFromKey(
-            repos_.settings->getString("board_origin", std::string("bounds")).valueOr(std::string("bounds")));
-        boardConfig_.followPieceAngle = repos_.settings->getInt("board_follow", 0).valueOr(0) != 0;
-        boardConfig_.fixedPoint = {
-            static_cast<float>(repos_.settings->getDouble("board_fixed_x", 0.0).valueOr(0.0)),
-            static_cast<float>(repos_.settings->getDouble("board_fixed_y", 0.0).valueOr(0.0))};
-        boardConfig_.manualOffset = {
-            static_cast<float>(repos_.settings->getDouble("board_offset_x", 0.0).valueOr(0.0)),
-            static_cast<float>(repos_.settings->getDouble("board_offset_y", 0.0).valueOr(0.0))};
-    }
-    if (repos_.settings != nullptr) {
-        rulerVisible_ = repos_.settings->getInt("ruler_visible", 0).valueOr(0) != 0;
-        // El realce se recuerda: quien inspecciona piezas negras las inspecciona
-        // todos los días, y volver a encenderlo cada mañana es un impuesto.
-        // El modelo de la lente que quedara guardado. Se carga SIEMPRE; que se
-        // aplique o no es otra cosa, y va en su propio ajuste.
-        if (auto stored = repos_.settings->getString("lens_model", ""); stored.isOk()) {
-            if (auto model = vision::parseCalibration(stored.value()); model.has_value()) {
-                lensCorrector_ = vision::LensCorrector(*model);
-            }
-        }
-        const bool lensOn = repos_.settings->getInt("lens_enabled", 0).valueOr(0) != 0;
-        lensCorrectionOn_ = lensOn && lensCorrector_.isReady();
-        if (lensCorrectionAction_ != nullptr) {
-            lensCorrectionAction_->setEnabled(lensCorrector_.isReady());
-            const QSignalBlocker block(lensCorrectionAction_);
-            lensCorrectionAction_->setChecked(lensCorrectionOn_);
-        }
-        const bool enhance = repos_.settings->getInt("view_enhance", 0).valueOr(0) != 0;
-        if (viewEnhanceAction_ != nullptr) {
-            viewEnhanceAction_->setChecked(enhance);
-        }
-        video_->setViewEnhance(enhance);
-    }
-    video_->setRulerVisible(rulerVisible_);
-    video_->setBoardVisible(boardVisible_);
-    video_->setBoardConfig(boardConfig_);
-    if (repos_.engine != nullptr) {
-        repos_.engine->setBoardConfig(boardConfig_);
-    }
-    updateModeChip();  // el indicador arranca con el modo por defecto (M3)
-    updateBoardReadout();
-
-    buildCaptureDock();  // antes de restaurar la disposición, o no se colocaría
-    // LOS ATAJOS, ANTES QUE LOS MENÚS, y el orden es el arreglo entero.
-    //
-    // Los atajos son `QAction` colgadas de la ventana. Para que una entrada de
-    // menú ENSEÑE su tecla tiene que ser esa misma acción, no una gemela: dos
-    // acciones con la misma secuencia en la misma ventana es
-    // `ambiguousActivate`, y Qt no dispara ninguna de forma fiable. Este
-    // proyecto ya se comió ese fallo con Ctrl+1 y Ctrl+2.
-    //
-    // Construir el menú primero obligaba a que la entrada se creara sola, y por
-    // eso ninguna de las 58 enseñaba nada. `buildShortcuts` no depende de nada
-    // de lo que hay debajo: solo crea acciones y lee las teclas guardadas.
-    // Los recientes, antes del menú que los enseña.
-    if (repos_.settings != nullptr) {
-        if (const auto saved = repos_.settings->getString(kSettingRecentFiles, "");
-            saved.isOk()) {
-            recentFiles_ = decodeRecentFiles(QString::fromStdString(saved.value()));
-        }
-    }
-    // Soltar un fichero sobre la ventana lo abre. Es lo primero que se prueba
-    // con un programa que abre imágenes, y no hacer nada parece un cuelgue.
-    setAcceptDrops(true);
-    buildShortcuts();
-    buildMenuBar();  // crea las acciones de menú (incluidas unidad y contorno)
-    // El menú se construye DESPUÉS de la primera actualización de estado, así
-    // que su acción de auto-inspección se quedaba sin el motivo que sí tenía el
-    // botón: uno apagado con explicación y el otro vivo. Se pone al día aquí.
-    updateAutoInspectAvailability();
-
-    // Unidad de medida elegida por el operador (persistida).
-    if (repos_.settings != nullptr) {
-        // Se busca la acción POR SU VALOR, no por su posición en la lista. Eran
-        // lo mismo mientras las dos listas coincidieran, y basta con insertar
-        // una unidad en medio para que dejen de coincidir: quien tuviera
-        // «píxeles» guardado se encontraría midiendo en otra cosa.
-        const int unit = repos_.settings->getInt("length_unit", 0).valueOr(0);
-        for (auto* action : unitGroup_->actions()) {
-            if (action->data().toInt() == unit) {
-                action->setChecked(true);
-                break;
-            }
-        }
-    }
-    video_->setLengthUnit(currentUnit());
-
-    // Restaurar tamaño, posición, pantalla, maximizada y disposición de
-    // paneles: la ventana se abre donde el operador la dejó (S3).
-    restoreWindowLayout();
-
-    // Un dock NUEVO sobre un estado guardado VIEJO: `restoreState` no sabe nada
-    // de él —se guardó antes de que existiera— y lo deja donde le parece, que a
-    // veces es oculto. Quien ya usaba el programa abriría la versión nueva sin
-    // paleta y sin forma de adivinar que le falta un panel.
-    //
-    // Se comprueba DESPUÉS de restaurar y se coloca a mano si hace falta. Es el
-    // mismo rigor que con las migraciones de esquema: no basta con que funcione
-    // en un perfil limpio.
-    if (toolsDock_ != nullptr && toolsDock_->isHidden()) {
-        addDockWidget(Qt::RightDockWidgetArea, toolsDock_);
-        toolsDock_->show();
-        core::logInfo("El dock de herramientas no estaba en la disposición guardada: "
-                      "se coloca a la derecha");
-    }
-    // La tira de capturas es un dock NUEVO, así que cae exactamente en el caso
-    // que describe el párrafo de arriba: ninguna disposición guardada hasta hoy
-    // sabe de ella. Sin esto, quien ya usaba el programa actualizaría y no la
-    // vería nunca — y no tendría forma de adivinar que le falta un panel.
-    if (captureDock_ != nullptr && captureDock_->isHidden()) {
-        addDockWidget(Qt::LeftDockWidgetArea, captureDock_);
-        captureDock_->show();
-        core::logInfo("La tira de capturas no estaba en la disposición guardada: "
-                      "se coloca a la izquierda");
-    }
-    // Y la tabla de medidas, que es el dock más nuevo de todos y cayó en el
-    // mismo agujero: quien ya usaba el programa la tendría oculta para siempre.
-    if (measurementsDock_ != nullptr && captureDock_ != nullptr) {
-        if (measurementsDock_->isHidden()) {
-            addDockWidget(Qt::LeftDockWidgetArea, measurementsDock_);
-            measurementsDock_->show();
-            core::logInfo("La tabla de medidas no estaba en la disposición guardada: "
-                          "se coloca a la izquierda");
-        }
-        // Comparte pestaña con las capturas para no partir la columna
-        // izquierda en dos mitades estrechas. Sólo si NADIE lo ha emparejado
-        // ya: una disposición que el operador colocó a mano manda sobre esto.
-        if (tabifiedDockWidgets(captureDock_).isEmpty() &&
-            dockWidgetArea(measurementsDock_) == Qt::LeftDockWidgetArea) {
-            tabifyDockWidget(captureDock_, measurementsDock_);
-            measurementsDock_->raise();
-        }
-    }
-
-    refreshCameras();
-
-    // Se vuelve a la pieza y a la plantilla con las que se estaba trabajando.
-    // Sin esto, el combo caía siempre en la primera de la lista y en
-    // «principal»: quien tiene veinte piezas registradas empezaba cada turno
-    // buscando la suya.
-    std::int64_t lastPiece = -1;
-    QString lastTemplate;
-    if (repos_.settings != nullptr) {
-        lastPiece = repos_.settings->getInt("last_piece_id", -1).valueOr(-1);
-        lastTemplate = QString::fromStdString(
-            repos_.settings->getString("last_template", std::string()).valueOr(std::string()));
-    }
-    // Si la pieza se borró desde otra sesión, `loadPieceList` cae sola en la
-    // primera: recordar una elección no puede impedir arrancar.
-    loadPieceList(lastPiece);
-    if (!lastTemplate.isEmpty()) {
-        loadTemplateList(lastTemplate);
-    }
-    // Y la fuente elegida la última vez. Se PRESELECCIONA y nada más: la
-    // cámara guardada tampoco arranca sola, y un programa que al abrirse se
-    // pone a leer un fichero hace algo que nadie le ha pedido.
-    if (repos_.settings != nullptr) {
-        const auto kind = camera::sourceKindFromKey(
-            repos_.settings->getString("last_source_kind", "camera").valueOr("camera").c_str());
-        lastSourcePath_ = QString::fromStdString(
-            repos_.settings->getString("last_source_file", std::string()).valueOr(std::string()));
-        const int wanted = kind == camera::SourceKind::Image  ? kSourceOpenImage
-                           : kind == camera::SourceKind::Video ? kSourceOpenVideo
-                                                               : 0;
-        if (wanted < 0) {
-            if (const int index = cameraCombo_->findData(QVariant(wanted)); index >= 0) {
-                cameraCombo_->setCurrentIndex(index);
-            }
-        }
-    }
-
-    // Al arrancar con una pieza ya seleccionada, su modo y su tablero mandan
-    // sobre el ajuste global (M2); loadPieceList puede no disparar la señal.
-    loadMeasurementForSelectedPiece();
-    loadDetectionProfileForSelectedPiece();
-
-    // LO ÚLTIMO: qué comandos se pueden usar de verdad ahora mismo.
-    //
-    // Va al final del constructor porque necesita las acciones ya creadas y sus
-    // tooltips ya repartidos —guarda el texto de siempre para devolverlo cuando
-    // el comando vuelva a poder usarse—, y porque la pieza y la fuente
-    // recordadas acaban de cargarse: con eso ya se sabe qué hay delante.
-    registerGatedCommands();
 }
 
 inspection::LengthUnit MainWindow::currentUnit() const {

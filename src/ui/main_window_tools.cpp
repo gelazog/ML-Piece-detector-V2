@@ -1,6 +1,42 @@
 #include "ui/main_window.h"
 #include "ui/main_window_internal.h"
 
+#include "camera/frame_utils.h"
+#include "core/logging.h"
+#include "inspection_editor/reference_advice.h"
+#include "repositories/piece_repository.h"
+#include "repositories/settings_repository.h"
+#include "repositories/tool_repository.h"
+#include "ui/configure_dialog.h"
+#include "ui/delete_scope.h"
+#include "ui/measurement_mode_dialog.h"
+#include "ui/piece_mosaic.h"
+#include "ui/pieces_page.h"
+#include "ui/theme.h"
+#include "vision/position_fixture.h"
+
+#include <QAction>
+#include <QActionGroup>
+#include <QApplication>
+#include <QClipboard>
+#include <QComboBox>
+#include <QDockWidget>
+#include <QInputDialog>
+#include <QLabel>
+#include <QLineEdit>
+#include <QMenu>
+#include <QMessageBox>
+#include <QPushButton>
+#include <QSpinBox>
+#include <QStatusBar>
+#include <QToolButton>
+
+#include <algorithm>
+#include <string>
+#include <type_traits>
+#include <variant>
+#include <vector>
+
 namespace pci::ui {
 
 namespace {

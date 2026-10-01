@@ -1,6 +1,36 @@
 #include "ui/main_window.h"
 #include "ui/main_window_internal.h"
 
+#include "camera/frame_utils.h"
+#include "core/logging.h"
+#include "repositories/config_io.h"
+#include "repositories/detection_profile_repository.h"
+#include "repositories/settings_repository.h"
+#include "ui/background_patch_dialog.h"
+#include "ui/configure_dialog.h"
+#include "ui/detection_page.h"
+#include "ui/dialog_geometry.h"
+#include "ui/performance_page.h"
+#include "ui/pieces_page.h"
+#include "ui/preferences_page.h"
+#include "ui/theme.h"
+#include "vision/auto_roi.h"
+#include "vision/contour_analysis.h"
+#include "vision/edge_segmentation.h"
+#include "vision/pipeline.h"
+
+#include <QCloseEvent>
+#include <QComboBox>
+#include <QDockWidget>
+#include <QFileDialog>
+#include <QIcon>
+#include <QMessageBox>
+#include <QPushButton>
+#include <QStatusBar>
+
+#include <algorithm>
+#include <string>
+
 namespace pci::ui {
 
 // Exportar/importar la configuración de la máquina (O4): calibración, ajustes
@@ -449,6 +479,281 @@ void MainWindow::persistLastSession() {
     repos_.settings->setString("last_source_kind",
                                std::string(camera::sourceKindKey(sourceKind_)));
     repos_.settings->setString("last_source_file", lastSourcePath_.toStdString());
+}
+
+void MainWindow::restoreCalibrationAndPreferences() {
+    // Calibración de escala persistida.
+    if (repos_.settings != nullptr) {
+        calibration_.mmPerPixel =
+            repos_.settings->getDouble("calib_mm_per_px", 0.0).valueOr(0.0);
+        calibration_.cameraDistanceMm =
+            repos_.settings->getDouble("calib_camera_dist_mm", 0.0).valueOr(0.0);
+        calibration_.horizontalFovDeg =
+            repos_.settings->getDouble("calib_fov_deg", 60.0).valueOr(60.0);
+        calibration_.calibratedWidth = repos_.settings->getInt("calib_width", 0).valueOr(0);
+        calibration_.calibratedHeight = repos_.settings->getInt("calib_height", 0).valueOr(0);
+        calibratedCameraKey_ = QString::fromStdString(
+            repos_.settings->getString("calib_camera", std::string()).valueOr(std::string()));
+    }
+    updateCalibrationLabel();
+    video_->setMmPerPixel(calibration_.mmPerPixel);
+
+    // Preferencias persistidas (O1): intervalo de auto-inspección y kSigma.
+    if (repos_.settings != nullptr) {
+        autoIntervalMs_ =
+            std::clamp(repos_.settings->getInt("pref_auto_interval_ms", 1000).valueOr(1000),
+                       200, 10000);
+        kSigma_ = std::clamp(repos_.settings->getDouble("pref_ksigma", 3.0).valueOr(3.0), 0.5, 6.0);
+        // Disparo por paso de pieza (P2). De fábrica APAGADO: encenderlo cambia
+        // cuándo se mide, y quien ya tenía la auto-inspección funcionando no
+        // puede encontrarse con que mide en otros momentos por actualizar.
+        passTriggerOn_ = repos_.settings->getInt("pref_pass_trigger", 0).valueOr(0) != 0;
+        vision::PassTriggerOptions passOptions;
+        passOptions.settleMs =
+            std::clamp(repos_.settings->getInt("pref_pass_settle_ms", 400).valueOr(400), 0, 10000);
+        passOptions.rearmMs =
+            std::clamp(repos_.settings->getInt("pref_pass_rearm_ms", 300).valueOr(300), 0, 10000);
+        passTrigger_.setOptions(passOptions);
+        // Pestaña del panel Configurar (C1). Sin acotar por arriba: el diálogo
+        // ignora un índice que no exista, que es lo que pasará si una versión
+        // futura tiene menos pestañas que la que guardó el número.
+        configureTab_ = std::max(0, repos_.settings->getInt("config_last_tab", 0).valueOr(0));
+        measureStages_ = repos_.settings->getInt("measure_stages", 0).valueOr(0) != 0;
+        pipelineConfig_.minAreaFraction = std::clamp(
+            repos_.settings->getDouble("det_min_area", 0.005).valueOr(0.005), 0.0001, 0.5);
+        pipelineConfig_.maxAreaFraction = std::clamp(
+            repos_.settings->getDouble("det_max_area", 0.9).valueOr(0.9), 0.1, 1.0);
+        // Por defecto, IMAGEN ENTERA. Estuvo en «automática» y hubo que
+        // revertirlo: el argumento para ponerla —«la automática no puede
+        // cambiar ninguna respuesta»— era FALSO, y lo demostró usar la
+        // aplicación.
+        //
+        // El recorte automático rodea a UNA pieza, la mayor, con su margen. Se
+        // suelta cuando alguien «está contando», pero eso exige que el operador
+        // haya declarado antes que espera varias — y no puede saber que tiene
+        // que declararlo hasta que ya ha visto el problema. Con varias piezas
+        // en la mesa y nada declarado, las demás quedaban fuera por
+        // construcción y la aplicación decía que solo había una.
+        //
+        // Una optimización que cambia una respuesta no es una optimización, es
+        // un fallo. Esa frase ya estaba escrita en `effectiveWorkingZone`; lo
+        // que faltaba era aplicármela al elegir el valor por defecto.
+        zoneMode_ = vision::workingZoneModeFromKey(
+            repos_.settings->getString("work_zone_mode", "off").valueOr("off").c_str());
+    }
+    autoTimer_.setInterval(autoIntervalMs_);
+    if (repos_.engine != nullptr) {
+        repos_.engine->setKSigma(kSigma_);
+    }
+}
+
+void MainWindow::restoreDetectionSettings() {
+    // Ajustes de detección persistidos (umbral, polaridad, kernels y zona).
+    if (repos_.settings != nullptr) {
+        auto& seg = pipelineConfig_.segmentation;
+        seg.manualThreshold = repos_.settings->getInt("det_threshold", -1).valueOr(-1);
+        seg.polarity = static_cast<vision::SegmentationPolarity>(
+            std::clamp(repos_.settings->getInt("det_polarity", 0).valueOr(0), 0, 2));
+        seg.blurKernel = repos_.settings->getInt("det_blur", 5).valueOr(5);
+        seg.morphKernel = repos_.settings->getInt("det_morph", 5).valueOr(5);
+        // La separación de piezas que se tocan también se recuerda: es una
+        // propiedad de CÓMO están colocadas las piezas en el puesto, no algo
+        // que se decida cada vez.
+        seg.splitTouchingPieces = repos_.settings->getInt("det_split_touching", 0).valueOr(0) != 0;
+        // Se guarda el NÚMERO, no un sí/no: el día que el nivel de aflojado sea
+        // ajustable, lo que ya está guardado sigue queriendo decir lo mismo.
+        seg.recoverHighlightsBy = repos_.settings->getInt("det_recover_glare", 0).valueOr(0);
+        // LA CLAVE DE COLOR DE FONDO ES UNA PROPIEDAD DEL PUESTO.
+        //
+        // El color de la mesa no cambia entre inspecciones, así que preguntarlo
+        // cada vez sería preguntar por algo que ya se sabe. Se guarda el modo y
+        // el color por separado: quien lo tenga en «lo busca solo» y un día pase
+        // a «lo digo yo» se encuentra el último color que eligió, no un blanco.
+        seg.backgroundKey = static_cast<vision::SegmentationOptions::BackgroundKey>(
+            std::clamp(repos_.settings->getInt("det_background_key", 0).valueOr(0), 0, 2));
+        seg.background = cv::Vec3b(
+            static_cast<unsigned char>(
+                std::clamp(repos_.settings->getInt("det_background_b", 255).valueOr(255), 0, 255)),
+            static_cast<unsigned char>(
+                std::clamp(repos_.settings->getInt("det_background_g", 255).valueOr(255), 0, 255)),
+            static_cast<unsigned char>(
+                std::clamp(repos_.settings->getInt("det_background_r", 255).valueOr(255), 0, 255)));
+        pipelineConfig_.roi = cv::Rect(repos_.settings->getInt("det_roi_x", 0).valueOr(0),
+                                       repos_.settings->getInt("det_roi_y", 0).valueOr(0),
+                                       repos_.settings->getInt("det_roi_w", 0).valueOr(0),
+                                       repos_.settings->getInt("det_roi_h", 0).valueOr(0));
+        // Modo «fija» sin zona guardada es un estado imposible de alcanzar hoy,
+        // pero sí de heredar de una versión anterior. Sin esto el programa diría
+        // que trabaja en una zona y estaría mirando la imagen entera.
+        //
+        // Aquí NO vale `modeAfterFixedZoneChanged`: esa función es para cuando
+        // el operador acaba de dibujar, y forzaría «fija» al abrir. Si guardó
+        // una zona y luego se pasó a automática, el modo guardado es el que
+        // manda; lo único que se corrige es la incoherencia a la baja.
+        if (zoneMode_ == vision::WorkingZoneMode::Fixed &&
+            pipelineConfig_.roi.area() <= 0) {
+            zoneMode_ = vision::WorkingZoneMode::Off;
+        }
+        pipelineConfig_.roiPolygon = decodeZonePolygon(
+            repos_.settings->getString(kSettingFreeZone, std::string()).valueOr(std::string()));
+        // Y lo mismo para la libre, por el mismo motivo: el modo guardado puede
+        // apuntar a un dibujo que ya no está.
+        if (zoneMode_ == vision::WorkingZoneMode::Free &&
+            pipelineConfig_.roiPolygon.size() < 3) {
+            zoneMode_ = vision::WorkingZoneMode::Off;
+        }
+        pixelReferenceSize_ = QSize(repos_.settings->getInt("det_zone_ref_w", 0).valueOr(0),
+                                   repos_.settings->getInt("det_zone_ref_h", 0).valueOr(0));
+        pipelineConfig_.autoOrient = repos_.settings->getInt("track_rotation", 0).valueOr(0) != 0;
+        pipelineConfig_.subpixelEdges =
+            repos_.settings->getInt("det_subpixel", 0).valueOr(0) != 0;
+        arucoLiveScale_ = repos_.settings->getInt("aruco_live", 0).valueOr(0) != 0;
+        markerSizeMm_ = repos_.settings->getDouble("aruco_marker_mm", 30.0).valueOr(30.0);
+    }
+    updateRoiButton();
+}
+
+void MainWindow::restoreCameraAndViewSettings() {
+    // Controles de la cámara guardados (O2): se reaplican al abrirla. Solo se
+    // recuerdan los que el operador tocó alguna vez.
+    if (repos_.settings != nullptr) {
+        for (const camera::CameraProperty property : camera::allCameraProperties()) {
+            const std::string key(camera::propertyKey(property));
+            if (auto stored = repos_.settings->getDouble(key, -1e9);
+                stored.isOk() && stored.value() > -1e9) {
+                savedCameraControls_.push_back({property, stored.value()});
+            }
+        }
+        setupGuided_ = repos_.settings->getInt("setup_guided", 0).valueOr(0) != 0;
+        savedResolution_.width = repos_.settings->getInt("cam_width", 0).valueOr(0);
+        savedResolution_.height = repos_.settings->getInt("cam_height", 0).valueOr(0);
+    }
+
+    // Tablero de referencia (T2): visibilidad y origen elegidos por el operador.
+    if (repos_.settings != nullptr) {
+        boardVisible_ = repos_.settings->getInt("board_visible", 0).valueOr(0) != 0;
+        boardConfig_.origin = vision::originFromKey(
+            repos_.settings->getString("board_origin", std::string("bounds")).valueOr(std::string("bounds")));
+        boardConfig_.followPieceAngle = repos_.settings->getInt("board_follow", 0).valueOr(0) != 0;
+        boardConfig_.fixedPoint = {
+            static_cast<float>(repos_.settings->getDouble("board_fixed_x", 0.0).valueOr(0.0)),
+            static_cast<float>(repos_.settings->getDouble("board_fixed_y", 0.0).valueOr(0.0))};
+        boardConfig_.manualOffset = {
+            static_cast<float>(repos_.settings->getDouble("board_offset_x", 0.0).valueOr(0.0)),
+            static_cast<float>(repos_.settings->getDouble("board_offset_y", 0.0).valueOr(0.0))};
+    }
+    if (repos_.settings != nullptr) {
+        rulerVisible_ = repos_.settings->getInt("ruler_visible", 0).valueOr(0) != 0;
+        // El realce se recuerda: quien inspecciona piezas negras las inspecciona
+        // todos los días, y volver a encenderlo cada mañana es un impuesto.
+        // El modelo de la lente que quedara guardado. Se carga SIEMPRE; que se
+        // aplique o no es otra cosa, y va en su propio ajuste.
+        if (auto stored = repos_.settings->getString("lens_model", ""); stored.isOk()) {
+            if (auto model = vision::parseCalibration(stored.value()); model.has_value()) {
+                lensCorrector_ = vision::LensCorrector(*model);
+            }
+        }
+        const bool lensOn = repos_.settings->getInt("lens_enabled", 0).valueOr(0) != 0;
+        lensCorrectionOn_ = lensOn && lensCorrector_.isReady();
+        if (lensCorrectionAction_ != nullptr) {
+            lensCorrectionAction_->setEnabled(lensCorrector_.isReady());
+            const QSignalBlocker block(lensCorrectionAction_);
+            lensCorrectionAction_->setChecked(lensCorrectionOn_);
+        }
+        const bool enhance = repos_.settings->getInt("view_enhance", 0).valueOr(0) != 0;
+        if (viewEnhanceAction_ != nullptr) {
+            viewEnhanceAction_->setChecked(enhance);
+        }
+        video_->setViewEnhance(enhance);
+    }
+    video_->setRulerVisible(rulerVisible_);
+    video_->setBoardVisible(boardVisible_);
+    video_->setBoardConfig(boardConfig_);
+    if (repos_.engine != nullptr) {
+        repos_.engine->setBoardConfig(boardConfig_);
+    }
+}
+
+void MainWindow::placeDocksMissingFromSavedLayout() {
+    // Un dock NUEVO sobre un estado guardado VIEJO: `restoreState` no sabe nada
+    // de él —se guardó antes de que existiera— y lo deja donde le parece, que a
+    // veces es oculto. Quien ya usaba el programa abriría la versión nueva sin
+    // paleta y sin forma de adivinar que le falta un panel.
+    //
+    // Se comprueba DESPUÉS de restaurar y se coloca a mano si hace falta. Es el
+    // mismo rigor que con las migraciones de esquema: no basta con que funcione
+    // en un perfil limpio.
+    if (toolsDock_ != nullptr && toolsDock_->isHidden()) {
+        addDockWidget(Qt::RightDockWidgetArea, toolsDock_);
+        toolsDock_->show();
+        core::logInfo("El dock de herramientas no estaba en la disposición guardada: "
+                      "se coloca a la derecha");
+    }
+    // La tira de capturas es un dock NUEVO, así que cae exactamente en el caso
+    // que describe el párrafo de arriba: ninguna disposición guardada hasta hoy
+    // sabe de ella. Sin esto, quien ya usaba el programa actualizaría y no la
+    // vería nunca — y no tendría forma de adivinar que le falta un panel.
+    if (captureDock_ != nullptr && captureDock_->isHidden()) {
+        addDockWidget(Qt::LeftDockWidgetArea, captureDock_);
+        captureDock_->show();
+        core::logInfo("La tira de capturas no estaba en la disposición guardada: "
+                      "se coloca a la izquierda");
+    }
+    // Y la tabla de medidas, que es el dock más nuevo de todos y cayó en el
+    // mismo agujero: quien ya usaba el programa la tendría oculta para siempre.
+    if (measurementsDock_ != nullptr && captureDock_ != nullptr) {
+        if (measurementsDock_->isHidden()) {
+            addDockWidget(Qt::LeftDockWidgetArea, measurementsDock_);
+            measurementsDock_->show();
+            core::logInfo("La tabla de medidas no estaba en la disposición guardada: "
+                          "se coloca a la izquierda");
+        }
+        // Comparte pestaña con las capturas para no partir la columna
+        // izquierda en dos mitades estrechas. Sólo si NADIE lo ha emparejado
+        // ya: una disposición que el operador colocó a mano manda sobre esto.
+        if (tabifiedDockWidgets(captureDock_).isEmpty() &&
+            dockWidgetArea(measurementsDock_) == Qt::LeftDockWidgetArea) {
+            tabifyDockWidget(captureDock_, measurementsDock_);
+            measurementsDock_->raise();
+        }
+    }
+}
+
+void MainWindow::restoreLastSession() {
+    // Se vuelve a la pieza y a la plantilla con las que se estaba trabajando.
+    // Sin esto, el combo caía siempre en la primera de la lista y en
+    // «principal»: quien tiene veinte piezas registradas empezaba cada turno
+    // buscando la suya.
+    std::int64_t lastPiece = -1;
+    QString lastTemplate;
+    if (repos_.settings != nullptr) {
+        lastPiece = repos_.settings->getInt("last_piece_id", -1).valueOr(-1);
+        lastTemplate = QString::fromStdString(
+            repos_.settings->getString("last_template", std::string()).valueOr(std::string()));
+    }
+    // Si la pieza se borró desde otra sesión, `loadPieceList` cae sola en la
+    // primera: recordar una elección no puede impedir arrancar.
+    loadPieceList(lastPiece);
+    if (!lastTemplate.isEmpty()) {
+        loadTemplateList(lastTemplate);
+    }
+    // Y la fuente elegida la última vez. Se PRESELECCIONA y nada más: la
+    // cámara guardada tampoco arranca sola, y un programa que al abrirse se
+    // pone a leer un fichero hace algo que nadie le ha pedido.
+    if (repos_.settings != nullptr) {
+        const auto kind = camera::sourceKindFromKey(
+            repos_.settings->getString("last_source_kind", "camera").valueOr("camera").c_str());
+        lastSourcePath_ = QString::fromStdString(
+            repos_.settings->getString("last_source_file", std::string()).valueOr(std::string()));
+        const int wanted = kind == camera::SourceKind::Image  ? kSourceOpenImage
+                           : kind == camera::SourceKind::Video ? kSourceOpenVideo
+                                                               : 0;
+        if (wanted < 0) {
+            if (const int index = cameraCombo_->findData(QVariant(wanted)); index >= 0) {
+                cameraCombo_->setCurrentIndex(index);
+            }
+        }
+    }
 }
 
 }  // namespace pci::ui

@@ -1,6 +1,47 @@
 #include "ui/main_window.h"
 #include "ui/main_window_internal.h"
 
+#include "camera/camera_enumerator.h"
+#include "camera/file_sources.h"
+#include "camera/frame_utils.h"
+#include "core/logging.h"
+#include "repositories/settings_repository.h"
+#include "ui/camera_image_page.h"
+#include "ui/configure_dialog.h"
+#include "ui/source_files.h"
+#include "vision/frame_geometry.h"
+
+#include <QAction>
+#include <QApplication>
+#include <QComboBox>
+#include <QDir>
+#include <QDockWidget>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QHBoxLayout>
+#include <QIcon>
+#include <QLabel>
+#include <QListView>
+#include <QListWidget>
+#include <QMenu>
+#include <QMessageBox>
+#include <QMimeData>
+#include <QPixmap>
+#include <QPushButton>
+#include <QSlider>
+#include <QStatusBar>
+#include <QTime>
+#include <QToolButton>
+#include <QUrl>
+#include <QVBoxLayout>
+#include <QtConcurrent/QtConcurrent>
+
+#include <algorithm>
+#include <string>
+#include <vector>
+
 namespace pci::ui {
 
 namespace {

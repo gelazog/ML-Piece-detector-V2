@@ -1,6 +1,48 @@
 #include "ui/main_window.h"
 #include "ui/main_window_internal.h"
 
+#include "camera/frame_utils.h"
+#include "core/logging.h"
+#include "repositories/inspection_repository.h"
+#include "repositories/settings_repository.h"
+#include "repositories/tool_repository.h"
+#include "ui/camera_image_page.h"
+#include "ui/configure_dialog.h"
+#include "ui/detection_page.h"
+#include "ui/dialog_geometry.h"
+#include "ui/inspection_result_dialog.h"
+#include "ui/lens_calibration_dialog.h"
+#include "ui/measurements_panel.h"
+#include "ui/performance_page.h"
+#include "ui/piece_report_dialog.h"
+#include "ui/pieces_page.h"
+#include "ui/rate_readout.h"
+#include "ui/setup_guide.h"
+#include "ui/theme.h"
+#include "vision/auto_roi.h"
+#include "vision/contour_analysis.h"
+#include "vision/edge_segmentation.h"
+#include "vision/fixture_stabilizer.h"
+#include "vision/pipeline.h"
+#include "vision/plane_scale.h"
+#include "vision/quality_metrics.h"
+
+#include <QComboBox>
+#include <QDockWidget>
+#include <QLabel>
+#include <QMessageBox>
+#include <QPixmap>
+#include <QPushButton>
+#include <QRegularExpression>
+#include <QStatusBar>
+#include <QtConcurrent/QtConcurrent>
+
+#include <opencv2/imgproc.hpp>
+
+#include <algorithm>
+#include <string>
+#include <vector>
+
 namespace pci::ui {
 
 namespace {

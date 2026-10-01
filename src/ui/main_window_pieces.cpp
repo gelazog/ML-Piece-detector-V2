@@ -1,6 +1,35 @@
 #include "ui/main_window.h"
 #include "ui/main_window_internal.h"
 
+#include "camera/frame_utils.h"
+#include "core/logging.h"
+#include "inspection_editor/editor_window.h"
+#include "repositories/piece_repository.h"
+#include "repositories/tool_repository.h"
+#include "ui/dialog_geometry.h"
+#include "ui/history_dialog.h"
+#include "ui/measurement_mode_dialog.h"
+#include "ui/piece_manager_dialog.h"
+#include "ui/registration_wizard.h"
+#include "ui/template_manager_dialog.h"
+#include "ui/theme.h"
+
+#include <QComboBox>
+#include <QFileDialog>
+#include <QInputDialog>
+#include <QLabel>
+#include <QLineEdit>
+#include <QMessageBox>
+#include <QPixmap>
+#include <QProgressDialog>
+#include <QPushButton>
+#include <QStatusBar>
+#include <QtConcurrent/QtConcurrent>
+
+#include <algorithm>
+#include <string>
+#include <vector>
+
 namespace pci::ui {
 
 namespace {

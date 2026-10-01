@@ -1,6 +1,39 @@
 #include "ui/main_window.h"
 #include "ui/main_window_internal.h"
 
+#include "camera/file_sources.h"
+#include "camera/frame_utils.h"
+#include "core/logging.h"
+#include "repositories/detection_profile_repository.h"
+#include "repositories/piece_repository.h"
+#include "repositories/settings_repository.h"
+#include "ui/calibration_dialog.h"
+#include "ui/configure_dialog.h"
+#include "ui/detection_page.h"
+#include "ui/dialog_geometry.h"
+#include "ui/lens_calibration_dialog.h"
+#include "ui/performance_page.h"
+#include "ui/pieces_page.h"
+#include "vision/auto_roi.h"
+#include "vision/contour_analysis.h"
+#include "vision/detection_tuning.h"
+#include "vision/outlined_piece.h"
+#include "vision/pipeline.h"
+
+#include <QApplication>
+#include <QLabel>
+#include <QMessageBox>
+#include <QPushButton>
+#include <QSlider>
+#include <QStatusBar>
+#include <QToolButton>
+
+#include <opencv2/imgproc.hpp>
+
+#include <algorithm>
+#include <string>
+#include <vector>
+
 namespace pci::ui {
 
 void MainWindow::persistPipelineConfig() {

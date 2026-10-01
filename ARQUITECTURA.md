@@ -5502,6 +5502,48 @@ nadie vuelva a copiar la regla de qué pieza se mide, y
 lo que buscaban; la tercera no: `main_window.cpp` sigue existiendo, ya no
 contiene el análisis en vivo, y la guarda habría aprobado sin comprobar nada.
 
+**El constructor, por zonas.** El reparto dejó intacto el constructor, que era
+una sola función de **1 416 líneas**: tres filas de botones, el lienzo, cuatro
+docks, la barra de estado, ochenta conexiones y la lectura de todos los ajustes
+guardados, una detrás de otra. Ahora tiene 53 líneas y llama, en el mismo orden
+de antes, a dieciocho métodos privados de 200 líneas como mucho: en
+`main_window.cpp` los que arman la ventana (`buildSourceRow` —que reparte la
+fila 1 en `buildSourceControls`, `buildEdgeBrushMenu` y `connectEdgeBrushMenu`—,
+`buildPieceRow`, `buildPieceToolsRow`, `buildNoticeBands`, `buildVideoCanvas`,
+`buildCompareAndToolsDocks`, `buildMeasurementsAndMosaicDocks`,
+`buildStatusBar`, `connectSignalsAndTimers`); en `main_window_settings.cpp`,
+junto a `restoreWindowLayout` y `persistLastSession`, los que leen lo guardado
+(`restoreCalibrationAndPreferences`, `restoreDetectionSettings`,
+`restoreCameraAndViewSettings`, `placeDocksMissingFromSavedLayout`,
+`restoreLastSession`); y en `main_window_menus.cpp`, `buildMenusAndShortcuts`.
+Es solo mover código: mismo orden de creación, mismas conexiones, mismos textos
+y comentarios. Las filas reciben el widget central y su layout como parámetros
+en vez de convertirlos en miembros, y el separador vertical que compartían dos
+filas pasó de lambda local a función libre (`barSeparator`). El orden importa y
+por eso lo sigue diciendo el constructor: los atajos antes que los menús, los
+docks antes de restaurar la disposición, y el lienzo después del menú del
+pincel — que es también por qué `connectEdgeBrushMenu` conecta
+`pieceOutlined` sobre un `video_` todavía nulo, igual que antes del reparto (ver
+abajo).
+
+**Los includes, en cada fichero.** `main_window_internal.h` arrastraba los 95
+includes del fichero único a los ocho, usaran lo que usaran. Ahora solo lleva
+los cinco que necesitan sus propios ayudantes (`cv::Point`, `<sstream>`,
+`<string>`, `<vector>`, `<exception>`), y cada `main_window_*.cpp` incluye lo
+que usa: entre 17 (`menus`) y 40 (`analysis`, `sources`). Compilación limpia de
+los ocho objetos, de uno en uno (`ninja -j 1`), dos pasadas: **273 y 250 s
+antes, 250 y 226 s después** (−9 % y −10 %). El ruido de la máquina es del
+mismo orden que la ganancia por fichero: `menus`, `settings`, `detection` y
+`main_window.cpp` bajan de 29–39 s a 20–31 s, mientras que `analysis`, que usa
+casi todo, no baja.
+
+Queda un fallo a la vista que este cambio no arregla, porque no es mover
+código: la conexión de `EditorCanvas::pieceOutlined` con `onPieceOutlined` se
+hace antes de crear el lienzo, así que Qt la rechaza con un aviso y «Marcar una
+pieza rodeándola…» / «Descartar lo que no es una pieza…» no llegan a la
+ventana. Es el mismo error que el comentario de `buildVideoCanvas` cuenta para
+`edgeCorrected`.
+
 
 ## 12. Empaquetado
 
