@@ -167,6 +167,7 @@ add_executable(pci_gui_tests
   test_background_patch_window.cpp
   test_coloured_table_advice.cpp
   test_detection_groups.cpp
+  test_detection_advanced.cpp
   test_same_detection_everywhere.cpp
   test_lens_wizard.cpp
   test_readme_paths.cpp
@@ -190,6 +191,7 @@ add_executable(pci_gui_tests
   test_brush_persistence.cpp
   test_brush_comfort.cpp
   test_brush_size_from_menu.cpp
+  test_brush_menu.cpp
   test_context_menu.cpp
   test_theme.cpp
   test_video_bands.cpp

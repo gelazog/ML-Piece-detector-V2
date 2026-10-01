@@ -20,6 +20,11 @@ class QLabel;
 class QSlider;
 class QDoubleSpinBox;
 class QSpinBox;
+class QToolButton;
+
+namespace pci::repositories {
+class SettingsRepository;
+}
 
 namespace pci::ui {
 
@@ -73,6 +78,22 @@ public:
     void reloadFor(vision::SegmentationOptions options, std::int64_t profileId,
                    double minAreaFraction, double maxAreaFraction, bool subpixelEdges);
 
+    // LO AVANZADO, PLEGADO Y RECORDADO.
+    //
+    // La pestaña enseñaba veinte filas a la vez, y un operador toca a diario
+    // cinco: el umbral, la polaridad, el suavizado, el área mínima y separar
+    // piezas pegadas. El resto —método, clave de color, recuperar brillos,
+    // limpieza, área máxima, subpíxel— se ajusta al montar el puesto y ya.
+    //
+    // Si estaba abierto o cerrado se guarda en `settings` (puede ser nulo: se
+    // abre cerrado y no se recuerda nada).
+    void rememberAdvancedIn(repositories::SettingsRepository* settings);
+    [[nodiscard]] bool advancedOpen() const;
+    // Cuántos ajustes plegados NO están en su valor de fábrica. Se enseña en el
+    // propio título del grupo: un ajuste escondido que cambia lo que se mide no
+    // puede quedar escondido del todo.
+    [[nodiscard]] int advancedChanges() const;
+
 private slots:
     void onAutoThresholdToggled(bool automatic);
     void onThresholdMoved(int value);
@@ -83,6 +104,14 @@ private slots:
 private:
     void reloadProfiles(std::int64_t selectId);
     void applyOptions(const vision::SegmentationOptions& options);
+    // Abrir o cerrar lo avanzado. `remember` distingue al operador, que decide
+    // cómo quiere la pestaña, de un consejo, que la abre solo esta vez.
+    void showAdvanced(bool open, bool remember);
+    void refreshAdvancedTitle();
+
+    QToolButton* advancedToggle_ = nullptr;
+    QWidget* advancedPanel_ = nullptr;
+    repositories::SettingsRepository* settings_ = nullptr;
 
     QLabel* colourHint_ = nullptr;
     QPushButton* useColourButton_ = nullptr;

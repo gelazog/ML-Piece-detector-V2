@@ -719,7 +719,7 @@ void MainWindow::updateEdgeBrushAvailability() {
             : tr("Solo funciona con una imagen quieta: foto, fichero abierto o vídeo en "
                  "pausa."));
     edgeBrushButton_->setWhatsThis(
-        usable ? tr("Verde es lo que añades, rojo lo que quitas. La rueda del ratón cambia "
+        usable ? tr("Verde es lo que añades, rojo lo que quitas. Las teclas [ y ] cambian "
                     "el tamaño del pincel. La corrección solo vale para esta imagen.")
         : sourceKind_ == camera::SourceKind::Video
             ? tr("Con el vídeo en marcha el contorno se recalcula en cada frame, así que "

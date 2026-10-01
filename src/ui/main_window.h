@@ -469,6 +469,9 @@ private:
     QAction* brushSteadyAction_ = nullptr;
     QAction* brushStraightAction_ = nullptr;
     QAction* brushSnapAction_ = nullptr;
+    // Tamaño y ayudas del pincel: un solo submenú, colgado del botón «Corregir
+    // borde» y del menú «Medida» a la vez.
+    QMenu* brushOptionsMenu_ = nullptr;
     QAction* viewEnhanceAction_ = nullptr;
 
     // CORRECCION DE LA DISTORSION DE LA LENTE.

@@ -392,6 +392,11 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    círculo del pincel sigue al cursor para que veas cuánto abarca antes de
    pintar. Al soltar se reanaliza y ves el borde nuevo.
 
+   **El tamaño del pincel y sus ayudas** (pulso estable, trazo recto, ceñir al
+   borde) están en el submenú **Pincel**, dentro de *Corregir borde* y también
+   en *Medida ▸ Pincel*: desde la barra de menús puedes dejarlo preparado
+   aunque todavía no haya una imagen quieta.
+
    **Solo con una foto o una imagen abierta**, y el botón te lo dice cuando no:
    en vídeo en vivo el contorno se recalcula en cada frame, así que un borde
    corregido a mano dejaría de valer en cuanto la pieza se moviera. Captura una
@@ -436,7 +441,7 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    Pero no hace falta que la ajustes a ojo si se repite — para eso está lo
    siguiente.
 
-   **Afinar el borde a subpíxel** (*Configurar ▸ Configurar…*, pestaña **Detección**, apartado **Precisión**): el borde
+   **Afinar el borde a subpíxel** (*Configurar ▸ Configurar…*, pestaña **Detección**, grupo **Avanzado**, apartado **Límites y precisión**): el borde
    de una pieza no es un escalón — el brillo cambia a lo largo de varios
    píxeles, y sobre una foto real esa rampa medía **15 px**. Un umbral coloca el
    borde en cualquier punto de ella según la iluminación. Con esto, cada punto
@@ -1060,6 +1065,14 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    sobre el video (amarillo punteado) y el contorno solo se busca ahí —
    sombras y objetos fuera de la zona dejan de estorbar. Ambos ajustes
    persisten y aplican al video en vivo, al registro y a la inspección.
+
+   **En la pestaña Detección, a la vista solo lo de cada día**: el umbral y la
+   polaridad, el suavizado, el área mínima y separar las piezas que se tocan.
+   El método de separación, la clave de color, recuperar brillos, la limpieza,
+   el área máxima y el subpíxel están en **Avanzado**, plegado. Si la imagen
+   pide uno de ellos (la pieza queda recortada por el corte o tu mesa tiene
+   color), el aviso abre el grupo solo. El título te dice cuántos ajustes de
+   ahí dentro no están de fábrica, y la pestaña recuerda si lo dejaste abierto.
 
    **En el vídeo, cada cota dice «OK» o «NG» con palabras**, no solo con el
    color de la letra. Antes el veredicto iba únicamente en verde o rojo: quien

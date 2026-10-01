@@ -1,6 +1,7 @@
 #include "ui/detection_page.h"
 #include "ui/theme.h"
 
+#include "repositories/settings_repository.h"
 #include "vision/pipeline.h"
 
 #include <algorithm>
@@ -23,6 +24,7 @@
 #include <QLabel>
 #include <QSlider>
 #include <QSpinBox>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 namespace pci::ui {
@@ -81,17 +83,34 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     // en que se hacen: cómo se separa la pieza, dónde se pone el corte, cómo se
     // arregla la silueta que sale, y qué cuenta como pieza. El propio fichero ya
     // decía en otro sitio que agrupar era lo que resolvía este problema.
-    auto* separateBox = new QGroupBox(tr("Separación"), this);
-    auto* separateForm = new QFormLayout(separateBox);
-
+    //
+    // Y DOS DE ELLOS A LA VISTA, TRES PLEGADOS.
+    //
+    // Agrupar ordenó las veinte filas, pero seguían todas delante. A la vista
+    // queda lo que se toca en el día a día —el corte y su polaridad, el
+    // suavizado, el área mínima, separar piezas pegadas— y el resto va a
+    // «Avanzado»: se ajusta al montar el puesto. El método y la clave de color
+    // están plegados porque tienen consejo propio: cuando la imagen los pide,
+    // el aviso abre el grupo solo (`setSceneReading`, `setBackgroundColour`).
     auto* cutBox = new QGroupBox(tr("Umbral"), this);
     auto* cutForm = new QFormLayout(cutBox);
 
-    auto* shapeBox = new QGroupBox(tr("Silueta"), this);
+    auto* pieceBox = new QGroupBox(tr("Pieza"), this);
+    auto* pieceForm = new QFormLayout(pieceBox);
+
+    advancedPanel_ = new QWidget(this);
+    advancedPanel_->setObjectName(QStringLiteral("advancedPanel"));
+    auto* advancedLayout = new QVBoxLayout(advancedPanel_);
+    advancedLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto* separateBox = new QGroupBox(tr("Separación"), advancedPanel_);
+    auto* separateForm = new QFormLayout(separateBox);
+
+    auto* shapeBox = new QGroupBox(tr("Silueta"), advancedPanel_);
     auto* shapeForm = new QFormLayout(shapeBox);
 
-    auto* pieceBox = new QGroupBox(tr("Tamaño y precisión"), this);
-    auto* pieceForm = new QFormLayout(pieceBox);
+    auto* limitsBox = new QGroupBox(tr("Límites y precisión"), advancedPanel_);
+    auto* limitsForm = new QFormLayout(limitsBox);
 
     autoThreshold_ = new QCheckBox(tr("Automático (Otsu)"), this);
     autoThreshold_->setToolTip(
@@ -192,7 +211,8 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
         tr("Separa piezas que se tocan, cortando por el cuello que las une.\n"
            "No la actives con piezas alargadas con cabeza: puede partir una "
            "sola en dos."));
-    shapeForm->addRow(splitTouching_);
+    // Se añade al grupo «Pieza» más abajo, detrás del área mínima: las dos
+    // responden a cuántas piezas salen.
 
     // RECUPERAR LO QUE EL BRILLO SE LLEVA.
     //
@@ -261,8 +281,13 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     method_->setCurrentIndex(static_cast<int>(current.method));
     splitTouching_->setChecked(current.splitTouchingPieces);
     recoverGlare_->setChecked(current.recoverHighlightsBy > 0);
+    // Lo que enciende un consejo se tiene que VER encendido. Los dos controles
+    // viven plegados en «Avanzado»; si el consejo los cambiara con el grupo
+    // cerrado, el operador no tendría forma de saber qué se ha tocado ni dónde
+    // deshacerlo. Se abre sin recordarlo: la próxima vez sale como él lo dejó.
     connect(useEdgesButton_, &QPushButton::clicked, this, [this] {
         method_->setCurrentIndex(static_cast<int>(vision::SegmentationMethod::Edges));
+        showAdvanced(true, false);
     });
     connect(useColourButton_, &QPushButton::clicked, this, [this] {
         // A «lo busca solo»: el operador que llega aquí desde el aviso no sabe
@@ -270,6 +295,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
         // probar sería ponerle un peaje a la sugerencia.
         backgroundKey_->setCurrentIndex(
             static_cast<int>(vision::SegmentationOptions::BackgroundKey::Auto));
+        showAdvanced(true, false);
     });
     method_->setToolTip(
         tr("«Por nivel» separa por un corte de gris; es lo que funciona casi "
@@ -286,14 +312,16 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
         tr("Cuál de los dos lados del corte de gris es la pieza.\n"
            "«Automática» acierta casi siempre; fíjala a mano si el resultado "
            "sale invertido o la pieza toca el borde del encuadre."));
-    separateForm->addRow(tr("Polaridad:"), polarity_);
+    // Con el umbral y no con el método: dice qué lado del corte es la pieza, y
+    // va justo debajo del corte (fila 2, antes de «Comprobar el corte»).
+    cutForm->insertRow(2, tr("Polaridad:"), polarity_);
 
     blur_ = new QSpinBox(this);
     blur_->setRange(1, 31);
     blur_->setSingleStep(2);
     blur_->setValue(current.blurKernel);
     blur_->setToolTip(tr("Suavizado previo: más alto = menos ruido, bordes menos finos"));
-    shapeForm->addRow(tr("Suavizado (px):"), blur_);
+    pieceForm->addRow(tr("Suavizado (px):"), blur_);
 
     morph_ = new QSpinBox(this);
     morph_->setRange(1, 31);
@@ -301,7 +329,6 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     morph_->setValue(current.morphKernel);
     morph_->setToolTip(
         tr("Limpieza morfológica: elimina motas y rellena huecos de ese tamaño"));
-    shapeForm->addRow(tr("Limpieza (px):"), morph_);
 
     // Qué cuenta como pieza. Estaba fijo en el código; con piezas pequeñas el
     // 0,5 % por defecto es justo la frontera entre "no hay pieza" y "hay
@@ -389,6 +416,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
     connect(minArea_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             [refreshHint](double) { refreshHint(); });
     refreshHint();
+    pieceForm->addRow(splitTouching_);
 
     maxArea_ = new QDoubleSpinBox(this);
     maxArea_->setRange(10.0, 100.0);
@@ -400,7 +428,7 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
         tr("Por encima de esta fracción se considera que la segmentación falló\n"
            "(la luz marcó toda la imagen) en vez de que la pieza sea enorme.\n"
            "Por defecto 90 %."));
-    pieceForm->addRow(tr("Área máxima:"), maxArea_);
+    limitsForm->addRow(tr("Área máxima:"), maxArea_);
 
     // Afinado subpíxel del borde.
     //
@@ -419,13 +447,50 @@ DetectionPage::DetectionPage(vision::SegmentationOptions current, QWidget* paren
         tr("Coloca cada punto del borde interpolando entre píxeles, en vez de\n"
            "dejarlo en el más cercano. Cambia el área, el perímetro y las\n"
            "cotas: revisa tus tolerancias si ya las tenías ajustadas."));
-    pieceForm->addRow(tr("Precisión:"), subpixel_);
+    limitsForm->addRow(tr("Precisión:"), subpixel_);
 
-    rootLayout->addWidget(separateBox);
+    // La limpieza morfológica, con las otras correcciones de silueta plegadas:
+    // el suavizado ya limpia lo que suele hacer falta, y ésta se toca al montar
+    // el puesto.
+    shapeForm->addRow(tr("Limpieza (px):"), morph_);
+
+    advancedLayout->addWidget(separateBox);
+    advancedLayout->addWidget(shapeBox);
+    advancedLayout->addWidget(limitsBox);
+
+    // El título es un botón con flecha y no una casilla: una casilla de grupo
+    // (QGroupBox checkable) APAGA los controles en vez de esconderlos, y un
+    // control apagado dice «no puedes», que no es lo que pasa aquí.
+    advancedToggle_ = new QToolButton(this);
+    advancedToggle_->setObjectName(QStringLiteral("advancedToggle"));
+    advancedToggle_->setCheckable(true);
+    advancedToggle_->setAutoRaise(true);
+    advancedToggle_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    advancedToggle_->setToolTip(
+        tr("Ajustes del puesto que casi nunca hace falta tocar. Se abre solo si la "
+           "imagen pide alguno."));
+    connect(advancedToggle_, &QToolButton::clicked, this,
+            [this](bool open) { showAdvanced(open, true); });
+
     rootLayout->addWidget(cutBox);
-    rootLayout->addWidget(shapeBox);
     rootLayout->addWidget(pieceBox);
+    rootLayout->addWidget(advancedToggle_);
+    rootLayout->addWidget(advancedPanel_);
     rootLayout->addStretch(1);
+
+    // El número del título sigue a los controles mientras se tocan: los que
+    // cuentan son los plegados, que son los que no se ven.
+    connect(method_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int) { refreshAdvancedTitle(); });
+    connect(backgroundKey_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int) { refreshAdvancedTitle(); });
+    connect(recoverGlare_, &QCheckBox::toggled, this, [this](bool) { refreshAdvancedTitle(); });
+    connect(subpixel_, &QCheckBox::toggled, this, [this](bool) { refreshAdvancedTitle(); });
+    connect(morph_, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this](int) { refreshAdvancedTitle(); });
+    connect(maxArea_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [this](double) { refreshAdvancedTitle(); });
+    showAdvanced(false, false);
 
     connect(autoThreshold_, &QCheckBox::toggled, this,
             &DetectionPage::onAutoThresholdToggled);
@@ -635,6 +700,9 @@ void DetectionPage::setBackgroundColour(const cv::Vec3b& background) {
             .arg(QColor(background[2], background[1], background[0]).name().toUpper())
             .arg(colour, 0, 'f', 2));
     colourHint_->setStyleSheet(theme::textStyle(theme::kWarn));
+    // El aviso vive con el control que arregla, plegado en «Avanzado»: si el
+    // grupo siguiera cerrado, el aviso existiría sin que nadie lo viera.
+    showAdvanced(true, false);
 }
 
 void DetectionPage::setSceneReading(const vision::SceneReading& reading) {
@@ -681,6 +749,7 @@ void DetectionPage::setSceneReading(const vision::SceneReading& reading) {
                 .arg(100.0 * reading.thresholdSwing, 0, 'f', 1));
     }
     sceneHint_->setStyleSheet(theme::textStyle(theme::kWarn));
+    showAdvanced(true, false);
 }
 
 // EL BOTÓN ENSEÑA EL COLOR, no solo lo nombra.
@@ -740,6 +809,88 @@ void DetectionPage::setChosenBackground(const cv::Vec3b& background) {
     // seguía en «Claridad». El color se habría guardado para no usarse.
     backgroundKey_->setCurrentIndex(
         static_cast<int>(vision::SegmentationOptions::BackgroundKey::Fixed));
+    // Y se enseña encendida: la clave vive plegada en «Avanzado».
+    showAdvanced(true, false);
+}
+
+namespace {
+// Clave del ajuste. Sin el prefijo «det_» a propósito: es cómo quiere ver la
+// pestaña el operador, no un ajuste de detección, y restablecer la detección
+// no tiene por qué volver a plegarla.
+constexpr const char* kAdvancedOpenKey = "detection_advanced_open";
+}  // namespace
+
+void DetectionPage::rememberAdvancedIn(repositories::SettingsRepository* settings) {
+    settings_ = settings;
+    if (settings_ == nullptr) {
+        return;
+    }
+    // Si un consejo ya lo abrió, se queda abierto aunque lo guardado sea «cerrado».
+    const bool stored = settings_->getInt(kAdvancedOpenKey, 0).valueOr(0) != 0;
+    if (stored) {
+        showAdvanced(true, false);
+    }
+}
+
+bool DetectionPage::advancedOpen() const {
+    return advancedToggle_ != nullptr && advancedToggle_->isChecked();
+}
+
+void DetectionPage::showAdvanced(bool open, bool remember) {
+    if (advancedToggle_ == nullptr || advancedPanel_ == nullptr) {
+        return;
+    }
+    {
+        const QSignalBlocker quiet(advancedToggle_);
+        advancedToggle_->setChecked(open);
+    }
+    advancedToggle_->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
+    advancedPanel_->setVisible(open);
+    if (remember && settings_ != nullptr) {
+        settings_->setInt(kAdvancedOpenKey, open ? 1 : 0);
+    }
+    refreshAdvancedTitle();
+}
+
+int DetectionPage::advancedChanges() const {
+    // Contra los valores de FÁBRICA construidos, igual que `restoreDefaults`:
+    // una copia escrita aquí se desincronizaría a la primera.
+    const vision::SegmentationOptions factory;
+    const vision::PipelineConfig factoryPipeline;
+    int changed = 0;
+    if (method_ != nullptr && method_->currentIndex() != static_cast<int>(factory.method)) {
+        ++changed;
+    }
+    if (backgroundKey_ != nullptr &&
+        backgroundKey_->currentIndex() != static_cast<int>(factory.backgroundKey)) {
+        ++changed;
+    }
+    if (recoverGlare_ != nullptr &&
+        recoverGlare_->isChecked() != (factory.recoverHighlightsBy > 0)) {
+        ++changed;
+    }
+    if (morph_ != nullptr && morph_->value() != factory.morphKernel) {
+        ++changed;
+    }
+    if (maxArea_ != nullptr &&
+        std::abs(maxArea_->value() - factoryPipeline.maxAreaFraction * 100.0) > 0.05) {
+        ++changed;
+    }
+    if (subpixel_ != nullptr && subpixel_->isChecked() != factoryPipeline.subpixelEdges) {
+        ++changed;
+    }
+    return changed;
+}
+
+void DetectionPage::refreshAdvancedTitle() {
+    if (advancedToggle_ == nullptr) {
+        return;
+    }
+    const int changed = advancedChanges();
+    advancedToggle_->setText(changed == 0 ? tr("Avanzado")
+                             : changed == 1
+                                 ? tr("Avanzado (1 cambiado)")
+                                 : tr("Avanzado (%1 cambiados)").arg(changed));
 }
 
 void DetectionPage::pickBackgroundByWheel() {

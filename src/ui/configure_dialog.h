@@ -63,6 +63,9 @@ public:
         double maxAreaFraction = 0.9;
         bool subpixelEdges = false;
         repositories::DetectionProfileRepository* profiles = nullptr;
+        // Dónde se recuerda cómo quiere ver el operador las páginas (hoy, si
+        // «Avanzado» de Detección estaba abierto). Nulo = no se recuerda.
+        repositories::SettingsRepository* settings = nullptr;
         camera::CameraController* controller = nullptr;
         // De dónde vienen los frames. Decide QUÉ MOTIVO se le da al operador
         // cuando la pestaña de cámara no tiene nada que ofrecer: no es lo mismo

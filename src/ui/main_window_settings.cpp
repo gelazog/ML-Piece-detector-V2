@@ -199,6 +199,7 @@ void MainWindow::onConfigureClicked() {
     inputs.subpixelEdges = pipelineConfig_.subpixelEdges;
     inputs.maxAreaFraction = pipelineConfig_.maxAreaFraction;
     inputs.profiles = repos_.detectionProfiles;
+    inputs.settings = repos_.settings;
     // Las resoluciones ya sondeadas de ESTA cámara se pasan hechas: volver a
     // preguntarlas cuesta segundos y detiene el vídeo.
     inputs.controller = (streaming_ && !cameraControls_.empty()) ? &controller_ : nullptr;

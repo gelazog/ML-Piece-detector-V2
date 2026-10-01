@@ -176,6 +176,21 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         tr("Todo lo que quede dentro del trazo pasa a ser fondo."));
     brushMenu->addSeparator();
 
+    // LAS OPCIONES DEL PINCEL, EN SU SUBMENÚ.
+    //
+    // El tamaño y las tres ayudas iban sueltos en este desplegable, entre las
+    // órdenes: catorce entradas con un rótulo falso («Ayuda del pincel», una
+    // entrada apagada haciendo de título). Pintar, rodear y deshacer se usan en
+    // cada corrección; el tamaño y las ayudas se ajustan una vez y se quedan.
+    // Van en «Pincel», que es UN solo QMenu colgado en dos sitios: aquí y en la
+    // barra, en «Medida». Las acciones son las mismas, no copias, así que
+    // marcar una en un sitio se ve marcada en el otro.
+    brushOptionsMenu_ = new QMenu(tr("Pincel"), this);
+    brushOptionsMenu_->setObjectName(QStringLiteral("brushOptionsMenu"));
+    brushOptionsMenu_->setToolTipsVisible(true);
+    brushOptionsMenu_->menuAction()->setToolTip(
+        tr("Tamaño del pincel y ayudas para trazar."));
+
     // EL TAMAÑO, A LA VISTA.
     //
     // Antes solo se podia cambiar con la rueda del raton, y la rueda no la
@@ -183,7 +198,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // veia el tamaño era el anillo bajo el cursor, y ese anillo se dejaba de
     // dibujar justo al terminar la primera pincelada. El resultado era un ajuste
     // que existia, no se veia y ademas se reiniciaba solo.
-    auto* sizeRow = new QWidget(brushMenu);
+    auto* sizeRow = new QWidget(brushOptionsMenu_);
     auto* sizeLayout = new QHBoxLayout(sizeRow);
     sizeLayout->setContentsMargins(12, 4, 12, 4);
     sizeLayout->addWidget(new QLabel(tr("Tamaño:"), sizeRow));
@@ -193,15 +208,15 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     brushSizeSlider_->setMinimumWidth(150);
     brushSizeSlider_->setToolTip(
         tr("Radio del pincel, en píxeles de la imagen.\n"
-           "La rueda del ratón sobre la imagen hace lo mismo, más rápido."));
+           "Sobre la imagen, las teclas [ y ] o Mayús+rueda hacen lo mismo."));
     sizeLayout->addWidget(brushSizeSlider_);
     brushSizeLabel_ = new QLabel(sizeRow);
     brushSizeLabel_->setMinimumWidth(52);
     sizeLayout->addWidget(brushSizeLabel_);
-    auto* sizeAction = new QWidgetAction(brushMenu);
+    auto* sizeAction = new QWidgetAction(brushOptionsMenu_);
     sizeAction->setDefaultWidget(sizeRow);
-    brushMenu->addAction(sizeAction);
-    brushMenu->addSeparator();
+    brushOptionsMenu_->addAction(sizeAction);
+    brushOptionsMenu_->addSeparator();
 
     // LAS TRES AYUDAS.
     //
@@ -209,14 +224,12 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     // pincel ayude» no siempre quiere las tres a la vez: una arregla la mano que
     // dibuja, otra restringe lo que se puede dibujar, y la tercera arregla el
     // resultado. Cada una se puede apagar por su cuenta.
-    auto* assistTitle = brushMenu->addAction(tr("Ayuda del pincel"));
-    assistTitle->setEnabled(false);
-    brushSteadyAction_ = brushMenu->addAction(tr("   Pulso estable"));
+    brushSteadyAction_ = brushOptionsMenu_->addAction(tr("Pulso estable"));
     brushSteadyAction_->setObjectName(QStringLiteral("brushSteadyAction"));
     brushSteadyAction_->setCheckable(true);
     brushSteadyAction_->setToolTip(
         tr("Suaviza el temblor de la mano; la intención del trazo llega igual."));
-    brushStraightAction_ = brushMenu->addAction(tr("   Trazo recto"));
+    brushStraightAction_ = brushOptionsMenu_->addAction(tr("Trazo recto"));
     brushStraightAction_->setObjectName(QStringLiteral("brushStraightAction"));
     brushStraightAction_->setCheckable(true);
     brushStraightAction_->setToolTip(
@@ -224,7 +237,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
     brushStraightAction_->setWhatsThis(
         tr("El rodeo que dé la mano por el camino no cuenta. Mantener Mayús mientras se "
            "pinta invierte este interruptor solo para ese trazo."));
-    brushSnapAction_ = brushMenu->addAction(tr("   Ceñir al borde"));
+    brushSnapAction_ = brushOptionsMenu_->addAction(tr("Ceñir al borde"));
     brushSnapAction_->setObjectName(QStringLiteral("brushSnapAction"));
     brushSnapAction_->setCheckable(true);
     brushSnapAction_->setToolTip(
@@ -234,6 +247,7 @@ MainWindow::MainWindow(AppRepositories repositories, QWidget* parent)
         tr("Se queda con la mitad de la pincelada más cercana a donde empezó el trazo, "
            "así que empieza encima de lo que quieres marcar. Donde no hay contraste que "
            "seguir, pinta como el pincel normal."));
+    brushMenu->addMenu(brushOptionsMenu_);
     brushMenu->addSeparator();
     // UN solo deshacer, no dos.
     //

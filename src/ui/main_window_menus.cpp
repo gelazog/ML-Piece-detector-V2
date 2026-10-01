@@ -336,6 +336,20 @@ void MainWindow::buildMenuBar() {
     measurementModeAction_ = measureMenu->addAction(
         tr("Modo de medición de la pieza…"), this,
         &MainWindow::onMeasurementModeClicked);
+    // EL PINCEL, TAMBIÉN AQUÍ.
+    //
+    // Su tamaño y sus ayudas solo se encontraban abriendo «Corregir borde», un
+    // botón que está apagado mientras no haya una imagen quieta: con la cámara
+    // en marcha no había forma de dejarlos preparados, ni de llegar a ellos
+    // con el teclado. Va en «Medida» porque corregir el borde cambia lo que se
+    // mide de la pieza que hay delante.
+    //
+    // Es el MISMO submenú que cuelga del botón, no una copia: dos juegos de
+    // acciones acabarían diciendo cosas distintas del mismo ajuste.
+    if (brushOptionsMenu_ != nullptr) {
+        measureMenu->addSeparator();
+        measureMenu->addMenu(brushOptionsMenu_);
+    }
 
     auto* pieceMenu = menuBar()->addMenu(tr("&Pieza"));
     pieceMenu->addAction(tr("Registrar con asistente…"), this,

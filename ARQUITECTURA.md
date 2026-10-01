@@ -5272,6 +5272,47 @@ vigila las dos piezas: contraste y palabras distintas, tamaño, motivo en una
 línea, colores iguales en tema claro y oscuro, la banda que no se va sola, la
 racha del marcador y la ventana de punta a punta.
 
+### Lo de cada día delante, lo del montaje plegado
+
+La pestaña **Detección** ya estaba agrupada en cuatro bloques, pero los doce
+controles seguían a la vista a la vez: umbral, deslizador, método, polaridad,
+clave de color, separar pegadas, brillos, suavizado, limpieza, área mínima,
+área máxima y subpíxel. Un operador toca a diario seis. Ahora quedan delante
+**«Umbral»** (automático, manual, polaridad y «Comprobar el corte») y
+**«Pieza»** (suavizado, área mínima con su equivalencia en píxeles, y separar
+las que se tocan). El resto va a **«Avanzado»**, plegado: el método de
+separación y la clave de color («Separación»), recuperar brillos y limpieza
+(«Silueta»), área máxima y subpíxel («Límites y precisión»). Son ajustes del
+puesto: se ponen al montarlo y se quedan, y la mitad cambia lo que se mide.
+
+Plegar tiene dos trampas, y las dos están resueltas en `DetectionPage`:
+
+- **Un consejo que enciende algo escondido.** El método y la clave de color
+  tienen aviso propio (pieza recortada por el corte, mesa con color). Aviso,
+  botón y control viven juntos en «Separación» —así lo exige
+  `test_detection_groups`—, y cuando el aviso sale, el grupo **se abre solo**.
+  Pulsar el botón del consejo, o señalar el fondo en la imagen, también lo
+  abre: lo que un consejo enciende se tiene que ver encendido.
+- **Lo escondido que no está de fábrica.** El título dice cuántos ajustes
+  plegados están cambiados («Avanzado (2 cambiados)»), comparando con
+  `SegmentationOptions{}` y `PipelineConfig{}` como hace `restoreDefaults`, sin
+  copia de los valores.
+
+Si el grupo estaba abierto se recuerda en `detection_advanced_open` (sin el
+prefijo `det_`: restablecer la detección no tiene por qué volver a plegarlo),
+pero **solo cuando lo decide el operador**: que un consejo lo abra una vez no es
+una preferencia. Lo vigila `tests/test_detection_advanced.cpp`.
+
+Lo mismo en el botón **«Corregir borde»**: el tamaño del pincel y sus tres
+ayudas (pulso estable, trazo recto, ceñir al borde) iban sueltos entre las
+órdenes, catorce entradas con un rótulo falso hecho con una acción apagada.
+Ahora van en un submenú **«Pincel»** y el desplegable queda en nueve. Es un
+solo `QMenu` colgado en dos sitios, el botón y **Medida ▸ Pincel**: el botón
+está apagado sin imagen quieta, y con la cámara en marcha no había forma de
+dejar el pincel preparado ni de llegar a él con el teclado. Las acciones son
+las mismas, no copias; `tests/test_brush_menu.cpp` comprueba que el submenú
+de la barra y el del botón son el mismo objeto y que no hay dos «Trazo recto».
+
 ### Los defectos que se encontraron y se arreglaron
 
 Estaban aquí: **1 191 líneas** de bitácora dentro de un capítulo llamado
