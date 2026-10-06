@@ -154,13 +154,20 @@ list(JOIN PCI_TIMING_TESTS ":" PCI_TIMING_FILTER)
 # DISCOVERY_TIMEOUT 60: listar las pruebas tarda 0,2 s, pero con `ctest -j 6`
 # arrancan a la vez varios procesos que reservan ~1 GB cada uno, y los 5 s por
 # defecto de CMake se agotaron una vez y tumbaron el descubrimiento entero.
+#
+# OMP_NUM_THREADS=1: libopencv_core arrastra OpenBLAS, que al cargarse reserva
+# memoria para su grupo de hilos: 1027 MB comprometidos por proceso, 130 MB con
+# un hilo. Con `ctest -j 6` eran ~6 GB solo en reservas, y una vez la máquina se
+# quedó sin memoria y 179 pruebas fallaron al arrancar. Ninguna prueba depende
+# de que el álgebra de OpenBLAS vaya en paralelo.
 
 gtest_discover_tests(pci_tests DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60
-  TEST_FILTER "-${PCI_TIMING_FILTER}")
+  TEST_FILTER "-${PCI_TIMING_FILTER}"
+  PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1")
 gtest_discover_tests(pci_tests DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60
   TEST_FILTER "${PCI_TIMING_FILTER}"
   TEST_LIST pci_tests_timing
-  PROPERTIES RUN_SERIAL TRUE LABELS timing)
+  PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=1" RUN_SERIAL TRUE LABELS timing)
 
 # Pruebas de gesto sobre el widget: necesitan Qt y una plataforma sin pantalla,
 # por eso van aparte de la suite principal.
@@ -241,11 +248,11 @@ target_link_libraries(pci_gui_tests
 gtest_discover_tests(pci_gui_tests
   DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60
   TEST_FILTER "-${PCI_TIMING_FILTER}"
-  PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+  PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;OMP_NUM_THREADS=1"
 )
 gtest_discover_tests(pci_gui_tests
   DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60
   TEST_FILTER "${PCI_TIMING_FILTER}"
   TEST_LIST pci_gui_tests_timing
-  PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" RUN_SERIAL TRUE LABELS timing
+  PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;OMP_NUM_THREADS=1" RUN_SERIAL TRUE LABELS timing
 )
