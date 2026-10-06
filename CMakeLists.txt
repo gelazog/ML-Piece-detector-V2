@@ -40,7 +40,8 @@ add_subdirectory(src/ui)
 
 add_executable(pc_inspector src/main.cpp)
 target_link_libraries(pc_inspector
-  PRIVATE pci_ui pci_repositories pci_database pci_camera pci_core project_warnings)
+  PRIVATE pci_ui pci_repositories pci_database pci_camera pci_vision pci_core
+          project_warnings)
 # Sin ventana de consola en Release; en Debug se conserva para ver el log en vivo.
 set_target_properties(pc_inspector PROPERTIES WIN32_EXECUTABLE $<CONFIG:Release>)
 

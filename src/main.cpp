@@ -23,8 +23,13 @@
 #include "repositories/tool_repository.h"
 #include "ui/main_window.h"
 #include "ui/theme.h"
+#include "vision/parallel_pool.h"
 
 int main(int argc, char* argv[]) {
+    // El PRIMERO, para destruirse el último: suelta los hilos de OpenCV cuando
+    // la ventana y los hilos de cámara ya no existen. Sin él, cerrar la
+    // aplicación podía dejar el proceso colgado para siempre (vision/parallel_pool.h).
+    const pci::vision::ParallelPoolExitGuard parallelPool;
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("PC Inspector"));
     QApplication::setOrganizationName(QStringLiteral("PCInspector"));

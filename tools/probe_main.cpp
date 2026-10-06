@@ -28,6 +28,7 @@
 #include "domain/calibration.h"
 #include "inspection_editor/auto_measure.h"
 #include "inspection_editor/tools/tool_types.h"
+#include "vision/parallel_pool.h"
 #include "vision/pipeline.h"
 #include "vision/shape_class.h"
 #include "vision/subpixel_edge.h"
@@ -179,6 +180,9 @@ std::string analyzeOneFrame(const cv::Mat& gray, const ProbeOptions& options,
 }  // namespace
 
 int main(int argc, char** argv) {
+    // El primero, para destruirse el último: sin él, el proceso podía no
+    // terminar nunca al salir (vision/parallel_pool.h).
+    const pci::vision::ParallelPoolExitGuard parallelPool;
 #ifdef _WIN32
     // El informe lleva acentos y el símbolo Ø. Sin esto la consola de Windows
     // los escribe en su página de códigos heredada y el resultado es ilegible;

@@ -70,6 +70,7 @@
 #include "inspection_editor/editor_window.h"
 #include "repositories/tool_repository.h"
 #include "sample_geometries.h"
+#include "vision/parallel_pool.h"
 
 using namespace pci::inspection;
 
@@ -892,6 +893,10 @@ TEST(ToolCoherence, EveryToolIsDrawnWithItsOwnIcon) {
 }
 
 int main(int argc, char** argv) {
+    // El primero, para destruirse el último: sin él, una prueba que ya había
+    // pasado podía no terminar nunca al salir (vision/parallel_pool.h y
+    // test_exit_does_not_hang.cpp).
+    const pci::vision::ParallelPoolExitGuard parallelPool;
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
     ::testing::InitGoogleTest(&argc, argv);

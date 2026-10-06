@@ -1898,6 +1898,20 @@ segmentación, que con herramientas dibujadas son ~1,6 ms de 31: el 1,33× que
 prometía se quedaba en menos de un 2 % del frame. Se midió dónde estaba el
 tiempo antes de optimizar, y estaba en otro sitio.
 
+#### Los hilos de OpenCV se sueltan al final de `main`
+
+El reparto de OpenCV en MSYS2 va sobre TBB, y su grupo de hilos vive en un
+`tbb::task_arena` estático dentro de `libopencv_core`. Si se deja que ese objeto
+se destruya solo, el destructor corre al descargar la DLL, cuando `ExitProcess`
+ya ha matado los hilos de trabajo, y de vez en cuando espera para siempre a uno
+de ellos. El proceso no termina nunca. Por eso cada `main` que use OpenCV
+(`pc_inspector`, `pci_probe` y los dos ejecutables de pruebas) declara antes que
+nada un `vision::ParallelPoolExitGuard`. Al destruirse, el último, llama a
+`cv::setNumThreads(0)`, que termina el grupo mientras sus hilos siguen vivos.
+Después de eso OpenCV funciona en un solo hilo, así que no se llama antes de
+salir. El fallo y sus cifras están en la bitácora: «Pruebas que pasaban y se
+quedaban colgadas al salir».
+
 ### El desglose de tiempos que la propia app puede dar
 
 Los tiempos de la sección siguiente se midieron una vez, con un programa suelto.

@@ -62,6 +62,7 @@ add_executable(pci_tests
   test_diverse_images.cpp
   test_edge_segmentation.cpp
   test_engine.cpp
+  test_exit_does_not_hang.cpp
   test_fitting.cpp
   test_geometry_features.cpp
   test_fps_counter.cpp
@@ -110,6 +111,13 @@ if(WIN32 AND ONNXRUNTIME_DLL_PATH)
             $<TARGET_FILE_DIR:pci_tests>)
 endif()
 
+# El hijo del banco ExitDoesNotHang.BenchManyShortProcessesAllExit: un
+# `parallel_for_` de OpenCV y salir (ver tests/exit_bench_child.cpp). Va aparte
+# para que lanzar decenas a la vez no cueste la memoria de decenas de pci_tests.
+add_executable(pci_exit_bench_child exit_bench_child.cpp)
+target_link_libraries(pci_exit_bench_child PRIVATE pci_vision ${OpenCV_LIBS} project_warnings)
+add_dependencies(pci_tests pci_exit_bench_child)
+
 include(GoogleTest)
 
 # LAS PRUEBAS QUE MIDEN TIEMPO VAN EN SERIE.
@@ -143,9 +151,13 @@ set(PCI_TIMING_TESTS
 )
 list(JOIN PCI_TIMING_TESTS ":" PCI_TIMING_FILTER)
 
-gtest_discover_tests(pci_tests DISCOVERY_MODE PRE_TEST
+# DISCOVERY_TIMEOUT 60: listar las pruebas tarda 0,2 s, pero con `ctest -j 6`
+# arrancan a la vez varios procesos que reservan ~1 GB cada uno, y los 5 s por
+# defecto de CMake se agotaron una vez y tumbaron el descubrimiento entero.
+
+gtest_discover_tests(pci_tests DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60
   TEST_FILTER "-${PCI_TIMING_FILTER}")
-gtest_discover_tests(pci_tests DISCOVERY_MODE PRE_TEST
+gtest_discover_tests(pci_tests DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60
   TEST_FILTER "${PCI_TIMING_FILTER}"
   TEST_LIST pci_tests_timing
   PROPERTIES RUN_SERIAL TRUE LABELS timing)
@@ -227,12 +239,12 @@ target_link_libraries(pci_gui_tests
           GTest::gtest ${OpenCV_LIBS} project_warnings
 )
 gtest_discover_tests(pci_gui_tests
-  DISCOVERY_MODE PRE_TEST
+  DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60
   TEST_FILTER "-${PCI_TIMING_FILTER}"
   PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 gtest_discover_tests(pci_gui_tests
-  DISCOVERY_MODE PRE_TEST
+  DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 60
   TEST_FILTER "${PCI_TIMING_FILTER}"
   TEST_LIST pci_gui_tests_timing
   PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" RUN_SERIAL TRUE LABELS timing

@@ -19,6 +19,24 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Una prueba que ya había dicho OK se quedaba colgada 300 s al salir
+
+Con `ctest -j`, de vez en cuando una prueba cualquiera de visión acababa en
+Timeout; sueltas tardaban menos de un segundo. Se colgaron así cuatro distintas,
+y la prueba no tenía la culpa: el proceso se colgaba después de `main`. gdb sobre
+tres procesos colgados dio la misma pila, con un solo hilo vivo: el `task_arena`
+estático de TBB dentro de libopencv_core, al descargarse la DLL, esperaba a hilos
+de trabajo que `ExitProcess` ya había matado. Un programa de quince líneas (un
+`parallel_for_` y salir) se colgaba igual: 9 de 16000 procesos, 48 a la vez.
+
+Se suelta el grupo de hilos antes de salir (`cv::setNumThreads(0)`, en
+`vision/parallel_pool.h`): 0 de 8000. En `pc_inspector` y en las pruebas de GUI
+va como guarda al principio de `main`; en `pci_tests`, con `atexit`, porque el
+listado de pruebas que hace ctest no pasa por los entornos de gtest y un listado
+colgado tumbó una vez el descubrimiento entero. De paso salió que cada proceso
+de prueba reserva ~1 GB de memoria por OpenBLAS (130 MB con
+`OMP_NUM_THREADS=1`).
+
 ### «Marcar una pieza rodeándola» no llegaba nunca a la ventana
 
 La ventana conectaba la señal `pieceOutlined` del lienzo antes de crear el
