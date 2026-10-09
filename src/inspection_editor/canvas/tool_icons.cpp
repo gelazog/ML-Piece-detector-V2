@@ -7,6 +7,7 @@
 #include <QPolygonF>
 
 #include <functional>
+#include <numbers>
 
 namespace pci::inspection {
 
@@ -167,7 +168,7 @@ QIcon toolIcon(ToolType type) {
                 // Rueda dentada: un aro con dientes radiales.
                 p.drawEllipse(QPointF(15, 15), 7.0, 7.0);
                 for (int k = 0; k < 8; ++k) {
-                    const double a = k * 3.14159265358979323846 / 4.0;
+                    const double a = k * std::numbers::pi / 4.0;
                     p.drawLine(QPointF(15 + 7 * std::cos(a), 15 + 7 * std::sin(a)),
                                QPointF(15 + 11 * std::cos(a), 15 + 11 * std::sin(a)));
                 }
@@ -327,7 +328,7 @@ QIcon toolIcon(ToolType type) {
                 p.setPen(Qt::NoPen);
                 p.setBrush(c);
                 for (int k = 0; k < 6; ++k) {
-                    const double a = k * 3.14159265358979323846 / 3.0;
+                    const double a = k * std::numbers::pi / 3.0;
                     p.drawEllipse(QPointF(14 + 9 * std::cos(a), 14 + 9 * std::sin(a)), 2.2,
                                   2.2);
                 }
@@ -381,7 +382,7 @@ QIcon toolIcon(ToolType type) {
                 p.setPen(profile);
                 QPolygonF wave;
                 for (int k = 0; k <= 24; ++k) {
-                    const double a = k * 2.0 * 3.14159265358979323846 / 24.0;
+                    const double a = k * 2.0 * std::numbers::pi / 24.0;
                     const double r = 8.75 + 1.6 * std::sin(3.0 * a);
                     wave << QPointF(14 + r * std::cos(a), 14 + r * std::sin(a));
                 }
@@ -502,7 +503,7 @@ QIcon toolIcon(ToolType type) {
                 // Un hexagono -la tuerca- con sus vertices marcados.
                 QPolygonF hex;
                 for (int k = 0; k < 6; ++k) {
-                    const double a = k * 3.14159265358979323846 / 3.0;
+                    const double a = k * std::numbers::pi / 3.0;
                     hex << QPointF(14 + 10 * std::cos(a), 14 + 10 * std::sin(a));
                 }
                 p.drawPolygon(hex);

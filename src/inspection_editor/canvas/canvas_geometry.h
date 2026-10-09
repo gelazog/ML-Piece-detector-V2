@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "inspection_editor/tools/tool_geometry.h"
+#include "vision/fitting.h"
 #include "vision/types.h"
 
 namespace pci::inspection {
@@ -71,9 +72,9 @@ private:
     cv::Point2d pan_{0.0, 0.0};
 };
 
-// Distancia de un punto al segmento a-b (no a la recta infinita).
-[[nodiscard]] double distanceToSegment(const cv::Point2f& p, const cv::Point2f& a,
-                                       const cv::Point2f& b);
+// Distancia de un punto al segmento a-b (no a la recta infinita). Vive en
+// vision/fitting.h porque la clasificación por forma usa la misma.
+using vision::distanceToSegment;
 
 // Puntos representativos de una geometría (coords de pieza), para el marco de
 // selección múltiple.

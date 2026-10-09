@@ -937,6 +937,32 @@ TEST(ToolExecutorStress, HostileGeometryJsonIsRejected) {
                      .isOk());
 }
 
+// `geometryFromJson` comprobaba cada clave obligatoria por separado —31 bucles
+// sobre listas de resultados— y ahora el lector guarda el PRIMER error y se mira
+// una vez por herramienta. La prueba de arriba solo exige finitud si acepta; esta
+// fija lo que no podía cambiar con eso: que el JSON roto se RECHACE, y con el
+// mensaje de la primera clave mala en orden de lectura aunque haya otra peor
+// detrás. El modo de la Región se lee después de sus coordenadas, así que con
+// las dos cosas mal manda la coordenada.
+TEST(ToolGeometry, CorruptJsonIsRejectedNamingTheFirstBadKey) {
+    auto parsed = geometryFromJson(ToolType::Caliper,
+                                   R"({"x0":0,"y0":0,"x1":10,"y1":0,"band":1e400})");
+    ASSERT_FALSE(parsed.isOk());
+    EXPECT_EQ(parsed.error().message, "Geometría corrupta: 'band' no es un número finito");
+
+    parsed = geometryFromJson(ToolType::Caliper, R"({"x0":0,"x1":1e400,"y1":0,"band":5})");
+    ASSERT_FALSE(parsed.isOk());
+    EXPECT_EQ(parsed.error().message, "Geometría corrupta: falta 'y0'");
+
+    parsed = geometryFromJson(ToolType::Region, R"({"cx":0,"cy":0,"w":10,"mode":99})");
+    ASSERT_FALSE(parsed.isOk());
+    EXPECT_EQ(parsed.error().message, "Geometría corrupta: falta 'h'");
+
+    parsed = geometryFromJson(ToolType::Region, R"({"cx":0,"cy":0,"w":10,"h":10,"mode":99})");
+    ASSERT_FALSE(parsed.isOk());
+    EXPECT_EQ(parsed.error().message, "Construcción desconocida: 99");
+}
+
 // ===========================================================================
 //  Bateria por herramienta: exactitud contra una verdad conocida, invariancia
 //  al giro de la pieza, limites y coherencia entre herramientas.

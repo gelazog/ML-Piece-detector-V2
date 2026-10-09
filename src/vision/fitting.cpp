@@ -287,6 +287,19 @@ bool angleWithinSweep(double angleDeg, double startAngleDeg, double sweepDeg) {
     return delta - 360.0 >= sweepDeg;
 }
 
+double distanceToSegment(const cv::Point2f& p, const cv::Point2f& a, const cv::Point2f& b) {
+    const cv::Point2f ab = b - a;
+    const double len2 = static_cast<double>(ab.x) * ab.x + static_cast<double>(ab.y) * ab.y;
+    if (len2 < 1e-9) {
+        return cv::norm(p - a);
+    }
+    const double t = std::clamp(
+        (static_cast<double>(p.x - a.x) * ab.x + static_cast<double>(p.y - a.y) * ab.y) / len2,
+        0.0, 1.0);
+    const cv::Point2f proj = a + ab * static_cast<float>(t);
+    return cv::norm(p - proj);
+}
+
 // --------------------------------------------------------------------------
 // Rectas
 // --------------------------------------------------------------------------

@@ -5,8 +5,11 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <random>
+#include <type_traits>
+#include <variant>
 #include <vector>
 
 #include "inspection_editor/canvas/canvas_geometry.h"
@@ -881,6 +884,45 @@ TEST(CanvasStress, DraggingAHandleManyTimesConvergesWhereItIsDropped) {
         ASSERT_NEAR(read.y, cursor.y, 1e-3F) << "paso " << i;
     }
 }
+
+// ---------------------------------------------------------------------------
+// Familias de geometría
+// ---------------------------------------------------------------------------
+//
+// Las 18 cadenas `std::is_same_v<T, A> || std::is_same_v<T, B> || ...` que
+// enumeraban una familia entera en el lienzo y en el modelo se sustituyeron por
+// tres conceptos que miran los miembros (p0/p1, width/height, axisFrom/axisTo).
+// Eso solo es el mismo comportamiento si cada concepto elige EXACTAMENTE las
+// geometrías de la lista que sustituye: 6, 9 y 4, ni una más ni una menos. Una
+// geometría nueva con `p0` entraría sola en el trazado, las manijas y el arrastre;
+// esto no compila hasta que alguien decida si debe.
+
+namespace {
+
+template <typename... Gs>
+constexpr std::array<int, 3> familySizes(std::type_identity<std::variant<Gs...>>) {
+    return {(0 + ... + SegmentGeometry<Gs>), (0 + ... + BoxGeometry<Gs>),
+            (0 + ... + AxisGeometry<Gs>)};
+}
+constexpr auto kFamilySizes = familySizes(std::type_identity<ToolGeometry>{});
+
+}  // namespace
+
+static_assert(kFamilySizes[0] == 6 && SegmentGeometry<CaliperGeometry> &&
+                  SegmentGeometry<EdgeFlawGeometry> && SegmentGeometry<EdgeDefectsGeometry> &&
+                  SegmentGeometry<StraightnessGeometry> &&
+                  SegmentGeometry<OrientationGeometry> && SegmentGeometry<RulerGeometry>,
+              "la familia p0/p1 ha cambiado");
+static_assert(kFamilySizes[1] == 9 && BoxGeometry<BlobGeometry> && BoxGeometry<RegionGeometry> &&
+                  BoxGeometry<SymmetryGeometry> && BoxGeometry<PolygonGeometry> &&
+                  BoxGeometry<ClearanceGeometry> && BoxGeometry<BoltPatternGeometry> &&
+                  BoxGeometry<ExtremesGeometry> && BoxGeometry<ChamferGeometry> &&
+                  BoxGeometry<FilletGeometry>,
+              "la familia del recuadro ha cambiado");
+static_assert(kFamilySizes[2] == 4 && AxisGeometry<ShaftGeometry> &&
+                  AxisGeometry<ThreadGeometry> && AxisGeometry<GrooveGeometry> &&
+                  AxisGeometry<MedianAxisGeometry>,
+              "la familia del eje ha cambiado");
 
 // ---------------------------------------------------------------------------
 // Repaso de coherencia: lo que TODA herramienta tiene que cumplir

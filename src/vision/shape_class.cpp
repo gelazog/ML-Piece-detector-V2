@@ -113,24 +113,11 @@ std::vector<cv::Point2f> asFloat(const std::vector<cv::Point>& contour) {
     return points;
 }
 
-// Distancia de un punto a un segmento. La necesita la desviación al polígono:
-// medir contra los VÉRTICES daría casi cero para cualquier forma con muchos
-// puntos, porque siempre hay un vértice cerca. Lo que hay que medir es la
-// separación al LADO.
-double distanceToSegment(const cv::Point2f& p, const cv::Point2f& a, const cv::Point2f& b) {
-    const cv::Point2f ab = b - a;
-    const double lengthSq = static_cast<double>(ab.x) * ab.x + static_cast<double>(ab.y) * ab.y;
-    if (lengthSq < 1e-12) {
-        return cv::norm(p - a);
-    }
-    const cv::Point2f ap = p - a;
-    double t = (static_cast<double>(ap.x) * ab.x + static_cast<double>(ap.y) * ab.y) / lengthSq;
-    t = std::clamp(t, 0.0, 1.0);
-    const cv::Point2f projection = a + ab * static_cast<float>(t);
-    return cv::norm(p - projection);
-}
-
 // Lo que peor encaja: el punto del contorno más lejos del polígono cerrado.
+//
+// Se mide contra los LADOS (`distanceToSegment`, de vision/fitting.h) y no
+// contra los vértices: eso daría casi cero para cualquier forma con muchos
+// puntos, porque siempre hay un vértice cerca.
 //
 // Se usa el MÁXIMO y no la media a propósito. La media perdona una esquina
 // redondeada entre veinte tramos rectos, y esa esquina es justo la diferencia

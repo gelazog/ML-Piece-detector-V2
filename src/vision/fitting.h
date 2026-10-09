@@ -73,6 +73,13 @@ struct ArcSpan {
 // para saber si un punto está sobre el arco o más allá de sus extremos.
 [[nodiscard]] bool angleWithinSweep(double angleDeg, double startAngleDeg, double sweepDeg);
 
+// Distancia de un punto al segmento a-b, no a la recta infinita: fuera del
+// tramo, lo más cercano es el extremo. Un segmento de menos de ~3e-5 px se
+// trata como un punto. La usan el lienzo (qué herramienta se toca) y la
+// clasificación por forma (desviación al LADO de un polígono, no a sus vértices).
+[[nodiscard]] double distanceToSegment(const cv::Point2f& p, const cv::Point2f& a,
+                                       const cv::Point2f& b);
+
 struct LineFit {
     cv::Point2f point{0.0F, 0.0F};  // un punto de la recta (el centroide)
     // Dirección unitaria, en forma canónica: x > 0, o x = 0 e y > 0. Una recta

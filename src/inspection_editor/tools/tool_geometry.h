@@ -501,6 +501,12 @@ struct GrooveGeometry {
 [[nodiscard]] const std::array<RegionMeasure, 6>& allRegionMeasures();
 [[nodiscard]] const char* regionMeasureLabel(RegionMeasure measure);
 
+// El ORDEN de las alternativas es exactamente el de `ToolType` (tool_types.h):
+// `typeOf` devuelve el índice de la variante convertido en ToolType. Una
+// geometría nueva va en el mismo puesto que su ToolType. Si se desordenan, lo
+// dicen ToolCoherence.EveryToolCanBeGrabbedByItsHandles y
+// EveryToolGeometrySurvivesTheTemplateRoundTrip, que comparan `typeOf` con el
+// tipo de cada geometría de muestra.
 using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGeometry,
                                   EdgeFlawGeometry, BlobGeometry, RulerGeometry,
                                   LineToLineGeometry, AngleGeometry, PolyBlobGeometry,
@@ -514,6 +520,24 @@ using ToolGeometry = std::variant<CaliperGeometry, CircleGeometry, PointToLineGe
                                   BoltPatternGeometry, ProfileGeometry,
                                   ExtremesGeometry, ChamferGeometry,
                                   FilletGeometry, GrooveGeometry>;
+static_assert(std::variant_size_v<ToolGeometry> == 32,
+              "una geometría por cada ToolType, en el mismo orden");
+
+// Familias de geometría por los miembros que comparten. Sustituyen a las
+// cadenas `std::is_same_v<T, A> || std::is_same_v<T, B> || ...` que repetían la
+// familia entera en cada `std::visit` del lienzo y del modelo. Cada familia es
+// EXACTAMENTE la que listaban esas cadenas; lo vigila un static_assert en
+// tests/test_canvas_geometry.cpp, que no compila si una geometría entra o sale
+// de una familia sin que nadie lo haya decidido.
+//
+// Donde la Regla va aparte a propósito —se dibuja con topes y no tiene banda de
+// muestreo— sigue habiendo una lista escrita a mano: allí no vale la familia.
+template <typename G>
+concept SegmentGeometry = requires(const G& g) { g.p0; g.p1; };
+template <typename G>
+concept BoxGeometry = requires(const G& g) { g.width; g.height; };
+template <typename G>
+concept AxisGeometry = requires(const G& g) { g.axisFrom; g.axisTo; };
 
 // Qué NÚMERO vigila la tolerancia, para las herramientas que publican varios.
 //

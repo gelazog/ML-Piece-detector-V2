@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numbers>
 
 #include "inspection_editor/execution/edge_detection.h"
 #include "ui/theme.h"
@@ -1991,15 +1992,7 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 painter.setPen(styled(Qt::DashLine, nominalWidth));
                 painter.drawLine(imageToWidget(toImg(g.scanA)), imageToWidget(toImg(g.scanB)));
                 labelPos = (la + lb) / 2.0;
-            } else if constexpr (std::is_same_v<T, BlobGeometry> ||
-                                 std::is_same_v<T, RegionGeometry> ||
-                                 std::is_same_v<T, SymmetryGeometry> ||
-                                 std::is_same_v<T, PolygonGeometry> ||
-                                 std::is_same_v<T, ClearanceGeometry> ||
-                                 std::is_same_v<T, BoltPatternGeometry> ||
-                                 std::is_same_v<T, ExtremesGeometry> ||
-                                 std::is_same_v<T, ChamferGeometry> ||
-                                 std::is_same_v<T, FilletGeometry>) {
+            } else if constexpr (BoxGeometry<T>) {
                 const float hw = g.width / 2.0F;
                 const float hh = g.height / 2.0F;
                 QPolygonF quad;
@@ -2093,10 +2086,7 @@ void EditorCanvas::paintTool(QPainter& painter, const EditedTool& tool, bool sel
                 }
                 painter.drawEllipse(w0, 3.0, 3.0);
                 painter.drawEllipse(w1, 3.0, 3.0);
-            } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
-                                 std::is_same_v<T, ThreadGeometry> ||
-                                 std::is_same_v<T, GrooveGeometry> ||
-                                 std::is_same_v<T, MedianAxisGeometry>) {
+            } else if constexpr (AxisGeometry<T>) {
                 // El eje trazado y, a rayas, hasta dónde busca el borde a cada
                 // lado. Sin la banda, un "no encuentro bordes" no se entiende:
                 // el operador no ve que su alcance se queda corto.
@@ -2587,7 +2577,6 @@ void EditorCanvas::paintContourReport(QPainter& painter) const {
     if (!contourVisible_ || !contourReport_.valid || image_.isNull()) {
         return;
     }
-    constexpr double kPi = 3.14159265358979323846;
     const QColor lineColor = theme::drawColor(theme::kDrawStraight);
     const QColor arcColor = theme::drawColor(theme::kDrawArc);
     const QColor holeColor = theme::drawColor(theme::kDrawHole);
@@ -2651,19 +2640,19 @@ void EditorCanvas::paintContourReport(QPainter& painter) const {
             };
             const auto wrap = [](double a) {
                 while (a < 0.0) {
-                    a += 2.0 * kPi;
+                    a += 2.0 * std::numbers::pi;
                 }
-                while (a >= 2.0 * kPi) {
-                    a -= 2.0 * kPi;
+                while (a >= 2.0 * std::numbers::pi) {
+                    a -= 2.0 * std::numbers::pi;
                 }
                 return a;
             };
             const double a0 = angleAt(primitive.start);
             const double ccwSweep = wrap(angleAt(primitive.end) - a0);
             const bool ccw = wrap(angleAt(primitive.mid) - a0) <= ccwSweep;
-            const double sweep = ccw ? ccwSweep : ccwSweep - 2.0 * kPi;
+            const double sweep = ccw ? ccwSweep : ccwSweep - 2.0 * std::numbers::pi;
             const int steps =
-                std::max(8, static_cast<int>(std::abs(sweep) * 180.0 / kPi / 3.0));
+                std::max(8, static_cast<int>(std::abs(sweep) * 180.0 / std::numbers::pi / 3.0));
             QPolygonF arc;
             arc.reserve(steps + 1);
             for (int i = 0; i <= steps; ++i) {
@@ -2998,7 +2987,7 @@ void EditorCanvas::paintLiveOverlay(QPainter& painter) const {
         axisPen.setWidthF(2.0);
         axisPen.setCosmetic(true);
         painter.setPen(axisPen);
-        const double rad = fixture_.angleDeg * 3.14159265358979323846 / 180.0;
+        const double rad = fixture_.angleDeg * std::numbers::pi / 180.0;
         const double len = image_.width() * 0.12;
         painter.drawLine(liveCentroid_,
                          liveCentroid_ + QPointF(std::cos(rad) * len, std::sin(rad) * len));

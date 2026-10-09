@@ -83,19 +83,6 @@ double ViewTransform::displayScale() const {
     return target.width / imageSize_.width;
 }
 
-double distanceToSegment(const cv::Point2f& p, const cv::Point2f& a, const cv::Point2f& b) {
-    const cv::Point2f ab = b - a;
-    const double len2 = static_cast<double>(ab.x) * ab.x + static_cast<double>(ab.y) * ab.y;
-    if (len2 < 1e-9) {
-        return cv::norm(p - a);
-    }
-    const double t = std::clamp(
-        (static_cast<double>(p.x - a.x) * ab.x + static_cast<double>(p.y - a.y) * ab.y) / len2,
-        0.0, 1.0);
-    const cv::Point2f proj = a + ab * static_cast<float>(t);
-    return cv::norm(p - proj);
-}
-
 // Puntos representativos de una geometría (coords de pieza) para el marco de
 // selección múltiple: basta con que UNO caiga dentro del marco.
 //
@@ -108,12 +95,7 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
     return std::visit(
         [](const auto& g) -> std::vector<cv::Point2f> {
             using T = std::decay_t<decltype(g)>;
-            if constexpr (std::is_same_v<T, CaliperGeometry> ||
-                          std::is_same_v<T, EdgeFlawGeometry> ||
-                          std::is_same_v<T, EdgeDefectsGeometry> ||
-                          std::is_same_v<T, StraightnessGeometry> ||
-                          std::is_same_v<T, OrientationGeometry> ||
-                          std::is_same_v<T, RulerGeometry>) {
+            if constexpr (SegmentGeometry<T>) {
                 return {g.p0, g.p1};
             } else if constexpr ((std::is_same_v<T, CircleGeometry> || std::is_same_v<T, RoundnessGeometry>)) {
                 return {g.center,
@@ -121,15 +103,7 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
                         g.center + cv::Point2f(g.radius, 0.0F),
                         g.center + cv::Point2f(0.0F, -g.radius),
                         g.center + cv::Point2f(0.0F, g.radius)};
-            } else if constexpr (std::is_same_v<T, BlobGeometry> ||
-                                 std::is_same_v<T, RegionGeometry> ||
-                                 std::is_same_v<T, SymmetryGeometry> ||
-                                 std::is_same_v<T, PolygonGeometry> ||
-                                 std::is_same_v<T, ClearanceGeometry> ||
-                                 std::is_same_v<T, BoltPatternGeometry> ||
-                                 std::is_same_v<T, ExtremesGeometry> ||
-                                 std::is_same_v<T, ChamferGeometry> ||
-                                 std::is_same_v<T, FilletGeometry>) {
+            } else if constexpr (BoxGeometry<T>) {
                 const float hw = g.width / 2.0F;
                 const float hh = g.height / 2.0F;
                 return {g.center,
@@ -149,10 +123,7 @@ std::vector<cv::Point2f> referencePoints(const ToolGeometry& geometry) {
                 return {g.point};
             } else if constexpr (std::is_same_v<T, ArcGeometry>) {
                 return {g.start, g.mid, g.end};
-            } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
-                                 std::is_same_v<T, ThreadGeometry> ||
-                                 std::is_same_v<T, GrooveGeometry> ||
-                                 std::is_same_v<T, MedianAxisGeometry>) {
+            } else if constexpr (AxisGeometry<T>) {
                 return {g.axisFrom, g.axisTo};
             } else if constexpr (std::is_same_v<T, GearGeometry>) {
                 return {g.center,
@@ -187,12 +158,7 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
     return std::visit(
         [](const auto& g) -> std::vector<cv::Point2f> {
             using T = std::decay_t<decltype(g)>;
-            if constexpr (std::is_same_v<T, CaliperGeometry> ||
-                          std::is_same_v<T, EdgeFlawGeometry> ||
-                          std::is_same_v<T, EdgeDefectsGeometry> ||
-                          std::is_same_v<T, StraightnessGeometry> ||
-                          std::is_same_v<T, OrientationGeometry> ||
-                          std::is_same_v<T, RulerGeometry>) {
+            if constexpr (SegmentGeometry<T>) {
                 return {g.p0, g.p1};
             } else if constexpr ((std::is_same_v<T, CircleGeometry> || std::is_same_v<T, RoundnessGeometry>)) {
                 return {g.center, g.center + cv::Point2f(g.radius, 0.0F)};
@@ -202,25 +168,14 @@ std::vector<cv::Point2f> handlePoints(const ToolGeometry& geometry) {
                 return {g.a0, g.a1, g.b0, g.b1};
             } else if constexpr (std::is_same_v<T, AngleGeometry>) {
                 return {g.vertex, g.end0, g.end1};
-            } else if constexpr (std::is_same_v<T, BlobGeometry> ||
-                                 std::is_same_v<T, RegionGeometry> ||
-                                 std::is_same_v<T, SymmetryGeometry> ||
-                                 std::is_same_v<T, PolygonGeometry> ||
-                                 std::is_same_v<T, ClearanceGeometry> ||
-                                 std::is_same_v<T, BoltPatternGeometry> ||
-                                 std::is_same_v<T, ExtremesGeometry> ||
-                                 std::is_same_v<T, ChamferGeometry> ||
-                                 std::is_same_v<T, FilletGeometry>) {
+            } else if constexpr (BoxGeometry<T>) {
                 return {g.center,
                         g.center + cv::Point2f(g.width / 2.0F, g.height / 2.0F)};
             } else if constexpr (std::is_same_v<T, PositionGeometry>) {
                 return {g.point};  // una sola manija: el rasgo marcado
             } else if constexpr (std::is_same_v<T, ArcGeometry>) {
                 return {g.start, g.mid, g.end};
-            } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
-                                 std::is_same_v<T, ThreadGeometry> ||
-                                 std::is_same_v<T, GrooveGeometry> ||
-                                 std::is_same_v<T, MedianAxisGeometry>) {
+            } else if constexpr (AxisGeometry<T>) {
                 return {g.axisFrom, g.axisTo};
             } else if constexpr (std::is_same_v<T, GearGeometry>) {
                 // Centro, raíz y cabeza: las tres cosas que hay que poder
@@ -281,12 +236,7 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
     std::visit(
         [&](auto& g) {
             using T = std::decay_t<decltype(g)>;
-            if constexpr (std::is_same_v<T, CaliperGeometry> ||
-                          std::is_same_v<T, EdgeFlawGeometry> ||
-                          std::is_same_v<T, EdgeDefectsGeometry> ||
-                          std::is_same_v<T, StraightnessGeometry> ||
-                          std::is_same_v<T, OrientationGeometry> ||
-                          std::is_same_v<T, RulerGeometry>) {
+            if constexpr (SegmentGeometry<T>) {
                 if (handle == 0) {
                     g.p0 = q;
                 } else {
@@ -318,15 +268,7 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
                     case 1: g.end0 = q; break;
                     default: g.end1 = q; break;
                 }
-            } else if constexpr (std::is_same_v<T, BlobGeometry> ||
-                                 std::is_same_v<T, RegionGeometry> ||
-                                 std::is_same_v<T, SymmetryGeometry> ||
-                                 std::is_same_v<T, PolygonGeometry> ||
-                                 std::is_same_v<T, ClearanceGeometry> ||
-                                 std::is_same_v<T, BoltPatternGeometry> ||
-                                 std::is_same_v<T, ExtremesGeometry> ||
-                                 std::is_same_v<T, ChamferGeometry> ||
-                                 std::is_same_v<T, FilletGeometry>) {
+            } else if constexpr (BoxGeometry<T>) {
                 if (handle == 0) {
                     g.center = q;
                 } else {
@@ -341,10 +283,7 @@ void setHandlePoint(ToolGeometry& geometry, int handle, const cv::Point2f& q) {
                     case 1: g.mid = q; break;
                     default: g.end = q; break;
                 }
-            } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
-                                 std::is_same_v<T, ThreadGeometry> ||
-                                 std::is_same_v<T, GrooveGeometry> ||
-                                 std::is_same_v<T, MedianAxisGeometry>) {
+            } else if constexpr (AxisGeometry<T>) {
                 if (handle == 0) {
                     g.axisFrom = q;
                 } else {
@@ -401,12 +340,7 @@ double distanceToGeometry(const ToolGeometry& geometry, const vision::Fixture& f
     std::visit(
         [&](const auto& g) {
                 using T = std::decay_t<decltype(g)>;
-                if constexpr (std::is_same_v<T, CaliperGeometry> ||
-                              std::is_same_v<T, EdgeFlawGeometry> ||
-                              std::is_same_v<T, EdgeDefectsGeometry> ||
-                              std::is_same_v<T, StraightnessGeometry> ||
-                              std::is_same_v<T, OrientationGeometry> ||
-                              std::is_same_v<T, RulerGeometry>) {
+                if constexpr (SegmentGeometry<T>) {
                     d = distanceToSegment(p, vision::toImageCoords(fixture, g.p0), vision::toImageCoords(fixture, g.p1));
                 } else if constexpr ((std::is_same_v<T, CircleGeometry> || std::is_same_v<T, RoundnessGeometry>)) {
                     d = std::abs(cv::norm(p - vision::toImageCoords(fixture, g.center)) - g.radius);
@@ -419,15 +353,7 @@ double distanceToGeometry(const ToolGeometry& geometry, const vision::Fixture& f
                 } else if constexpr (std::is_same_v<T, AngleGeometry>) {
                     d = std::min(distanceToSegment(p, vision::toImageCoords(fixture, g.vertex), vision::toImageCoords(fixture, g.end0)),
                                  distanceToSegment(p, vision::toImageCoords(fixture, g.vertex), vision::toImageCoords(fixture, g.end1)));
-                } else if constexpr (std::is_same_v<T, BlobGeometry> ||
-                                     std::is_same_v<T, RegionGeometry> ||
-                                     std::is_same_v<T, SymmetryGeometry> ||
-                                     std::is_same_v<T, PolygonGeometry> ||
-                                     std::is_same_v<T, ClearanceGeometry> ||
-                                     std::is_same_v<T, BoltPatternGeometry> ||
-                                     std::is_same_v<T, ExtremesGeometry> ||
-                                     std::is_same_v<T, ChamferGeometry> ||
-                                     std::is_same_v<T, FilletGeometry>) {
+                } else if constexpr (BoxGeometry<T>) {
                     const float hw = g.width / 2.0F;
                     const float hh = g.height / 2.0F;
                     const cv::Point2f c[4] = {
@@ -438,10 +364,7 @@ double distanceToGeometry(const ToolGeometry& geometry, const vision::Fixture& f
                     for (int k = 0; k < 4; ++k) {
                         d = std::min(d, distanceToSegment(p, c[k], c[(k + 1) % 4]));
                     }
-                } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
-                                     std::is_same_v<T, ThreadGeometry> ||
-                                     std::is_same_v<T, GrooveGeometry> ||
-                                     std::is_same_v<T, MedianAxisGeometry>) {
+                } else if constexpr (AxisGeometry<T>) {
                     d = distanceToSegment(p, vision::toImageCoords(fixture, g.axisFrom),
                                           vision::toImageCoords(fixture, g.axisTo));
                 } else if constexpr (std::is_same_v<T, GearGeometry>) {

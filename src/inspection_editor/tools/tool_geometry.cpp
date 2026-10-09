@@ -6,6 +6,7 @@
 #include <cmath>
 #include <functional>
 #include <type_traits>
+#include <utility>
 
 namespace pci::inspection {
 
@@ -505,10 +506,7 @@ bool setPointCount(ToolGeometry& geometry, int value) {
                                  std::is_same_v<T, OrientationGeometry>) {
                 g.scanCount = value;
                 return true;
-            } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
-                                 std::is_same_v<T, MedianAxisGeometry> ||
-                                 std::is_same_v<T, GrooveGeometry> ||
-                                 std::is_same_v<T, ThreadGeometry>) {
+            } else if constexpr (AxisGeometry<T>) {
                 g.stations = value;
                 return true;
             } else {
@@ -834,6 +832,14 @@ bool measuresFraction(ToolType type) {
 
 void suggestTolerances(ToolType type, double measured, double& toleranceMin,
                        double& toleranceMax) {
+    if (measuresFraction(type)) {
+        // Vive entre 0 y 1: una banda relativa sería ridícula cerca de 1. El
+        // techo se corta ahí porque una fracción mayor que 1 no existe, y
+        // dejarlo abierto haría pasar por bueno un valor imposible.
+        toleranceMin = std::max(0.0, measured - 0.05);
+        toleranceMax = std::min(1.0, measured + 0.05);
+        return;
+    }
     switch (type) {
         case ToolType::EdgeDefects:
         case ToolType::Polygon:
@@ -870,11 +876,8 @@ void suggestTolerances(ToolType type, double measured, double& toleranceMin,
             return;
         }
         case ToolType::Symmetry:
-            // Vive entre 0 y 1: una banda relativa sería ridícula cerca de 1. El
-            // techo se corta ahí porque una simetría mayor que 1 no existe, y
-            // dejarlo abierto haría pasar por bueno un valor imposible.
-            toleranceMin = std::max(0.0, measured - 0.05);
-            toleranceMax = std::min(1.0, measured + 0.05);
+            // Fracción: ya la ha resuelto `measuresFraction` antes del switch.
+            // El caso sigue aquí solo para que el switch siga siendo exhaustivo.
             return;
         // El Eje medio va con el Borde liso y NO con la Simetría, aunque estén
         // seguidos en el enum: lo que mide es una rectitud en píxeles, no una
@@ -975,108 +978,21 @@ void suggestTolerances(const ToolGeometry& geometry, double measured, double& to
 }
 
 ToolType typeOf(const ToolGeometry& geometry) {
-    return std::visit(
-        [](const auto& g) -> ToolType {
-            using T = std::decay_t<decltype(g)>;
-            if constexpr (std::is_same_v<T, CaliperGeometry>) {
-                return ToolType::Caliper;
-            } else if constexpr (std::is_same_v<T, CircleGeometry>) {
-                return ToolType::Circle;
-            } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
-                return ToolType::PointToLine;
-            } else if constexpr (std::is_same_v<T, EdgeFlawGeometry>) {
-                return ToolType::EdgeFlaw;
-            } else if constexpr (std::is_same_v<T, BlobGeometry>) {
-                return ToolType::Blob;
-            } else if constexpr (std::is_same_v<T, RulerGeometry>) {
-                return ToolType::Ruler;
-            } else if constexpr (std::is_same_v<T, LineToLineGeometry>) {
-                return ToolType::LineToLine;
-            } else if constexpr (std::is_same_v<T, AngleGeometry>) {
-                return ToolType::Angle;
-            } else if constexpr (std::is_same_v<T, PolyBlobGeometry>) {
-                return ToolType::PolyBlob;
-            } else if constexpr (std::is_same_v<T, PositionGeometry>) {
-                return ToolType::Position;
-            } else if constexpr (std::is_same_v<T, ArcGeometry>) {
-                return ToolType::Arc;
-            } else if constexpr (std::is_same_v<T, ShaftGeometry>) {
-                return ToolType::Shaft;
-            } else if constexpr (std::is_same_v<T, ThreadGeometry>) {
-                return ToolType::Thread;
-            } else if constexpr (std::is_same_v<T, GearGeometry>) {
-                return ToolType::Gear;
-            } else if constexpr (std::is_same_v<T, ConstructedPointGeometry>) {
-                return ToolType::ConstructedPoint;
-            } else if constexpr (std::is_same_v<T, ConstructedLineGeometry>) {
-                return ToolType::ConstructedLine;
-            } else if constexpr (std::is_same_v<T, MedianAxisGeometry>) {
-                return ToolType::MedianAxis;
-            } else if constexpr (std::is_same_v<T, RegionGeometry>) {
-                return ToolType::Region;
-            } else if constexpr (std::is_same_v<T, SymmetryGeometry>) {
-                return ToolType::Symmetry;
-            } else if constexpr (std::is_same_v<T, PolygonGeometry>) {
-                return ToolType::Polygon;
-            } else if constexpr (std::is_same_v<T, EdgeDefectsGeometry>) {
-                return ToolType::EdgeDefects;
-            } else if constexpr (std::is_same_v<T, ClearanceGeometry>) {
-                return ToolType::Clearance;
-            } else if constexpr (std::is_same_v<T, StraightnessGeometry>) {
-                return ToolType::Straightness;
-            } else if constexpr (std::is_same_v<T, RoundnessGeometry>) {
-                return ToolType::Roundness;
-            } else if constexpr (std::is_same_v<T, OrientationGeometry>) {
-                return ToolType::Orientation;
-            } else if constexpr (std::is_same_v<T, CentreOffsetGeometry>) {
-                return ToolType::CentreOffset;
-            } else if constexpr (std::is_same_v<T, BoltPatternGeometry>) {
-                return ToolType::BoltPattern;
-            } else if constexpr (std::is_same_v<T, ProfileGeometry>) {
-                return ToolType::Profile;
-            } else if constexpr (std::is_same_v<T, ExtremesGeometry>) {
-                return ToolType::Extremes;
-            } else if constexpr (std::is_same_v<T, ChamferGeometry>) {
-                return ToolType::Chamfer;
-            } else if constexpr (std::is_same_v<T, FilletGeometry>) {
-                return ToolType::Fillet;
-            } else if constexpr (std::is_same_v<T, GrooveGeometry>) {
-                return ToolType::Groove;
-            } else {
-                // Sin rama genérica a propósito. Antes esta cadena acababa en un
-                // `else` que devolvía Position, así que al añadir un tipo nuevo
-                // la herramienta se reportaba como Posición sin que nada
-                // fallara al compilar. Ahora no compila hasta que se le asigne
-                // su ToolType.
-                static_assert(alwaysFalse<T>, "geometría sin ToolType asignado");
-            }
-        },
-        geometry);
+    // Las alternativas de ToolGeometry van en el orden de ToolType (lo fija el
+    // static_assert junto a la variante, y lo comprueban las pruebas de
+    // coherencia): el índice de la variante ES el tipo.
+    return static_cast<ToolType>(geometry.index());
 }
 
 void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
     std::visit(
         [&delta](auto& g) {
             using T = std::decay_t<decltype(g)>;
-            if constexpr (std::is_same_v<T, CaliperGeometry> ||
-                          std::is_same_v<T, EdgeFlawGeometry> ||
-                          std::is_same_v<T, EdgeDefectsGeometry> ||
-                          std::is_same_v<T, StraightnessGeometry> ||
-                          std::is_same_v<T, OrientationGeometry> ||
-                          std::is_same_v<T, RulerGeometry>) {
+            if constexpr (SegmentGeometry<T>) {
                 g.p0 += delta;
                 g.p1 += delta;
-            } else if constexpr (std::is_same_v<T, CircleGeometry> ||
-                                 std::is_same_v<T, RoundnessGeometry> ||
-                                 std::is_same_v<T, BlobGeometry> ||
-                                 std::is_same_v<T, RegionGeometry> ||
-                                 std::is_same_v<T, BoltPatternGeometry> ||
-                                 std::is_same_v<T, ExtremesGeometry> ||
-                                 std::is_same_v<T, ChamferGeometry> ||
-                                 std::is_same_v<T, FilletGeometry> ||
-                                 std::is_same_v<T, SymmetryGeometry> ||
-                                 std::is_same_v<T, PolygonGeometry> ||
-                                 std::is_same_v<T, ClearanceGeometry>) {
+            } else if constexpr (BoxGeometry<T> || std::is_same_v<T, CircleGeometry> ||
+                                 std::is_same_v<T, RoundnessGeometry>) {
                 g.center += delta;
             } else if constexpr (std::is_same_v<T, PointToLineGeometry>) {
                 g.lineA += delta;
@@ -1106,10 +1022,7 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 g.start += delta;
                 g.mid += delta;
                 g.end += delta;
-            } else if constexpr (std::is_same_v<T, ShaftGeometry> ||
-                                 std::is_same_v<T, ThreadGeometry> ||
-                                 std::is_same_v<T, GrooveGeometry> ||
-                                 std::is_same_v<T, MedianAxisGeometry>) {
+            } else if constexpr (AxisGeometry<T>) {
                 g.axisFrom += delta;
                 g.axisTo += delta;
             } else if constexpr (std::is_same_v<T, GearGeometry>) {
@@ -1123,10 +1036,9 @@ void translateGeometry(ToolGeometry& geometry, const cv::Point2f& delta) {
                 // deje mover es a propósito — la etiqueta estorba a menudo.
                 g.anchor += delta;
             } else {
-                // Igual que en typeOf: esta cadena no puede acabar sin rama. Al
-                // no tener `else`, un tipo nuevo simplemente NO se trasladaba —
-                // la herramienta se quedaba clavada al arrastrarla y nada
-                // fallaba al compilar.
+                // Esta cadena no puede acabar sin rama. Al no tener `else`, un
+                // tipo nuevo simplemente NO se trasladaba — la herramienta se
+                // quedaba clavada al arrastrarla y nada fallaba al compilar.
                 static_assert(alwaysFalse<T>, "geometría que no sabe trasladarse");
             }
         },
@@ -1143,30 +1055,48 @@ std::string writeJson(const std::function<void(cv::FileStorage&)>& body) {
 }
 
 // Lectura con validación: una clave ausente es un error controlado, no un 0.
+//
+// Las claves obligatorias se leen seguidas y se comprueban UNA vez al final con
+// `error()`: si una falla, devuelve 0 y el lector guarda su mensaje. Solo se
+// guarda el PRIMERO —el de la clave leída antes—, que es el que se daba cuando
+// cada clave se comprobaba por separado en el orden de lectura.
 class JsonReader {
 public:
     explicit JsonReader(const std::string& json)
         : fs_(json,
               cv::FileStorage::READ | cv::FileStorage::MEMORY | cv::FileStorage::FORMAT_JSON) {}
 
-    core::Result<double> number(const char* key) {
+    double number(const char* key) {
         const cv::FileNode node = fs_[key];
-        if (node.empty() || !node.isReal()) {
-            if (node.empty() || !node.isInt()) {
-                return core::Result<double>::err(std::string("Geometría corrupta: falta '") +
-                                                 key + "'");
-            }
+        if (node.empty() || (!node.isReal() && !node.isInt())) {
+            fail(std::string("Geometría corrupta: falta '") + key + "'");
+            return 0.0;
         }
         const double value = static_cast<double>(node.real());
         // Un JSON con 1e400 desborda a infinito y OpenCV lo acepta sin rechistar.
         // Si se dejara pasar, la herramienta quedaría en el infinito y todas sus
         // medidas saldrían NaN: es preferible rechazar la geometría entera.
         if (!std::isfinite(value)) {
-            return core::Result<double>::err(std::string("Geometría corrupta: '") + key +
-                                             "' no es un número finito");
+            fail(std::string("Geometría corrupta: '") + key + "' no es un número finito");
+            return 0.0;
         }
-        return core::Result<double>::ok(value);
+        return value;
     }
+
+    float req(const char* key) { return static_cast<float>(number(key)); }
+
+    cv::Point2f point(const char* keyX, const char* keyY) {
+        const float x = req(keyX);  // primero x: el orden decide qué error se guarda
+        return {x, req(keyY)};
+    }
+
+    void fail(std::string message) {
+        if (error_.empty()) {
+            error_ = std::move(message);
+        }
+    }
+
+    [[nodiscard]] const std::string& error() const { return error_; }
 
     // Clave opcional (campos añadidos después de la v1 del formato).
     double numberOr(const char* key, double fallback) {
@@ -1202,6 +1132,7 @@ public:
 
 private:
     cv::FileStorage fs_;
+    std::string error_;
 };
 
 // Lee el modo de una construcción comprobando que el número guardado sea uno de
@@ -1210,19 +1141,19 @@ private:
 // tocados a mano— se degradaría en silencio al primero de la lista, y la
 // herramienta calcularía una cosa distinta de la que el operador configuró sin
 // que nada lo dijera.
+//
+// Un modo desconocido se apunta en el lector como cualquier otro error, detrás
+// de los de las claves leídas antes.
 template <typename Mode, std::size_t N>
-core::Result<Mode> readConstruction(JsonReader& reader, const std::array<Mode, N>& modes) {
-    const auto raw = reader.number("mode");
-    if (!raw.isOk()) {
-        return core::Result<Mode>::err(raw.error().message);
-    }
-    const int value = static_cast<int>(raw.value());
+Mode readConstruction(JsonReader& reader, const std::array<Mode, N>& modes) {
+    const int value = static_cast<int>(reader.number("mode"));
     for (const Mode mode : modes) {
         if (static_cast<int>(mode) == value) {
-            return core::Result<Mode>::ok(mode);
+            return mode;
         }
     }
-    return core::Result<Mode>::err("Construcción desconocida: " + std::to_string(value));
+    reader.fail("Construcción desconocida: " + std::to_string(value));
+    return modes.front();
 }
 
 }  // namespace
@@ -1418,56 +1349,42 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
 
     try {
         JsonReader reader(json);
-        auto f = [&reader](const char* key) { return reader.number(key); };
+        // La única comprobación de las claves obligatorias de cada caso.
+        const auto done = [&reader](ToolGeometry g) {
+            return reader.error().empty() ? ResultT::ok(std::move(g))
+                                          : ResultT::err(reader.error());
+        };
 
         switch (type) {
             case ToolType::Caliper: {
                 CaliperGeometry g;
-                auto x0 = f("x0"), y0 = f("y0"), x1 = f("x1"), y1 = f("y1"), band = f("band");
-                for (const auto* r : {&x0, &y0, &x1, &y1, &band}) {
-                    if (!r->isOk()) return ResultT::err(r->error().message);
-                }
-                g.p0 = {static_cast<float>(x0.value()), static_cast<float>(y0.value())};
-                g.p1 = {static_cast<float>(x1.value()), static_cast<float>(y1.value())};
-                g.bandWidth = static_cast<float>(band.value());
-                return ResultT::ok(g);
+                g.p0 = reader.point("x0", "y0");
+                g.p1 = reader.point("x1", "y1");
+                g.bandWidth = reader.req("band");
+                return done(g);
             }
             case ToolType::Circle: {
                 CircleGeometry g;
-                auto cx = f("cx"), cy = f("cy"), r = f("r"), band = f("band");
-                for (const auto* v : {&cx, &cy, &r, &band}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
-                g.radius = static_cast<float>(r.value());
-                g.searchBand = static_cast<float>(band.value());
+                g.center = reader.point("cx", "cy");
+                g.radius = reader.req("r");
+                g.searchBand = reader.req("band");
                 // "rays" llegó después: los JSON viejos usan el valor por defecto.
                 g.rayCount = static_cast<int>(reader.numberOr("rays", g.rayCount));
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::PointToLine: {
                 PointToLineGeometry g;
-                auto lax = f("lax"), lay = f("lay"), lbx = f("lbx"), lby = f("lby");
-                auto sax = f("sax"), say = f("say"), sbx = f("sbx"), sby = f("sby");
-                for (const auto* v : {&lax, &lay, &lbx, &lby, &sax, &say, &sbx, &sby}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.lineA = {static_cast<float>(lax.value()), static_cast<float>(lay.value())};
-                g.lineB = {static_cast<float>(lbx.value()), static_cast<float>(lby.value())};
-                g.scanA = {static_cast<float>(sax.value()), static_cast<float>(say.value())};
-                g.scanB = {static_cast<float>(sbx.value()), static_cast<float>(sby.value())};
-                return ResultT::ok(g);
+                g.lineA = reader.point("lax", "lay");
+                g.lineB = reader.point("lbx", "lby");
+                g.scanA = reader.point("sax", "say");
+                g.scanB = reader.point("sbx", "sby");
+                return done(g);
             }
             case ToolType::EdgeFlaw: {
                 EdgeFlawGeometry g;
-                auto x0 = f("x0"), y0 = f("y0"), x1 = f("x1"), y1 = f("y1");
-                auto len = f("scanLen");
-                for (const auto* v : {&x0, &y0, &x1, &y1, &len}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.p0 = {static_cast<float>(x0.value()), static_cast<float>(y0.value())};
-                g.p1 = {static_cast<float>(x1.value()), static_cast<float>(y1.value())};
-                g.scanLength = static_cast<float>(len.value());
+                g.p0 = reader.point("x0", "y0");
+                g.p1 = reader.point("x1", "y1");
+                g.scanLength = reader.req("scanLen");
                 // "scans" era obligatorio y las once herramientas hermanas ya
                 // tratan su número de puntos como opcional (`numberOr`): una
                 // plantilla antigua sin este campo rompía la carga entera en
@@ -1475,56 +1392,37 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 // todas las demás. Encontrado al escribir el panel editable de
                 // puntos de medida (tests/test_point_count_tuning.cpp).
                 g.scanCount = static_cast<int>(reader.numberOr("scans", g.scanCount));
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::Ruler: {
                 RulerGeometry g;
-                auto x0 = f("x0"), y0 = f("y0"), x1 = f("x1"), y1 = f("y1");
-                for (const auto* v : {&x0, &y0, &x1, &y1}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.p0 = {static_cast<float>(x0.value()), static_cast<float>(y0.value())};
-                g.p1 = {static_cast<float>(x1.value()), static_cast<float>(y1.value())};
-                return ResultT::ok(g);
+                g.p0 = reader.point("x0", "y0");
+                g.p1 = reader.point("x1", "y1");
+                return done(g);
             }
             case ToolType::Blob: {
                 BlobGeometry g;
-                auto cx = f("cx"), cy = f("cy"), w = f("w"), h = f("h");
-                auto minArea = f("minArea"), dark = f("dark");
-                for (const auto* v : {&cx, &cy, &w, &h, &minArea, &dark}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
-                g.width = static_cast<float>(w.value());
-                g.height = static_cast<float>(h.value());
-                g.minArea = static_cast<float>(minArea.value());
-                g.darkBlobs = dark.value() != 0.0;
-                return ResultT::ok(g);
+                g.center = reader.point("cx", "cy");
+                g.width = reader.req("w");
+                g.height = reader.req("h");
+                g.minArea = reader.req("minArea");
+                g.darkBlobs = reader.number("dark") != 0.0;
+                return done(g);
             }
             case ToolType::LineToLine: {
                 LineToLineGeometry g;
-                auto ax0 = f("ax0"), ay0 = f("ay0"), ax1 = f("ax1"), ay1 = f("ay1");
-                auto bx0 = f("bx0"), by0 = f("by0"), bx1 = f("bx1"), by1 = f("by1");
-                for (const auto* v : {&ax0, &ay0, &ax1, &ay1, &bx0, &by0, &bx1, &by1}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.a0 = {static_cast<float>(ax0.value()), static_cast<float>(ay0.value())};
-                g.a1 = {static_cast<float>(ax1.value()), static_cast<float>(ay1.value())};
-                g.b0 = {static_cast<float>(bx0.value()), static_cast<float>(by0.value())};
-                g.b1 = {static_cast<float>(bx1.value()), static_cast<float>(by1.value())};
-                return ResultT::ok(g);
+                g.a0 = reader.point("ax0", "ay0");
+                g.a1 = reader.point("ax1", "ay1");
+                g.b0 = reader.point("bx0", "by0");
+                g.b1 = reader.point("bx1", "by1");
+                return done(g);
             }
             case ToolType::Angle: {
                 AngleGeometry g;
-                auto vx = f("vx"), vy = f("vy"), e0x = f("e0x"), e0y = f("e0y");
-                auto e1x = f("e1x"), e1y = f("e1y");
-                for (const auto* v : {&vx, &vy, &e0x, &e0y, &e1x, &e1y}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.vertex = {static_cast<float>(vx.value()), static_cast<float>(vy.value())};
-                g.end0 = {static_cast<float>(e0x.value()), static_cast<float>(e0y.value())};
-                g.end1 = {static_cast<float>(e1x.value()), static_cast<float>(e1y.value())};
-                return ResultT::ok(g);
+                g.vertex = reader.point("vx", "vy");
+                g.end0 = reader.point("e0x", "e0y");
+                g.end1 = reader.point("e1x", "e1y");
+                return done(g);
             }
             case ToolType::PolyBlob: {
                 PolyBlobGeometry g;
@@ -1532,21 +1430,13 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 if (g.vertices.size() < 3) {
                     return ResultT::err("Blob poligonal: se necesitan al menos 3 vértices");
                 }
-                auto minArea = f("minArea"), dark = f("dark");
-                for (const auto* v : {&minArea, &dark}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.minArea = static_cast<float>(minArea.value());
-                g.darkBlobs = dark.value() != 0.0;
-                return ResultT::ok(g);
+                g.minArea = reader.req("minArea");
+                g.darkBlobs = reader.number("dark") != 0.0;
+                return done(g);
             }
             case ToolType::Position: {
                 PositionGeometry g;
-                auto px = f("px"), py = f("py");
-                for (const auto* v : {&px, &py}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.point = {static_cast<float>(px.value()), static_cast<float>(py.value())};
+                g.point = reader.point("px", "py");
                 const int axis = static_cast<int>(reader.numberOr("axis", 0.0));
                 g.axis = (axis == 1)   ? PositionAxis::X
                          : (axis == 2) ? PositionAxis::Y
@@ -1555,235 +1445,156 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 // tienen y su punto teórico es el origen del marco.
                 g.nominal = {static_cast<float>(reader.numberOr("nx", 0.0)),
                              static_cast<float>(reader.numberOr("ny", 0.0))};
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::Arc: {
                 ArcGeometry g;
-                auto sx = f("sx"), sy = f("sy"), mx = f("mx"), my = f("my"), ex = f("ex"),
-                     ey = f("ey"), band = f("band");
-                for (const auto* v : {&sx, &sy, &mx, &my, &ex, &ey, &band}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.start = {static_cast<float>(sx.value()), static_cast<float>(sy.value())};
-                g.mid = {static_cast<float>(mx.value()), static_cast<float>(my.value())};
-                g.end = {static_cast<float>(ex.value()), static_cast<float>(ey.value())};
-                g.searchBand = static_cast<float>(band.value());
+                g.start = reader.point("sx", "sy");
+                g.mid = reader.point("mx", "my");
+                g.end = reader.point("ex", "ey");
+                g.searchBand = reader.req("band");
                 g.rayCount = static_cast<int>(reader.numberOr("rays", 24.0));
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::Shaft: {
                 ShaftGeometry g;
-                auto ax = f("ax"), ay = f("ay"), bx = f("bx"), by = f("by"), band = f("band");
-                for (const auto* v : {&ax, &ay, &bx, &by, &band}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.axisFrom = {static_cast<float>(ax.value()), static_cast<float>(ay.value())};
-                g.axisTo = {static_cast<float>(bx.value()), static_cast<float>(by.value())};
-                g.searchBand = static_cast<float>(band.value());
+                g.axisFrom = reader.point("ax", "ay");
+                g.axisTo = reader.point("bx", "by");
+                g.searchBand = reader.req("band");
                 g.stations = static_cast<int>(reader.numberOr("stations", 32.0));
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::Orientation: {
                 OrientationGeometry g;
-                auto x0 = f("x0"), y0 = f("y0"), x1 = f("x1"), y1 = f("y1");
-                for (const auto* v : {&x0, &y0, &x1, &y1}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.p0 = {static_cast<float>(x0.value()), static_cast<float>(y0.value())};
-                g.p1 = {static_cast<float>(x1.value()), static_cast<float>(y1.value())};
+                g.p0 = reader.point("x0", "y0");
+                g.p1 = reader.point("x1", "y1");
                 g.scanLength = static_cast<float>(reader.numberOr("scanLen", 16.0));
                 g.scanCount = static_cast<int>(reader.numberOr("scans", 60.0));
                 g.nominalAngleDeg = static_cast<float>(reader.numberOr("nominal", 0.0));
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::Roundness: {
                 RoundnessGeometry g;
-                auto cx = f("cx"), cy = f("cy"), r = f("r"), band = f("band");
-                for (const auto* v : {&cx, &cy, &r, &band}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
-                g.radius = static_cast<float>(r.value());
-                g.searchBand = static_cast<float>(band.value());
+                g.center = reader.point("cx", "cy");
+                g.radius = reader.req("r");
+                g.searchBand = reader.req("band");
                 g.rayCount = static_cast<int>(reader.numberOr("rays", 72.0));
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::Straightness: {
                 StraightnessGeometry g;
-                auto x0 = f("x0"), y0 = f("y0"), x1 = f("x1"), y1 = f("y1");
-                for (const auto* v : {&x0, &y0, &x1, &y1}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.p0 = {static_cast<float>(x0.value()), static_cast<float>(y0.value())};
-                g.p1 = {static_cast<float>(x1.value()), static_cast<float>(y1.value())};
+                g.p0 = reader.point("x0", "y0");
+                g.p1 = reader.point("x1", "y1");
                 g.scanLength = static_cast<float>(reader.numberOr("scanLen", 16.0));
                 g.scanCount = static_cast<int>(reader.numberOr("scans", 60.0));
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::Clearance: {
                 ClearanceGeometry g;
-                auto cx = f("cx"), cy = f("cy"), w = f("w"), h = f("h");
-                for (const auto* v : {&cx, &cy, &w, &h}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
-                g.width = static_cast<float>(w.value());
-                g.height = static_cast<float>(h.value());
+                g.center = reader.point("cx", "cy");
+                g.width = reader.req("w");
+                g.height = reader.req("h");
                 g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::EdgeDefects: {
                 EdgeDefectsGeometry g;
-                auto x0 = f("x0"), y0 = f("y0"), x1 = f("x1"), y1 = f("y1");
-                for (const auto* v : {&x0, &y0, &x1, &y1}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.p0 = {static_cast<float>(x0.value()), static_cast<float>(y0.value())};
-                g.p1 = {static_cast<float>(x1.value()), static_cast<float>(y1.value())};
+                g.p0 = reader.point("x0", "y0");
+                g.p1 = reader.point("x1", "y1");
                 g.scanLength = static_cast<float>(reader.numberOr("scanLen", 16.0));
                 g.scanCount = static_cast<int>(reader.numberOr("scans", 60.0));
                 g.minHeight = static_cast<float>(reader.numberOr("minH", 1.5));
                 g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::Polygon: {
                 PolygonGeometry g;
-                auto cx = f("cx"), cy = f("cy"), w = f("w"), h = f("h");
-                for (const auto* v : {&cx, &cy, &w, &h}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
-                g.width = static_cast<float>(w.value());
-                g.height = static_cast<float>(h.value());
+                g.center = reader.point("cx", "cy");
+                g.width = reader.req("w");
+                g.height = reader.req("h");
                 g.epsilonFraction = static_cast<float>(reader.numberOr("eps", 0.02));
                 g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::Symmetry: {
                 SymmetryGeometry g;
-                auto cx = f("cx"), cy = f("cy"), w = f("w"), h = f("h");
-                for (const auto* v : {&cx, &cy, &w, &h}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
-                g.width = static_cast<float>(w.value());
-                g.height = static_cast<float>(h.value());
+                g.center = reader.point("cx", "cy");
+                g.width = reader.req("w");
+                g.height = reader.req("h");
                 g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::Region: {
                 RegionGeometry g;
-                auto cx = f("cx"), cy = f("cy"), w = f("w"), h = f("h");
-                for (const auto* v : {&cx, &cy, &w, &h}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
-                g.width = static_cast<float>(w.value());
-                g.height = static_cast<float>(h.value());
+                g.center = reader.point("cx", "cy");
+                g.width = reader.req("w");
+                g.height = reader.req("h");
                 g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
                 // Igual que en las construcciones: una medida desconocida no se
                 // degrada a la primera, porque daría un número creíble que no es
                 // el que el operador configuró.
-                const auto measure = readConstruction(reader, allRegionMeasures());
-                if (!measure.isOk()) return ResultT::err(measure.error().message);
-                g.measure = measure.value();
-                return ResultT::ok(g);
+                g.measure = readConstruction(reader, allRegionMeasures());
+                return done(g);
             }
             case ToolType::MedianAxis: {
                 MedianAxisGeometry g;
-                auto ax = f("ax"), ay = f("ay"), bx = f("bx"), by = f("by"), band = f("band");
-                for (const auto* v : {&ax, &ay, &bx, &by, &band}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.axisFrom = {static_cast<float>(ax.value()), static_cast<float>(ay.value())};
-                g.axisTo = {static_cast<float>(bx.value()), static_cast<float>(by.value())};
-                g.searchBand = static_cast<float>(band.value());
+                g.axisFrom = reader.point("ax", "ay");
+                g.axisTo = reader.point("bx", "by");
+                g.searchBand = reader.req("band");
                 g.stations = static_cast<int>(reader.numberOr("stations", 32.0));
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::Thread: {
                 ThreadGeometry g;
-                auto ax = f("ax"), ay = f("ay"), bx = f("bx"), by = f("by"), band = f("band");
-                for (const auto* v : {&ax, &ay, &bx, &by, &band}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.axisFrom = {static_cast<float>(ax.value()), static_cast<float>(ay.value())};
-                g.axisTo = {static_cast<float>(bx.value()), static_cast<float>(by.value())};
-                g.searchBand = static_cast<float>(band.value());
+                g.axisFrom = reader.point("ax", "ay");
+                g.axisTo = reader.point("bx", "by");
+                g.searchBand = reader.req("band");
                 g.stations = static_cast<int>(reader.numberOr("stations", 240.0));
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::Gear: {
                 GearGeometry g;
-                auto cx = f("cx"), cy = f("cy"), rin = f("rin"), rout = f("rout");
-                for (const auto* v : {&cx, &cy, &rin, &rout}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
-                g.innerRadius = static_cast<float>(rin.value());
-                g.outerRadius = static_cast<float>(rout.value());
+                g.center = reader.point("cx", "cy");
+                g.innerRadius = reader.req("rin");
+                g.outerRadius = reader.req("rout");
                 g.rayCount = static_cast<int>(reader.numberOr("rays", 1440.0));
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::Groove: {
                 GrooveGeometry g;
-                auto ax = f("ax"), ay = f("ay"), bx = f("bx"), by = f("by"), band = f("band");
-                for (const auto* v : {&ax, &ay, &bx, &by, &band}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.axisFrom = {static_cast<float>(ax.value()), static_cast<float>(ay.value())};
-                g.axisTo = {static_cast<float>(bx.value()), static_cast<float>(by.value())};
-                g.searchBand = static_cast<float>(band.value());
+                g.axisFrom = reader.point("ax", "ay");
+                g.axisTo = reader.point("bx", "by");
+                g.searchBand = reader.req("band");
                 g.stations = static_cast<int>(reader.numberOr("stations", 120.0));
-                const auto measure = readConstruction(reader, allGrooveMeasures());
-                if (!measure.isOk()) return ResultT::err(measure.error().message);
-                g.measure = measure.value();
-                return ResultT::ok(g);
+                g.measure = readConstruction(reader, allGrooveMeasures());
+                return done(g);
             }
             case ToolType::Fillet: {
                 FilletGeometry g;
-                auto cx = f("cx"), cy = f("cy"), w = f("w"), h = f("h");
-                for (const auto* v : {&cx, &cy, &w, &h}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
-                g.width = static_cast<float>(w.value());
-                g.height = static_cast<float>(h.value());
+                g.center = reader.point("cx", "cy");
+                g.width = reader.req("w");
+                g.height = reader.req("h");
                 g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
-                const auto measure = readConstruction(reader, allFilletMeasures());
-                if (!measure.isOk()) return ResultT::err(measure.error().message);
-                g.measure = measure.value();
-                return ResultT::ok(g);
+                g.measure = readConstruction(reader, allFilletMeasures());
+                return done(g);
             }
             case ToolType::Chamfer: {
                 ChamferGeometry g;
-                auto cx = f("cx"), cy = f("cy"), w = f("w"), h = f("h");
-                for (const auto* v : {&cx, &cy, &w, &h}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
-                g.width = static_cast<float>(w.value());
-                g.height = static_cast<float>(h.value());
+                g.center = reader.point("cx", "cy");
+                g.width = reader.req("w");
+                g.height = reader.req("h");
                 g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
-                const auto measure = readConstruction(reader, allChamferMeasures());
-                if (!measure.isOk()) return ResultT::err(measure.error().message);
-                g.measure = measure.value();
-                return ResultT::ok(g);
+                g.measure = readConstruction(reader, allChamferMeasures());
+                return done(g);
             }
             case ToolType::Extremes: {
                 ExtremesGeometry g;
-                auto cx = f("cx"), cy = f("cy"), w = f("w"), h = f("h");
-                for (const auto* v : {&cx, &cy, &w, &h}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
-                g.width = static_cast<float>(w.value());
-                g.height = static_cast<float>(h.value());
+                g.center = reader.point("cx", "cy");
+                g.width = reader.req("w");
+                g.height = reader.req("h");
                 g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
-                const auto measure = readConstruction(reader, allExtremeMeasures());
-                if (!measure.isOk()) return ResultT::err(measure.error().message);
-                g.measure = measure.value();
-                return ResultT::ok(g);
+                g.measure = readConstruction(reader, allExtremeMeasures());
+                return done(g);
             }
             case ToolType::Profile: {
                 ProfileGeometry g;
@@ -1798,56 +1609,36 @@ core::Result<ToolGeometry> geometryFromJson(ToolType type, const std::string& js
                 // lo traen, y su valor de entonces era «pieza oscura»: se
                 // conserva para que una plantilla vieja siga midiendo igual.
                 g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::BoltPattern: {
                 BoltPatternGeometry g;
-                auto cx = f("cx"), cy = f("cy"), w = f("w"), h = f("h");
-                for (const auto* v : {&cx, &cy, &w, &h}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.center = {static_cast<float>(cx.value()), static_cast<float>(cy.value())};
-                g.width = static_cast<float>(w.value());
-                g.height = static_cast<float>(h.value());
+                g.center = reader.point("cx", "cy");
+                g.width = reader.req("w");
+                g.height = reader.req("h");
                 g.expectedHoles = static_cast<int>(reader.numberOr("holes", 0.0));
                 g.darkPiece = reader.numberOr("dark", 1.0) != 0.0;
-                return ResultT::ok(g);
+                return done(g);
             }
             case ToolType::CentreOffset: {
                 CentreOffsetGeometry g;
-                auto ax = f("ax"), ay = f("ay");
-                for (const auto* v : {&ax, &ay}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.anchor = {static_cast<float>(ax.value()), static_cast<float>(ay.value())};
-                return ResultT::ok(g);
+                g.anchor = reader.point("ax", "ay");
+                return done(g);
             }
             case ToolType::ConstructedPoint: {
                 ConstructedPointGeometry g;
-                auto ax = f("ax"), ay = f("ay");
-                for (const auto* v : {&ax, &ay}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.anchor = {static_cast<float>(ax.value()), static_cast<float>(ay.value())};
+                g.anchor = reader.point("ax", "ay");
                 // Una construcción desconocida NO se degrada a la primera: eso
                 // convertiría un fichero de otra versión en una medida creíble
                 // que no es la que el operador configuró.
-                const auto mode = readConstruction(reader, allPointConstructions());
-                if (!mode.isOk()) return ResultT::err(mode.error().message);
-                g.mode = mode.value();
-                return ResultT::ok(g);
+                g.mode = readConstruction(reader, allPointConstructions());
+                return done(g);
             }
             case ToolType::ConstructedLine: {
                 ConstructedLineGeometry g;
-                auto ax = f("ax"), ay = f("ay");
-                for (const auto* v : {&ax, &ay}) {
-                    if (!v->isOk()) return ResultT::err(v->error().message);
-                }
-                g.anchor = {static_cast<float>(ax.value()), static_cast<float>(ay.value())};
-                const auto mode = readConstruction(reader, allLineConstructions());
-                if (!mode.isOk()) return ResultT::err(mode.error().message);
-                g.mode = mode.value();
-                return ResultT::ok(g);
+                g.anchor = reader.point("ax", "ay");
+                g.mode = readConstruction(reader, allLineConstructions());
+                return done(g);
             }
         }
         return ResultT::err("Tipo de herramienta no soportado");
