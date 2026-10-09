@@ -30,39 +30,15 @@ core::Result<int> SettingsRepository::forget(const std::string& prefix) {
 }
 
 core::Result<void> SettingsRepository::remove(const std::string& key) {
-    auto stmt = db_.prepare("DELETE FROM Settings WHERE key = ?;");
-    if (!stmt.isOk()) {
-        return core::Result<void>::err(stmt.error().message);
-    }
-    if (auto bind = stmt.value().bindText(1, key); !bind.isOk()) {
-        return bind;
-    }
-    auto step = stmt.value().step();
-    if (!step.isOk()) {
-        return core::Result<void>::err(step.error().message);
-    }
-    return core::Result<void>::ok();
+    return db_.run("DELETE FROM Settings WHERE key = ?;", key);
 }
 
 core::Result<void> SettingsRepository::setString(const std::string& key,
                                                  const std::string& value) {
-    auto stmt = db_.prepare(
+    return db_.run(
         "INSERT INTO Settings (key, value) VALUES (?, ?) "
-        "ON CONFLICT(key) DO UPDATE SET value = excluded.value;");
-    if (!stmt.isOk()) {
-        return core::Result<void>::err(stmt.error().message);
-    }
-    if (auto bind = stmt.value().bindText(1, key); !bind.isOk()) {
-        return bind;
-    }
-    if (auto bind = stmt.value().bindText(2, value); !bind.isOk()) {
-        return bind;
-    }
-    auto step = stmt.value().step();
-    if (!step.isOk()) {
-        return core::Result<void>::err(step.error().message);
-    }
-    return core::Result<void>::ok();
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value;",
+        key, value);
 }
 
 core::Result<std::string> SettingsRepository::getString(const std::string& key,

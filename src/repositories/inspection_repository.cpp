@@ -148,10 +148,7 @@ InspectionRepository::recentForPiece(std::int64_t pieceId, int limit) {
     if (!stmt.isOk()) {
         return ResultT::err(stmt.error().message);
     }
-    if (auto b = stmt.value().bindInt(1, pieceId); !b.isOk()) {
-        return ResultT::err(b.error().message);
-    }
-    if (auto b = stmt.value().bindInt(2, limit); !b.isOk()) {
+    if (auto b = stmt.value().bindAll(pieceId, limit); !b.isOk()) {
         return ResultT::err(b.error().message);
     }
 
@@ -195,8 +192,7 @@ InspectionRepository::reportForPiece(std::int64_t pieceId, const ReportWindow& w
                                    "WHERE h.piece_id = ?1" + period + ";");
         if (counter.isOk()) {
             auto& c = counter.value();
-            if (c.bindInt(1, pieceId).isOk() && c.bindText(2, window.from).isOk() &&
-                c.bindText(3, window.to).isOk()) {
+            if (c.bindAll(pieceId, window.from, window.to).isOk()) {
                 if (auto row = c.step(); row.isOk() && row.value()) {
                     const int total = static_cast<int>(c.columnInt(0));
                     *discarded = std::max(0, total - limit);
@@ -227,16 +223,7 @@ InspectionRepository::reportForPiece(std::int64_t pieceId, const ReportWindow& w
         return core::Result<std::vector<ReportRow>>::err(stmt.error().message);
     }
     auto& s = stmt.value();
-    if (auto b = s.bindInt(1, pieceId); !b.isOk()) {
-        return core::Result<std::vector<ReportRow>>::err(b.error().message);
-    }
-    if (auto b = s.bindText(2, window.from); !b.isOk()) {
-        return core::Result<std::vector<ReportRow>>::err(b.error().message);
-    }
-    if (auto b = s.bindText(3, window.to); !b.isOk()) {
-        return core::Result<std::vector<ReportRow>>::err(b.error().message);
-    }
-    if (auto b = s.bindInt(4, limit); !b.isOk()) {
+    if (auto b = s.bindAll(pieceId, window.from, window.to, limit); !b.isOk()) {
         return core::Result<std::vector<ReportRow>>::err(b.error().message);
     }
 
@@ -340,10 +327,7 @@ InspectionRepository::dailyStats(std::int64_t pieceId, int days) {
     if (!stmt.isOk()) {
         return ResultT::err(stmt.error().message);
     }
-    if (auto b = stmt.value().bindInt(1, pieceId); !b.isOk()) {
-        return ResultT::err(b.error().message);
-    }
-    if (auto b = stmt.value().bindText(2, sinceModifier); !b.isOk()) {
+    if (auto b = stmt.value().bindAll(pieceId, sinceModifier); !b.isOk()) {
         return ResultT::err(b.error().message);
     }
 

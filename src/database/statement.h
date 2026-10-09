@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -37,6 +39,20 @@ public:
     core::Result<void> bindDouble(int index, double value);
     core::Result<void> bindText(int index, const std::string& value);
     core::Result<void> bindBlob(int index, const std::vector<unsigned char>& value);
+    core::Result<void> bindNull(int index);
+
+    // Enlaza cada argumento a su parámetro, 1..n en el orden en que se pasan, y
+    // devuelve el PRIMER error: los de después ya no se intentan. Elige el bindX
+    // por el tipo: enteros (bool como 0/1), double/float, texto (std::string o
+    // const char*), blob (vector<unsigned char>) y nullptr para NULL.
+    template <typename... Args>
+    core::Result<void> bindAll(const Args&... args) {
+        auto result = core::Result<void>::ok();
+        [[maybe_unused]] int index = 0;
+        // `&&` evalúa de izquierda a derecha y se corta en el primer false.
+        static_cast<void>(((result = bindOne(++index, args)).isOk() && ...));
+        return result;
+    }
 
     // true = hay fila disponible; false = terminó sin más filas.
     core::Result<bool> step();
@@ -48,6 +64,21 @@ public:
     [[nodiscard]] bool columnIsNull(int index) const;
 
 private:
+    template <typename T>
+    core::Result<void> bindOne(int index, const T& value) {
+        if constexpr (std::is_same_v<T, std::nullptr_t>) {
+            return bindNull(index);
+        } else if constexpr (std::is_integral_v<T>) {
+            return bindInt(index, value);
+        } else if constexpr (std::is_floating_point_v<T>) {
+            return bindDouble(index, value);
+        } else if constexpr (std::is_same_v<T, std::vector<unsigned char>>) {
+            return bindBlob(index, value);
+        } else {
+            return bindText(index, value);
+        }
+    }
+
     core::Result<void> checkBind(int code) const;
 
     sqlite3* db_ = nullptr;

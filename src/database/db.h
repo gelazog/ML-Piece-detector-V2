@@ -7,12 +7,11 @@
 #include <string>
 
 #include "core/result.h"
+#include "database/statement.h"
 
 struct sqlite3;
 
 namespace pci::database {
-
-class Statement;
 
 // RAII sobre la API C de SQLite. Toda la frontera devuelve Result: una BD
 // corrupta o bloqueada es un error controlado, nunca un crash.
@@ -68,6 +67,26 @@ public:
     // La sentencia devuelta retiene el cerrojo de la conexión hasta destruirse:
     // no hay que guardarla más allá de la función que la usa.
     core::Result<Statement> prepare(const std::string& sql);
+
+    // prepare + bindAll + step, para las sentencias que solo escriben. Devuelve
+    // el primer error tal cual llega (de prepare, de un bind o del step). La
+    // sentencia, y con ella el cerrojo, se suelta al volver: quien necesite
+    // `changes()` o `lastInsertId()` de ESTA escritura tiene que usar `prepare`
+    // y quedársela, o otro hilo podría escribir en medio.
+    template <typename... Args>
+    core::Result<void> run(const std::string& sql, const Args&... args) {
+        auto stmt = prepare(sql);
+        if (!stmt.isOk()) {
+            return core::Result<void>::err(stmt.error().message);
+        }
+        if (auto bound = stmt.value().bindAll(args...); !bound.isOk()) {
+            return bound;
+        }
+        if (auto step = stmt.value().step(); !step.isOk()) {
+            return core::Result<void>::err(step.error().message);
+        }
+        return core::Result<void>::ok();
+    }
 
     // Toma el cerrojo (esperando si otro hilo está en una transacción) y hace
     // BEGIN. La única forma de abrir una transacción: no ejecutes "BEGIN;" con

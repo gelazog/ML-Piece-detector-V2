@@ -51,27 +51,13 @@ core::Result<std::int64_t> CalibrationRepository::record(const CalibrationRecord
         return ResultT::err(stmt.error().message);
     }
     auto& s = stmt.value();
-    if (auto b = s.bindDouble(1, entry.scale.mmPerPixel); !b.isOk()) {
+    if (auto b = s.bindAll(entry.scale.mmPerPixel, entry.scale.cameraDistanceMm,
+                           entry.scale.horizontalFovDeg, entry.scale.calibratedWidth,
+                           entry.scale.calibratedHeight, entry.camera, entry.method,
+                           entry.reference, entry.notes);
+        !b.isOk()) {
         return ResultT::err(b.error().message);
     }
-    if (auto b = s.bindDouble(2, entry.scale.cameraDistanceMm); !b.isOk()) {
-        return ResultT::err(b.error().message);
-    }
-    if (auto b = s.bindDouble(3, entry.scale.horizontalFovDeg); !b.isOk()) {
-        return ResultT::err(b.error().message);
-    }
-    if (auto b = s.bindInt(4, entry.scale.calibratedWidth); !b.isOk()) {
-        return ResultT::err(b.error().message);
-    }
-    if (auto b = s.bindInt(5, entry.scale.calibratedHeight); !b.isOk()) {
-        return ResultT::err(b.error().message);
-    }
-    if (auto b = s.bindText(6, entry.camera); !b.isOk()) return ResultT::err(b.error().message);
-    if (auto b = s.bindText(7, entry.method); !b.isOk()) return ResultT::err(b.error().message);
-    if (auto b = s.bindText(8, entry.reference); !b.isOk()) {
-        return ResultT::err(b.error().message);
-    }
-    if (auto b = s.bindText(9, entry.notes); !b.isOk()) return ResultT::err(b.error().message);
     if (auto step = s.step(); !step.isOk()) {
         return ResultT::err(step.error().message);
     }

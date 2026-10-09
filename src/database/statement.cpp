@@ -60,6 +60,10 @@ core::Result<void> Statement::bindBlob(int index, const std::vector<unsigned cha
                                        static_cast<int>(value.size()), SQLITE_TRANSIENT));
 }
 
+core::Result<void> Statement::bindNull(int index) {
+    return checkBind(sqlite3_bind_null(stmt_, index));
+}
+
 core::Result<bool> Statement::step() {
     const int code = sqlite3_step(stmt_);
     if (code == SQLITE_ROW) {

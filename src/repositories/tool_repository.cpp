@@ -31,30 +31,14 @@ core::Result<std::int64_t> ToolRepository::save(std::int64_t pieceId,
     }
 
     auto& s = stmt.value();
-    if (auto b = s.bindText(1, inspection::toolTypeName(config.type)); !b.isOk()) {
-        return ResultT::err(b.error().message);
-    }
-    if (auto b = s.bindText(2, config.name); !b.isOk()) return ResultT::err(b.error().message);
-    if (auto b = s.bindText(3, config.geometryJson); !b.isOk()) {
-        return ResultT::err(b.error().message);
-    }
     // Las referencias viajan dentro de `params` (X0, X1): esa columna existía
     // sin usarse y es el sitio previsto para parámetros por herramienta.
-    if (auto b = s.bindText(
-            4, inspection::paramsWithReferences({config.reference, config.reference2}));
+    if (auto b = s.bindAll(inspection::toolTypeName(config.type), config.name,
+                           config.geometryJson,
+                           inspection::paramsWithReferences({config.reference, config.reference2}),
+                           config.toleranceMin, config.toleranceMax, config.enabled ? 1 : 0,
+                           isUpdate ? config.id : pieceId);
         !b.isOk()) {
-        return ResultT::err(b.error().message);
-    }
-    if (auto b = s.bindDouble(5, config.toleranceMin); !b.isOk()) {
-        return ResultT::err(b.error().message);
-    }
-    if (auto b = s.bindDouble(6, config.toleranceMax); !b.isOk()) {
-        return ResultT::err(b.error().message);
-    }
-    if (auto b = s.bindInt(7, config.enabled ? 1 : 0); !b.isOk()) {
-        return ResultT::err(b.error().message);
-    }
-    if (auto b = s.bindInt(8, isUpdate ? config.id : pieceId); !b.isOk()) {
         return ResultT::err(b.error().message);
     }
     if (isUpdate) {
@@ -88,10 +72,7 @@ core::Result<std::vector<inspection::ToolConfig>> ToolRepository::listForPiece(
     if (!stmt.isOk()) {
         return ResultT::err(stmt.error().message);
     }
-    if (auto bind = stmt.value().bindInt(1, pieceId); !bind.isOk()) {
-        return ResultT::err(bind.error().message);
-    }
-    if (auto bind = stmt.value().bindText(2, templateName); !bind.isOk()) {
+    if (auto bind = stmt.value().bindAll(pieceId, templateName); !bind.isOk()) {
         return ResultT::err(bind.error().message);
     }
 
@@ -161,10 +142,7 @@ core::Result<bool> ToolRepository::templateExists(std::int64_t pieceId,
     if (!stmt.isOk()) {
         return ResultT::err(stmt.error().message);
     }
-    if (auto b = stmt.value().bindInt(1, pieceId); !b.isOk()) {
-        return ResultT::err(b.error().message);
-    }
-    if (auto b = stmt.value().bindText(2, name); !b.isOk()) {
+    if (auto b = stmt.value().bindAll(pieceId, name); !b.isOk()) {
         return ResultT::err(b.error().message);
     }
     auto row = stmt.value().step();
@@ -191,33 +169,15 @@ core::Result<void> ToolRepository::renameTemplate(std::int64_t pieceId,
     if (exists.value()) {
         return ResultT::err("Ya existe una plantilla llamada '" + to + "'");
     }
-    auto stmt = db_.prepare(
-        "UPDATE InspectionTools SET template = ? WHERE piece_id = ? AND template = ?;");
-    if (!stmt.isOk()) {
-        return ResultT::err(stmt.error().message);
-    }
-    if (auto b = stmt.value().bindText(1, to); !b.isOk()) return b;
-    if (auto b = stmt.value().bindInt(2, pieceId); !b.isOk()) return b;
-    if (auto b = stmt.value().bindText(3, from); !b.isOk()) return b;
-    if (auto step = stmt.value().step(); !step.isOk()) {
-        return ResultT::err(step.error().message);
-    }
-    return ResultT::ok();
+    return db_.run(
+        "UPDATE InspectionTools SET template = ? WHERE piece_id = ? AND template = ?;", to,
+        pieceId, from);
 }
 
 core::Result<void> ToolRepository::deleteTemplate(std::int64_t pieceId,
                                                   const std::string& name) {
-    using ResultT = core::Result<void>;
-    auto stmt = db_.prepare("DELETE FROM InspectionTools WHERE piece_id = ? AND template = ?;");
-    if (!stmt.isOk()) {
-        return ResultT::err(stmt.error().message);
-    }
-    if (auto b = stmt.value().bindInt(1, pieceId); !b.isOk()) return b;
-    if (auto b = stmt.value().bindText(2, name); !b.isOk()) return b;
-    if (auto step = stmt.value().step(); !step.isOk()) {
-        return ResultT::err(step.error().message);
-    }
-    return ResultT::ok();
+    return db_.run("DELETE FROM InspectionTools WHERE piece_id = ? AND template = ?;", pieceId,
+                   name);
 }
 
 core::Result<void> ToolRepository::duplicateTemplate(std::int64_t pieceId,
@@ -235,22 +195,13 @@ core::Result<void> ToolRepository::duplicateTemplate(std::int64_t pieceId,
         return ResultT::err("Ya existe una plantilla llamada '" + to + "'");
     }
     // Copia todas las columnas menos id (autoincremental) y template (el nuevo).
-    auto stmt = db_.prepare(
+    return db_.run(
         "INSERT INTO InspectionTools "
         "(type, name, geometry, params, tolerance_min, tolerance_max, enabled, piece_id, "
         "template) "
         "SELECT type, name, geometry, params, tolerance_min, tolerance_max, enabled, piece_id, "
-        "? FROM InspectionTools WHERE piece_id = ? AND template = ?;");
-    if (!stmt.isOk()) {
-        return ResultT::err(stmt.error().message);
-    }
-    if (auto b = stmt.value().bindText(1, to); !b.isOk()) return b;
-    if (auto b = stmt.value().bindInt(2, pieceId); !b.isOk()) return b;
-    if (auto b = stmt.value().bindText(3, from); !b.isOk()) return b;
-    if (auto step = stmt.value().step(); !step.isOk()) {
-        return ResultT::err(step.error().message);
-    }
-    return ResultT::ok();
+        "? FROM InspectionTools WHERE piece_id = ? AND template = ?;",
+        to, pieceId, from);
 }
 
 core::Result<ToolRepository::ToolTally> ToolRepository::tallyAll() {
@@ -280,30 +231,14 @@ core::Result<int> ToolRepository::removeAllTools() {
     if (!before.isOk()) {
         return core::Result<int>::err(before.error().message);
     }
-    auto stmt = db_.prepare("DELETE FROM InspectionTools;");
-    if (!stmt.isOk()) {
-        return core::Result<int>::err(stmt.error().message);
-    }
-    auto step = stmt.value().step();
-    if (!step.isOk()) {
-        return core::Result<int>::err(step.error().message);
+    if (auto removed = db_.run("DELETE FROM InspectionTools;"); !removed.isOk()) {
+        return core::Result<int>::err(removed.error().message);
     }
     return core::Result<int>::ok(before.value().tools);
 }
 
 core::Result<void> ToolRepository::remove(std::int64_t toolId) {
-    auto stmt = db_.prepare("DELETE FROM InspectionTools WHERE id = ?;");
-    if (!stmt.isOk()) {
-        return core::Result<void>::err(stmt.error().message);
-    }
-    if (auto bind = stmt.value().bindInt(1, toolId); !bind.isOk()) {
-        return bind;
-    }
-    auto step = stmt.value().step();
-    if (!step.isOk()) {
-        return core::Result<void>::err(step.error().message);
-    }
-    return core::Result<void>::ok();
+    return db_.run("DELETE FROM InspectionTools WHERE id = ?;", toolId);
 }
 
 }  // namespace pci::repositories

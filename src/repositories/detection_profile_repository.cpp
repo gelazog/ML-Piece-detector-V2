@@ -187,8 +187,7 @@ core::Result<void> DetectionProfileRepository::rename(std::int64_t profileId,
     if (!stmt.isOk()) {
         return core::Result<void>::err(stmt.error().message);
     }
-    if (auto b = stmt.value().bindText(1, newName); !b.isOk()) return b;
-    if (auto b = stmt.value().bindInt(2, profileId); !b.isOk()) return b;
+    if (auto b = stmt.value().bindAll(newName, profileId); !b.isOk()) return b;
     if (auto step = stmt.value().step(); !step.isOk()) {
         return core::Result<void>::err("Ya existe un perfil con ese nombre");
     }
@@ -224,16 +223,8 @@ core::Result<void> DetectionProfileRepository::remove(std::int64_t profileId) {
 
 core::Result<void> DetectionProfileRepository::assignToPiece(std::int64_t pieceId,
                                                              std::int64_t profileId) {
-    auto stmt = db_.prepare("UPDATE Pieces SET detection_profile_id = ? WHERE id = ?;");
-    if (!stmt.isOk()) {
-        return core::Result<void>::err(stmt.error().message);
-    }
-    if (auto b = stmt.value().bindInt(1, profileId); !b.isOk()) return b;
-    if (auto b = stmt.value().bindInt(2, pieceId); !b.isOk()) return b;
-    if (auto step = stmt.value().step(); !step.isOk()) {
-        return core::Result<void>::err(step.error().message);
-    }
-    return core::Result<void>::ok();
+    return db_.run("UPDATE Pieces SET detection_profile_id = ? WHERE id = ?;", profileId,
+                   pieceId);
 }
 
 core::Result<std::int64_t> DetectionProfileRepository::profileForPiece(std::int64_t pieceId) {

@@ -24,28 +24,12 @@ core::Result<void> MeasureRecipeRepository::save(const inspection::MeasureRecipe
                                        "y no sabría a cuál de las dos te referías");
     }
 
-    auto stmt = db_.prepare(
+    return db_.run(
         "INSERT INTO MeasureRecipes(name, what, family, tool_types) VALUES(?, ?, ?, ?) "
         "ON CONFLICT(name) DO UPDATE SET what=excluded.what, family=excluded.family, "
-        "tool_types=excluded.tool_types;");
-    if (!stmt.isOk()) {
-        return core::Result<void>::err(stmt.error().message);
-    }
-    auto& s = stmt.value();
-    if (auto b = s.bindText(1, recipe.name); !b.isOk()) return b;
-    if (auto b = s.bindText(2, recipe.what); !b.isOk()) return b;
-    if (auto b = s.bindText(3, std::string(inspection::familyKey(recipe.family))); !b.isOk()) {
-        return b;
-    }
-    if (auto b = s.bindText(4, inspection::typesToText(recipe.options.allowedTypes));
-        !b.isOk()) {
-        return b;
-    }
-    auto step = s.step();
-    if (!step.isOk()) {
-        return core::Result<void>::err(step.error().message);
-    }
-    return core::Result<void>::ok();
+        "tool_types=excluded.tool_types;",
+        recipe.name, recipe.what, inspection::familyKey(recipe.family),
+        inspection::typesToText(recipe.options.allowedTypes));
 }
 
 core::Result<std::vector<inspection::MeasureRecipe>> MeasureRecipeRepository::list() {
@@ -82,18 +66,7 @@ core::Result<std::vector<inspection::MeasureRecipe>> MeasureRecipeRepository::li
 }
 
 core::Result<void> MeasureRecipeRepository::remove(const std::string& name) {
-    auto stmt = db_.prepare("DELETE FROM MeasureRecipes WHERE name = ?;");
-    if (!stmt.isOk()) {
-        return core::Result<void>::err(stmt.error().message);
-    }
-    if (auto b = stmt.value().bindText(1, name); !b.isOk()) {
-        return b;
-    }
-    auto step = stmt.value().step();
-    if (!step.isOk()) {
-        return core::Result<void>::err(step.error().message);
-    }
-    return core::Result<void>::ok();
+    return db_.run("DELETE FROM MeasureRecipes WHERE name = ?;", name);
 }
 
 }  // namespace pci::repositories

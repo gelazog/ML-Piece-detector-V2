@@ -55,21 +55,7 @@ core::Result<bool> PieceRepository::nameExists(const std::string& name) {
 
 core::Result<void> PieceRepository::saveThumbnail(std::int64_t pieceId,
                                                   const std::vector<unsigned char>& jpeg) {
-    auto stmt = db_.prepare("UPDATE Pieces SET thumbnail = ? WHERE id = ?;");
-    if (!stmt.isOk()) {
-        return core::Result<void>::err(stmt.error().message);
-    }
-    if (auto bind = stmt.value().bindBlob(1, jpeg); !bind.isOk()) {
-        return bind;
-    }
-    if (auto bind = stmt.value().bindInt(2, pieceId); !bind.isOk()) {
-        return bind;
-    }
-    auto step = stmt.value().step();
-    if (!step.isOk()) {
-        return core::Result<void>::err(step.error().message);
-    }
-    return core::Result<void>::ok();
+    return db_.run("UPDATE Pieces SET thumbnail = ? WHERE id = ?;", jpeg, pieceId);
 }
 
 core::Result<std::vector<unsigned char>> PieceRepository::loadThumbnail(
@@ -128,8 +114,7 @@ core::Result<void> PieceRepository::renamePiece(std::int64_t pieceId,
     if (!stmt.isOk()) {
         return core::Result<void>::err(stmt.error().message);
     }
-    if (auto b = stmt.value().bindText(1, newName); !b.isOk()) return b;
-    if (auto b = stmt.value().bindInt(2, pieceId); !b.isOk()) return b;
+    if (auto b = stmt.value().bindAll(newName, pieceId); !b.isOk()) return b;
     if (auto step = stmt.value().step(); !step.isOk()) {
         if (step.error().message.find("UNIQUE") != std::string::npos) {
             return core::Result<void>::err("Ya existe una pieza llamada '" + newName +
@@ -144,30 +129,12 @@ core::Result<void> PieceRepository::renamePiece(std::int64_t pieceId,
 }
 
 core::Result<void> PieceRepository::removePiece(std::int64_t pieceId) {
-    auto stmt = db_.prepare("DELETE FROM Pieces WHERE id = ?;");
-    if (!stmt.isOk()) {
-        return core::Result<void>::err(stmt.error().message);
-    }
-    if (auto b = stmt.value().bindInt(1, pieceId); !b.isOk()) return b;
-    if (auto step = stmt.value().step(); !step.isOk()) {
-        return core::Result<void>::err(step.error().message);
-    }
-    return core::Result<void>::ok();
+    return db_.run("DELETE FROM Pieces WHERE id = ?;", pieceId);
 }
 
 core::Result<void> PieceRepository::saveOrientationOffset(std::int64_t pieceId,
                                                           double offsetDeg) {
-    auto stmt = db_.prepare("UPDATE Pieces SET orientation_offset = ? WHERE id = ?;");
-    if (!stmt.isOk()) {
-        return core::Result<void>::err(stmt.error().message);
-    }
-    if (auto b = stmt.value().bindDouble(1, offsetDeg); !b.isOk()) return b;
-    if (auto b = stmt.value().bindInt(2, pieceId); !b.isOk()) return b;
-    auto step = stmt.value().step();
-    if (!step.isOk()) {
-        return core::Result<void>::err(step.error().message);
-    }
-    return core::Result<void>::ok();
+    return db_.run("UPDATE Pieces SET orientation_offset = ? WHERE id = ?;", offsetDeg, pieceId);
 }
 
 core::Result<double> PieceRepository::loadOrientationOffset(std::int64_t pieceId) {
@@ -191,17 +158,7 @@ core::Result<double> PieceRepository::loadOrientationOffset(std::int64_t pieceId
 
 core::Result<void> PieceRepository::saveMeasureRecipe(std::int64_t pieceId,
                                                       const std::string& name) {
-    auto stmt = db_.prepare("UPDATE Pieces SET measure_recipe = ? WHERE id = ?;");
-    if (!stmt.isOk()) {
-        return core::Result<void>::err(stmt.error().message);
-    }
-    if (auto b = stmt.value().bindText(1, name); !b.isOk()) return b;
-    if (auto b = stmt.value().bindInt(2, pieceId); !b.isOk()) return b;
-    auto step = stmt.value().step();
-    if (!step.isOk()) {
-        return core::Result<void>::err(step.error().message);
-    }
-    return core::Result<void>::ok();
+    return db_.run("UPDATE Pieces SET measure_recipe = ? WHERE id = ?;", name, pieceId);
 }
 
 core::Result<std::string> PieceRepository::loadMeasureRecipe(std::int64_t pieceId) {
@@ -225,37 +182,17 @@ core::Result<std::string> PieceRepository::loadMeasureRecipe(std::int64_t pieceI
 
 core::Result<void> PieceRepository::saveMeasurement(std::int64_t pieceId,
                                                     const PieceMeasurement& measurement) {
-    auto stmt = db_.prepare(
+    return db_.run(
         "UPDATE Pieces SET measurement_mode = ?, board_origin = ?, board_fixed_x = ?, "
         "board_fixed_y = ?, board_follow_angle = ?, board_offset_x = ?, "
         "board_offset_y = ?, board_tol_radius = ?, board_tol_angle = ?, "
-        "expected_pieces = ?, show_mosaic = ? WHERE id = ?;");
-    if (!stmt.isOk()) {
-        return core::Result<void>::err(stmt.error().message);
-    }
-    auto& s = stmt.value();
-    if (auto b = s.bindText(1, std::string(domain::modeKey(measurement.mode))); !b.isOk()) {
-        return b;
-    }
-    if (auto b = s.bindText(2, std::string(vision::originKey(measurement.board.origin)));
-        !b.isOk()) {
-        return b;
-    }
-    if (auto b = s.bindDouble(3, measurement.board.fixedPoint.x); !b.isOk()) return b;
-    if (auto b = s.bindDouble(4, measurement.board.fixedPoint.y); !b.isOk()) return b;
-    if (auto b = s.bindInt(5, measurement.board.followPieceAngle ? 1 : 0); !b.isOk()) return b;
-    if (auto b = s.bindDouble(6, measurement.board.manualOffset.x); !b.isOk()) return b;
-    if (auto b = s.bindDouble(7, measurement.board.manualOffset.y); !b.isOk()) return b;
-    if (auto b = s.bindDouble(8, measurement.maxOffsetPx); !b.isOk()) return b;
-    if (auto b = s.bindDouble(9, measurement.maxAngleDeg); !b.isOk()) return b;
-    if (auto b = s.bindInt(10, measurement.expectedPieces); !b.isOk()) return b;
-    if (auto b = s.bindInt(11, measurement.showMosaic ? 1 : 0); !b.isOk()) return b;
-    if (auto b = s.bindInt(12, pieceId); !b.isOk()) return b;
-    auto step = s.step();
-    if (!step.isOk()) {
-        return core::Result<void>::err(step.error().message);
-    }
-    return core::Result<void>::ok();
+        "expected_pieces = ?, show_mosaic = ? WHERE id = ?;",
+        std::string(domain::modeKey(measurement.mode)),
+        std::string(vision::originKey(measurement.board.origin)),
+        measurement.board.fixedPoint.x, measurement.board.fixedPoint.y,
+        measurement.board.followPieceAngle ? 1 : 0, measurement.board.manualOffset.x,
+        measurement.board.manualOffset.y, measurement.maxOffsetPx, measurement.maxAngleDeg,
+        measurement.expectedPieces, measurement.showMosaic ? 1 : 0, pieceId);
 }
 
 core::Result<PieceMeasurement> PieceRepository::loadMeasurement(std::int64_t pieceId) {
@@ -294,36 +231,16 @@ core::Result<PieceMeasurement> PieceRepository::loadMeasurement(std::int64_t pie
 
 core::Result<void> PieceRepository::saveAnchor(std::int64_t pieceId,
                                                const vision::OrientationAnchor& anchor) {
-    auto stmt = db_.prepare(
-        "UPDATE Pieces SET anchor_x = ?, anchor_y = ?, anchor_intensity = ? WHERE id = ?;");
-    if (!stmt.isOk()) {
-        return core::Result<void>::err(stmt.error().message);
-    }
-    auto& s = stmt.value();
-    if (auto b = s.bindDouble(1, anchor.piecePoint.x); !b.isOk()) return b;
-    if (auto b = s.bindDouble(2, anchor.piecePoint.y); !b.isOk()) return b;
-    if (auto b = s.bindDouble(3, anchor.intensity); !b.isOk()) return b;
-    if (auto b = s.bindInt(4, pieceId); !b.isOk()) return b;
-    auto step = s.step();
-    if (!step.isOk()) {
-        return core::Result<void>::err(step.error().message);
-    }
-    return core::Result<void>::ok();
+    return db_.run(
+        "UPDATE Pieces SET anchor_x = ?, anchor_y = ?, anchor_intensity = ? WHERE id = ?;",
+        anchor.piecePoint.x, anchor.piecePoint.y, anchor.intensity, pieceId);
 }
 
 core::Result<void> PieceRepository::clearAnchor(std::int64_t pieceId) {
-    auto stmt = db_.prepare(
+    return db_.run(
         "UPDATE Pieces SET anchor_x = NULL, anchor_y = NULL, anchor_intensity = NULL "
-        "WHERE id = ?;");
-    if (!stmt.isOk()) {
-        return core::Result<void>::err(stmt.error().message);
-    }
-    if (auto b = stmt.value().bindInt(1, pieceId); !b.isOk()) return b;
-    auto step = stmt.value().step();
-    if (!step.isOk()) {
-        return core::Result<void>::err(step.error().message);
-    }
-    return core::Result<void>::ok();
+        "WHERE id = ?;",
+        pieceId);
 }
 
 core::Result<std::optional<vision::OrientationAnchor>> PieceRepository::loadAnchor(
@@ -436,10 +353,7 @@ core::Result<StoredReference> PieceRepository::loadLatestReference(
     if (!stmt.isOk()) {
         return ResultT::err(stmt.error().message);
     }
-    if (auto bind = stmt.value().bindInt(1, pieceId); !bind.isOk()) {
-        return ResultT::err(bind.error().message);
-    }
-    if (auto bind = stmt.value().bindText(2, variant); !bind.isOk()) {
+    if (auto bind = stmt.value().bindAll(pieceId, variant); !bind.isOk()) {
         return ResultT::err(bind.error().message);
     }
     auto row = stmt.value().step();
@@ -528,21 +442,8 @@ core::Result<void> PieceRepository::deleteVariant(std::int64_t pieceId,
             "La variante principal no se puede borrar. Si lo que quieres es dejar la "
             "pieza sin referencia, hazlo desde la pieza y no quitando un acabado.");
     }
-    auto stmt = db_.prepare("DELETE FROM Embeddings WHERE piece_id = ? AND variant = ?;");
-    if (!stmt.isOk()) {
-        return core::Result<void>::err(stmt.error().message);
-    }
-    if (auto bind = stmt.value().bindInt(1, pieceId); !bind.isOk()) {
-        return bind;
-    }
-    if (auto bind = stmt.value().bindText(2, variant); !bind.isOk()) {
-        return bind;
-    }
-    auto step = stmt.value().step();
-    if (!step.isOk()) {
-        return core::Result<void>::err(step.error().message);
-    }
-    return core::Result<void>::ok();
+    return db_.run("DELETE FROM Embeddings WHERE piece_id = ? AND variant = ?;", pieceId,
+                   variant);
 }
 
 core::Result<std::vector<int>> PieceRepository::listReferenceVersions(
@@ -555,10 +456,7 @@ core::Result<std::vector<int>> PieceRepository::listReferenceVersions(
     if (!stmt.isOk()) {
         return ResultT::err(stmt.error().message);
     }
-    if (auto bind = stmt.value().bindInt(1, pieceId); !bind.isOk()) {
-        return ResultT::err(bind.error().message);
-    }
-    if (auto bind = stmt.value().bindText(2, variant); !bind.isOk()) {
+    if (auto bind = stmt.value().bindAll(pieceId, variant); !bind.isOk()) {
         return ResultT::err(bind.error().message);
     }
 
