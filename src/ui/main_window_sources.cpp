@@ -546,6 +546,9 @@ bool MainWindow::startFileSourceAtPath(camera::SourceKind kind, const QString& p
     passTrigger_.reset();
     passWantsMeasure_ = false;
     lastPassWhy_.clear();
+    // Las cotas guardadas de otras piezas iban por su número en la imagen
+    // anterior: en ésta el número 3 es otra pieza.
+    toolsOfOtherPieces_.clear();
     // La identidad de la fuente sirve para el aviso de calibración obsoleta: la
     // escala en px/mm depende de la óptica y de la distancia al plano, y pasar
     // de una cámara a un fichero (o entre ficheros) cambia las dos.

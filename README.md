@@ -348,6 +348,13 @@ razonada de **cómo mejorarlo**. Este README es el manual de uso.
    primera y pedir el informe devolvía «Arandela, 274 px» cuando la pieza
    señalada es un «Polígono redondeado de 3 lados» de 95 px — sin ningún aviso.
 
+   **Sin pieza registrada, cada pieza tiene sus propias medidas.** Si mides una
+   (con *Medir pieza* o dibujando) y pasas a otra, la otra no hereda tus cotas:
+   empieza vacía y la barra de estado te dice que *Medir pieza* le propone las
+   suyas. Al volver a la primera, sus medidas siguen ahí. Con una pieza
+   **registrada** es al revés, a propósito: su plantilla mide todas las de la
+   bandeja.
+
 
    **Orientación**: por defecto la pieza se muestra **vertical** (tal como la
    ve la cámara) — más estable y sin la inclinación arbitraria que daba el eje

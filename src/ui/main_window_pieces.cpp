@@ -340,6 +340,7 @@ void MainWindow::onPieceSelectionChanged(int index) {
 
 void MainWindow::loadToolsForSelectedPiece() {
     liveTools_.clear();
+    toolsOfOtherPieces_.clear();
     video_->setSelectedIndex(-1);
     video_->clearResults();
 

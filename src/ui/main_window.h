@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <map>
 #include <optional>
 #include <vector>
 
@@ -591,6 +592,10 @@ private:
     QToolButton* pieceNextButton_ = nullptr;
     int focusedPiece_ = 0;
     int lastMeasuredPiece_ = -1;
+    int lastLargestPiece_ = -1;
+    // Las cotas de las OTRAS piezas del encuadre, por su número en orden de
+    // lectura, mientras no hay una pieza registrada (ver `focusPiece`).
+    std::map<int, std::vector<inspection::EditedTool>> toolsOfOtherPieces_;
     // Manchas vistas, que con un numero declarado a mano puede ser mas que las
     // que se tratan como piezas (`lastPieceCount_`). Se guardan las dos porque
     // dicen cosas distintas y esconder cualquiera de ellas seria mentir en una
@@ -600,6 +605,9 @@ private:
     int lastPiecesTooSmall_ = 0;
     void updatePieceNavigator();
     void stepFocusedPiece(int delta);
+    // Cambia la pieza que se mide (0 = la mayor) y, sin pieza registrada, le
+    // pone sus propias cotas en vez de las de la anterior.
+    void focusPiece(int number);
     // Vuelca en el mosaico las piezas del último análisis. La primera vez que
     // hay varias, abre el panel; después no vuelve a tocar su visibilidad.
     void showPiecesInMosaic(const AnalysisOverlay& overlay);

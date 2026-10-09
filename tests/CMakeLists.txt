@@ -237,6 +237,7 @@ add_executable(pci_gui_tests
   test_theme_choice.cpp
   test_status_indicator_words.cpp
   test_outline_reaches_window.cpp
+  test_each_piece_its_own_measures.cpp
   test_open_file.cpp
   test_verdict_board.cpp
 )

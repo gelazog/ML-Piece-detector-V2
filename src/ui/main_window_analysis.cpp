@@ -175,6 +175,8 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                 const std::size_t chosen =
                     vision::measuredPieceIndex(all.value(), wantedPiece);
                 overlay.measuredPiece = static_cast<int>(chosen) + 1;
+                overlay.largestPiece =
+                    static_cast<int>(vision::measuredPieceIndex(all.value(), 0)) + 1;
                 // El contorno de TODAS, para poder dibujarlas y numerarlas. Se
                 // copian antes de mover la elegida fuera de la lista.
                 overlay.pieceContours.reserve(all.value().size());
@@ -898,6 +900,7 @@ void MainWindow::onAnalysisFinished() {
         // numeran y entre las que navega el selector.
         lastPieceCount_ = overlay.piecesUsed >= 0 ? overlay.piecesUsed : overlay.piecesFound;
         lastMeasuredPiece_ = overlay.measuredPiece;
+        lastLargestPiece_ = overlay.largestPiece;
         // Si la elección se salió del encuadre —cambiaron las piezas de sitio, o
         // desapareció una— el análisis ya ha medido la mayor en su lugar. Aquí se
         // deja constancia de que la elección ya no vale, para que el indicador no

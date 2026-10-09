@@ -749,17 +749,52 @@ void MainWindow::stepFocusedPiece(int delta) {
     //
     // Un recorrido predecible en el que todas las posiciones salen antes o
     // después vale más que uno que acierta el atajo y pierde piezas.
-    focusedPiece_ = ((focusedPiece_ + delta) % positions + positions) % positions;
-    if (focusedPiece_ == 0) {
-        statusBar()->showMessage(tr("Midiendo la pieza mayor del encuadre."));
-    } else {
-        statusBar()->showMessage(
-            tr("Midiendo la pieza %1 de %2, en orden de lectura.")
-                .arg(focusedPiece_)
-                .arg(lastPieceCount_));
+    focusPiece(((focusedPiece_ + delta) % positions + positions) % positions);
+    QString message = focusedPiece_ == 0
+                          ? tr("Midiendo la pieza mayor del encuadre.")
+                          : tr("Midiendo la pieza %1 de %2, en orden de lectura.")
+                                .arg(focusedPiece_)
+                                .arg(lastPieceCount_);
+    if (liveTools_.empty() && selectedPieceId() < 0) {
+        message += tr(" Aún no tiene medidas: «Medir pieza» las propone.");
     }
+    statusBar()->showMessage(message);
     updatePieceNavigator();
     reanalyseCurrentFrame();
+}
+
+// LAS COTAS SIGUEN A SU PIEZA, MIENTRAS NO HAYA PLANTILLA.
+//
+// La lista de herramientas era una sola para toda la pantalla, en coordenadas
+// de pieza: al pasar de una pieza a otra distinta, las cotas de la primera se
+// quedaban puestas y medían la segunda. Con una pieza registrada eso es lo
+// buscado —su plantilla vale para toda la bandeja—, así que ahí no se toca.
+// Sin registrar, cada pieza guarda las suyas y volver a ella las devuelve.
+//
+// Se cambian aquí, cuando el operador cambia de pieza, y no al llegar cada
+// análisis: en vídeo el número de «la mayor» salta cuando las piezas se mueven,
+// y las cotas saltarían con él. «La mayor» se guarda con el número que tenía al
+// salir, para que elegirla por su número devuelva lo mismo.
+void MainWindow::focusPiece(int number) {
+    const auto pieceOf = [this](int focus) { return focus > 0 ? focus : lastLargestPiece_; };
+    const int before = pieceOf(focusedPiece_);
+    focusedPiece_ = number;
+    const int after = pieceOf(focusedPiece_);
+    if (selectedPieceId() >= 0 || before == after || before < 1 || after < 1) {
+        return;
+    }
+    toolsOfOtherPieces_[before] = std::move(liveTools_);
+    liveTools_.clear();
+    if (auto mine = toolsOfOtherPieces_.find(after); mine != toolsOfOtherPieces_.end()) {
+        liveTools_ = std::move(mine->second);
+        toolsOfOtherPieces_.erase(mine);
+    }
+    // El deshacer era de la otra pieza: aplicarlo aquí le pondría sus cotas.
+    undoStack_.clear();
+    stableTools_ = liveTools_;
+    video_->setSelectedIndex(-1);
+    onLiveSelectionChanged(-1);
+    video_->clearResults();
 }
 
 // El aviso de que el borde lleva una correccion a mano.

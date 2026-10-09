@@ -19,6 +19,22 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Con varias piezas sin registrar, la siguiente heredaba las cotas de la anterior
+
+Queja del dueño: con varias piezas distintas en el encuadre y ninguna
+registrada, medías una, pasabas a otra con las flechas o el mosaico, y las
+medidas de la primera se quedaban puestas y medían la segunda. La lista de
+herramientas era una sola para toda la pantalla, en coordenadas de pieza: un
+círculo pensado para el agujero de una arandela acababa en el centro de un
+tornillo. No se veía en las pruebas porque todas las de varias piezas usaban
+bandejas de piezas iguales, donde llevarse las cotas es justo lo correcto.
+
+Ahora, sin pieza registrada, cada pieza guarda sus cotas y volver a ella las
+devuelve; la que no tiene ninguna dice que *Medir pieza* se las propone. De paso,
+elegir pieza en el panel de medidas no volvía a analizar: con una imagen fija la
+elección no cambiaba nada hasta tocar otra cosa. Lo vigila
+`test_each_piece_its_own_measures.cpp`.
+
 ### Una prueba que ya había dicho OK se quedaba colgada 300 s al salir
 
 Con `ctest -j`, de vez en cuando una prueba cualquiera de visión acababa en

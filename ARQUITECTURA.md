@@ -5424,6 +5424,22 @@ Estaban aquí: **1 191 líneas** de bitácora dentro de un capítulo llamado
 [BITACORA.md](BITACORA.md), que es donde alguien las buscaría.
 
 
+### Las cotas siguen a su pieza mientras no hay plantilla
+
+La lista de herramientas (`liveTools_`) es una sola y va en coordenadas de
+pieza. Con una pieza registrada eso es lo que se quiere: su plantilla mide toda
+la bandeja. Sin registrar, al pasar a otra pieza distinta, las cotas de la
+anterior se aplicaban tal cual a la nueva. `MainWindow::focusPiece` es ahora el
+único sitio que cambia la pieza enfocada (flechas, mosaico y panel de medidas
+pasan por él) y, sin pieza registrada, guarda la lista de la pieza que se deja
+en `toolsOfOtherPieces_`, por su número en orden de lectura, y pone la de la
+que se elige. «La mayor» se guarda con el número que tenía al salir
+(`AnalysisOverlay::largestPiece`), para que elegirla por su número devuelva lo
+mismo. El cambio se hace solo cuando el operador cambia de pieza y no al llegar
+cada análisis: en vídeo el número de la mayor salta cuando las piezas se mueven,
+y las cotas saltarían con él. El mapa se vacía al abrir otra fuente y al
+cargar una pieza registrada. Lo vigila `test_each_piece_its_own_measures.cpp`.
+
 ### El fotograma se convertía a gris una vez por herramienta y por pieza
 
 `runTool` llamaba a `vision::toGray` sobre la imagen completa en cada ejecución,

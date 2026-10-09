@@ -983,9 +983,10 @@ void MainWindow::buildMeasurementsAndMosaicDocks() {
         // habla en índices desde 0 —como `ToolRunResult::pieceIndex`— y
         // `focusedPiece_` va desde 1, con el 0 reservado para «la mayor», que es
         // lo que la aplicación ha hecho siempre. «Todas» se lee como ese cero.
-        focusedPiece_ = piece < 0 ? 0 : piece + 1;
+        focusPiece(piece < 0 ? 0 : piece + 1);
         video_->setFocusedPiece(piece < 0 ? 0 : piece);
-        video_->update();
+        updatePieceNavigator();
+        reanalyseCurrentFrame();
     });
 
     connect(measurementsDock_, &QDockWidget::visibilityChanged, this, [this](bool shown) {
@@ -1015,7 +1016,7 @@ void MainWindow::buildMeasurementsAndMosaicDocks() {
         // Pulsar una baldosa es ELEGIRLA: pasa a ser la que miden las
         // herramientas y la que el vídeo remarca. Es el mismo enfoque que mueven
         // las flechas del selector, no un estado aparte del panel.
-        focusedPiece_ = number;
+        focusPiece(number);
         updatePieceNavigator();
         reanalyseCurrentFrame();
     });

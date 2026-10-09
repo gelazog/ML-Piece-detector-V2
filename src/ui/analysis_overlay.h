@@ -68,6 +68,9 @@ struct AnalysisOverlay {
     // informe que no dice de cuál de las seis son las cotas no se puede
     // interpretar ni repetir al día siguiente.
     int measuredPiece = -1;
+    // Cuál es la MAYOR, con la misma numeración. Con el selector en «la mayor»
+    // coincide con `measuredPiece`; con otra elegida, dice adónde se vuelve.
+    int largestPiece = -1;
     // Cuantas se estan TRATANDO como piezas, que con un numero declarado a mano
     // puede ser menos que las que se ven.
     //
