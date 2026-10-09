@@ -25,7 +25,7 @@ En `tool_executor.cpp`, nueve herramientas repetían el mismo preámbulo
 (recuadro de pieza → cuadrilátero en la imagen → máscara Otsu dentro) y tres el
 mismo escaneo a lo largo de un tramo. Pasan a cuatro ayudantes del fichero,
 unas 180 líneas menos. Es el camino de medida, así que antes de tocar nada se
-congelaron los resultados de las 19 herramientas afectadas sobre escenas
+congelaron los resultados de las diecinueve herramientas afectadas sobre escenas
 sintéticas y sobre las 17 fotos del banco, giradas e invertidas (3040
 ejecuciones), y `test_frozen_measures.cpp` exige que salgan bit a bit iguales.
 
