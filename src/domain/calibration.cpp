@@ -2,15 +2,14 @@
 
 #include <cmath>
 #include <cstdio>
+#include <numbers>
 
 namespace pci::domain {
 
 namespace {
 
-constexpr double kPi = 3.14159265358979323846;
-
 double halfFovTan(double horizontalFovDeg) {
-    return std::tan(horizontalFovDeg * kPi / 360.0);  // tan(FOV/2)
+    return std::tan(horizontalFovDeg * std::numbers::pi / 360.0);  // tan(FOV/2)
 }
 
 std::string fmt(double value, const char* suffix) {

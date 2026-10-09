@@ -10,15 +10,6 @@
 
 namespace pci::database {
 
-namespace {
-
-std::string errorOf(sqlite3* db) {
-    const char* message = sqlite3_errmsg(db);
-    return message != nullptr ? message : "error desconocido de SQLite";
-}
-
-}  // namespace
-
 core::Result<std::unique_ptr<Db>> Db::open(const std::string& path) {
     using ResultT = core::Result<std::unique_ptr<Db>>;
 

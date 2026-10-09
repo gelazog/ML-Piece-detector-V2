@@ -34,7 +34,6 @@
 #include "vision/edge_segmentation.h"
 #include "vision/segmentation.h"
 
-using pci::vision::edgeSegmentationLooksBetter;
 using pci::vision::readScene;
 using pci::vision::segmentByEdges;
 
@@ -129,7 +128,7 @@ TEST(EdgeSegmentation, OnTheEasyScenesItIsWorseAndTheReadingSaysSo) {
         const int byLevel = piecesWithOtsu(image);
         const auto byEdge = segmentByEdges(image);
         const int byEdgeCount = byEdge.isOk() ? piecesIn(byEdge.value()) : 0;
-        const bool suggested = edgeSegmentationLooksBetter(image);
+        const bool suggested = readScene(image).aSingleCutCannotDoIt;
         std::printf("  [borde] %-34s espera %d -> nivel %d, borde %d  (¿se ofrece? %s)\n",
                     one.file, one.expected, byLevel, byEdgeCount, suggested ? "sí" : "no");
         if (std::abs(byEdgeCount - one.expected) > std::abs(byLevel - one.expected)) {

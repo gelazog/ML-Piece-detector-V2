@@ -109,9 +109,8 @@ TEST(EdgesOnReflections, WhereEachMethodStandsOnTheRealImages) {
 
         const Outcome level = look(levelMask.value());
         const Outcome edge = look(edgeMask.value());
-        const bool advised = vision::edgeSegmentationLooksBetter(gray);
+        const bool advised = vision::readScene(gray).aSingleCutCannotDoIt;
         const auto clip = vision::checkThresholdClipping(gray);
-        const auto scene = vision::readScene(gray);
         std::printf("  %-30s  nivel %2d/%9.0f  borde %2d/%9.0f  %-14s  vaivén %5.1f%% %s\n",
                     entry.path().filename().string().c_str(), level.pieces, level.area,
                     edge.pieces, edge.area, advised ? "ACONSEJA BORDE" : "aconseja nivel",

@@ -6,14 +6,10 @@
 
 namespace pci::database {
 
-namespace {
-
 std::string errorOf(sqlite3* db) {
     const char* message = sqlite3_errmsg(db);
     return message != nullptr ? message : "error desconocido de SQLite";
 }
-
-}  // namespace
 
 Statement::~Statement() {
     if (stmt_ != nullptr) {

@@ -27,7 +27,6 @@
 #include "vision/contour_analysis.h"
 
 using pci::vision::findPieceContours;
-using pci::vision::largestPiece;
 using pci::vision::orderPiecesForReading;
 using pci::vision::PieceContour;
 
@@ -161,10 +160,9 @@ TEST(PieceOrder, AColumnReadsTopToBottom) {
     }
 }
 
-// La mayor se pide por su nombre, y no es la primera de la lista.
-//
-// Es lo que impide que el cambio de orden mueva en silencio QUÉ pieza se mide.
-TEST(PieceOrder, TheLargestIsAskedForByNameAndIsNotTheFirst) {
+// La mayor no es la primera de la lista: quien necesite «la mayor» no puede
+// cogerla con `front()` (para eso está `largestPieceIndex`).
+TEST(PieceOrder, TheLargestIsNotTheFirst) {
     cv::Mat mask = cv::Mat::zeros(kHeight, kWidth, CV_8UC1);
     cv::circle(mask, {120, 120}, 30, cv::Scalar(255), cv::FILLED, cv::LINE_8);  // arriba izq
     cv::circle(mask, {420, 330}, 70, cv::Scalar(255), cv::FILLED, cv::LINE_8);  // la mayor
@@ -173,15 +171,6 @@ TEST(PieceOrder, TheLargestIsAskedForByNameAndIsNotTheFirst) {
 
     // En orden de lectura, la primera es la pequeña de arriba a la izquierda.
     EXPECT_NEAR(pieces.front().centroid.x, 120.0F, 3.0);
-    const auto* biggest = largestPiece(pieces);
-    ASSERT_NE(biggest, nullptr);
-    EXPECT_NEAR(biggest->centroid.x, 420.0F, 3.0)
-        << "«la mayor» devolvió otra: quien mida con esto mediría la pieza equivocada";
-    std::printf("  [orden] primera %.0f px2, mayor %.0f px2\n", pieces.front().area,
-                biggest->area);
-    EXPECT_GT(biggest->area, pieces.front().area);
-
-    EXPECT_EQ(largestPiece({}), nullptr);
 }
 
 // Ordenar una lista de una o de ninguna no es un caso especial que reviente.

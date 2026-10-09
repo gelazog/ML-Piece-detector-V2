@@ -594,24 +594,6 @@ TEST(BoardFrame, PieceDeviationAndAngleOffset) {
     EXPECT_NEAR(pieceAngleOffset(flat, wrapped), -1.0, 1e-9);
 }
 
-TEST(BoardFrame, MillimetersOnlyWhenCalibrated) {
-    BoardReading reading;
-    reading.dx = 10.0;
-    reading.dy = -4.0;
-    reading.radius = 12.0;
-    reading.angleDeg = 33.0;
-
-    const BoardReading raw = toMillimeters(reading, 0.0);
-    EXPECT_DOUBLE_EQ(raw.dx, 10.0);  // sin calibrar: se queda en px
-    EXPECT_DOUBLE_EQ(raw.radius, 12.0);
-
-    const BoardReading mm = toMillimeters(reading, 0.5);
-    EXPECT_DOUBLE_EQ(mm.dx, 5.0);
-    EXPECT_DOUBLE_EQ(mm.dy, -2.0);
-    EXPECT_DOUBLE_EQ(mm.radius, 6.0);
-    EXPECT_DOUBLE_EQ(mm.angleDeg, 33.0);  // el ángulo no depende de la escala
-}
-
 TEST(BoardFrame, GridStepIsRoundAndProportional) {
     EXPECT_DOUBLE_EQ(niceGridStep(100.0, 10), 10.0);
     EXPECT_DOUBLE_EQ(niceGridStep(1000.0, 10), 100.0);

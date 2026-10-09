@@ -1309,10 +1309,6 @@ void MainWindow::rotatePieceView(double deltaDeg) {
     }
 }
 
-void MainWindow::onToolRightClicked(int index) {
-    deleteToolAt(index);
-}
-
 // EL MENÚ DEL CLIC DERECHO SOBRE EL VÍDEO.
 //
 // Petición de uso: «agrega alguna función al clic derecho». Y al ir a hacerlo

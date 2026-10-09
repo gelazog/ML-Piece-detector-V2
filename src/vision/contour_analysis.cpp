@@ -273,16 +273,6 @@ std::size_t measuredPieceIndex(const std::vector<PieceAnalysis>& pieces, int wan
     return largestPieceIndex(pieces);
 }
 
-const PieceContour* largestPiece(const std::vector<PieceContour>& pieces) {
-    const PieceContour* best = nullptr;
-    for (const auto& piece : pieces) {
-        if (best == nullptr || piece.area > best->area) {
-            best = &piece;
-        }
-    }
-    return best;
-}
-
 core::Result<PieceContour> findLargestContour(const cv::Mat& mask, double minAreaFraction,
                                               double maxAreaFraction) {
     if (mask.empty() || mask.type() != CV_8UC1) {

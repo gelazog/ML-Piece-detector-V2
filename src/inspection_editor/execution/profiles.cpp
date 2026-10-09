@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 #include "inspection_editor/execution/edge_detection.h"
 
@@ -9,8 +10,7 @@ namespace pci::inspection {
 
 namespace {
 
-constexpr double kPi = 3.14159265358979323846;
-constexpr double kRadToDeg = 180.0 / kPi;
+constexpr double kRadToDeg = 180.0 / std::numbers::pi;
 
 bool usableImage(const cv::Mat& gray) {
     return !gray.empty() && gray.type() == CV_8UC1;

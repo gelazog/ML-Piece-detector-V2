@@ -2,18 +2,17 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 namespace pci::vision {
 namespace {
 
-constexpr double kPi = 3.14159265358979323846;
-
 double toRadians(double degrees) {
-    return degrees * kPi / 180.0;
+    return degrees * std::numbers::pi / 180.0;
 }
 
 double toDegrees(double radians) {
-    return radians * 180.0 / kPi;
+    return radians * 180.0 / std::numbers::pi;
 }
 
 }  // namespace
@@ -103,17 +102,6 @@ double pieceAngleOffset(const BoardFrame& frame, const Fixture& fixture) {
     // Los dos ángulos están en el convenio de la imagen (y hacia abajo), así que
     // la diferencia es directa; se normaliza para no dar saltos de 360°.
     return normalizeAngle(fixture.angleDeg - frame.angleDeg);
-}
-
-BoardReading toMillimeters(const BoardReading& reading, double mmPerPixel) {
-    if (!(mmPerPixel > 0.0)) {
-        return reading;  // sin calibración: los valores siguen siendo píxeles
-    }
-    BoardReading scaled = reading;
-    scaled.dx *= mmPerPixel;
-    scaled.dy *= mmPerPixel;
-    scaled.radius *= mmPerPixel;
-    return scaled;  // el ángulo no cambia con la escala
 }
 
 double niceGridStep(double span, int targetDivisions) {

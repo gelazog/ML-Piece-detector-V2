@@ -87,10 +87,6 @@ struct BoardReading {
 [[nodiscard]] BoardReading readPiece(const BoardFrame& frame, const Fixture& fixture);
 [[nodiscard]] double pieceAngleOffset(const BoardFrame& frame, const Fixture& fixture);
 
-// Misma lectura expresada en milímetros. Con mmPerPixel <= 0 (sin calibrar)
-// devuelve la lectura tal cual, en píxeles: nunca inventa milímetros.
-[[nodiscard]] BoardReading toMillimeters(const BoardReading& reading, double mmPerPixel);
-
 // Paso de grilla "redondo" (…1, 2, 5, 10, 20, 50…) para que un tramo visible de
 // `span` unidades quede dividido en del orden de `targetDivisions` casillas.
 // Así la grilla no satura al alejar ni desaparece al acercar.

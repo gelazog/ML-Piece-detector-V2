@@ -39,29 +39,14 @@
 #include <QRegularExpression>
 #include <QString>
 
-#include <cmath>
 #include <cstdio>
 #include <vector>
 
 #include "ui/theme.h"
 
+using pci::ui::theme::contrastRatio;
+
 namespace {
-
-double channel(double v) {
-    v /= 255.0;
-    return v <= 0.03928 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4);
-}
-
-double relativeLuminance(const QColor& c) {
-    return 0.2126 * channel(c.red()) + 0.7152 * channel(c.green()) +
-           0.0722 * channel(c.blue());
-}
-
-double contrast(const QColor& a, const QColor& b) {
-    const double la = relativeLuminance(a);
-    const double lb = relativeLuminance(b);
-    return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
-}
 
 // El color de texto que una hoja de estilo deja puesto, sea del tema o a mano.
 QColor inkOf(const QString& styleSheet) {
@@ -102,7 +87,7 @@ TEST(SecondaryTextContrast, EveryMutedLabelCanActuallyBeRead) {
         const QColor ink = inkOf(label.styleSheet());
         ASSERT_TRUE(ink.isValid())
             << spot.where << ": la hoja de estilo no deja ningún color de texto puesto";
-        const double ratio = contrast(ink, window);
+        const double ratio = contrastRatio(ink, window);
         std::printf("  [contraste] %-52s %s -> %.2f:1\n", spot.where,
                     qPrintable(ink.name()), ratio);
         EXPECT_GE(ratio, 4.5)
@@ -130,7 +115,7 @@ TEST(SecondaryTextContrast, TheHandWrittenValuesItReplacedReallyDidFail) {
         {"measurement_mode_dialog", "#ffb454", 1.55},
     };
     for (const auto& old : previously) {
-        const double ratio = contrast(QColor(QString::fromLatin1(old.hex)), window);
+        const double ratio = contrastRatio(QColor(QString::fromLatin1(old.hex)), window);
         std::printf("  [contraste] antes %-24s %s -> %.2f:1\n", old.what, old.hex, ratio);
         EXPECT_LT(ratio, 4.5) << old.what << ": el valor que había antes SÍ pasaba. "
                                  "Entonces esta prueba no comprueba lo que cree";
@@ -150,10 +135,10 @@ TEST(SecondaryTextContrast, TheRedNoticeWasLeftAloneBecauseTheThemeMeasuresWorse
     // prueba lo dice.
     EXPECT_STREQ(pci::ui::theme::kAlarmInk, "#3a1010");
     EXPECT_STREQ(pci::ui::theme::kAlarmField, "#ffd9d9");
-    const double byHand = contrast(QColor(QString(pci::ui::theme::kAlarmInk)),
-                                   QColor(QString(pci::ui::theme::kAlarmField)));
-    const double withTokens = contrast(QColor(QString(pci::ui::theme::kBad)),
-                                       QColor(QString(pci::ui::theme::kBadField)));
+    const double byHand = contrastRatio(QColor(QString(pci::ui::theme::kAlarmInk)),
+                                        QColor(QString(pci::ui::theme::kAlarmField)));
+    const double withTokens = contrastRatio(QColor(QString(pci::ui::theme::kBad)),
+                                            QColor(QString(pci::ui::theme::kBadField)));
     std::printf("  [contraste] aviso rojo: a mano %.2f:1, con tokens %.2f:1\n", byHand,
                 withTokens);
     EXPECT_GE(byHand, 4.5) << "el aviso rojo escrito a mano tampoco se lee: entonces hay "
@@ -180,8 +165,8 @@ TEST(SecondaryTextContrast, TheMosaicBadgeSaysWhichPieceIsMeasuredAndCanBeRead) 
     // Y ya que tiene nombre, se mide: el número de la baldosa es lo que dice CUÁL
     // es, y sobre noventa píxeles de foto no puede quedarse en un verde sobre
     // verde.
-    const double measured = contrast(QColor(QString(pci::ui::theme::kInkOnTileMeasured)),
-                                     QColor(QString(pci::ui::theme::kTileMeasured)));
+    const double measured = contrastRatio(QColor(QString(pci::ui::theme::kInkOnTileMeasured)),
+                                          QColor(QString(pci::ui::theme::kTileMeasured)));
     std::printf("  [contraste] baldosa medida: %s sobre %s -> %.2f:1\n",
                 pci::ui::theme::kInkOnTileMeasured, pci::ui::theme::kTileMeasured, measured);
     EXPECT_GE(measured, 4.5)
@@ -190,8 +175,8 @@ TEST(SecondaryTextContrast, TheMosaicBadgeSaysWhichPieceIsMeasuredAndCanBeRead) 
     // Y el marco tiene que distinguirse del de las demás: es lo único que dice
     // cuál está elegida cuando hay cien baldosas. WCAG pide 3:1 para un elemento
     // gráfico, y aquí se compara contra el marco en reposo, que es su vecino.
-    const double frame = contrast(QColor(QString(pci::ui::theme::kTileMeasured)),
-                                  QColor(QString(pci::ui::theme::kChipRest)));
+    const double frame = contrastRatio(QColor(QString(pci::ui::theme::kTileMeasured)),
+                                       QColor(QString(pci::ui::theme::kChipRest)));
     std::printf("  [contraste] marco elegido contra marco en reposo -> %.2f:1\n", frame);
     EXPECT_GE(frame, 3.0)
         << "el marco de la baldosa elegida no se distingue del de las demás, y entonces "

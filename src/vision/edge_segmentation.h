@@ -41,8 +41,9 @@ namespace pci::vision {
 // escenas, y por eso esto es una opción y no un cambio de algoritmo.
 //
 // Cuándo elegirlo, dicho en una frase: cuando las piezas tengan a la vez brillos
-// más claros y sombras más oscuras que la mesa. `edgeSegmentationLooksBetter`
-// contesta esa pregunta con la imagen delante.
+// más claros y sombras más oscuras que la mesa.
+// `readScene(...).aSingleCutCannotDoIt` contesta esa pregunta con la imagen
+// delante.
 
 struct EdgeSegmentationOptions {
     // Cuántas veces por encima del ruido de gradiente del fondo tiene que estar
@@ -129,14 +130,6 @@ struct SceneReading {
 };
 
 [[nodiscard]] SceneReading readScene(const cv::Mat& image);
-
-// Si conviene segmentar por el borde en ESTA imagen. Es `readScene` resumido a
-// un sí o un no, para poder ofrecerlo sin que el operador tenga que interpretar
-// nada.
-//
-// CUESTA una segmentación de más: mira `SceneReading::aSingleCutCannotDoIt` si
-// ya tienes la lectura hecha, en vez de pedir las dos cosas.
-[[nodiscard]] bool edgeSegmentationLooksBetter(const cv::Mat& image);
 
 // ¿ESTÁ EL UMBRAL CORTANDO LA PIEZA?
 //

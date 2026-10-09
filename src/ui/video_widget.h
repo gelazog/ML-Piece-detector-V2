@@ -21,7 +21,6 @@ public:
 public slots:
     void setFrame(const QImage& frame);
     void setOverlay(const AnalysisOverlay& overlay);
-    void clearOverlay();
     void clear();
 
 protected:

@@ -135,24 +135,15 @@ inline constexpr double kTouchingCoreMinFraction = 0.02;
 // mitad a 60.
 void orderPiecesForReading(std::vector<PieceContour>& pieces);
 
-// La pieza de mayor area de una lista, o `nullptr` si esta vacia.
+// Indice de la pieza de mayor area de una lista ya ANALIZADA. 0 si la lista
+// esta vacia.
 //
-// Existe porque el orden dejo de ser por area: quien necesitaba la mayor la
-// cogia con `front()`, y eso ahora devolveria la de arriba a la izquierda. Un
-// cambio silencioso de que pieza se mide es exactamente el fallo que no se ve
-// hasta que alguien compara dos informes.
-[[nodiscard]] const PieceContour* largestPiece(const std::vector<PieceContour>& pieces);
-
-// Lo mismo sobre una lista de piezas ya ANALIZADAS, devolviendo su indice. 0 si
-// la lista esta vacia.
-//
-// Existe porque `largestPiece` no encajaba donde hacia falta —los llamadores
-// tienen `PieceAnalysis` y no `PieceContour`— y el resultado fue que los dos
-// sitios que necesitaban «la mayor» escribieran el bucle a mano. Dos copias de
-// la misma decision en dos ficheros distintos es una que se puede cambiar sin
-// la otra, y «que pieza se mide» es exactamente la decision que no se puede
-// permitir divergir en silencio: en vivo se veria una y el informe traeria la
-// de la otra.
+// Existe porque el orden dejo de ser por area —`front()` es ahora la de arriba
+// a la izquierda— y los dos sitios que necesitaban «la mayor» acabaron
+// escribiendo el bucle a mano. Dos copias de la misma decision en dos ficheros
+// distintos es una que se puede cambiar sin la otra, y «que pieza se mide» es
+// exactamente la decision que no se puede permitir divergir en silencio: en
+// vivo se veria una y el informe traeria la de la otra.
 [[nodiscard]] std::size_t largestPieceIndex(const std::vector<PieceAnalysis>& pieces);
 
 // CUÁL ES «LA PIEZA QUE SE MIDE», con el navegador de piezas de por medio.

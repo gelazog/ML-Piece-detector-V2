@@ -223,11 +223,6 @@ SceneReading readScene(const cv::Mat& image) {
     return reading;
 }
 
-bool edgeSegmentationLooksBetter(const cv::Mat& image) {
-    return readScene(image).aSingleCutCannotDoIt;
-}
-
-
 ClippingCheck checkThresholdClipping(const cv::Mat& image) {
     ClippingCheck check;
     if (image.empty()) {

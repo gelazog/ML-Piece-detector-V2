@@ -37,29 +37,13 @@
 #include <QColor>
 #include <QString>
 
-#include <cmath>
 #include <cstdio>
 
 #include "ui/theme.h"
 
+using pci::ui::theme::contrastRatio;
+
 namespace {
-
-double channel(double v) {
-    v /= 255.0;
-    return v <= 0.03928 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4);
-}
-
-double luminance(const char* hex) {
-    const QColor c(QString::fromLatin1(hex));
-    return 0.2126 * channel(c.red()) + 0.7152 * channel(c.green()) +
-           0.0722 * channel(c.blue());
-}
-
-double contrast(const char* a, const char* b) {
-    const double la = luminance(a);
-    const double lb = luminance(b);
-    return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
-}
 
 // Los tres fondos que hay en este diálogo.
 struct Surface {
@@ -79,7 +63,7 @@ TEST(LensGridContrast, TheCornerMarkerIsVisibleOnACoveredCellToo) {
     // La que motivó todo: se marca la esquina porque no se puede dejar sin
     // cubrir, así que la marca tiene que seguir viéndose CUBIERTA.
     for (const auto& surface : kSurfaces) {
-        const double ratio = contrast(pci::ui::theme::kWarnOnDark, surface.colour);
+        const double ratio = contrastRatio(pci::ui::theme::kWarnOnDark, surface.colour);
         std::printf("  [rejilla] marcador de esquina sobre %-18s %.2f:1\n", surface.what,
                     ratio);
         EXPECT_GE(ratio, 3.0)
@@ -93,7 +77,7 @@ TEST(LensGridContrast, EveryCellHasABorderYouCanSee) {
     // Un borde de control pide 3:1, y aquí es lo único que separa una zona de la
     // de al lado.
     for (const auto& surface : kSurfaces) {
-        const double ratio = contrast(pci::ui::theme::kOutline, surface.colour);
+        const double ratio = contrastRatio(pci::ui::theme::kOutline, surface.colour);
         std::printf("  [rejilla] borde sobre %-28s %.2f:1\n", surface.what, ratio);
         EXPECT_GE(ratio, 3.0) << "el borde no se ve sobre " << surface.what;
     }
@@ -110,7 +94,7 @@ TEST(LensGridContrast, TheTextInsideACellCanBeRead) {
         {"celda cubierta", pci::ui::theme::kInkOnChip, pci::ui::theme::kGoodChip},
     };
     for (const auto& pair : pairs) {
-        const double ratio = contrast(pair.ink, pair.field);
+        const double ratio = contrastRatio(pair.ink, pair.field);
         std::printf("  [rejilla] texto en %-30s %.2f:1\n", pair.what, ratio);
         EXPECT_GE(ratio, 4.5) << "el texto de la " << pair.what << " no llega a 4,5:1";
     }
@@ -133,7 +117,7 @@ TEST(LensGridContrast, TheColoursItReplacedReallyDidFail) {
         {"marcador de esquina sobre el verde", pci::ui::theme::kWarn, "#2e7d32", 3.0},
     };
     for (const auto& old : previously) {
-        const double ratio = contrast(old.a, old.b);
+        const double ratio = contrastRatio(old.a, old.b);
         std::printf("  [rejilla] antes: %-36s %.2f:1 (pedía %.1f)\n", old.what, ratio,
                     old.needs);
         EXPECT_LT(ratio, old.needs)
@@ -147,7 +131,7 @@ TEST(LensGridContrast, ACoveredCellStillLooksDifferentFromAnEmptyOne) {
     // un vistazo. Los dos estados se separan por LUMINANCIA y no solo por tono,
     // que es la regla que esta paleta lleva escrita desde que dos veredictos
     // salieron con el mismo gris.
-    const double apart = contrast(pci::ui::theme::kGoodChip, pci::ui::theme::kChipRest);
+    const double apart = contrastRatio(pci::ui::theme::kGoodChip, pci::ui::theme::kChipRest);
     std::printf("  [rejilla] cubierta contra sin cubrir: %.2f:1\n", apart);
     EXPECT_GE(apart, 1.26)
         << "las dos clases de celda tienen casi la misma claridad: de un vistazo, o para "

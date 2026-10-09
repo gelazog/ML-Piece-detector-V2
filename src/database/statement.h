@@ -13,6 +13,9 @@ struct sqlite3_stmt;
 
 namespace pci::database {
 
+// El último error de la conexión, en texto. Lo comparten `Db` y `Statement`.
+[[nodiscard]] std::string errorOf(sqlite3* db);
+
 // RAII de sqlite3_stmt, solo movible. Los índices de bind empiezan en 1 y los
 // de columna en 0, igual que en la API C.
 //

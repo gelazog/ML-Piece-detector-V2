@@ -40,18 +40,14 @@ TEST(ContextMenu, RightClickAsksInsteadOfDeleting) {
     canvas.resize(400, 300);
 
     QSignalSpy asked(&canvas, &inspection::EditorCanvas::contextMenuRequested);
-    QSignalSpy deleted(&canvas, &inspection::EditorCanvas::toolRightClicked);
     ASSERT_TRUE(asked.isValid());
 
     QTest::mouseClick(&canvas, Qt::RightButton, Qt::NoModifier, QPoint(200, 150));
 
-    std::printf("  [menú] clic derecho -> pide opciones %d vez(es), borra %d\n",
-                static_cast<int>(asked.count()), static_cast<int>(deleted.count()));
+    std::printf("  [menú] clic derecho -> pide opciones %d vez(es)\n",
+                static_cast<int>(asked.count()));
     EXPECT_EQ(asked.count(), 1)
         << "el clic derecho no pide opciones: no hay menú que enseñar";
-    EXPECT_EQ(deleted.count(), 0)
-        << "el clic derecho sigue borrando en el acto: es el gesto de pedir "
-           "información y es el único que destruye trabajo";
 }
 
 TEST(ContextMenu, OnEmptySpaceItStillAsks) {

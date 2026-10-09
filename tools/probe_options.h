@@ -12,6 +12,7 @@
 // Nada de excepciones: los errores salen por `Result`, como en el resto del
 // proyecto. Un banco que aborta no informa de nada.
 
+#include "vision/pipeline.h"
 #include "vision/quality_metrics.h"
 #include <opencv2/core.hpp>
 
@@ -288,18 +289,7 @@ struct ProbeProposal {
     std::string detail;
 };
 
-struct ProbeStageTimes {
-    double segment = 0.0;
-    double contour = 0.0;
-    double fixture = 0.0;
-    double normalize = 0.0;
-    double tools = 0.0;
-    double total = 0.0;
-
-    [[nodiscard]] double stagesSum() const {
-        return segment + contour + fixture + normalize + tools;
-    }
-};
+using ProbeStageTimes = vision::StageTimings;
 
 struct ProbeReport {
     std::string source;

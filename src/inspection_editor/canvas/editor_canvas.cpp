@@ -379,13 +379,6 @@ void EditorCanvas::setBrushSnap(bool on) {
     brushSnap_ = on;
 }
 
-void EditorCanvas::setEdgeCorrection(const cv::Mat& forcePiece,
-                                     const cv::Mat& forceBackground) {
-    forcePiece_ = forcePiece.clone();
-    forceBackground_ = forceBackground.clone();
-    update();
-}
-
 namespace {
 
 // El trozo de una mascara en una zona, o ceros si la mascara todavia no existe:

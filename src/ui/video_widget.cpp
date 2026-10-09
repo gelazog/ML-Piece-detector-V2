@@ -6,12 +6,9 @@
 #include <QPaintEvent>
 
 #include <cmath>
+#include <numbers>
 
 namespace pci::ui {
-
-namespace {
-constexpr double kPi = 3.14159265358979323846;
-}
 
 VideoWidget::VideoWidget(QWidget* parent) : QWidget(parent) {
     setMinimumSize(320, 240);
@@ -29,11 +26,6 @@ void VideoWidget::setFrame(const QImage& frame) {
 
 void VideoWidget::setOverlay(const AnalysisOverlay& overlay) {
     overlay_ = overlay;
-    update();
-}
-
-void VideoWidget::clearOverlay() {
-    overlay_ = AnalysisOverlay{};
     update();
 }
 
@@ -81,7 +73,7 @@ void VideoWidget::paintEvent(QPaintEvent* event) {
         theme::withHalo(painter, theme::drawColor(theme::kDrawFound),
                         [&] { painter.drawPolygon(overlay_.contour); });
 
-        const double rad = overlay_.angleDeg * kPi / 180.0;
+        const double rad = overlay_.angleDeg * std::numbers::pi / 180.0;
         const double len = frame_.width() * 0.12;
         const QPointF axisEnd =
             overlay_.centroid + QPointF(std::cos(rad) * len, std::sin(rad) * len);

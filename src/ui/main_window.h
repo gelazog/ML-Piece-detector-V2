@@ -177,7 +177,6 @@ private slots:
     // Reajusta lo que vive en píxeles cuando cambia la resolución del frame.
     void rescalePixelSettings(const QSize& from, const QSize& to);
     void onMeasurementModeClicked();  // modo de medición de la pieza (M2)
-    void onToolRightClicked(int index);
     // El menú del clic derecho sobre el vídeo. Ver el .cpp para el porqué de
     // qué entra y qué no.
     void onCanvasContextMenu(int tool, const QPoint& globalPos,

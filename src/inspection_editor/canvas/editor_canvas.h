@@ -211,15 +211,13 @@ public:
     // Lo usa el trazo de «marcar una pieza» / «descartar esto»: la zona se
     // calcula fuera —hay que segmentar dentro del trazo, y eso no es trabajo
     // del lienzo— pero se aplica POR AQUÍ para que entre en la misma pila de
-    // deshacer. Con `setEdgeCorrection` se veria igual en pantalla y Ctrl+Z no
-    // la desharía: dos formas de corregir el borde, una deshacible y otra no,
-    // es de las cosas que se aprenden a base de perder trabajo.
+    // deshacer: dos formas de corregir el borde, una deshacible y otra no, es
+    // de las cosas que se aprenden a base de perder trabajo.
     //
     // `asPiece` decide a cuál de las dos máscaras va, y se limpia de la otra:
     // gana lo último que hizo el operador, igual que con el pincel.
     void applyCorrectionArea(const cv::Mat& area, bool asPiece);
 
-    void setEdgeCorrection(const cv::Mat& forcePiece, const cv::Mat& forceBackground);
     void clearEdgeCorrection();
 
     // --- selección de rasgo distintivo ---
@@ -369,7 +367,6 @@ signals:
     // unas veces actua y otras no, sin explicar cual de las dos ha pasado, se
     // vive como que el programa va a rachas.
     void edgeStrokeFinished(bool snapped, double contrast, int keptPixels, int bandPixels);
-    void toolRightClicked(int index);
     // Un gesto claramente intencionado que no pudo convertirse en herramienta.
     // Existe para que nada se descarte en silencio: si el operador traza y no
     // aparece nada, tiene que saber por qué.
