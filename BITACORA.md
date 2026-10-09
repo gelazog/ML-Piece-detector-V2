@@ -19,6 +19,23 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### El recuadro de las herramientas estaba copiado nueve veces
+
+En `tool_executor.cpp`, nueve herramientas repetían el mismo preámbulo
+(recuadro de pieza → cuadrilátero en la imagen → máscara Otsu dentro) y tres el
+mismo escaneo a lo largo de un tramo. Pasan a cuatro ayudantes del fichero,
+unas 180 líneas menos. Es el camino de medida, así que antes de tocar nada se
+congelaron los resultados de las 19 herramientas afectadas sobre escenas
+sintéticas y sobre las 17 fotos del banco, giradas e invertidas (3040
+ejecuciones), y `test_frozen_measures.cpp` exige que salgan bit a bit iguales.
+
+Dos copias se quedaron fuera porque no eran copias: Rebabas y mellas coloca los
+escaneos con otra fórmula (en un tramo de 137 px, 15 de 60 caen ocho
+millonésimas de píxel más allá) y Perfil construye su caja desde el contorno
+nominal. Y queda una duda abierta: Orientación no comprueba si queda un tramo
+del borde sin ver, la comprobación que Borde liso y Rectitud añadieron para no
+dar por bueno un borde con una mella fuera de la ventana.
+
 ### Dos cotas sin guardar salían como una sola fila del panel
 
 Toda cota nacía con id −1, que significa «aún sin guardar», y el panel de

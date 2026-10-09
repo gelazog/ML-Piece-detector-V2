@@ -7,6 +7,7 @@
 #include <set>
 #include <cmath>
 #include <numeric>
+#include <numbers>
 #include <cstdio>
 #include <optional>
 #include <utility>
@@ -68,7 +69,7 @@ UnitPick pickArea(double mm2, LengthUnit unit) {
 
 namespace {
 
-constexpr double kPi = 3.14159265358979323846;
+constexpr double kPi = std::numbers::pi;
 
 using vision::Fixture;
 using vision::toImageCoords;
@@ -251,6 +252,104 @@ bool withinTolerance(const ToolConfig& config, double value) {
 [[nodiscard]] bool blindStretchMatters(int longestGap, double step, double spanLength) {
     const double blind = static_cast<double>(longestGap) * step;
     return blind > std::max(3.0, spanLength * 0.02);
+}
+
+// El recuadro de una herramienta, alineado con los ejes de la PIEZA, llevado a
+// la imagen. Con la pieza girada es un cuadrilátero, no un rectángulo.
+std::vector<cv::Point2f> boxInImage(const Fixture& fixture, const cv::Point2f& center,
+                                    float width, float height) {
+    const float hw = width / 2.0F;
+    const float hh = height / 2.0F;
+    return {toImg(fixture, center + cv::Point2f(-hw, -hh)),
+            toImg(fixture, center + cv::Point2f(hw, -hh)),
+            toImg(fixture, center + cv::Point2f(hw, hh)),
+            toImg(fixture, center + cv::Point2f(-hw, hh))};
+}
+
+// Dibuja el polígono en el overlay y lo devuelve en píxeles enteros, que es
+// como lo quieren `boundingRect` y `fillPoly`.
+std::vector<cv::Point> drawPolygon(const std::vector<cv::Point2f>& polygon,
+                                   ToolRunResult& result) {
+    std::vector<cv::Point> pixels;
+    pixels.reserve(polygon.size());
+    for (std::size_t i = 0; i < polygon.size(); ++i) {
+        result.overlaySegments.push_back({polygon[i], polygon[(i + 1) % polygon.size()]});
+        pixels.emplace_back(cvRound(polygon[i].x), cvRound(polygon[i].y));
+    }
+    return pixels;
+}
+
+// Otsu de `bounds` con lo que cae fuera del polígono (en coordenadas de imagen)
+// puesto a cero. `fillPoly` admite polígonos no convexos, a diferencia de
+// `fillConvexPoly`, y su `offset` lo lleva a las coordenadas del recorte.
+cv::Mat otsuInside(const cv::Mat& gray, const std::vector<cv::Point>& polygon,
+                   const cv::Rect& bounds, bool dark) {
+    cv::Mat inside = cv::Mat::zeros(bounds.size(), CV_8UC1);
+    cv::fillPoly(inside, std::vector<std::vector<cv::Point>>{polygon}, cv::Scalar(255),
+                 cv::LINE_8, 0, -bounds.tl());
+    cv::Mat binary = vision::otsuMask(gray(bounds), dark);
+    cv::bitwise_and(binary, inside, binary);
+    return binary;
+}
+
+// Lo que dan los escaneos perpendiculares a lo largo de un tramo.
+struct EdgeScan {
+    cv::Point2f p0;  // el tramo, en imagen
+    cv::Point2f p1;
+    float length = 0.0F;
+    int longestGap = 0;               // escaneos SEGUIDOS sin borde
+    std::vector<double> ts;           // dónde cae cada borde a lo largo del tramo
+    std::vector<double> offsets;      // y a qué distancia del tramo, con signo
+    std::vector<cv::Point2f> points;  // el mismo borde, en imagen
+};
+
+// Recorre el tramo `from`→`to` (en coordenadas de pieza) con `scans` escaneos
+// perpendiculares de largo `scanLength` y se queda con el primer borde de cada
+// uno. Dibuja el tramo y los bordes. Sin valor —con el motivo en
+// `result.detail`— si el tramo es más corto que el número de escaneos o si el
+// borde no sale en el 60 % de ellos. Lo comparten Borde liso, Rectitud y
+// Orientación; Rebabas y mellas no, porque sitúa cada escaneo con otra cuenta
+// (`step * k` en doble) y pasarla aquí movería sus medidas.
+std::optional<EdgeScan> scanAlongSegment(const cv::Mat& gray, const Fixture& fixture,
+                                         const cv::Point2f& from, const cv::Point2f& to,
+                                         float scanLength, int scans, ToolRunResult& result) {
+    EdgeScan scan;
+    scan.p0 = toImg(fixture, from);
+    scan.p1 = toImg(fixture, to);
+    result.overlaySegments.push_back({scan.p0, scan.p1});
+
+    const cv::Point2f delta = scan.p1 - scan.p0;
+    scan.length = static_cast<float>(cv::norm(delta));
+    if (scan.length < static_cast<float>(scans)) {
+        result.detail = "Tramo demasiado corto para " + std::to_string(scans) + " escaneos";
+        return std::nullopt;
+    }
+    const cv::Point2f u = delta / scan.length;
+    const cv::Point2f n(-u.y, u.x);
+
+    int gap = 0;
+    for (int k = 0; k < scans; ++k) {
+        const float t = scan.length * static_cast<float>(k) / static_cast<float>(scans - 1);
+        const cv::Point2f base = scan.p0 + u * t;
+        const auto edges = detectEdges(gray, base - n * (scanLength / 2.0F),
+                                       base + n * (scanLength / 2.0F), 1.0F, 1);
+        if (edges.empty()) {
+            scan.longestGap = std::max(scan.longestGap, ++gap);
+            continue;
+        }
+        gap = 0;
+        scan.ts.push_back(static_cast<double>(t));
+        scan.offsets.push_back(edges[0].position - static_cast<double>(scanLength) / 2.0);
+        scan.points.push_back(edges[0].point);
+        result.overlayPoints.push_back(edges[0].point);
+    }
+    if (scan.points.size() < static_cast<std::size_t>(scans) * 6 / 10) {
+        result.detail = "Borde no detectado en suficientes escaneos (" +
+                        std::to_string(scan.points.size()) + "/" + std::to_string(scans) +
+                        ")";
+        return std::nullopt;
+    }
+    return scan;
 }
 
 ToolRunResult baseResult(const ToolConfig& config) {
@@ -2071,48 +2170,16 @@ ToolRunResult runEdgeFlaw(const cv::Mat& gray, const Fixture& fixture,
                           const ToolConfig& config, const EdgeFlawGeometry& g,
                           const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
-    const cv::Point2f p0 = toImg(fixture, g.p0);
-    const cv::Point2f p1 = toImg(fixture, g.p1);
-    result.overlaySegments.push_back({p0, p1});
-
-    const cv::Point2f delta = p1 - p0;
-    const float length = static_cast<float>(cv::norm(delta));
-    const int scans = std::clamp(g.scanCount, 3, 200);
-    if (length < static_cast<float>(scans)) {
-        result.detail = "Tramo demasiado corto para " + std::to_string(scans) + " escaneos";
-        return result;
-    }
-    const cv::Point2f u = delta / length;
-    const cv::Point2f n(-u.y, u.x);
-
     // Un escaneo perpendicular por posición; el borde debería quedar a offset
     // constante. La desviación máxima respecto a la recta ajustada es el flaw.
-    std::vector<double> ts;
-    std::vector<double> offsets;
-    int gap = 0;
-    int longestGap = 0;
-    for (int k = 0; k < scans; ++k) {
-        const float t = length * static_cast<float>(k) / static_cast<float>(scans - 1);
-        const cv::Point2f base = p0 + u * t;
-        const cv::Point2f from = base - n * (g.scanLength / 2.0F);
-        const cv::Point2f to = base + n * (g.scanLength / 2.0F);
-        const auto edges = detectEdges(gray, from, to, 1.0F, 1);
-        if (edges.empty()) {
-            ++gap;
-            longestGap = std::max(longestGap, gap);
-            continue;
-        }
-        gap = 0;
-        ts.push_back(static_cast<double>(t));
-        offsets.push_back(edges[0].position - static_cast<double>(g.scanLength) / 2.0);
-        result.overlayPoints.push_back(edges[0].point);
-    }
-
-    if (ts.size() < static_cast<std::size_t>(scans) * 6 / 10) {
-        result.detail = "Borde no detectado en suficientes escaneos (" +
-                        std::to_string(ts.size()) + "/" + std::to_string(scans) + ")";
+    const int scans = std::clamp(g.scanCount, 3, 200);
+    const auto scan = scanAlongSegment(gray, fixture, g.p0, g.p1, g.scanLength, scans, result);
+    if (!scan) {
         return result;
     }
+    const float length = scan->length;
+    const std::vector<double>& ts = scan->ts;
+    const std::vector<double>& offsets = scan->offsets;
     // Un hueco SEGUIDO no se puede dar por limpio, y esta herramienta lo hacía.
     //
     // Medido: sobre una mella de 26 px con el largo de escaneo en 16, devolvía
@@ -2124,9 +2191,9 @@ ToolRunResult runEdgeFlaw(const cv::Mat& gray, const Fixture& fixture,
     // Es el mismo fallo que «Rebabas y mellas» ya tenía cubierto, con la misma
     // salida: subir el largo de escaneo. Aquí faltaba.
     const double step = static_cast<double>(length) / std::max(1, scans - 1);
-    if (blindStretchMatters(longestGap, step, static_cast<double>(length))) {
+    if (blindStretchMatters(scan->longestGap, step, static_cast<double>(length))) {
         result.detail = "No se pudo ver el borde en un tramo de " +
-                        fmtLen(longestGap * step, fmt) +
+                        fmtLen(scan->longestGap * step, fmt) +
                         ": sube el largo de escaneo (ahora " +
                         fmtLen(static_cast<double>(g.scanLength), fmt) +
                         "). Un defecto más hondo que media ventana se sale de ella, y dar el "
@@ -2169,34 +2236,13 @@ ToolRunResult runEdgeFlaw(const cv::Mat& gray, const Fixture& fixture,
 int countBlobsInPolygon(const cv::Mat& gray, const std::vector<cv::Point2f>& poly,
                         float minArea, bool darkBlobs, double& totalAreaOut,
                         ToolRunResult& result) {
-    const std::size_t n = poly.size();
-    for (std::size_t i = 0; i < n; ++i) {
-        result.overlaySegments.push_back({poly[i], poly[(i + 1) % n]});
-    }
-
-    std::vector<cv::Point> polyInt;
-    polyInt.reserve(n);
-    for (const auto& p : poly) {
-        polyInt.emplace_back(cvRound(p.x), cvRound(p.y));
-    }
+    const std::vector<cv::Point> polyInt = drawPolygon(poly, result);
     const cv::Rect bounds = cv::boundingRect(polyInt) & cv::Rect(0, 0, gray.cols, gray.rows);
     if (bounds.area() < 9) {
         result.detail = "La región cae fuera de la imagen";
         return -1;
     }
-
-    cv::Mat regionMask = cv::Mat::zeros(bounds.size(), CV_8UC1);
-    std::vector<cv::Point> polyLocal;
-    polyLocal.reserve(n);
-    for (const auto& p : polyInt) {
-        polyLocal.emplace_back(p.x - bounds.x, p.y - bounds.y);
-    }
-    // fillPoly admite polígonos no convexos (a diferencia de fillConvexPoly).
-    cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{polyLocal}, cv::Scalar(255));
-
-    const cv::Mat roi = gray(bounds);
-    cv::Mat binary = vision::otsuMask(roi, darkBlobs);
-    cv::bitwise_and(binary, regionMask, binary);
+    cv::Mat binary = otsuInside(gray, polyInt, bounds, darkBlobs);
 
     // No es `largestOuterContour`: aquí cuentan TODAS las manchas que pasan el área mínima.
     std::vector<std::vector<cv::Point>> contours;
@@ -2225,18 +2271,10 @@ ToolRunResult runBlob(const cv::Mat& gray, const Fixture& fixture, const ToolCon
                       const BlobGeometry& g, const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
 
-    // Rectángulo alineado a los ejes de la pieza -> cuadrilátero en imagen.
-    const float hw = g.width / 2.0F;
-    const float hh = g.height / 2.0F;
-    const std::vector<cv::Point2f> quad = {
-        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, hh)),
-        toImg(fixture, g.center + cv::Point2f(-hw, hh)),
-    };
-
     double totalArea = 0.0;
-    const int count = countBlobsInPolygon(gray, quad, g.minArea, g.darkBlobs, totalArea, result);
+    const int count =
+        countBlobsInPolygon(gray, boxInImage(fixture, g.center, g.width, g.height), g.minArea,
+                            g.darkBlobs, totalArea, result);
     if (count < 0) {
         return result;
     }
@@ -2425,21 +2463,8 @@ ToolRunResult runFillet(const cv::Mat& gray, const Fixture& fixture,
                         const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
 
-    const float hw = g.width / 2.0F;
-    const float hh = g.height / 2.0F;
-    const std::vector<cv::Point2f> quad{
-        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, hh)),
-        toImg(fixture, g.center + cv::Point2f(-hw, hh))};
-    for (std::size_t i = 0; i < quad.size(); ++i) {
-        result.overlaySegments.push_back({quad[i], quad[(i + 1) % quad.size()]});
-    }
-    std::vector<cv::Point> quadInt;
-    for (const auto& p : quad) {
-        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
-    }
-    const cv::Rect selection = cv::boundingRect(quadInt);
+    const cv::Rect selection =
+        cv::boundingRect(drawPolygon(boxInImage(fixture, g.center, g.width, g.height), result));
     // Igual que el Chaflán: el recuadro SELECCIONA, no recorta. Recortar
     // convertiría sus propios cortes en tramos rectos del contorno.
     cv::Rect bounds = selection;
@@ -2552,22 +2577,8 @@ ToolRunResult runChamfer(const cv::Mat& gray, const Fixture& fixture,
                          const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
 
-    const float hw = g.width / 2.0F;
-    const float hh = g.height / 2.0F;
-    const std::vector<cv::Point2f> quad{
-        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, hh)),
-        toImg(fixture, g.center + cv::Point2f(-hw, hh))};
-    for (std::size_t i = 0; i < quad.size(); ++i) {
-        result.overlaySegments.push_back({quad[i], quad[(i + 1) % quad.size()]});
-    }
-
-    std::vector<cv::Point> quadInt;
-    for (const auto& p : quad) {
-        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
-    }
-    const cv::Rect selection = cv::boundingRect(quadInt);
+    const cv::Rect selection =
+        cv::boundingRect(drawPolygon(boxInImage(fixture, g.center, g.width, g.height), result));
     // El recuadro SELECCIONA qué tramos del borde se miran; NO recorta la pieza.
     //
     // Recortarla era el primer intento y estaba mal: los cortes del propio
@@ -2782,35 +2793,14 @@ ToolRunResult runExtremes(const cv::Mat& gray, const Fixture& fixture,
                           const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
 
-    const float hw = g.width / 2.0F;
-    const float hh = g.height / 2.0F;
-    const std::vector<cv::Point2f> quad{
-        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, hh)),
-        toImg(fixture, g.center + cv::Point2f(-hw, hh))};
-    for (std::size_t i = 0; i < quad.size(); ++i) {
-        result.overlaySegments.push_back({quad[i], quad[(i + 1) % quad.size()]});
-    }
-
-    std::vector<cv::Point> quadInt;
-    for (const auto& p : quad) {
-        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
-    }
-    const cv::Rect bounds = cv::boundingRect(quadInt) & cv::Rect(0, 0, gray.cols, gray.rows);
+    const std::vector<cv::Point> quad =
+        drawPolygon(boxInImage(fixture, g.center, g.width, g.height), result);
+    const cv::Rect bounds = cv::boundingRect(quad) & cv::Rect(0, 0, gray.cols, gray.rows);
     if (bounds.area() < 25) {
         result.detail = "La región cae fuera de la imagen";
         return result;
     }
-    cv::Mat regionMask = cv::Mat::zeros(bounds.size(), CV_8UC1);
-    std::vector<cv::Point> quadLocal;
-    for (const auto& p : quadInt) {
-        quadLocal.emplace_back(p.x - bounds.x, p.y - bounds.y);
-    }
-    cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
-
-    cv::Mat binary = vision::otsuMask(gray(bounds), g.darkPiece);
-    cv::bitwise_and(binary, regionMask, binary);
+    const cv::Mat binary = otsuInside(gray, quad, bounds, g.darkPiece);
 
     const std::vector<cv::Point> outer = vision::largestOuterContour(binary);
     if (outer.empty()) {
@@ -2971,35 +2961,14 @@ ToolRunResult runBoltPattern(const cv::Mat& gray, const Fixture& fixture,
                              const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
 
-    const float hw = g.width / 2.0F;
-    const float hh = g.height / 2.0F;
-    const std::vector<cv::Point2f> quad{
-        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, hh)),
-        toImg(fixture, g.center + cv::Point2f(-hw, hh))};
-    for (std::size_t i = 0; i < quad.size(); ++i) {
-        result.overlaySegments.push_back({quad[i], quad[(i + 1) % quad.size()]});
-    }
-
-    std::vector<cv::Point> quadInt;
-    for (const auto& p : quad) {
-        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
-    }
-    const cv::Rect bounds = cv::boundingRect(quadInt) & cv::Rect(0, 0, gray.cols, gray.rows);
+    const std::vector<cv::Point> quad =
+        drawPolygon(boxInImage(fixture, g.center, g.width, g.height), result);
+    const cv::Rect bounds = cv::boundingRect(quad) & cv::Rect(0, 0, gray.cols, gray.rows);
     if (bounds.area() < 100) {
         result.detail = "La región cae fuera de la imagen";
         return result;
     }
-    cv::Mat regionMask = cv::Mat::zeros(bounds.size(), CV_8UC1);
-    std::vector<cv::Point> quadLocal;
-    for (const auto& p : quadInt) {
-        quadLocal.emplace_back(p.x - bounds.x, p.y - bounds.y);
-    }
-    cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
-
-    cv::Mat binary = vision::otsuMask(gray(bounds), g.darkPiece);
-    cv::bitwise_and(binary, regionMask, binary);
+    const cv::Mat binary = otsuInside(gray, quad, bounds, g.darkPiece);
 
     // No es `largestOuterContour`: CCOMP para los agujeros; `>` desde 0 no elige áreas nulas.
     std::vector<std::vector<cv::Point>> contours;
@@ -3232,36 +3201,12 @@ ToolRunResult runOrientation(const cv::Mat& gray, const Fixture& fixture,
         return result;
     }
 
-    const cv::Point2f p0 = toImg(fixture, g.p0);
-    const cv::Point2f p1 = toImg(fixture, g.p1);
-    result.overlaySegments.push_back({p0, p1});
-
-    const cv::Point2f delta = p1 - p0;
-    const float length = static_cast<float>(cv::norm(delta));
-    const int scans = std::clamp(g.scanCount, 5, 400);
-    if (length < static_cast<float>(scans)) {
-        result.detail = "Tramo demasiado corto para " + std::to_string(scans) + " escaneos";
+    const auto scan = scanAlongSegment(gray, fixture, g.p0, g.p1, g.scanLength,
+                                       std::clamp(g.scanCount, 5, 400), result);
+    if (!scan) {
         return result;
     }
-    const cv::Point2f u = delta / length;
-    const cv::Point2f n(-u.y, u.x);
-
-    std::vector<cv::Point2f> edgePoints;
-    for (int k = 0; k < scans; ++k) {
-        const float t = length * static_cast<float>(k) / static_cast<float>(scans - 1);
-        const cv::Point2f base = p0 + u * t;
-        const auto edges = detectEdges(gray, base - n * (g.scanLength / 2.0F),
-                                       base + n * (g.scanLength / 2.0F), 1.0F, 1);
-        if (!edges.empty()) {
-            edgePoints.push_back(edges[0].point);
-            result.overlayPoints.push_back(edges[0].point);
-        }
-    }
-    if (edgePoints.size() < static_cast<std::size_t>(scans) * 6 / 10) {
-        result.detail = "Borde no detectado en suficientes escaneos (" +
-                        std::to_string(edgePoints.size()) + "/" + std::to_string(scans) + ")";
-        return result;
-    }
+    const std::vector<cv::Point2f>& edgePoints = scan->points;
 
     // El datum viene en coordenadas de PIEZA; se lleva a imagen para medir
     // contra los puntos del borde, que están en imagen.
@@ -3319,9 +3264,9 @@ ToolRunResult runOrientation(const cv::Mat& gray, const Fixture& fixture,
     // Las dos rectas de la banda, en la orientación que manda el datum.
     for (const double edge : {lowest, highest}) {
         const cv::Point2f base = bandNormal * static_cast<float>(edge);
-        const cv::Point2f centre = base + ideal * ((p0 + p1) * 0.5F).dot(ideal);
+        const cv::Point2f centre = base + ideal * ((scan->p0 + scan->p1) * 0.5F).dot(ideal);
         result.overlaySegments.push_back(
-            {centre - ideal * (length / 2.0F), centre + ideal * (length / 2.0F)});
+            {centre - ideal * (scan->length / 2.0F), centre + ideal * (scan->length / 2.0F)});
     }
     return result;
 }
@@ -3411,52 +3356,22 @@ ToolRunResult runStraightness(const cv::Mat& gray, const Fixture& fixture,
                               const ToolConfig& config, const StraightnessGeometry& g,
                               const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
-    const cv::Point2f p0 = toImg(fixture, g.p0);
-    const cv::Point2f p1 = toImg(fixture, g.p1);
-    result.overlaySegments.push_back({p0, p1});
-
-    const cv::Point2f delta = p1 - p0;
-    const float length = static_cast<float>(cv::norm(delta));
     const int scans = std::clamp(g.scanCount, 5, 400);
-    if (length < static_cast<float>(scans)) {
-        result.detail = "Tramo demasiado corto para " + std::to_string(scans) + " escaneos";
+    const auto scan = scanAlongSegment(gray, fixture, g.p0, g.p1, g.scanLength, scans, result);
+    if (!scan) {
         return result;
     }
-    const cv::Point2f u = delta / length;
-    const cv::Point2f n(-u.y, u.x);
-
-    std::vector<cv::Point2f> edgePoints;
-    edgePoints.reserve(static_cast<std::size_t>(scans));
-    int gap = 0;
-    int longestGap = 0;
-    for (int k = 0; k < scans; ++k) {
-        const float t = length * static_cast<float>(k) / static_cast<float>(scans - 1);
-        const cv::Point2f base = p0 + u * t;
-        const auto edges = detectEdges(gray, base - n * (g.scanLength / 2.0F),
-                                       base + n * (g.scanLength / 2.0F), 1.0F, 1);
-        if (edges.empty()) {
-            ++gap;
-            longestGap = std::max(longestGap, gap);
-            continue;
-        }
-        gap = 0;
-        edgePoints.push_back(edges[0].point);
-        result.overlayPoints.push_back(edges[0].point);
-    }
-    if (edgePoints.size() < static_cast<std::size_t>(scans) * 6 / 10) {
-        result.detail = "Borde no detectado en suficientes escaneos (" +
-                        std::to_string(edgePoints.size()) + "/" + std::to_string(scans) + ")";
-        return result;
-    }
+    const float length = scan->length;
+    const std::vector<cv::Point2f>& edgePoints = scan->points;
     // Y el mismo hueco seguido que se le escapaba al Borde liso. Aquí duele
     // igual o más: la rectitud por zona mínima es un valor de plano, y darlo por
     // bueno sobre un borde que no se ha visto entero es firmar una cota que
     // nadie ha medido. Medido: sobre una mella de 26 px con el largo en 16
     // devolvía 0,000.
     const double step = static_cast<double>(length) / std::max(1, scans - 1);
-    if (blindStretchMatters(longestGap, step, static_cast<double>(length))) {
+    if (blindStretchMatters(scan->longestGap, step, static_cast<double>(length))) {
         result.detail = "No se pudo ver el borde en un tramo de " +
-                        fmtLen(longestGap * step, fmt) +
+                        fmtLen(scan->longestGap * step, fmt) +
                         ": sube el largo de escaneo (ahora " +
                         fmtLen(static_cast<double>(g.scanLength), fmt) +
                         "). Con un tramo sin ver, la banda mínima se calcula sobre el borde "
@@ -3518,38 +3433,14 @@ ToolRunResult runClearance(const cv::Mat& gray, const Fixture& fixture,
                            const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
 
-    const float hw = g.width / 2.0F;
-    const float hh = g.height / 2.0F;
-    const std::vector<cv::Point2f> quad{
-        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, hh)),
-        toImg(fixture, g.center + cv::Point2f(-hw, hh))};
-    for (std::size_t i = 0; i < quad.size(); ++i) {
-        result.overlaySegments.push_back({quad[i], quad[(i + 1) % quad.size()]});
-    }
-
-    std::vector<cv::Point> quadInt;
-    quadInt.reserve(quad.size());
-    for (const auto& p : quad) {
-        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
-    }
-    const cv::Rect bounds = cv::boundingRect(quadInt) & cv::Rect(0, 0, gray.cols, gray.rows);
+    const std::vector<cv::Point> quad =
+        drawPolygon(boxInImage(fixture, g.center, g.width, g.height), result);
+    const cv::Rect bounds = cv::boundingRect(quad) & cv::Rect(0, 0, gray.cols, gray.rows);
     if (bounds.area() < 25) {
         result.detail = "La región cae fuera de la imagen";
         return result;
     }
-
-    cv::Mat regionMask = cv::Mat::zeros(bounds.size(), CV_8UC1);
-    std::vector<cv::Point> quadLocal;
-    quadLocal.reserve(quadInt.size());
-    for (const auto& p : quadInt) {
-        quadLocal.emplace_back(p.x - bounds.x, p.y - bounds.y);
-    }
-    cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
-
-    cv::Mat binary = vision::otsuMask(gray(bounds), g.darkPiece);
-    cv::bitwise_and(binary, regionMask, binary);
+    const cv::Mat binary = otsuInside(gray, quad, bounds, g.darkPiece);
 
     // No es `largestOuterContour`: APPROX_SIMPLE, filtro de área y las DOS mayores.
     std::vector<std::vector<cv::Point>> contours;
@@ -3835,38 +3726,14 @@ ToolRunResult runPolygon(const cv::Mat& gray, const Fixture& fixture,
                          const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
 
-    const float hw = g.width / 2.0F;
-    const float hh = g.height / 2.0F;
-    const std::vector<cv::Point2f> quad{
-        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, hh)),
-        toImg(fixture, g.center + cv::Point2f(-hw, hh))};
-    for (std::size_t i = 0; i < quad.size(); ++i) {
-        result.overlaySegments.push_back({quad[i], quad[(i + 1) % quad.size()]});
-    }
-
-    std::vector<cv::Point> quadInt;
-    quadInt.reserve(quad.size());
-    for (const auto& p : quad) {
-        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
-    }
-    const cv::Rect bounds = cv::boundingRect(quadInt) & cv::Rect(0, 0, gray.cols, gray.rows);
+    const std::vector<cv::Point> quad =
+        drawPolygon(boxInImage(fixture, g.center, g.width, g.height), result);
+    const cv::Rect bounds = cv::boundingRect(quad) & cv::Rect(0, 0, gray.cols, gray.rows);
     if (bounds.area() < 25) {
         result.detail = "La región cae fuera de la imagen";
         return result;
     }
-
-    cv::Mat regionMask = cv::Mat::zeros(bounds.size(), CV_8UC1);
-    std::vector<cv::Point> quadLocal;
-    quadLocal.reserve(quadInt.size());
-    for (const auto& p : quadInt) {
-        quadLocal.emplace_back(p.x - bounds.x, p.y - bounds.y);
-    }
-    cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
-
-    cv::Mat binary = vision::otsuMask(gray(bounds), g.darkPiece);
-    cv::bitwise_and(binary, regionMask, binary);
+    const cv::Mat binary = otsuInside(gray, quad, bounds, g.darkPiece);
 
     const std::vector<cv::Point> outer = vision::largestOuterContour(binary);
     if (outer.empty()) {
@@ -4039,27 +3906,13 @@ ToolRunResult runSymmetry(const cv::Mat& gray, const Fixture& fixture,
     ToolRunResult result = baseResult(config);
     (void)fmt;  // el grado no tiene unidades y el ángulo va en grados
 
-    const float hw = g.width / 2.0F;
-    const float hh = g.height / 2.0F;
-    const std::vector<cv::Point2f> quad{
-        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, hh)),
-        toImg(fixture, g.center + cv::Point2f(-hw, hh))};
-    for (std::size_t i = 0; i < quad.size(); ++i) {
-        result.overlaySegments.push_back({quad[i], quad[(i + 1) % quad.size()]});
-    }
-
-    std::vector<cv::Point> quadInt;
-    quadInt.reserve(quad.size());
-    for (const auto& p : quad) {
-        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
-    }
+    const std::vector<cv::Point> quad =
+        drawPolygon(boxInImage(fixture, g.center, g.width, g.height), result);
     // Se deja un margen alrededor del recuadro: al reflejar, parte de la figura
     // cae fuera de su propia caja, y si el lienzo la recortara ese trozo
     // contaría como asimetría cuando solo es falta de sitio.
     constexpr int kPad = 8;
-    cv::Rect bounds = cv::boundingRect(quadInt);
+    cv::Rect bounds = cv::boundingRect(quad);
     bounds -= cv::Point(kPad, kPad);
     bounds += cv::Size(2 * kPad, 2 * kPad);
     bounds &= cv::Rect(0, 0, gray.cols, gray.rows);
@@ -4067,17 +3920,7 @@ ToolRunResult runSymmetry(const cv::Mat& gray, const Fixture& fixture,
         result.detail = "La región cae fuera de la imagen";
         return result;
     }
-
-    cv::Mat regionMask = cv::Mat::zeros(bounds.size(), CV_8UC1);
-    std::vector<cv::Point> quadLocal;
-    quadLocal.reserve(quadInt.size());
-    for (const auto& p : quadInt) {
-        quadLocal.emplace_back(p.x - bounds.x, p.y - bounds.y);
-    }
-    cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
-
-    cv::Mat binary = vision::otsuMask(gray(bounds), g.darkPiece);
-    cv::bitwise_and(binary, regionMask, binary);
+    const cv::Mat binary = otsuInside(gray, quad, bounds, g.darkPiece);
 
     const cv::Moments moments = cv::moments(binary, true);
     if (moments.m00 < 25.0) {
@@ -4159,7 +4002,7 @@ ToolRunResult runSymmetry(const cv::Mat& gray, const Fixture& fixture,
     result.derived.point = piecePoint;
     result.derived.direction = pieceAlong - piecePoint;
 
-    const float half = std::max(hw, hh);
+    const float half = std::max(g.width, g.height) / 2.0F;
     result.overlaySegments.push_back(
         {centreImage - half * direction, centreImage + half * direction});
     result.overlayPoints.push_back(centreImage);
@@ -4173,38 +4016,14 @@ ToolRunResult runRegion(const cv::Mat& gray, const Fixture& fixture, const ToolC
                         const RegionGeometry& g, const Fmt& fmt) {
     ToolRunResult result = baseResult(config);
 
-    const float hw = g.width / 2.0F;
-    const float hh = g.height / 2.0F;
-    const std::vector<cv::Point2f> quad{
-        toImg(fixture, g.center + cv::Point2f(-hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, -hh)),
-        toImg(fixture, g.center + cv::Point2f(hw, hh)),
-        toImg(fixture, g.center + cv::Point2f(-hw, hh))};
-    for (std::size_t i = 0; i < quad.size(); ++i) {
-        result.overlaySegments.push_back({quad[i], quad[(i + 1) % quad.size()]});
-    }
-
-    std::vector<cv::Point> quadInt;
-    quadInt.reserve(quad.size());
-    for (const auto& p : quad) {
-        quadInt.emplace_back(cvRound(p.x), cvRound(p.y));
-    }
-    const cv::Rect bounds = cv::boundingRect(quadInt) & cv::Rect(0, 0, gray.cols, gray.rows);
+    const std::vector<cv::Point> quad =
+        drawPolygon(boxInImage(fixture, g.center, g.width, g.height), result);
+    const cv::Rect bounds = cv::boundingRect(quad) & cv::Rect(0, 0, gray.cols, gray.rows);
     if (bounds.area() < 25) {
         result.detail = "La región cae fuera de la imagen";
         return result;
     }
-
-    cv::Mat regionMask = cv::Mat::zeros(bounds.size(), CV_8UC1);
-    std::vector<cv::Point> quadLocal;
-    quadLocal.reserve(quadInt.size());
-    for (const auto& p : quadInt) {
-        quadLocal.emplace_back(p.x - bounds.x, p.y - bounds.y);
-    }
-    cv::fillPoly(regionMask, std::vector<std::vector<cv::Point>>{quadLocal}, cv::Scalar(255));
-
-    cv::Mat binary = vision::otsuMask(gray(bounds), g.darkPiece);
-    cv::bitwise_and(binary, regionMask, binary);
+    const cv::Mat binary = otsuInside(gray, quad, bounds, g.darkPiece);
 
     // CCOMP da exterior e hijos en dos niveles, que es justo lo que hace falta
     // para contar agujeros. Y NONE —no SIMPLE— porque `digitalPerimeter`
