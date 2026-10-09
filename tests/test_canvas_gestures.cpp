@@ -5439,16 +5439,19 @@ TEST(PieceCountMode, DeclaringTwoPiecesWorksWithTheTwoBiggestAndSaysWhatWasLeftO
         auto* chip = window.findChild<QLabel*>(QStringLiteral("piecesChip"));
         return (chip != nullptr && chip->isVisible()) ? chip->text().trimmed() : QString();
     };
-    const auto settle = [&](int ms) {
+    // Hasta que se cumpla, no un tiempo fijo: con 1,2 s fijos la prueba fallaba
+    // de vez en cuando con la suite en paralelo, porque el análisis aún no había
+    // vuelto. El tope solo corta si de verdad no llega nunca.
+    const auto settleUntil = [&](const auto& done) {
         QElapsedTimer timer;
         timer.start();
-        while (timer.elapsed() < ms) {
+        while (!done() && timer.elapsed() < 10000) {
             QApplication::processEvents(QEventLoop::AllEvents, 20);
         }
     };
 
     // En automático se ven las cuatro: si no, esta prueba no mide nada.
-    settle(1200);
+    settleUntil([&] { return chipText().contains(QStringLiteral("4 piezas")); });
     std::printf("  [recorte] en automático el chip dice: «%s»\n",
                 chipText().toStdString().c_str());
     // «4 piezas» y no «1 de 4»: en automático no se recorta nada. La primera
@@ -5461,7 +5464,7 @@ TEST(PieceCountMode, DeclaringTwoPiecesWorksWithTheTwoBiggestAndSaysWhatWasLeftO
 
     // El operador declara DOS.
     window.declareExpectedPieces(2);
-    settle(1200);
+    settleUntil([&] { return chipText().contains(QStringLiteral("2 de 4")); });
     const QString declared = chipText();
     std::printf("  [recorte] declaradas 2, el chip dice: «%s»\n",
                 declared.toStdString().c_str());
@@ -5483,7 +5486,7 @@ TEST(PieceCountMode, DeclaringTwoPiecesWorksWithTheTwoBiggestAndSaysWhatWasLeftO
 
     // Con UNA declarada no se enumera en absoluto.
     window.declareExpectedPieces(1);
-    settle(1000);
+    settleUntil([&] { return chipText().isEmpty(); });
     EXPECT_TRUE(chipText().isEmpty())
         << "declarada una pieza, el recuento sigue a la vista: " << chipText().toStdString();
 }
