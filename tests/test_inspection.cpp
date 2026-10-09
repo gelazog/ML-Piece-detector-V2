@@ -4517,6 +4517,28 @@ TEST(Orientation, WithoutADatumItDoesNotMeasure) {
     EXPECT_NE(results[0].detail.find("DATUM"), std::string::npos) << results[0].detail;
 }
 
+TEST(Orientation, AStretchItCouldNotSeeIsNotPassedAsParallel) {
+    // Borde Liso y Rectitud ya se negaban a dar número con un tramo del borde
+    // sin ver, y Orientación no: medía la banda sobre lo que sí vio. Una mella
+    // más honda que el alcance del escaneo quedaba fuera, la banda salía
+    // estrecha y la cota daba OK sobre un borde que no cumple.
+    const cv::Mat gray =
+        twoEdges([](double x) { return (x >= 280.0 && x <= 330.0) ? 30.0 : 0.0; });
+    ToolConfig oriented = orientationOver(0.0F);
+    oriented.toleranceMax = 2.0;
+    ToolRunResult result;
+    for (const auto& r : runTools(gray, kIdentity, {datumRuler(), oriented})) {
+        if (r.name == "orientacion") {
+            result = r;
+        }
+    }
+    std::printf("  %s\n", result.detail.c_str());
+    EXPECT_FALSE(result.ok) << "da por paralelo un borde con una mella que no vio: "
+                            << result.detail;
+    EXPECT_NE(result.detail.find("No se pudo ver el borde"), std::string::npos)
+        << result.detail;
+}
+
 TEST(Orientation, ItIsNeverSmallerThanTheStraightnessOfTheSameEdge) {
     // La relación entre G1 y G3, que conviene entender: la rectitud elige la
     // orientación de la banda buscando la más estrecha; la orientación no puede

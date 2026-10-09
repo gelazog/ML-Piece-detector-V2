@@ -19,6 +19,17 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Orientación daba OK sobre una mella que no había visto
+
+Paralelismo, perpendicularidad y angularidad miden la anchura de la banda que
+contiene el borde. Si una mella era más honda que el alcance del escaneo, ese
+tramo se quedaba sin puntos y la banda se calculaba con lo que sí se vio: salía
+estrecha y la cota daba OK sobre un borde que no cumple. Borde liso y Rectitud
+ya se negaban a dar número en ese caso; Orientación no. Lo vio el agente que
+unificó el escaneo de tramo, que dejó la duda escrita en vez de cambiarla de
+paso. Ahora dice qué tramo no vio y que suba el largo de escaneo. Lo vigila
+`Orientation.AStretchItCouldNotSeeIsNotPassedAsParallel`.
+
 ### El recuadro de las herramientas estaba copiado nueve veces
 
 En `tool_executor.cpp`, nueve herramientas repetían el mismo preámbulo
@@ -32,9 +43,9 @@ ejecuciones), y `test_frozen_measures.cpp` exige que salgan bit a bit iguales.
 Dos copias se quedaron fuera porque no eran copias: Rebabas y mellas coloca los
 escaneos con otra fórmula (en un tramo de 137 px, 15 de 60 caen ocho
 millonésimas de píxel más allá) y Perfil construye su caja desde el contorno
-nominal. Y queda una duda abierta: Orientación no comprueba si queda un tramo
-del borde sin ver, la comprobación que Borde liso y Rectitud añadieron para no
-dar por bueno un borde con una mella fuera de la ventana.
+nominal. Quedó una duda abierta, que resultó ser un fallo: Orientación no
+comprobaba si quedaba un tramo del borde sin ver (ver «Orientación daba OK sobre
+una mella que no había visto»).
 
 ### Dos cotas sin guardar salían como una sola fila del panel
 

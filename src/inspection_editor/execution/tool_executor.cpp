@@ -3201,12 +3201,25 @@ ToolRunResult runOrientation(const cv::Mat& gray, const Fixture& fixture,
         return result;
     }
 
-    const auto scan = scanAlongSegment(gray, fixture, g.p0, g.p1, g.scanLength,
-                                       std::clamp(g.scanCount, 5, 400), result);
+    const int scans = std::clamp(g.scanCount, 5, 400);
+    const auto scan = scanAlongSegment(gray, fixture, g.p0, g.p1, g.scanLength, scans, result);
     if (!scan) {
         return result;
     }
     const std::vector<cv::Point2f>& edgePoints = scan->points;
+    // Un tramo sin ver, como en Rectitud: la banda saldría del borde que sí se
+    // vio, más estrecha de lo que es, y la cota daría OK sobre una mella que
+    // nadie miró.
+    const double step = static_cast<double>(scan->length) / std::max(1, scans - 1);
+    if (blindStretchMatters(scan->longestGap, step, static_cast<double>(scan->length))) {
+        result.detail = "No se pudo ver el borde en un tramo de " +
+                        fmtLen(scan->longestGap * step, fmt) +
+                        ": sube el largo de escaneo (ahora " +
+                        fmtLen(static_cast<double>(g.scanLength), fmt) +
+                        "). Con un tramo sin ver, la banda sale de lo que sí se vio y "
+                        "es más estrecha de lo que la pieza es";
+        return result;
+    }
 
     // El datum viene en coordenadas de PIEZA; se lleva a imagen para medir
     // contra los puntos del borde, que están en imagen.

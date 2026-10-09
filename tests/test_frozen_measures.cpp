@@ -230,7 +230,9 @@ TEST(FrozenMeasures, DrawnScenesGiveTheSameBits) {
         {"symmetry", 0xae7bd07d2a0ffd8aULL},
         {"region", 0x7e68c174b56ce002ULL},
         {"edge_flaw", 0x9011f2478def9979ULL},
-        {"orientation", 0x597f84c5519e1c13ULL},
+        // Cambio deliberado: Orientación ya no da banda con un tramo sin ver
+        // (Orientation.AStretchItCouldNotSeeIsNotPassedAsParallel).
+        {"orientation", 0xccbc47a9e85fa5ebULL},
         {"straightness", 0xea49e3e0bf9b0771ULL},
         {"angle", 0x222082c1eb0295edULL},
         {"line_to_line", 0x0a00c9b9b5891d45ULL},
@@ -277,7 +279,8 @@ TEST(FrozenMeasures, BankPhotosGiveTheSameBits) {
         {"symmetry", 0xb385c727216e778dULL},
         {"region", 0x4ac391a77913d663ULL},
         {"edge_flaw", 0x0053df3f70df0832ULL},
-        {"orientation", 0xc9991b9798f848adULL},
+        // Cambio deliberado, el mismo que arriba.
+        {"orientation", 0xea2743dfe13ef7f9ULL},
         {"straightness", 0x160b641d8b52e507ULL},
         {"angle", 0xd8c8ac721f2b8ca9ULL},
         {"line_to_line", 0x8fcc2ab15a9a10adULL},
