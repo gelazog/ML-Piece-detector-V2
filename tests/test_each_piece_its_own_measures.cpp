@@ -24,6 +24,7 @@
 #include <QToolButton>
 
 #include <functional>
+#include <vector>
 
 #include "camera/frame_source.h"
 #include "inspection_editor/canvas/editor_canvas.h"
@@ -105,4 +106,65 @@ TEST(EachPieceItsOwnMeasures, SwitchingPieceDoesNotCarryTheOtherPiecesCotas) {
     next->click();
     EXPECT_TRUE(waitFor([&] { return panel->rowCount() > 0; }))
         << "volver a la pieza medida no devuelve sus medidas";
+}
+
+// DOS COTAS SIN GUARDAR SON DOS FILAS, Y LA ✕ DE CADA UNA BORRA LA SUYA.
+//
+// Toda cota nacía con id −1 («aún sin guardar») y el panel de medidas agrupa e
+// identifica las filas por id. Con dos o más sin guardar —lo normal justo
+// después de «Medir pieza» y «Vigilar estas cotas»— se juntaban en una sola
+// fila, y el ojo, la ✕ y el clic en la fila iban siempre a la primera. Ocultar
+// una las ocultaba todas.
+TEST(EachPieceItsOwnMeasures, TwoUnsavedCotasAreTwoRowsAndEachCrossDeletesItsOwn) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.setBrush(QColor(230, 230, 230));
+        painter.setPen(Qt::NoPen);
+        painter.drawEllipse(QPointF(200, 150), 80, 80);
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("disco.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(window.startFileSourceAtPath(camera::SourceKind::Image, path));
+    auto* canvas = window.findChild<inspection::EditorCanvas*>();
+    auto* panel = window.findChild<ui::MeasurementsPanel*>();
+    ASSERT_NE(canvas, nullptr);
+    ASSERT_NE(panel, nullptr);
+    ASSERT_TRUE(waitFor([&] { return canvas->livePieceCount() >= 1; }));
+
+    for (const float radius : {80.0F, 40.0F}) {
+        inspection::CircleGeometry circle;
+        circle.center = cv::Point2f(0.0F, 0.0F);
+        circle.radius = radius;
+        circle.searchBand = 20.0F;
+        emit canvas->toolCreated(inspection::ToolGeometry{circle});
+    }
+    EXPECT_TRUE(waitFor([&] { return panel->rowCount() == 2; }))
+        << "dos cotas dibujadas y el panel enseña " << panel->rowCount() << " fila(s)";
+
+    std::vector<QToolButton*> crosses;
+    for (auto* button : panel->findChildren<QToolButton*>()) {
+        if (button->objectName().startsWith(QStringLiteral("deleteButton_"))) {
+            crosses.push_back(button);
+        }
+    }
+    ASSERT_EQ(crosses.size(), 2U) << "no hay una ✕ por cota";
+    const QString kept = crosses.front()->objectName().mid(QStringLiteral("deleteButton_").size());
+    crosses.back()->click();
+    ASSERT_TRUE(waitFor([&] { return panel->rowCount() == 1; }))
+        << "la ✕ no quitó ninguna fila";
+    bool firstStillThere = false;
+    for (auto* label : panel->findChildren<QWidget*>()) {
+        if (label->objectName() == QStringLiteral("cotaCell_") + kept) {
+            firstStillThere = true;
+        }
+    }
+    EXPECT_TRUE(firstStillThere) << "la ✕ de la segunda cota borró la primera";
 }

@@ -62,9 +62,31 @@ double wrapAngleDeg(double angle) {
 // --- Deshacer / rehacer sobre las herramientas dibujadas ---
 
 void MainWindow::commitUndoState() {
+    giveUnsavedToolsTheirOwnId();
     undoStack_.push(stableTools_);
     stableTools_ = liveTools_;
     templateDirty_ = true;  // toda mutación de herramientas deja la plantilla sucia
+}
+
+// CADA COTA SIN GUARDAR CON SU PROPIO ID.
+//
+// Todas nacían con −1 («aún sin guardar») y el panel de medidas agrupa e
+// identifica las filas por id: dos cotas recién propuestas eran UNA fila, y su
+// ojo y su ✕ iban siempre a la primera. Cualquier id negativo sigue
+// significando «sin guardar» para el repositorio (`id < 0` inserta) y para el
+// historial, que no guarda resultados de herramientas sin id.
+void MainWindow::giveUnsavedToolsTheirOwnId() {
+    std::vector<std::int64_t> taken;
+    for (auto& tool : liveTools_) {
+        if (tool.config.id >= 0) {
+            continue;
+        }
+        if (tool.config.id == -1 ||
+            std::find(taken.begin(), taken.end(), tool.config.id) != taken.end()) {
+            tool.config.id = nextUnsavedId_--;
+        }
+        taken.push_back(tool.config.id);
+    }
 }
 
 void MainWindow::restoreTools(std::vector<inspection::EditedTool> tools) {

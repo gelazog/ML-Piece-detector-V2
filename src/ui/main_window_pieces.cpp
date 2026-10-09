@@ -896,6 +896,7 @@ void MainWindow::onOpenEditorClicked() {
     // Devolver las herramientas editadas a la vista en vivo (ida y vuelta), en
     // vez de recargar de la BD y perder lo no guardado.
     liveTools_ = editor.editedTools();
+    giveUnsavedToolsTheirOwnId();
     undoStack_.clear();
     stableTools_ = liveTools_;
     video_->setSelectedIndex(-1);

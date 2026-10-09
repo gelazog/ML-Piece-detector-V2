@@ -19,6 +19,17 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Dos cotas sin guardar salían como una sola fila del panel
+
+Toda cota nacía con id −1, que significa «aún sin guardar», y el panel de
+medidas agrupa e identifica las filas por id. Justo después de *Medir pieza* →
+*Vigilar estas cotas*, que es cuando hay varias sin guardar, se juntaban en una
+sola fila; el ojo, la ✕ y el clic en la fila iban siempre a la primera, y ocultar
+una las ocultaba todas. Ahora cada cota sin guardar recibe su propio id negativo
+al nacer (`giveUnsavedToolsTheirOwnId`, desde `commitUndoState`); cualquier
+negativo sigue significando «sin guardar» para el repositorio y el historial.
+Salió al probar el arreglo anterior: dibujar dos círculos y contar las filas.
+
 ### Con varias piezas sin registrar, la siguiente heredaba las cotas de la anterior
 
 Queja del dueño: con varias piezas distintas en el encuadre y ninguna

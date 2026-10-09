@@ -593,6 +593,7 @@ private:
     int focusedPiece_ = 0;
     int lastMeasuredPiece_ = -1;
     int lastLargestPiece_ = -1;
+    std::int64_t nextUnsavedId_ = -2;  // −1 es «sin id»; ver giveUnsavedToolsTheirOwnId
     // Las cotas de las OTRAS piezas del encuadre, por su número en orden de
     // lectura, mientras no hay una pieza registrada (ver `focusPiece`).
     std::map<int, std::vector<inspection::EditedTool>> toolsOfOtherPieces_;
@@ -605,6 +606,7 @@ private:
     int lastPiecesTooSmall_ = 0;
     void updatePieceNavigator();
     void stepFocusedPiece(int delta);
+    void giveUnsavedToolsTheirOwnId();
     // Cambia la pieza que se mide (0 = la mayor) y, sin pieza registrada, le
     // pone sus propias cotas en vez de las de la anterior.
     void focusPiece(int number);
