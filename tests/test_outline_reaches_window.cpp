@@ -48,6 +48,19 @@ bool waitFor(const std::function<bool()>& condition, int ms = 8000) {
     return condition();
 }
 
+// Todo lo que pasa por la barra de estado mientras corre `action`, no solo lo
+// último: la búsqueda de cámaras es asíncrona y su «1 cámara(s) detectada(s)»
+// llegaba a veces justo después y tapaba el mensaje que se busca.
+QString messagesDuring(QStatusBar* bar, const std::function<void()>& action) {
+    QStringList seen;
+    const auto connection = QObject::connect(bar, &QStatusBar::messageChanged,
+                                             [&seen](const QString& text) { seen << text; });
+    action();
+    QApplication::processEvents();
+    QObject::disconnect(connection);
+    return seen.join(QStringLiteral(" | "));
+}
+
 }  // namespace
 
 TEST(OutlineReachesWindow, AStrokeThatEnclosesNothingIsReported) {
@@ -57,13 +70,12 @@ TEST(OutlineReachesWindow, AStrokeThatEnclosesNothingIsReported) {
     auto* canvas = window.findChild<inspection::EditorCanvas*>();
     ASSERT_NE(canvas, nullptr);
 
-    window.statusBar()->clearMessage();
-    emit canvas->pieceOutlined(std::vector<cv::Point>{{10, 10}, {20, 20}}, true);
-    QApplication::processEvents();
+    const QString seen = messagesDuring(window.statusBar(), [&] {
+        emit canvas->pieceOutlined(std::vector<cv::Point>{{10, 10}, {20, 20}}, true);
+    });
 
-    EXPECT_TRUE(window.statusBar()->currentMessage().contains(QStringLiteral("no encierra")))
-        << "la ventana no se enteró del trazo: «"
-        << window.statusBar()->currentMessage().toStdString() << "»";
+    EXPECT_TRUE(seen.contains(QStringLiteral("no encierra")))
+        << "la ventana no se enteró del trazo: «" << seen.toStdString() << "»";
 }
 
 TEST(OutlineReachesWindow, DiscardingAnAreaOnAnOpenImageTurnsItIntoBackground) {
@@ -83,14 +95,12 @@ TEST(OutlineReachesWindow, DiscardingAnAreaOnAnOpenImageTurnsItIntoBackground) {
     ASSERT_TRUE(waitFor([&] { return canvas->livePieceCount() >= 1; }))
         << "la imagen no llegó a enseñar la pieza";
 
-    window.statusBar()->clearMessage();
     const std::vector<cv::Point> square{{20, 20}, {120, 20}, {120, 120}, {20, 120}};
-    emit canvas->pieceOutlined(square, false);
-    QApplication::processEvents();
+    const QString seen = messagesDuring(window.statusBar(),
+                                        [&] { emit canvas->pieceOutlined(square, false); });
 
-    EXPECT_TRUE(window.statusBar()->currentMessage().startsWith(QStringLiteral("Descartado")))
-        << "descartar una zona no llegó a la ventana: «"
-        << window.statusBar()->currentMessage().toStdString() << "»";
+    EXPECT_TRUE(seen.contains(QStringLiteral("Descartado")))
+        << "descartar una zona no llegó a la ventana: «" << seen.toStdString() << "»";
 }
 
 // NINGUNA CONEXIÓN RECHAZADA AL ARMAR LA VENTANA.
