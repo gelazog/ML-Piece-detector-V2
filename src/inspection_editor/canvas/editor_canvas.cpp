@@ -148,10 +148,17 @@ void EditorCanvas::setScene(const QImage& image, const vision::Fixture& fixture)
 }
 
 void EditorCanvas::setFrame(const QImage& frame) {
-    const bool resized = image_.size() != frame.size();
+    // OTRA IMAGEN, no solo otro tamaño: la captura de otra foto, o el vídeo que
+    // sigue tras la pausa, llegan del mismo tamaño y con otro contenido, y la
+    // corrección pintada sobre la anterior forzaba sus píxeles en ésta. Solo se
+    // compara si hay corrección que perder; una imagen fija se reemite
+    // compartida, y entonces `==` contesta sin mirar los píxeles.
+    const bool corrected = !forcePiece_.empty() || !forceBackground_.empty() ||
+                           !undoSteps_.empty() || !redoSteps_.empty();
+    const bool another = image_.size() != frame.size() || (corrected && image_ != frame);
     image_ = frame;
     liveMode_ = true;
-    if (resized) {
+    if (another) {
         forgetEdgeCorrection();
     }
     update();

@@ -3985,6 +3985,92 @@ TEST(EdgeBrush, OpeningAnotherFileLeavesNoCorrectionBehind) {
         << "el pincel dejó de funcionar tras cambiar de fichero";
 }
 
+// LA CORRECCIÓN TAMPOCO PASA A OTRA IMAGEN DEL MISMO TAMAÑO.
+//
+// La de arriba cambia de tamaño a propósito, y es justo el único caso en que la
+// corrección se olvidaba: el lienzo la soltaba «si cambia el tamaño». Elegir en
+// la tira la captura de otra foto —lo normal: todas salen de la misma cámara,
+// todas del mismo tamaño— dejaba puesta la corrección de la imagen anterior. La
+// pastilla seguía diciendo «Borde corregido» y el análisis forzaba como pieza,
+// sobre la captura, los píxeles que se pintaron en otra foto. Lo mismo al seguir
+// un vídeo pausado: el contorno corregido de un frame se aplicaba a los
+// siguientes.
+TEST(EdgeBrush, ChoosingTheCaptureOfAnotherImageLeavesNoCorrectionBehind) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    // Dos fotos del MISMO tamaño, con la pieza en sitios distintos.
+    const auto makePhoto = [&](const QString& name, const QRect& piece) {
+        QImage photo(400, 300, QImage::Format_RGB888);
+        photo.fill(QColor(20, 20, 20));
+        QPainter painter(&photo);
+        painter.fillRect(piece, QColor(230, 230, 230));
+        painter.end();
+        const QString path = QDir(dir.path()).filePath(name);
+        return photo.save(path) ? path : QString();
+    };
+    const QString firstPath = makePhoto(QStringLiteral("primera.png"), QRect(60, 60, 150, 120));
+    const QString secondPath = makePhoto(QStringLiteral("segunda.png"), QRect(180, 120, 160, 120));
+    ASSERT_FALSE(firstPath.isEmpty());
+    ASSERT_FALSE(secondPath.isEmpty());
+
+    pci::ui::MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    auto* canvas = window.findChild<pci::inspection::EditorCanvas*>();
+    auto* freeze = window.findChild<QPushButton*>(QStringLiteral("freezeButton"));
+    auto* captures = window.findChild<QListWidget*>(QStringLiteral("captureList"));
+    auto* sources = window.findChild<QComboBox*>(QStringLiteral("sourceCombo"));
+    ASSERT_NE(canvas, nullptr);
+    ASSERT_NE(freeze, nullptr);
+    ASSERT_NE(captures, nullptr);
+    ASSERT_NE(sources, nullptr);
+    const auto waitFor = [](auto predicate, int ms = 4000) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (predicate()) {
+                return true;
+            }
+        }
+        return predicate();
+    };
+    const auto correctionChip = [&]() -> QLabel* {
+        auto* found = window.findChild<QLabel*>(QStringLiteral("edgeChip"));
+        return found != nullptr && found->isVisible() ? found : nullptr;
+    };
+
+    // La primera, y su foto a la tira.
+    ASSERT_TRUE(window.startFileSourceAtPath(pci::camera::SourceKind::Image, firstPath));
+    ASSERT_TRUE(waitFor([&] { return canvas->liveContour().size() >= 4; }));
+    freeze->click();
+    ASSERT_EQ(captures->count(), 1);
+
+    // La segunda, por la puerta de siempre, y una corrección sobre ella.
+    ASSERT_TRUE(window.openFile(secondPath));
+    ASSERT_TRUE(waitFor([&] { return sources->currentText().contains(QStringLiteral("segunda")); }));
+    ASSERT_TRUE(waitFor([&] { return canvas->liveContour().size() >= 4; }));
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::AddPiece);
+    canvas->setBrushRadius(18);
+    paintStroke(canvas, QPoint(150, 150), QPoint(170, 200));
+    canvas->setEdgeBrush(pci::inspection::EditorCanvas::EdgeBrush::Off);
+    ASSERT_TRUE(waitFor([&] { return correctionChip() != nullptr; }))
+        << "no se anuncia la corrección sobre la segunda imagen";
+
+    // Y se elige la captura de la primera.
+    captures->setCurrentRow(0);
+    ASSERT_TRUE(waitFor([&] { return canvas->liveContour().boundingRect().left() < 100.0; }))
+        << "la captura de la primera no llegó a analizarse";
+    std::printf("  [captura] sobre la captura de la primera: %d px corregidos, aviso %s\n",
+                canvas->correctedPixelCount(),
+                correctionChip() != nullptr ? "VISIBLE" : "retirado");
+    EXPECT_EQ(canvas->correctedPixelCount(), 0)
+        << "la corrección pintada sobre la segunda sigue viva sobre la captura de la primera";
+    EXPECT_TRUE(waitFor([&] { return correctionChip() == nullptr; }))
+        << "el aviso sigue diciendo «Borde corregido» sobre una captura que nadie corrigió";
+}
+
 // El control de vídeo, de punta a punta y a través de la VENTANA: abrir el
 // fichero, pausar con el botón, mover la barra, y comprobar que la posición que
 // se lee cuadra con donde se pidió ir.

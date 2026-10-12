@@ -19,6 +19,21 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Elegir en la tira la captura de otra foto se llevaba la corrección del borde
+
+El lienzo olvidaba la corrección del borde solo si cambiaba el **tamaño** de la
+imagen. Las capturas de la tira salen todas del mismo tamaño, así que elegir la
+de otra foto dejaba puesta la corrección de la anterior: la pastilla seguía
+diciendo «Borde corregido» y el análisis forzaba como pieza, sobre la captura,
+3 000 px pintados en otra foto. Por el mismo camino, al seguir un vídeo pausado
+o al volver de una foto a la cámara. La prueba que había cambiaba de tamaño a
+propósito, que era justo el único caso que funcionaba. Ahora
+`EditorCanvas::setFrame` la olvida también cuando llega otra imagen del mismo
+tamaño (solo compara si hay corrección, y una imagen fija se reemite compartida,
+así que `==` contesta sin mirar píxeles) y `onFrame` suelta la copia del
+análisis. Lo vigila
+`EdgeBrush.ChoosingTheCaptureOfAnotherImageLeavesNoCorrectionBehind`.
+
 ### La inspección medía la mancha que sobra y corría el número de las piezas
 
 Con un número de piezas declarado, la pantalla trabaja con las N mayores; el
