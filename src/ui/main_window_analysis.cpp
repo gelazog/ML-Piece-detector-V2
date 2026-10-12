@@ -798,6 +798,13 @@ void MainWindow::onFrame(const QImage& rawFrame) {
     // segundo con la herramienta apagada sin motivo visible, y para siempre en
     // cualquier fuente que entregue un solo frame.
     updateEdgeBrushAvailability();
+    // Y por lo mismo los comandos que piden imagen («Medir pieza», calibrar, el
+    // editor): se recalculan al montar la fuente, todavía sin frame, y se
+    // quedaban apagados con la imagen ya en pantalla. Solo con el primer frame
+    // de la fuente, que es cuando cambia «hay imagen».
+    if (previousSize.isEmpty()) {
+        updateGatedCommands();
+    }
     // Primer frame de la sesión: no hay resolución anterior con la que comparar,
     // pero sí la que quedó guardada. Es el único momento en que se puede notar
     // que los ajustes en píxeles vienen de una fuente distinta a la de ahora.

@@ -27,14 +27,22 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QDir>
+#include <QElapsedTimer>
+#include <QImage>
 #include <QMenu>
 #include <QMenuBar>
+#include <QPainter>
+#include <QPushButton>
 #include <QString>
 #include <QStringList>
+#include <QTemporaryDir>
 
 #include <algorithm>
 #include <cstdio>
 
+#include "camera/frame_source.h"
+#include "inspection_editor/canvas/editor_canvas.h"
 #include "ui/main_window.h"
 
 using namespace pci;
@@ -144,4 +152,49 @@ TEST(DeadControls, NoCommandPromisesSomethingItCannotDoYet) {
         ADD_FAILURE() << "quedan " << promising.size() << " y el tope sigue en " << kToday
                       << ": bájalo. Un trinquete que no se aprieta deja de serlo.";
     }
+}
+
+// Y AL REVÉS: CON UNA IMAGEN DELANTE, LO QUE PEDÍA IMAGEN SE ENCIENDE.
+//
+// Apagar se hacía bien; encender, no. Los comandos que piden imagen —«Medir
+// pieza», calibrar la escala, el editor de plantilla— se recalculaban al montar
+// la fuente, y en ese instante todavía no hay ningún frame: el primero llega
+// justo después. Nada los volvía a mirar, así que con la imagen abierta y su
+// contorno en pantalla «Medir pieza» seguía apagado, con el tooltip diciendo
+// «no hay ninguna imagen delante». Con la cámara, igual.
+//
+// Es el mismo fallo que ya tuvo el pincel de corregir el borde, y se arregla en
+// el mismo sitio: donde llega cada frame.
+TEST(DeadControls, AnOpenedImageTurnsOnWhatNeedsAnImage) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(140, 100, 120, 100), QColor(230, 230, 230));
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("pieza.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    ui::MainWindow window;
+    window.resize(1400, 800);
+    window.show();
+    auto* measure = window.findChild<QPushButton*>(QStringLiteral("measurePieceButton"));
+    ASSERT_NE(measure, nullptr);
+    ASSERT_FALSE(measure->isEnabled()) << "sin imagen tiene que empezar apagado";
+
+    ASSERT_TRUE(window.startFileSourceAtPath(camera::SourceKind::Image, path));
+    auto* canvas = window.findChild<inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 8000 && canvas->livePieceCount() < 1) {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+    ASSERT_GE(canvas->livePieceCount(), 1) << "la imagen no llega a enseñar la pieza";
+
+    EXPECT_TRUE(measure->isEnabled())
+        << "con la imagen abierta y la pieza en pantalla, «Medir pieza» sigue apagado: «"
+        << measure->toolTip().toStdString() << "»";
 }

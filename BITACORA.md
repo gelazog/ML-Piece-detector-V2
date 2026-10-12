@@ -19,6 +19,20 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### «Medir pieza» se quedaba apagado con la imagen ya abierta
+
+Al abrir una imagen o arrancar la cámara, *Medir pieza*, calibrar la escala, el
+editor de plantilla y «Punto fijo…» seguían apagados con el aviso «no hay
+ninguna imagen delante», con la imagen y su contorno en pantalla. Esos comandos
+se recalculaban al montar la fuente, y el primer frame llega justo después —la
+imagen fija lo emite dentro de `start()`—; nada los volvía a mirar. La prueba de
+comandos muertos solo mira la ventana recién abierta, donde apagarlos es lo
+correcto, y las del informe construyen el diálogo a mano en vez de pulsar el
+botón. Es el mismo fallo que ya tuvo el pincel. Ahora `onFrame` los recalcula
+con el primer frame de cada fuente. Lo vigila
+`DeadControls.AnOpenedImageTurnsOnWhatNeedsAnImage`; el botón lleva nombre
+(`measurePieceButton`) para que la prueba no lo busque por su rótulo.
+
 ### Orientación daba OK sobre una mella que no había visto
 
 Paralelismo, perpendicularidad y angularidad miden la anchura de la banda que

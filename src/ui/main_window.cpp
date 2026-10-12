@@ -574,6 +574,7 @@ void MainWindow::buildPieceRow(QWidget* central, QVBoxLayout* rootLayout) {
     // usar sin pieza registrada, sin plantilla y sin calibrar — dando píxeles y
     // diciéndolo.
     measurePieceButton_ = new QPushButton(tr("Medir pieza"), central);
+    measurePieceButton_->setObjectName(QStringLiteral("measurePieceButton"));
     measurePieceButton_->setToolTip(
         tr("Mide la pieza entera a partir de su contorno: perímetro, área, agujeros y "
            "las cotas propias de su forma."));
