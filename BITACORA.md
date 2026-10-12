@@ -19,6 +19,17 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Una zona fija apagada seguía recortando el informe y la inspección
+
+La zona fija se guarda aunque se pase a «imagen entera» o a automática, para
+poder volver a ella. El vídeo la respeta apagada; `inspectionConfig` —la
+detección con la que trabajan *Medir pieza*, la inspección, el registro y el
+editor— solo apagaba la zona libre y seguía recortando con el rectángulo. En la prueba el
+rectángulo guardado rodea la pieza pequeña: el vídeo mide la mayor y el informe
+daba la pequeña (2 793 px² en vez de 11 187). Las pruebas de zona la dibujan y
+la usan, ninguna la apaga. Ahora el rectángulo solo recorta en modo fija. Lo
+vigila `ReportOfThePieceOnScreen.AFixedZoneThatIsOffDoesNotCropTheReport`.
+
 ### Elegir en la tira la captura de otra foto se llevaba la corrección del borde
 
 El lienzo olvidaba la corrección del borde solo si cambiaba el **tamaño** de la

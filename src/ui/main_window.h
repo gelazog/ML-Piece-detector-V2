@@ -354,9 +354,9 @@ private:
     [[nodiscard]] cv::Rect effectiveWorkingZone() const;
     void setWorkingZoneMode(pci::vision::WorkingZoneMode mode);
     void updateWorkingZoneOverlay();
-    // La configuración con la que INSPECCIONAR. La zona libre solo recorta si
-    // su modo está activo: una guardada de otro día, con el modo apagado, no
-    // puede seguir tapando media imagen sin que nadie lo haya pedido.
+    // La configuración con la que INSPECCIONAR. La zona, libre o fija, solo
+    // recorta si su modo está activo: una guardada de otro día, con el modo
+    // apagado, no puede seguir tapando media imagen sin que nadie lo haya pedido.
     [[nodiscard]] vision::PipelineConfig inspectionConfig() const;
     // LA PIEZA QUE SE ESTÁ MIDIENDO, ya analizada.
     //

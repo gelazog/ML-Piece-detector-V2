@@ -217,6 +217,12 @@ vision::PipelineConfig MainWindow::inspectionConfig() const {
     vision::PipelineConfig config = pipelineConfig_;
     config.roiPolygon =
         vision::effectiveWorkingPolygon(zoneMode_, pipelineConfig_.roiPolygon);
+    // Y el rectángulo, igual: se guarda para poder volver a él, pero solo
+    // recorta en modo fija. Recortaba siempre, y con la zona apagada «Medir
+    // pieza» y la inspección miraban dentro de una zona que el vídeo no usa.
+    if (zoneMode_ != vision::WorkingZoneMode::Fixed) {
+        config.roi = cv::Rect();
+    }
     return config;
 }
 

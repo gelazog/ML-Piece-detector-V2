@@ -31,7 +31,10 @@
 #include <functional>
 
 #include "camera/frame_source.h"
+#include "database/db.h"
+#include "database/schema.h"
 #include "inspection_editor/canvas/editor_canvas.h"
+#include "repositories/settings_repository.h"
 #include "ui/main_window.h"
 #include "ui/piece_report_dialog.h"
 
@@ -136,3 +139,54 @@ TEST(ReportOfThePieceOnScreen, WithADeclaredCountTheNumberMeansTheSamePiece) {
                             << area << " px²";
 }
 
+// UNA ZONA FIJA APAGADA NO RECORTA EL INFORME.
+//
+// La zona fija se guarda aunque se pase a «imagen entera» o a automática, para
+// poder volver a ella. El vídeo la respeta apagada; «Medir pieza», la
+// inspección, el registro y el editor salen de `inspectionConfig`, que solo
+// apagaba la zona LIBRE y seguía recortando con el rectángulo. En esta escena
+// el rectángulo guardado rodea la pieza pequeña: con la zona apagada el vídeo
+// mide la mayor (11 781 px²) y el informe daba la pequeña (2 891 px²).
+TEST(ReportOfThePieceOnScreen, AFixedZoneThatIsOffDoesNotCropTheReport) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(60, 60, 60, 50), QColor(230, 230, 230));
+        painter.fillRect(QRect(250, 50, 120, 100), QColor(230, 230, 230));
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("dos.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    auto opened =
+        database::Db::open(QDir(dir.path()).filePath(QStringLiteral("z.db")).toStdString());
+    ASSERT_TRUE(opened.isOk()) << opened.error().message;
+    auto db = std::move(opened.value());
+    ASSERT_TRUE(database::migrate(*db).isOk());
+    repositories::SettingsRepository settings(*db);
+    // Una zona dibujada otro día alrededor de la pequeña, y luego apagada.
+    ASSERT_TRUE(settings.setInt("det_roi_x", 0).isOk());
+    ASSERT_TRUE(settings.setInt("det_roi_y", 0).isOk());
+    ASSERT_TRUE(settings.setInt("det_roi_w", 200).isOk());
+    ASSERT_TRUE(settings.setInt("det_roi_h", 300).isOk());
+    ASSERT_TRUE(settings.setString("work_zone_mode", "off").isOk());
+    ui::AppRepositories repos;
+    repos.settings = &settings;
+
+    ui::MainWindow window(repos);
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(window.startFileSourceAtPath(camera::SourceKind::Image, path));
+    auto* canvas = window.findChild<inspection::EditorCanvas*>();
+    ASSERT_NE(canvas, nullptr);
+    ASSERT_TRUE(waitFor([&] { return canvas->livePieceCount() == 2; }))
+        << "con la zona apagada el vídeo tiene que ver las dos piezas";
+
+    const double area = reportedArea(window);
+    std::printf("  [informe] zona apagada, área del informe: %.0f px²\n", area);
+    ASSERT_GT(area, 0.0) << "«Medir pieza» no abrió el informe";
+    EXPECT_GT(area, 8000.0) << "el vídeo mide la mayor y el informe da " << area
+                            << " px²: lo recorta la zona apagada";
+}
