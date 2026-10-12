@@ -169,4 +169,15 @@ void orderPiecesForReading(std::vector<PieceContour>& pieces);
 [[nodiscard]] std::size_t measuredPieceIndex(const std::vector<PieceAnalysis>& pieces,
                                              int wanted);
 
+// LAS QUE SON PIEZAS, con un número declarado (`PipelineConfig::expectedPieces`).
+//
+// Con N >= 1 y más manchas que N se trabaja con las N MAYORES, en el mismo
+// orden de lectura, y las demás dejan de ser piezas: no se miden ni se numeran.
+// Con 0, o sin manchas de más, no toca nada.
+//
+// Vivía escrito dentro del análisis del vídeo, y era el único que lo aplicaba:
+// «Medir pieza» contaba también la sombra, así que su «pieza 1» no era la 1 de
+// la pantalla y el informe llegaba de otra pieza.
+void keepDeclaredPieces(std::vector<PieceAnalysis>& pieces, int expected);
+
 }  // namespace pci::vision

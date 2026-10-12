@@ -131,31 +131,7 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                 // demas no desaparecen del informe —`piecesFound` sigue diciendo
                 // cuantas manchas se vieron, y el veredicto sigue pudiendo dar
                 // NG por el recuento—, pero dejan de ser piezas.
-                if (pipeline.expectedPieces >= 1 &&
-                    static_cast<int>(all.value().size()) > pipeline.expectedPieces) {
-                    std::vector<double> areas;
-                    areas.reserve(all.value().size());
-                    for (const auto& piece : all.value()) {
-                        areas.push_back(piece.contour.area);
-                    }
-                    // El area de la que hace de corte: la N-esima mayor.
-                    std::nth_element(areas.begin(),
-                                     areas.begin() + pipeline.expectedPieces - 1, areas.end(),
-                                     std::greater<double>());
-                    const double cutoff =
-                        areas[static_cast<std::size_t>(pipeline.expectedPieces - 1)];
-                    std::vector<vision::PieceAnalysis> kept;
-                    kept.reserve(static_cast<std::size_t>(pipeline.expectedPieces));
-                    for (auto& piece : all.value()) {
-                        // Se conserva el ORDEN DE LECTURA al filtrar: el numero
-                        // de cada pieza tiene que seguir significando su sitio.
-                        if (piece.contour.area >= cutoff &&
-                            static_cast<int>(kept.size()) < pipeline.expectedPieces) {
-                            kept.push_back(std::move(piece));
-                        }
-                    }
-                    all.value() = std::move(kept);
-                }
+                vision::keepDeclaredPieces(all.value(), pipeline.expectedPieces);
                 overlay.piecesUsed = static_cast<int>(all.value().size());
                 // LA MAYOR, PEDIDA POR SU NOMBRE.
                 //

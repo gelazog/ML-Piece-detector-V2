@@ -239,6 +239,7 @@ add_executable(pci_gui_tests
   test_status_indicator_words.cpp
   test_outline_reaches_window.cpp
   test_each_piece_its_own_measures.cpp
+  test_the_report_is_of_the_piece_on_screen.cpp
   test_open_file.cpp
   test_verdict_board.cpp
 )

@@ -229,10 +229,14 @@ core::Result<vision::PieceAnalysis> MainWindow::analyseMeasuredPiece(
     if (focusedPiece_ < 1) {
         return vision::analyzeFrame(image, inspectionConfig());
     }
-    auto all = vision::analyzeFrames(image, inspectionConfig());
+    const vision::PipelineConfig config = inspectionConfig();
+    auto all = vision::analyzeFrames(image, config);
     if (!all.isOk()) {
         return core::Result<vision::PieceAnalysis>::err(all.error().message);
     }
+    // Con las mismas piezas que numera el vídeo: sin el recorte del número
+    // declarado, una mancha de más corría los números y se medía otra pieza.
+    vision::keepDeclaredPieces(all.value(), config.expectedPieces);
     if (all.value().empty()) {
         return core::Result<vision::PieceAnalysis>::err("No se detectó ninguna pieza");
     }

@@ -3,6 +3,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
+#include <functional>
 #include <utility>
 #include <vector>
 
@@ -271,6 +272,31 @@ std::size_t measuredPieceIndex(const std::vector<PieceAnalysis>& pieces, int wan
         return static_cast<std::size_t>(wanted - 1);
     }
     return largestPieceIndex(pieces);
+}
+
+void keepDeclaredPieces(std::vector<PieceAnalysis>& pieces, int expected) {
+    if (expected < 1 || static_cast<int>(pieces.size()) <= expected) {
+        return;
+    }
+    std::vector<double> areas;
+    areas.reserve(pieces.size());
+    for (const auto& piece : pieces) {
+        areas.push_back(piece.contour.area);
+    }
+    // El area de la que hace de corte: la N-esima mayor.
+    std::nth_element(areas.begin(), areas.begin() + expected - 1, areas.end(),
+                     std::greater<double>());
+    const double cutoff = areas[static_cast<std::size_t>(expected - 1)];
+    std::vector<PieceAnalysis> kept;
+    kept.reserve(static_cast<std::size_t>(expected));
+    for (auto& piece : pieces) {
+        // Se conserva el ORDEN DE LECTURA al filtrar: el numero de cada pieza
+        // tiene que seguir significando su sitio.
+        if (piece.contour.area >= cutoff && static_cast<int>(kept.size()) < expected) {
+            kept.push_back(std::move(piece));
+        }
+    }
+    pieces = std::move(kept);
 }
 
 core::Result<PieceContour> findLargestContour(const cv::Mat& mask, double minAreaFraction,

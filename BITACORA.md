@@ -19,6 +19,19 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Con un número de piezas declarado, «Medir pieza» informaba de otra pieza
+
+Con «piezas esperadas: N» y una mancha de más (una sombra, un tornillo suelto),
+el vídeo se queda con las N mayores y las numera en orden de lectura. *Medir
+pieza* volvía a buscar las piezas sin ese recorte, así que su «pieza 1» era otra:
+en la prueba, la 1 en pantalla es la grande y el informe daba la pequeña de su
+izquierda (2 793 px² en vez de 11 187), y *Vigilar estas cotas* se habría
+llevado las de la pequeña a la grande. Las pruebas del selector declaran tantas
+piezas como hay, o ninguna, y entonces las dos numeraciones coinciden. El
+recorte vivía escrito dentro del análisis del vídeo; pasa a
+`vision::keepDeclaredPieces` y lo usan el vídeo y `analyseMeasuredPiece`. Lo
+vigila `test_the_report_is_of_the_piece_on_screen.cpp`.
+
 ### «Medir pieza» se quedaba apagado con la imagen ya abierta
 
 Al abrir una imagen o arrancar la cámara, *Medir pieza*, calibrar la escala, el
