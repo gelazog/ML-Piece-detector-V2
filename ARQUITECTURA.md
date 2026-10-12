@@ -5440,6 +5440,13 @@ cada análisis: en vídeo el número de la mayor salta cuando las piezas se muev
 y las cotas saltarían con él. El mapa se vacía al abrir otra fuente y al
 cargar una pieza registrada. Lo vigila `test_each_piece_its_own_measures.cpp`.
 
+
+Qué manchas son piezas con un número declarado («las N mayores, en orden de
+lectura») vive en `vision::keepDeclaredPieces`, y lo aplican el vídeo,
+`analyseMeasuredPiece` y el motor: cada uno con su recorte era cada uno con su
+numeración, y «la pieza 1» de *Medir pieza* o del informe era otra que la de la
+pantalla.
+
 ### El fotograma se convertía a gris una vez por herramienta y por pieza
 
 `runTool` llamaba a `vision::toGray` sobre la imagen completa en cada ejecución,

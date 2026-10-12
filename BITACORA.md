@@ -19,6 +19,19 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### La inspección medía la mancha que sobra y corría el número de las piezas
+
+Con un número de piezas declarado, la pantalla trabaja con las N mayores; el
+motor no aplicaba ese recorte. Con «esperadas: 3» y una sombra arriba a la
+izquierda medía la sombra como pieza —«ancho (pieza 1) fuera de tolerancia»— y
+la barra estrecha, la 3 en pantalla, salía como «pieza 4»: dos NG en el informe
+y en el tablero, y los dos mandaban a mirar una pieza que está bien. Las pruebas
+del motor ponían tantas barras como piezas declaradas. Ahora el recuento sigue
+viendo todas las manchas (esperaba 3 y hay 4: sigue siendo NG), pero solo se
+miden y se numeran las N mayores, con el mismo `vision::keepDeclaredPieces` que
+la pantalla. Lo vigila
+`EngineTest.WithADeclaredCountTheExtraBlobIsNotMeasuredNorNumbered`.
+
 ### Si la pieza elegida dejaba de verse, sus cotas pasaban a la mayor
 
 Con la 3 elegida y medida sin pieza registrada, en cuanto la 3 dejaba de verse

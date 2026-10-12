@@ -1057,6 +1057,66 @@ TEST_F(EngineTest, TheReportNumbersPiecesInReadingOrderLikeTheScreen) {
 //
 // Declarar el número sigue sirviendo para lo suyo —juzgar el recuento y quedarse
 // con las N mayores—, pero no puede ser lo que ENCIENDE la medición.
+// CON UN NÚMERO DECLARADO, LA MANCHA QUE SOBRA NO ES UNA PIEZA DEL INFORME.
+//
+// Con «esperadas: 3» y una sombra arriba a la izquierda, la pantalla se
+// queda con las TRES MAYORES y las numera 1, 2, 3; la sombra no se dibuja ni se
+// numera. El motor no aplicaba ese recorte: medía la sombra como si fuera una
+// pieza —«ancho (pieza 1) fuera de tolerancia»— y corría la numeración de las
+// demás, así que la barra estrecha, la 3 en pantalla, salía como «pieza 4».
+// Dos NG en el informe, y los dos mandaban a mirar una pieza que está bien.
+//
+// El recuento sí tiene que seguir viendo la sombra: esperaba 3 y hay 4 manchas,
+// y eso es un NG por sí mismo, que es justo para lo que se declara el número.
+TEST_F(EngineTest, WithADeclaredCountTheExtraBlobIsNotMeasuredNorNumbered) {
+    auto& pieces = *pieces_;
+    auto& tools = *tools_;
+    auto& history = *history_;
+    auto pieceId = pieces.createPiece("bandeja con sombra");
+    ASSERT_TRUE(pieceId.isOk());
+    auto measurement = pieces.loadMeasurement(pieceId.value());
+    ASSERT_TRUE(measurement.isOk());
+    measurement.value().expectedPieces = 3;
+    ASSERT_TRUE(pieces.saveMeasurement(pieceId.value(), measurement.value()).isOk());
+
+    inspection::ToolConfig caliper;
+    caliper.type = inspection::ToolType::Caliper;
+    caliper.name = "ancho";
+    caliper.geometryJson = inspection::toJson(inspection::ToolGeometry(
+        inspection::CaliperGeometry{{-160.0F, 0.0F}, {160.0F, 0.0F}, 20.0F}));
+    caliper.toleranceMin = 180.0;
+    caliper.toleranceMax = 220.0;
+    ASSERT_TRUE(tools.save(pieceId.value(), caliper, "principal").isOk());
+
+    engine::InspectionEngine engine(nullptr, pieces, tools, history);
+    // Las tres barras de siempre, la estrecha la TERCERA leyendo; y la sombra
+    // arriba a la izquierda, en una fila para ella sola: la primera leyendo de
+    // todas. Fuera del alcance de la regla, para que no cambie lo que miden las
+    // barras.
+    cv::Mat tray = trayOfBars(2, 120);
+    cv::rectangle(tray, cv::Rect(5, 100, 70, 80), cv::Scalar(220), cv::FILLED);
+    cv::Mat scene;
+    cv::cvtColor(tray, scene, cv::COLOR_GRAY2BGR);
+    auto outcome = engine.inspect(scene, pieceId.value());
+    ASSERT_TRUE(outcome.isOk()) << outcome.error().message;
+
+    std::vector<int> failing;
+    for (const auto& result : outcome.value().toolResults) {
+        std::printf("  [sombra] pieza %d -> %.1f (%s)\n", result.pieceIndex + 1,
+                    result.measured, result.ok ? "OK" : "NG");
+        if (!result.ok) {
+            failing.push_back(result.pieceIndex);
+        }
+    }
+    EXPECT_EQ(outcome.value().piecesFound, 4) << "el recuento tiene que seguir viendo la sombra";
+    EXPECT_FALSE(outcome.value().verdict.ok) << "4 manchas con 3 esperadas es un NG";
+    EXPECT_EQ(outcome.value().toolResults.size(), 3U)
+        << "se midieron " << outcome.value().toolResults.size()
+        << " piezas: la sombra no es una de las tres declaradas";
+    EXPECT_EQ(failing, std::vector<int>{2})
+        << "la que no cumple es la barra estrecha, la 3 en pantalla";
+}
+
 TEST_F(EngineTest, AutomaticCountMeasuresEveryPieceNotJustTheBiggest) {
     auto& pieces = *pieces_;
     auto& tools = *tools_;

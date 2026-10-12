@@ -202,6 +202,10 @@ core::Result<InspectionEngine::Outcome> InspectionEngine::inspect(const cv::Mat&
     if (everyPiece.has_value()) {
         if (auto& all = *everyPiece; all.isOk()) {
             outcome.piecesFound = static_cast<int>(all.value().size());
+            // El recuento ve todas las manchas, pero piezas son las N mayores
+            // declaradas, como en pantalla: medir la que sobra daba un NG de una
+            // sombra y corría el número de las demás.
+            vision::keepDeclaredPieces(all.value(), expectedPieces);
             // Las DEMÁS, que es la mayor la que ya se analizó aparte.
             //
             // Antes se saltaba el índice 0 porque la lista venía por área y el 0
