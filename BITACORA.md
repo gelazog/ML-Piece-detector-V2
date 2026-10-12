@@ -19,6 +19,18 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Si la pieza elegida dejaba de verse, sus cotas pasaban a la mayor
+
+Con la 3 elegida y medida sin pieza registrada, en cuanto la 3 dejaba de verse
+—sale de la cinta, una zona la deja fuera, cambia el recuento— el análisis
+volvía a medir la mayor poniendo el número a cero a pelo, sin pasar por
+`focusPiece`: las cotas de la 3 se quedaban midiendo la mayor, y con la
+siguiente flecha se guardaban como de la mayor, encima de las suyas, que se
+perdían. Las pruebas de cotas por pieza solo cambiaban de pieza con las flechas,
+nunca porque una desapareciera. Ahora ese paso va por `focusPiece(0)` y se
+vuelve a analizar. Lo vigila
+`EachPieceItsOwnMeasures.WhenTheChosenPieceLeavesItsCotasDoNotMoveToTheLargest`.
+
 ### Con un número de piezas declarado, «Medir pieza» informaba de otra pieza
 
 Con «piezas esperadas: N» y una mancha de más (una sombra, un tornillo suelto),

@@ -48,6 +48,17 @@ bool waitFor(const std::function<bool()>& condition, int ms = 8000) {
     return condition();
 }
 
+// Los ids de las cotas que enseña ahora el panel, por el nombre de su celda.
+QStringList cotaIds(const ui::MeasurementsPanel& panel) {
+    QStringList ids;
+    for (auto* cell : panel.findChildren<QWidget*>()) {
+        if (cell->objectName().startsWith(QStringLiteral("cotaCell_"))) {
+            ids << cell->objectName().mid(QStringLiteral("cotaCell_").size());
+        }
+    }
+    return ids;
+}
+
 }  // namespace
 
 TEST(EachPieceItsOwnMeasures, SwitchingPieceDoesNotCarryTheOtherPiecesCotas) {
@@ -167,4 +178,75 @@ TEST(EachPieceItsOwnMeasures, TwoUnsavedCotasAreTwoRowsAndEachCrossDeletesItsOwn
         }
     }
     EXPECT_TRUE(firstStillThere) << "la ✕ de la segunda cota borró la primera";
+}
+
+// SI LA PIEZA ELEGIDA DEJA DE VERSE, SUS COTAS NO PASAN A LA MAYOR.
+//
+// Con la 3 elegida y medida, basta con que la 3 deje de verse —sale de la cinta,
+// o una zona de trabajo la deja fuera— para que el análisis vuelva a medir la
+// mayor. Ese paso ponía el número a cero a pelo, sin pasar por `focusPiece`, que
+// es quien cambia las cotas de pieza: las de la 3 se quedaban midiendo la mayor
+// y las de la mayor seguían guardadas aparte. Con la siguiente flecha, las de la
+// 3 se guardaban COMO de la mayor, encima de las suyas, y éstas se perdían.
+TEST(EachPieceItsOwnMeasures, WhenTheChosenPieceLeavesItsCotasDoNotMoveToTheLargest) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    // 1 pequeña y 2 la mayor arriba; 3 mediana abajo, la que se va a quedar fuera.
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.fillRect(QRect(60, 60, 60, 50), QColor(230, 230, 230));
+        painter.fillRect(QRect(250, 50, 120, 100), QColor(230, 230, 230));
+        painter.fillRect(QRect(70, 200, 90, 70), QColor(230, 230, 230));
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("tres.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    ui::MainWindow window;  // sin repositorios: ninguna pieza registrada
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(window.startFileSourceAtPath(camera::SourceKind::Image, path));
+    auto* canvas = window.findChild<inspection::EditorCanvas*>();
+    auto* panel = window.findChild<ui::MeasurementsPanel*>();
+    auto* next = window.findChild<QToolButton*>(QStringLiteral("pieceNextButton"));
+    ASSERT_NE(canvas, nullptr);
+    ASSERT_NE(panel, nullptr);
+    ASSERT_NE(next, nullptr);
+    ASSERT_TRUE(waitFor([&] { return canvas->livePieceCount() == 3 && next->isVisible(); }));
+
+    const auto drawCircle = [&](float radius) {
+        inspection::CircleGeometry circle;
+        circle.center = cv::Point2f(0.0F, 0.0F);
+        circle.radius = radius;
+        circle.searchBand = 15.0F;
+        emit canvas->toolCreated(inspection::ToolGeometry{circle});
+    };
+
+    // Una cota en la mayor, que es la que se mide sin elegir nada.
+    drawCircle(30.0F);
+    ASSERT_TRUE(waitFor([&] { return cotaIds(*panel).size() == 1; }));
+    const QString ofTheLargest = cotaIds(*panel).front();
+
+    // A la 3 —pasando por la 1 y la 2— y una cota suya.
+    for (int i = 0; i < 3; ++i) {
+        next->click();
+    }
+    ASSERT_TRUE(waitFor([&] { return cotaIds(*panel).isEmpty(); }))
+        << "la 3 no empieza vacía";
+    drawCircle(20.0F);
+    ASSERT_TRUE(waitFor([&] { return cotaIds(*panel).size() == 1; }));
+    const QString ofTheThird = cotaIds(*panel).front();
+    ASSERT_NE(ofTheThird, ofTheLargest);
+
+    // Una zona que deja fuera la 3: se queda la pequeña y la mayor, y se vuelve
+    // a medir la mayor.
+    emit canvas->regionPicked(cv::Rect(0, 0, 400, 170));
+    ASSERT_TRUE(waitFor([&] { return canvas->livePieceCount() == 2; }))
+        << "la zona no deja fuera a la 3";
+
+    EXPECT_TRUE(waitFor([&] { return cotaIds(*panel) == QStringList{ofTheLargest}; }))
+        << "al dejar de verse la 3 se mide la mayor, y el panel enseña las cotas «"
+        << cotaIds(*panel).join(QStringLiteral(", ")).toStdString()
+        << "» en vez de la suya («" << ofTheLargest.toStdString() << "»)";
 }

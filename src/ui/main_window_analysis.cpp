@@ -888,8 +888,13 @@ void MainWindow::onAnalysisFinished() {
         // desapareció una— el análisis ya ha medido la mayor en su lugar. Aquí se
         // deja constancia de que la elección ya no vale, para que el indicador no
         // siga diciendo que se está midiendo una pieza que no existe.
+        //
+        // Por `focusPiece`, como cualquier otro cambio de pieza: a cero a pelo,
+        // las cotas de la que se fue se quedaban midiendo la mayor, y con la
+        // siguiente flecha se guardaban encima de las de ésta.
         if (focusedPiece_ > lastPieceCount_) {
-            focusedPiece_ = 0;
+            focusPiece(0);
+            reanalyseCurrentFrame();
             statusBar()->showMessage(
                 tr("Ya no hay tantas piezas en el encuadre: se vuelve a medir la mayor."));
         }
