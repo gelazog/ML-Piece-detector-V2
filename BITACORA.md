@@ -19,6 +19,22 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Con el contorno oculto, pasar a otra pieza seguía midiendo la anterior
+
+Con *Mostrar contorno* apagado la pose se congela: las cotas se miden con el
+fixture del último análisis. Ese fixture era el de la pieza que se estaba
+mirando y seguía puesto al pasar a otra, así que las cotas de la nueva se medían
+donde estaba la anterior: en la prueba, un círculo de Ø 50 trazado sobre el disco
+pequeño daba 0 al volver a él desde la mayor. El mismo fixture viejo es el que
+estabiliza el de la pieza nueva, y con *Seguir rotación* su giro se decidía
+contra el de la anterior. Ninguna prueba cambiaba de pieza con el contorno
+oculto. Ahora `focusPiece` suelta el fixture cuando cambia la pieza, también con
+pieza registrada, y la ventana no acepta el fixture de un análisis lanzado para
+otra pieza: el que estaba en vuelo al pulsar la flecha llegaba después y volvía a
+poner el de la anterior. Eso salió con la batería entera en paralelo, y la prueba
+ahora lanza ese análisis a propósito para que la carrera ocurra siempre. Lo vigila
+`EachPieceItsOwnMeasures.WithTheContourHiddenTheNewPieceIsMeasuredWhereItIs`.
+
 ### Una zona fija apagada seguía recortando el informe y la inspección
 
 La zona fija se guarda aunque se pase a «imagen entera» o a automática, para

@@ -71,6 +71,9 @@ struct AnalysisOverlay {
     // Cuál es la MAYOR, con la misma numeración. Con el selector en «la mayor»
     // coincide con `measuredPiece`; con otra elegida, dice adónde se vuelve.
     int largestPiece = -1;
+    // La pieza que se pidió medir al lanzarlo (`focusedPiece_` de entonces). Si
+    // al llegar ya se mide otra, su fixture es de la anterior.
+    int wantedPiece = 0;
     // Cuantas se estan TRATANDO como piezas, que con un numero declarado a mano
     // puede ser menos que las que se ven.
     //

@@ -802,6 +802,12 @@ void MainWindow::focusPiece(int number) {
     const int before = pieceOf(focusedPiece_);
     focusedPiece_ = number;
     const int after = pieceOf(focusedPiece_);
+    // El fixture es de la pieza que se deja, también con plantilla: con el
+    // contorno oculto se medía con él —las cotas de la nueva, donde estaba la
+    // anterior— y con «Seguir rotación» el giro de la nueva se decidía contra él.
+    if (before != after) {
+        liveFixture_.reset();
+    }
     if (selectedPieceId() >= 0 || before == after || before < 1 || after < 1) {
         return;
     }

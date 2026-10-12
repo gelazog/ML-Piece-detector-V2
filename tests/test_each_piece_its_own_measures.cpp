@@ -14,15 +14,19 @@
 
 #include <gtest/gtest.h>
 
+#include <QAction>
 #include <QApplication>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QImage>
+#include <QLabel>
 #include <QPainter>
+#include <QRegularExpression>
 #include <QStatusBar>
 #include <QTemporaryDir>
 #include <QToolButton>
 
+#include <cmath>
 #include <functional>
 #include <vector>
 
@@ -249,4 +253,98 @@ TEST(EachPieceItsOwnMeasures, WhenTheChosenPieceLeavesItsCotasDoNotMoveToTheLarg
         << "al dejar de verse la 3 se mide la mayor, y el panel enseña las cotas «"
         << cotaIds(*panel).join(QStringLiteral(", ")).toStdString()
         << "» en vez de la suya («" << ofTheLargest.toStdString() << "»)";
+}
+
+// CON EL CONTORNO OCULTO, PASAR A OTRA PIEZA MIDE LA OTRA PIEZA.
+//
+// Con «Mostrar contorno» apagado la pose se congela: las cotas se miden con el
+// fixture del último análisis, para que nada tiemble sobre una pieza quieta. Ese
+// fixture es el de la pieza que se estaba mirando, y al pasar a otra con las
+// flechas se seguía usando: las cotas de la nueva se medían donde estaba la
+// ANTERIOR. Aquí, un círculo de Ø 50 trazado sobre el disco pequeño buscaba su
+// borde dentro del grande y no medía nada. El mismo fixture viejo es el que
+// estabiliza el de la pieza nueva con «Seguir rotación»: su giro se decidía
+// contra el de la anterior.
+TEST(EachPieceItsOwnMeasures, WithTheContourHiddenTheNewPieceIsMeasuredWhereItIs) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    // 1 disco pequeño (Ø 50) y 2 el mayor (Ø 100) arriba; 3 mediano abajo.
+    QImage photo(400, 300, QImage::Format_RGB888);
+    photo.fill(QColor(20, 20, 20));
+    {
+        QPainter painter(&photo);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(230, 230, 230));
+        painter.drawEllipse(QPointF(80, 80), 25, 25);
+        painter.drawEllipse(QPointF(280, 90), 50, 50);
+        painter.drawEllipse(QPointF(110, 220), 35, 35);
+    }
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("discos.png"));
+    ASSERT_TRUE(photo.save(path));
+
+    ui::MainWindow window;  // sin repositorios: ninguna pieza registrada
+    window.resize(1200, 800);
+    window.show();
+    ASSERT_TRUE(window.startFileSourceAtPath(camera::SourceKind::Image, path));
+    auto* canvas = window.findChild<inspection::EditorCanvas*>();
+    auto* panel = window.findChild<ui::MeasurementsPanel*>();
+    auto* next = window.findChild<QToolButton*>(QStringLiteral("pieceNextButton"));
+    auto* label = window.findChild<QLabel*>(QStringLiteral("pieceNavLabel"));
+    auto* contour = window.findChild<QAction*>(QStringLiteral("showContourAction"));
+    ASSERT_NE(canvas, nullptr);
+    ASSERT_NE(panel, nullptr);
+    ASSERT_NE(next, nullptr);
+    ASSERT_NE(label, nullptr);
+    ASSERT_NE(contour, nullptr);
+    ASSERT_TRUE(waitFor([&] { return canvas->livePieceCount() == 3 && next->isVisible(); }));
+
+    // El diámetro que enseña el panel para la única cota, o −1 si no hay número.
+    const auto measuredDiameter = [&]() {
+        const QStringList ids = cotaIds(*panel);
+        if (ids.size() != 1) {
+            return -1.0;
+        }
+        auto* cell = panel->findChild<QLabel*>(QStringLiteral("valueCell_") + ids.front());
+        if (cell == nullptr) {
+            return -1.0;
+        }
+        const auto match = QRegularExpression(QStringLiteral("\\d+(\\.\\d+)?")).match(cell->text());
+        return match.hasMatch() ? match.captured(0).toDouble() : -1.0;
+    };
+
+    // A la 1, el disco pequeño, y un círculo justo en su borde.
+    next->click();
+    ASSERT_TRUE(waitFor([&] { return label->text().contains(QStringLiteral("pieza 1/3")); }));
+    inspection::CircleGeometry circle;
+    circle.center = cv::Point2f(0.0F, 0.0F);
+    circle.radius = 25.0F;
+    circle.searchBand = 10.0F;
+    emit canvas->toolCreated(inspection::ToolGeometry{circle});
+    ASSERT_TRUE(waitFor([&] { return std::abs(measuredDiameter() - 50.0) < 5.0; }))
+        << "el círculo no mide el disco pequeño (" << measuredDiameter() << ")";
+
+    // A la mayor, que se queda sin cotas, y ahí se oculta el contorno: la pose
+    // se congela sobre ella.
+    for (int i = 0; i < 3; ++i) {
+        next->click();
+    }
+    ASSERT_TRUE(waitFor([&] {
+        return label->text().contains(QStringLiteral("la mayor")) && cotaIds(*panel).isEmpty();
+    }));
+
+    // De vuelta a la 1, con un análisis de la mayor todavía en vuelo —lo que
+    // pasa cuando la imagen se reemite justo antes del clic—: ese análisis
+    // termina después del cambio y no puede devolver el fixture de la mayor. Se
+    // lanza a propósito para que la carrera ocurra siempre, y no solo con la
+    // máquina cargada, que es como apareció: su resultado solo se entrega al
+    // volver al bucle de eventos, después del clic.
+    window.declareExpectedPieces(0);  // ya era 0: solo vuelve a analizar
+    contour->trigger();
+    ASSERT_FALSE(contour->isChecked());
+    next->click();
+    EXPECT_TRUE(waitFor([&] { return std::abs(measuredDiameter() - 50.0) < 5.0; }))
+        << "con el contorno oculto, la cota de la pieza 1 se mide donde estaba la mayor: el "
+           "panel da "
+        << measuredDiameter();
 }

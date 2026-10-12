@@ -63,6 +63,7 @@ AnalysisOverlay buildOverlay(const QImage& frame,
                              int wantedPiece, bool measureStages) {
     AnalysisOverlay overlay;
     overlay.frameSize = frame.size();
+    overlay.wantedPiece = wantedPiece;
 
     // Blindaje total: una excepción que escape de un worker de QtConcurrent
     // se relanza en result() y tumbaría la aplicación.
@@ -956,10 +957,14 @@ void MainWindow::onAnalysisFinished() {
                                    : overlay.error;
         if (overlay.valid) {
             // El fixture llega ya estabilizado desde el worker (banda muerta,
-            // suavizado y continuidad anti-giro de 180°).
-            liveFixture_ = vision::Fixture{{static_cast<float>(overlay.centroid.x()),
-                                            static_cast<float>(overlay.centroid.y())},
-                                           overlay.angleDeg};
+            // suavizado y continuidad anti-giro de 180°). Solo si es de la pieza
+            // que se mide AHORA: un análisis lanzado antes de cambiar de pieza
+            // devolvería el de la anterior, que `focusPiece` acaba de soltar.
+            if (overlay.wantedPiece == focusedPiece_) {
+                liveFixture_ = vision::Fixture{{static_cast<float>(overlay.centroid.x()),
+                                                static_cast<float>(overlay.centroid.y())},
+                                               overlay.angleDeg};
+            }
             video_->setPieceBoundsCenter(
                 true, {static_cast<float>(overlay.boundsCenter.x()),
                        static_cast<float>(overlay.boundsCenter.y())});

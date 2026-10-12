@@ -5440,6 +5440,13 @@ cada análisis: en vídeo el número de la mayor salta cuando las piezas se muev
 y las cotas saltarían con él. El mapa se vacía al abrir otra fuente y al
 cargar una pieza registrada. Lo vigila `test_each_piece_its_own_measures.cpp`.
 
+También pasa por `focusPiece` la vuelta a «la mayor» cuando la pieza elegida deja
+de verse, que antes ponía el número a cero a pelo y dejaba las cotas de la que se
+fue midiendo la mayor. Y al cambiar de pieza suelta el fixture vivo
+(`liveFixture_`), que es de la anterior: con el contorno oculto se medía con él,
+y con *Seguir rotación* estabilizaba el giro de la nueva contra el de la vieja.
+Cada análisis lleva la pieza para la que se lanzó (`AnalysisOverlay::wantedPiece`)
+y `onAnalysisFinished` solo adopta su fixture si sigue siendo la que se mide.
 
 Qué manchas son piezas con un número declarado («las N mayores, en orden de
 lectura») vive en `vision::keepDeclaredPieces`, y lo aplican el vídeo,
