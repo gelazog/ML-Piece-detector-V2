@@ -10,9 +10,11 @@
 #include "ui/configure_dialog.h"
 #include "ui/delete_scope.h"
 #include "ui/measurement_mode_dialog.h"
+#include "ui/measurements_panel.h"
 #include "ui/piece_mosaic.h"
 #include "ui/pieces_page.h"
 #include "ui/theme.h"
+#include "ui/verdict_board.h"
 #include "vision/position_fixture.h"
 
 #include <QAction>
@@ -807,6 +809,16 @@ void MainWindow::focusPiece(int number) {
     // anterior— y con «Seguir rotación» el giro de la nueva se decidía contra él.
     if (before != after) {
         liveFixture_.reset();
+        // Y lo que se midió es de la otra pieza: el panel y el veredicto no
+        // pueden enseñarlo mientras llega el análisis de ésta.
+        lastToolResults_.clear();
+        if (measurements_ != nullptr) {
+            measurements_->setResults({}, liveToolConfigs(), calibration_.mmPerPixel,
+                                      currentUnit());
+        }
+        if (verdictBoard_ != nullptr) {
+            verdictBoard_->showVerdict(VerdictState::Hidden);
+        }
     }
     if (selectedPieceId() >= 0 || before == after || before < 1 || after < 1) {
         return;

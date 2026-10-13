@@ -105,7 +105,11 @@ TEST(EachPieceItsOwnMeasures, SwitchingPieceDoesNotCarryTheOtherPiecesCotas) {
         << "la cota dibujada no llega a medirse";
 
     // A la pieza 1, que no se ha medido: no puede llevarse la cota de la 2.
+    // Ni siquiera el rato que tarda el análisis nuevo: el panel se vacía en el
+    // mismo clic, en vez de enseñar un ciclo más las medidas de la anterior.
     next->click();
+    EXPECT_EQ(panel->rowCount(), 0)
+        << "justo al cambiar de pieza el panel sigue enseñando la anterior";
     EXPECT_TRUE(waitFor([&] { return panel->rowCount() == 0; }))
         << "al pasar a otra pieza siguen puestas las medidas de la anterior ("
         << panel->rowCount() << " fila(s))";

@@ -19,6 +19,16 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Al cambiar de pieza, el panel enseñaba un ciclo más las medidas de la anterior
+
+Las cotas ya seguían a su pieza, pero el panel de medidas y el veredicto grande
+solo se rehacían al llegar el análisis siguiente: mientras tanto enseñaban los
+números de la pieza que se acababa de dejar, que es justo la queja de partida
+(«se quedan las medidas anteriores»). `focusPiece` vacía ahora en el mismo clic
+el panel, el veredicto y los últimos resultados, igual que ya hacía con los del
+lienzo. Lo vigila `EachPieceItsOwnMeasures.SwitchingPieceDoesNotCarryTheOtherPiecesCotas`,
+que mira el panel justo después de pulsar la flecha.
+
 ### Con el contorno oculto, pasar a otra pieza seguía midiendo la anterior
 
 Con *Mostrar contorno* apagado la pose se congela: las cotas se miden con el
