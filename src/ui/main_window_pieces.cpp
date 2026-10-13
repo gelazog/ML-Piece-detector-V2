@@ -341,6 +341,10 @@ void MainWindow::onPieceSelectionChanged(int index) {
 void MainWindow::loadToolsForSelectedPiece() {
     liveTools_.clear();
     toolsOfOtherPieces_.clear();
+    // El deshacer era de la pieza anterior, también en las salidas tempranas de
+    // abajo: al borrar la última pieza, Ctrl+Z devolvía sus cotas a ninguna.
+    undoStack_.clear();
+    stableTools_.clear();
     video_->setSelectedIndex(-1);
     video_->clearResults();
 

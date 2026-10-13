@@ -19,6 +19,17 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Borrar la última pieza dejaba su deshacer vivo
+
+`loadToolsForSelectedPiece` vacía las cotas al cambiar de pieza, pero solo
+vaciaba el historial de deshacer en el camino de una pieza registrada con
+plantilla. Al borrar la última pieza (o si fallaba la lectura de la base de
+datos) salía antes, y Ctrl+Z devolvía las cotas de la pieza borrada a la
+pantalla, ya sin pieza. Ahora el historial se vacía en la misma línea que las
+cotas, al principio, para todos los caminos. No lleva prueba propia: el único
+camino que llega ahí es el diálogo modal de gestión de piezas; lo vio el agente
+que buscaba estado viejo con varias piezas.
+
 ### Al cambiar de pieza, el panel enseñaba un ciclo más las medidas de la anterior
 
 Las cotas ya seguían a su pieza, pero el panel de medidas y el veredicto grande
