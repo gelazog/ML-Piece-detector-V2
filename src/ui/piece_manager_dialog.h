@@ -17,9 +17,9 @@ class ToolRepository;
 namespace pci::ui {
 
 // Gestión de piezas registradas: renombrar, eliminar (con todo su historial),
-// y ajustar manualmente la orientación del sistema de coordenadas (girarla
-// hasta dejar el eje donde el usuario quiera; aplica en vivo, registro e
-// inspección).
+// quitar un acabado registrado por error, y ajustar manualmente la orientación
+// del sistema de coordenadas (girarla hasta dejar el eje donde el usuario
+// quiera; aplica en vivo, registro e inspección).
 class PieceManagerDialog : public QDialog {
     Q_OBJECT
 
@@ -36,6 +36,8 @@ private slots:
     void onDeleteClicked();
     void onOffsetEdited();
     void onRotate90Clicked();
+    void onVariantSelectionChanged();
+    void onRemoveVariantClicked();
 
 private:
     void reloadList(std::int64_t selectId = -1);
@@ -50,6 +52,8 @@ private:
     QPushButton* deleteButton_ = nullptr;
     QDoubleSpinBox* offsetSpin_ = nullptr;
     QPushButton* rotateButton_ = nullptr;
+    QListWidget* variantList_ = nullptr;
+    QPushButton* removeVariantButton_ = nullptr;
     bool changed_ = false;
     bool syncing_ = false;
 };

@@ -108,7 +108,7 @@ void MainWindow::explainMenus() {
             "acabados en la misma referencia deja de detectar defectos que antes sí se "
             "veían.")},
         {tr("Gestionar piezas…"),
-         tr("Renombra, duplica o borra piezas registradas."),
+         tr("Renombra o borra piezas registradas, y quita acabados."),
          tr("También enseña cuántas herramientas e inspecciones tiene cada una.")},
         {tr("Gestionar plantillas…"),
          tr("Crea, renombra o borra plantillas de herramientas de esta pieza."),

@@ -193,6 +193,7 @@ add_executable(pci_gui_tests
   test_lens_wizard.cpp
   test_readme_paths.cpp
   test_variant_wizard.cpp
+  test_remove_finish.cpp
   test_result_dialog.cpp
   test_piece_mosaic.cpp
   test_measurements_panel.cpp

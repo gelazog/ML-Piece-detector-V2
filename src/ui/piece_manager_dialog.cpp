@@ -27,8 +27,24 @@ PieceManagerDialog::PieceManagerDialog(repositories::PieceRepository* pieces,
     resize(560, 480);
 
     auto* rootLayout = new QHBoxLayout(this);
+    auto* listLayout = new QVBoxLayout();
     list_ = new QListWidget(this);
-    rootLayout->addWidget(list_, 1);
+    list_->setObjectName(QStringLiteral("pieceList"));
+    listLayout->addWidget(list_, 1);
+    // Quitar un acabado es la única forma de deshacer haber registrado como
+    // acabado una pieza mala: desde entonces las malas como ella pasan.
+    auto* variantCaption = new QLabel(tr("Acabados de la pieza:"), this);
+    listLayout->addWidget(variantCaption);
+    variantList_ = new QListWidget(this);
+    variantList_->setObjectName(QStringLiteral("variantList"));
+    variantList_->setMaximumHeight(variantList_->fontMetrics().lineSpacing() * 5);
+    variantCaption->setBuddy(variantList_);
+    listLayout->addWidget(variantList_);
+    removeVariantButton_ = new QPushButton(tr("&Quitar acabado…"), this);
+    removeVariantButton_->setObjectName(QStringLiteral("removeVariantButton"));
+    removeVariantButton_->setAutoDefault(false);  // no se deshace: fuera del Enter
+    listLayout->addWidget(removeVariantButton_);
+    rootLayout->addLayout(listLayout, 1);
 
     auto* sideLayout = new QVBoxLayout();
     thumbLabel_ = new QLabel(this);
@@ -84,6 +100,10 @@ PieceManagerDialog::PieceManagerDialog(repositories::PieceRepository* pieces,
             &PieceManagerDialog::onOffsetEdited);
     connect(rotateButton_, &QPushButton::clicked, this,
             &PieceManagerDialog::onRotate90Clicked);
+    connect(variantList_, &QListWidget::currentRowChanged, this,
+            &PieceManagerDialog::onVariantSelectionChanged);
+    connect(removeVariantButton_, &QPushButton::clicked, this,
+            &PieceManagerDialog::onRemoveVariantClicked);
     connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
 
     reloadList();
@@ -126,6 +146,17 @@ void PieceManagerDialog::onSelectionChanged() {
     deleteButton_->setEnabled(hasSelection);
     offsetSpin_->setEnabled(hasSelection);
     rotateButton_->setEnabled(hasSelection);
+
+    variantList_->clear();
+    if (hasSelection) {
+        if (auto listed = pieces_->listVariants(pieceId); listed.isOk()) {
+            for (const auto& name : listed.value()) {
+                variantList_->addItem(QString::fromStdString(name));
+            }
+        }
+        variantList_->setCurrentRow(0);
+    }
+    onVariantSelectionChanged();
 
     if (!hasSelection) {
         infoLabel_->setText(tr("No hay piezas registradas."));
@@ -247,6 +278,43 @@ void PieceManagerDialog::onRotate90Clicked() {
         next -= 360.0;
     }
     offsetSpin_->setValue(next);  // dispara onOffsetEdited y persiste
+}
+
+void PieceManagerDialog::onVariantSelectionChanged() {
+    auto* item = variantList_->currentItem();
+    const bool isMain =
+        item != nullptr &&
+        item->text() == QLatin1String(repositories::PieceRepository::kMainVariant);
+    removeVariantButton_->setEnabled(item != nullptr && !isMain);
+    removeVariantButton_->setToolTip(
+        isMain ? tr("La principal no se puede quitar: es la referencia de la pieza.")
+               : tr("Deja de dar por buenas las piezas que solo se parecen a este acabado."));
+}
+
+void PieceManagerDialog::onRemoveVariantClicked() {
+    const std::int64_t pieceId = selectedPieceId();
+    auto* item = variantList_->currentItem();
+    if (pieceId < 0 || item == nullptr) {
+        return;
+    }
+    const QString variant = item->text();
+    const auto answer = QMessageBox::warning(
+        this, tr("Quitar acabado"),
+        tr("¿Quitar el acabado «%1» de «%2» con todas sus versiones?\n"
+           "No se puede deshacer.")
+            .arg(variant, list_->currentItem()->text()),
+        QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+    if (answer != QMessageBox::Yes) {
+        return;
+    }
+    if (auto removed = pieces_->deleteVariant(pieceId, variant.toStdString());
+        !removed.isOk()) {
+        QMessageBox::warning(this, tr("No se pudo quitar"),
+                             QString::fromStdString(removed.error().message));
+        return;
+    }
+    changed_ = true;
+    onSelectionChanged();
 }
 
 }  // namespace pci::ui

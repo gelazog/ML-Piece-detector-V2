@@ -5589,6 +5589,22 @@ el mismo error que el comentario de `buildVideoCanvas` cuenta para
 `edgeCorrected`. Ya se conecta allí; lo vigila
 `tests/test_outline_reaches_window.cpp`.
 
+### Quitar un acabado: lo único que deshace registrar uno mal
+
+Una pieza es buena si alguna de sus variantes la reconoce (`ml::matchVariants`),
+así que un acabado registrado con una pieza mala deja pasar a todas las que se
+le parecen. `PieceRepository::deleteVariant` existía desde que existen las
+variantes, pero ninguna pantalla lo llamaba. Ahora `PieceManagerDialog` pone
+debajo de la lista de piezas la de acabados de la elegida (`listVariants`, que
+se rehace en `onSelectionChanged`) y **Quitar acabado…**, que pregunta con un
+`QMessageBox` con Cancelar por defecto y no tiene `autoDefault`, igual que
+*Eliminar…*: no hay deshacer. La «principal» sale en la lista con el botón
+apagado y el motivo en su ayuda; el repositorio también la rechaza, así que la
+guarda está en los dos sitios. Tras quitar uno, `changed()` hace que la ventana
+recargue la pieza. El motor no guarda las referencias: las lee de la BD en cada
+inspección (`loadAllVariantReferences`), así que la siguiente ya juzga sin el
+acabado quitado. Lo vigila `tests/test_remove_finish.cpp`.
+
 
 ## 12. Empaquetado
 
@@ -5671,9 +5687,8 @@ cierta el día que se escribe y mentira a la semana siguiente.
    pasa. Separadas, cada variante conserva su media y su banda y una pieza es
    buena si alguna la reconoce.
 
-   Falta la interfaz para registrar un acabado nuevo: hoy se guarda con
-   `saveReference(pieza, referencia, "nombre")` y el motor ya juzga contra
-   todas.
+   Un acabado nuevo se registra con el asistente de registro y se quita en
+   *Pieza ▸ Gestionar piezas…*; el motor juzga contra todos.
 7. ~~**Mapa de calor de diferencia** contra el recorte de referencia~~ —
    **hecho**. Vive en `vision/difference_map.cpp` y lo consume el diálogo de
    resultado (`ui/inspection_result_dialog.cpp`), con su prueba en

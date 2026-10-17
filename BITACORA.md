@@ -19,6 +19,19 @@ Se leen sueltas y en cualquier orden. Para saber **cómo funciona** un subsistem
 
 ---
 
+### Un acabado registrado por error no se podía quitar
+
+Una pieza es buena si alguno de sus acabados la reconoce. Quien registraba por
+error como acabado una pieza mala dejaba pasar desde entonces a todas las malas
+como ella, y no había forma de quitarlo: `PieceRepository::deleteVariant`
+existía, pero ninguna pantalla lo llamaba. El gestor de piezas enseña ahora los
+acabados de la pieza elegida y deja quitar uno después de confirmarlo, con
+Cancelar en el Enter. La «principal» se ve pero no se quita. Lo vigila
+`tests/test_remove_finish.cpp`: la lista sigue a la pieza elegida, la principal
+no se puede quitar, cancelar no toca nada y quitar uno lo borra de la BD y deja
+los demás. Al mutar el diálogo —Sí por defecto, o el botón encendido con la
+principal— fallan las dos pruebas que lo vigilan.
+
 ### Borrar la última pieza dejaba su deshacer vivo
 
 `loadToolsForSelectedPiece` vacía las cotas al cambiar de pieza, pero solo

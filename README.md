@@ -1623,6 +1623,13 @@ pieza es buena si se parece a **cualquiera** de ellos. Comparte herramientas,
 tolerancias e historial con la pieza, que es lo que lo distingue de registrarla
 otra vez — eso crearía una pieza distinta.
 
+Un acabado registrado por error —una pieza mala guardada como acabado— hace
+pasar por buenas a todas las malas que se le parecen. Se quita en
+*Pieza ▸ Gestionar piezas…*: debajo de la lista de piezas salen los acabados de
+la elegida, y **Quitar acabado…** borra el seleccionado con todas sus
+versiones, después de preguntar, porque no se puede deshacer. La «principal»
+sale en la lista pero no se puede quitar: es la referencia de la pieza.
+
 **Dónde difiere.** Un NG por apariencia era hasta ahora un número: la similitud
 cayó por debajo de la banda y a buscar a ojo qué le pasa a la pieza. Ahora el
 diálogo de resultado añade una tercera miniatura que **señala el sitio**, y lo
