@@ -23,6 +23,7 @@
 #include <QPainter>
 #include <QRegularExpression>
 #include <QStatusBar>
+#include <QStringList>
 #include <QTemporaryDir>
 #include <QToolButton>
 
@@ -107,7 +108,13 @@ TEST(EachPieceItsOwnMeasures, SwitchingPieceDoesNotCarryTheOtherPiecesCotas) {
     // A la pieza 1, que no se ha medido: no puede llevarse la cota de la 2.
     // Ni siquiera el rato que tarda el análisis nuevo: el panel se vacía en el
     // mismo clic, en vez de enseñar un ciclo más las medidas de la anterior.
+    // Todo lo que pasa por la barra de estado, no solo lo último: la búsqueda
+    // de cámaras es asíncrona y su aviso a veces llega justo después.
+    QStringList seen;
+    const auto watch = QObject::connect(window.statusBar(), &QStatusBar::messageChanged,
+                                        [&seen](const QString& text) { seen << text; });
     next->click();
+    QObject::disconnect(watch);
     EXPECT_EQ(panel->rowCount(), 0)
         << "justo al cambiar de pieza el panel sigue enseñando la anterior";
     EXPECT_TRUE(waitFor([&] { return panel->rowCount() == 0; }))
@@ -115,9 +122,9 @@ TEST(EachPieceItsOwnMeasures, SwitchingPieceDoesNotCarryTheOtherPiecesCotas) {
         << panel->rowCount() << " fila(s))";
     // Y dice por qué el panel se ha quedado vacío y qué hacer, en vez de dejar
     // al operador pensando que dejó de medir.
-    EXPECT_TRUE(window.statusBar()->currentMessage().contains(QStringLiteral("Medir pieza")))
+    EXPECT_TRUE(seen.join(QStringLiteral(" | ")).contains(QStringLiteral("Medir pieza")))
         << "no explica que esta pieza aún no tiene medidas: «"
-        << window.statusBar()->currentMessage().toStdString() << "»";
+        << seen.join(QStringLiteral(" | ")).toStdString() << "»";
 
     // A la 2 por su número: es la pieza en la que se dibujó, así que sus
     // medidas vuelven. Que «la mayor» y «la 2» sean la misma pieza es lo que
